@@ -13,12 +13,14 @@ from typing import Any, TypedDict
 
 from math_exposure_core import (
     Bucket,
+    BucketField,
     bucket_metric,
     strike_total_oi,
     strike_total_volume,
     strike_volume_legs,
     total_gex_dollars_at_strike,
 )
+from math_levels import CharmBucket
 from numeric_contract import (
     compact_text,
     count_text,
@@ -183,7 +185,7 @@ def score_magnitudes(
     spans: dict[str, float | None] = {}
     flat: list[str] = []
     for name in required:
-        present = [(s, by_strike[s][name]) for s in universe if by_strike[s].get(name) is not None]
+        present = [(s, v) for s in universe if (v := by_strike[s].get(name)) is not None]
         mapped, span = _normalize(present)
         norm[name] = mapped
         spans[name] = span
@@ -235,7 +237,9 @@ def _in_universe(factors: dict[str, float | None]) -> bool:
     return (oi is not None and oi > 0) or (vol is not None and vol > 0)
 
 
-def _legs_ok(bucket: Bucket, call_key: str, put_key: str) -> tuple[float, float] | None:
+def _legs_ok(
+    bucket: Bucket, call_key: BucketField, put_key: BucketField
+) -> tuple[float, float] | None:
     call = bucket_metric(bucket, call_key)
     put = bucket_metric(bucket, put_key)
     if call is None or put is None or call < 0 or put < 0:
@@ -244,7 +248,7 @@ def _legs_ok(bucket: Bucket, call_key: str, put_key: str) -> tuple[float, float]
 
 
 def magnitudes(
-    bucket: Bucket, charm: Bucket | None, iv: float | None, spot: float
+    bucket: Bucket, charm: CharmBucket | None, iv: float | None, spot: float
 ) -> dict[str, float | None]:
     """Return the scored magnitudes, plus the signed numbers the columns show."""
     gex = _legs_ok(bucket, "call_gex_1pct", "put_gex_1pct")
@@ -393,7 +397,7 @@ def _shades(factors: dict[str, float | None]) -> dict[str, float | None]:
     """Return the numbers the page shades each column's cell by, against the column's peak."""
     out = {key: factors[name] for key, name in SHADED.items()}
     for key, name in LEANS.items():
-        out[key] = None if factors[name] is None else 1 - factors[name]
+        out[key] = None if (ratio := factors[name]) is None else 1 - ratio
     return out
 
 
@@ -434,7 +438,7 @@ def _factor_row(part: FactorPart) -> dict[str, str | None]:
 
 def build_matrix(
     exposures: dict[float, Bucket],
-    charm_by_strike: dict[float, Bucket],
+    charm_by_strike: dict[float, CharmBucket],
     ivs: dict[float, float | None],
     spot: float,
     dte: float,

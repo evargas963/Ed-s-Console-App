@@ -10,7 +10,7 @@ import itertools
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import numpy as np
 
@@ -34,6 +34,21 @@ from time_et import Session
 #: to expiry, sigma, side sign, rate, dividend yield
 type ProfileRow = tuple[float, float, float, float, float, int, float, float]
 
+
+class CharmBucket(TypedDict):
+    """One strike's dealer charm, delta-shares per day: each side's and the net, +call/-put.
+
+    None when a contract on that side cannot be priced (the net then too).
+    """
+
+    call_charm: float | None
+    put_charm: float | None
+    net_charm: float | None
+
+
+#: a side of a strike's charm
+type CharmSide = Literal["call_charm", "put_charm"]
+
 # ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
 # reproduce the profile (against a real SPY reference chain: corr 0.086, never crosses zero);
@@ -48,7 +63,7 @@ def compute_charm_by_strike(
     sessions: Mapping[str, Session],
     t_years: float | None = None,
     product: str = "EQO",
-) -> dict[float, Bucket]:
+) -> dict[float, CharmBucket]:
     """Per-strike dealer CHARM exposure, in delta-shares per day.
 
     Each contract's time to expiry is expiry_years' at `now` on Schwab's /markets answers
@@ -68,7 +83,7 @@ def compute_charm_by_strike(
     unknown gamma does in compute_exposures_by_strike. A contract with open interest 0 adds
     nothing, so a strike whose contracts all have none is 0. A settled one has no charm left.
     """
-    out: dict[float, Bucket] = {}
+    out: dict[float, CharmBucket] = {}
     if not contracts or not spot or spot <= 0:
         return out
     tte = expiry_years(now, product, sessions)
@@ -97,7 +112,9 @@ def compute_charm_by_strike(
     exposure = charm * oi * mult / 365.0
     known = ~np.isnan(exposure)
     # bincount adds each side's exposures one at a time, in the chain's order
-    sums = np.bincount(where[known], weights=exposure[known], minlength=2 * len(at)).tolist()
+    sums: list[float | None] = list(
+        np.bincount(where[known], weights=exposure[known], minlength=2 * len(at)).tolist()
+    )
     for s in np.unique(where[~known]).tolist():  # one not known leaves its side not known
         sums[s] = None
     for i, b in enumerate(out.values()):
@@ -107,7 +124,7 @@ def compute_charm_by_strike(
     return out
 
 
-def _add_charm(bucket: Bucket, side: str, exposure: float | None) -> None:
+def _add_charm(bucket: CharmBucket, side: CharmSide, exposure: float | None) -> None:
     """Add to one side of a strike. One unknown leaves that side and the strike's net unknown."""
     side_now = bucket[side]
     bucket[side] = None if side_now is None or exposure is None else side_now + exposure
@@ -115,13 +132,15 @@ def _add_charm(bucket: Bucket, side: str, exposure: float | None) -> None:
     bucket["net_charm"] = None if call is None or put is None else call - put
 
 
-def merge_charm_maps(maps: dict[str | None, dict[float, Bucket]]) -> dict[float, Bucket]:
+def merge_charm_maps(
+    maps: dict[str | None, dict[float, CharmBucket]],
+) -> dict[float, CharmBucket]:
     """Merge per-expiry maps of the same function into one strike map.
 
     A strike listed on more than one expiry is the sum of those expiries, +call/−put, the same
     as one call over every contract.
     """
-    out: dict[float, Bucket] = {}
+    out: dict[float, CharmBucket] = {}
     for part in maps.values():
         for strike, bucket in part.items():
             cur = out.get(strike)
@@ -138,7 +157,7 @@ def merge_charm_maps(maps: dict[str | None, dict[float, Bucket]]) -> dict[float,
 
 
 def pick_charm_wall_strikes(
-    charm_by_strike: dict[float, Bucket],
+    charm_by_strike: dict[float, CharmBucket],
 ) -> tuple[float | None, float | None]:
     """(call_charm_wall, put_charm_wall) — strikes of maximum call-side and put-side charm exposure.
 
@@ -146,16 +165,16 @@ def pick_charm_wall_strikes(
     pressure into the close.
     """
 
-    def wall(side: str) -> float | None:
+    def wall(side: CharmSide) -> float | None:
         strike, _charm = strike_of_largest(
-            charm_by_strike, lambda b: None if b[side] is None else abs(b[side])
+            charm_by_strike, lambda b: None if (v := b[side]) is None else abs(v)
         )
         return strike
 
     return wall("call_charm"), wall("put_charm")
 
 
-_CHARM_SIDES = ("call_charm", "put_charm")
+_CHARM_SIDES: tuple[CharmSide, ...] = ("call_charm", "put_charm")
 
 
 def contract_inputs(
@@ -521,10 +540,9 @@ def compute_max_pain(exposures_by_strike: dict[float, Bucket]) -> float | None:
         legs = strike_oi_legs(b)
         if legs is None:
             return None
-        call_w, put_w = (
-            0.0 if oi <= 0 else bucket_metric(b, key)
-            for oi, key in zip(legs, ("call_oi_mult", "put_oi_mult"), strict=True)
-        )
+        call_oi, put_oi = legs
+        call_w = 0.0 if call_oi <= 0 else bucket_metric(b, "call_oi_mult")
+        put_w = 0.0 if put_oi <= 0 else bucket_metric(b, "put_oi_mult")
         if call_w is None or put_w is None:
             return None
         weights[float(k)] = (call_w, put_w)
