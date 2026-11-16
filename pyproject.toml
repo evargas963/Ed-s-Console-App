@@ -42,7 +42,7 @@ branch = true
 omit = ["tests/*", "*/node_modules/*"]
 
 # AGENTS.md rule 12 (SHAPE step 6): a value that crosses a module boundary is a typed record, held
-# by pyright's strict mode over the Calculators (the State and Push files join as their slices land)
+# by pyright's strict mode over the Calculators and State (the Push files join as their slice lands)
 [tool.pyright]
 pythonVersion = "3.13"
 include = [
@@ -58,6 +58,8 @@ include = [
   "micro_structure.py",
   "l1_trade_observation.py",
   "app/options/order_flow/engine.py",
+  "live_market_plane.py",
+  "live_price_rows.py",
 ]
 typeCheckingMode = "strict"
 

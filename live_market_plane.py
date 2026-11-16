@@ -98,7 +98,7 @@ def record_from_level_one_equity(
     what every freshness check judges. A current record merged from several messages (the
     daemon's bus) carries each field's own receive time in `field_received`.
     """
-    if not item or not isinstance(item, dict):
+    if not item:
         return False
     t = ticker_storage_key(ticker)  # the plane's key
     if not t:
@@ -121,8 +121,14 @@ def record_from_level_one_equity(
     def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
 
+    def number(name: str) -> float | None:
+        """A number field's value (a price, a count, a clock); None when not held."""
+        v = val(name)
+        return None if isinstance(v, str) else v
+
     spot_f = val(VENDOR_LAST_PRICE)
-    trade_ms = val(VENDOR_TRADE_TIME)
+    trade_ms = number(VENDOR_TRADE_TIME)
+    trade_ts = None if trade_ms is None else trade_ms / 1000.0
     bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
     out: dict[str, float | str | None] = {
@@ -149,15 +155,15 @@ def record_from_level_one_equity(
         "exchange_quote_ts": quote_ts,
         #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
         #: LAST_PRICE tick belongs to (candles); never used as the quote time.
-        "trade_ts": None if trade_ms is None else trade_ms / 1000.0,
+        "trade_ts": trade_ts,
         "security_status": val("SECURITY_STATUS"),
         "server_received_ts": rts,
     }
     with _lock:
         _by_ticker[t] = out
-    if out["trade_ts"] is not None:
+    if trade_ts is not None:
         # the last trade Schwab streamed: the day's first one starts its pre-market (session_label)
-        record_trade(datetime.fromtimestamp(out["trade_ts"], ET))
+        record_trade(datetime.fromtimestamp(trade_ts, ET))
     for fn in _row_listeners:
         fn(t)
     return True
