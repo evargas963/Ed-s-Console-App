@@ -40,3 +40,40 @@ type = "forbidden"
 source_modules = ["head"]
 forbidden_modules = ["aiohttp", "requests"]
 allow_indirect_imports = true
+
+# The Calculators are pure (AGENTS.md rule 11): each takes its inputs and `now`, and imports no
+# State, Push, Feed, database or network. The files are the ones `pyproject.toml`'s
+# `[tool.pyright]` holds as Calculators; each forbidden name is an outside name (the header
+# above), so the contract reads their own import statements, and a chain through another root
+# module waits for the folders.
+[[tool.importlinter.contracts]]
+name = "The Calculators read no State, Push, Feed, database or network"
+type = "forbidden"
+source_modules = [
+    "head.terrain_engine",
+    "head.terrain_read",
+    "head.terrain_atr",
+    "head.math_exposure_core",
+    "head.math_levels",
+    "head.math_volatility",
+    "head.math_forces",
+    "head.confluence_composite",
+    "head.liquidity_value_engine",
+    "head.liquidity_models",
+    "head.micro_structure",
+    "head.l1_trade_observation",
+    "head.app.options.order_flow.engine",
+]
+forbidden_modules = [
+    "state",
+    "push",
+    "feed",
+    "server",
+    "db",
+    "live_market_plane",
+    "live_price_rows",
+    "sqlite3",
+    "socket",
+    "http",
+    "urllib",
+]

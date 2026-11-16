@@ -1,4 +1,7 @@
-"""Only Feed talks to Schwab: import-linter, as `locks` runs it, on the repository's own files."""
+"""The import contracts, as `locks` runs import-linter, on the repository's own files.
+
+Only Feed talks to Schwab, and the Calculators read no State, Push, Feed, database or network.
+"""
 
 from __future__ import annotations
 
@@ -48,6 +51,29 @@ def test_every_module_of_the_repository_keeps_the_contract(head):
     assert "Only Feed talks to Schwab KEPT" in done.stdout
     assert "Feed has one HTTP client KEPT" in done.stdout
     assert "Only the daemon reaches Feed KEPT" in done.stdout
+    assert "The Calculators read no State, Push, Feed, database or network KEPT" in done.stdout
+
+
+def test_a_calculator_reaching_state_a_database_or_the_network_is_refused(head):
+    """A Calculator importing State, the database or a socket is refused, each by its line."""
+    reaches = {
+        "math_forces.py": "import state.level_store\n",
+        "terrain_engine.py": "import sqlite3\n",
+        "liquidity_value_engine.py": "from push import spot\n",
+        "app/options/order_flow/engine.py": "import socket\n",
+    }
+    for name, line in reaches.items():
+        calculator = head / name
+        calculator.write_text(line + calculator.read_text(encoding="utf-8"), encoding="utf-8")
+    done = _lint(head)
+    assert done.returncode != 0
+    for importer in (
+        "head.math_forces -> state",
+        "head.terrain_engine -> sqlite3",
+        "head.liquidity_value_engine -> push",
+        "head.app.options.order_flow.engine -> socket",
+    ):
+        assert importer in done.stdout
 
 
 def test_a_schwab_client_outside_feed_is_refused_wherever_it_is_imported(head):
