@@ -189,8 +189,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
             + real.desk["bars"],
             now,
         )
-        # the day's level crosses as recorded, oldest first, as a start loads them
-        # (cross_store.load)
+        # the day's level crosses as recorded, oldest first, as cross_store.load holds them
         with cross_store._lock:
             cross_store._crosses[tk] = list(real.desk["crosses"])
         server._publish_levels(tk, captures=captures, now=now)
