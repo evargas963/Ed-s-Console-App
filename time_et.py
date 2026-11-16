@@ -51,7 +51,8 @@ def ct_ticks(ts_utc: float) -> list[str]:
     "Nov 13", "09:30" (Lightweight Charts' TickMarkType: Year, Month, DayOfMonth, Time).
     """
     d = datetime.fromtimestamp(float(ts_utc), CT)
-    return [d.strftime("%Y"), d.strftime("%b"), f"{d:%b} {d.day}", d.strftime("%H:%M")]
+    year, month, time = d.strftime("%Y %b %H:%M").split(" ")
+    return [year, month, f"{month} {d.day}", time]
 
 
 def ct_clock(ts_utc: float) -> str:
