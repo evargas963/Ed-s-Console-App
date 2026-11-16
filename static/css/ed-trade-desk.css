@@ -1798,3 +1798,8 @@
   padding: 6px 10px;
   border-bottom: 1px solid var(--ed-edge);
 }
+
+.xp-table tr.xp-selected td {
+  background: var(--ed-edge);
+  font-weight: 700;
+}

@@ -707,7 +707,9 @@
 (function () {
   "use strict";
 
-  var esc = window.EdShell.esc;
+  var esc = window.EdShell.esc,
+    ticker = window.EdShell.ticker,
+    last = null; // the panel as last sent, drawn again on a ticker switch
   function isExperimental() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "experimental";
@@ -719,10 +721,13 @@
       window.EdShell.placeholder(h, "the Experimental panel was not produced: " + d.failed);
       return;
     }
+    var selected = ticker();
     var rows = d.open_gap
       .map(function (r) {
         return (
-          "<tr><td>" +
+          "<tr" +
+          (r.ticker === selected ? ' class="xp-selected"' : "") +
+          "><td>" +
           esc(r.ticker) +
           "</td><td>" +
           esc(r.count_text) +
@@ -744,16 +749,22 @@
       "</div></div>" +
       '<table class="xp-table"><thead><tr><th>Ticker</th><th>Opens it called</th>' +
       "<th>Share</th><th>95% range</th><th>Days</th></tr></thead><tbody>" +
-      (rows || '<tr><td colspan="5">-</td></tr>') +
+      rows +
       "</tbody></table>" +
       '<div class="notproven" style="margin-top:14px;">EXPERIMENTAL. ' +
       esc(d.method) +
       "</div>";
   }
   document.addEventListener("ed:panel", function (e) {
-    if (e.detail.type === "experimental" && isExperimental()) draw(e.detail);
+    if (e.detail.type !== "experimental") return;
+    last = e.detail;
+    if (isExperimental()) draw(last);
   });
   document.addEventListener("ed:view", function () {
     window.EdShell.showPanel("experimental", isExperimental() ? {} : null);
+  });
+  document.addEventListener("ed:ticker", function () {
+    // every ticker is in the table; the switch moves the highlight to the one selected
+    if (last && isExperimental()) draw(last);
   });
 })();
