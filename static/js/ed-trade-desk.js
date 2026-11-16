@@ -702,14 +702,13 @@
   }
 })();
 
-/* Trade Desk / "Experimental": the `experimental` panel as served, every value and word from
-   the server (server.experimental); draws, computes nothing. */
+/* Trade Desk / "Experimental": the `experimental` panel of the selected ticker as served, every
+   value and word from the server (server.experimental); draws, computes nothing. */
 (function () {
   "use strict";
 
   var esc = window.EdShell.esc,
-    ticker = window.EdShell.ticker,
-    last = null; // the panel as last sent, drawn again on a ticker switch
+    ticker = window.EdShell.ticker;
   function isExperimental() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "experimental";
@@ -721,23 +720,15 @@
       window.EdShell.placeholder(h, "the Experimental panel was not produced: " + d.failed);
       return;
     }
-    var selected = ticker();
-    // one card per ticker, Right Now's own card: the share of opens the gap called as its hero;
-    // the edge blue for the selected ticker, green when the whole 95% range is above a coin flip
-    var cards = d.open_gap
+    // Right Now's own card: the share of opens the gap called as its hero, the edge green when
+    // the whole 95% range is above a coin flip
+    var card = d.open_gap
       .map(function (r) {
-        var accent =
-          r.ticker === selected
-            ? "td-accent-blue"
-            : r.above_half
-              ? "td-accent-green"
-              : "td-accent-amber";
         return (
           '<div class="td-stage ' +
-          accent +
-          '"><div class="td-stage-h"><span class="td-stage-title">' +
-          esc(r.ticker) +
-          '</span></div><div class="td-hero"><span class="' +
+          (r.above_half ? "td-accent-green" : "td-accent-amber") +
+          '"><div class="td-stage-h"><span class="td-stage-title">Open gap</span></div>' +
+          '<div class="td-hero"><span class="' +
           (r.above_half ? "pos" : "") +
           '">' +
           esc(r.share_text) +
@@ -755,26 +746,27 @@
       })
       .join("");
     h.innerHTML =
-      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Open gap · experimental</span>' +
-      '<span class="fl-sym">Did the overnight gap point the way the first 5 minutes went?</span>' +
-      "</div></div>" +
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Experimental</span>' +
+      '<span class="fl-sym">' +
+      esc(d.ticker) +
+      '</span><span class="fl-meta">did the overnight gap point the way the first 5 minutes ' +
+      "went?</span></div></div>" +
       '<div class="td-grid">' +
-      cards +
+      card +
       "</div>" +
       '<div class="fl-row" style="margin-top:14px;"><span class="k">' +
       esc(d.method) +
       "</span></div>";
   }
   document.addEventListener("ed:panel", function (e) {
-    if (e.detail.type !== "experimental") return;
-    last = e.detail;
-    if (isExperimental()) draw(last);
+    // the selected ticker's only: one asked before a switch is not drawn
+    if (e.detail.type === "experimental" && isExperimental() && e.detail.ticker === ticker()) {
+      draw(e.detail);
+    }
   });
-  document.addEventListener("ed:view", function () {
+  function ask() {
     window.EdShell.showPanel("experimental", isExperimental() ? {} : null);
-  });
-  document.addEventListener("ed:ticker", function () {
-    // every ticker is in the table; the switch moves the highlight to the one selected
-    if (last && isExperimental()) draw(last);
-  });
+  }
+  document.addEventListener("ed:view", ask);
+  document.addEventListener("ed:ticker", ask);
 })();
