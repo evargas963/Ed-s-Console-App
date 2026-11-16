@@ -53,7 +53,7 @@ def test_the_price_row_serves_schwabs_percent_change_as_sent():
         )  # Schwab sent nothing
         # each as the screen shows it: signed, two decimals; nothing sent, no text
         texts = {
-            tk: live_price_rows.price_row(tk, time_et.now())["chg_pct_text"]
+            tk: live_price_rows.price_row(tk, _SPY["ts_recv"])["chg_pct_text"]
             for tk in ("SPY", "$VIX", "ZZNEVER")
         }
         assert texts == {"SPY": "-0.51%", "$VIX": "+0.00%", "ZZNEVER": None}
