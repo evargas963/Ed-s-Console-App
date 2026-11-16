@@ -701,3 +701,59 @@
     // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
   }
 })();
+
+/* Trade Desk / "Experimental": the `experimental` panel as served, every value and word from
+   the server (server.experimental); draws, computes nothing. */
+(function () {
+  "use strict";
+
+  var esc = window.EdShell.esc;
+  function isExperimental() {
+    var s = window.EdShell.getState();
+    return s.workspace === "trade-desk" && s.subview === "experimental";
+  }
+  function draw(d) {
+    var h = document.getElementById("xpBody");
+    if (!h) return;
+    if (d.failed != null) {
+      window.EdShell.placeholder(h, "the Experimental panel was not produced: " + d.failed);
+      return;
+    }
+    var rows = d.open_gap
+      .map(function (r) {
+        return (
+          "<tr><td>" +
+          esc(r.ticker) +
+          "</td><td>" +
+          esc(r.count_text) +
+          '</td><td class="' +
+          (r.above_half ? "pos" : "") +
+          '">' +
+          esc(r.share_text) +
+          "</td><td>" +
+          esc(r.range_text) +
+          "</td><td>" +
+          esc(r.span_text) +
+          "</td></tr>"
+        );
+      })
+      .join("");
+    h.innerHTML =
+      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Open gap</span>' +
+      '<span class="fl-meta">did the overnight gap point the way the first 5 minutes went?</span>' +
+      "</div></div>" +
+      '<table class="xp-table"><thead><tr><th>Ticker</th><th>Opens it called</th>' +
+      "<th>Share</th><th>95% range</th><th>Days</th></tr></thead><tbody>" +
+      (rows || '<tr><td colspan="5">-</td></tr>') +
+      "</tbody></table>" +
+      '<div class="notproven" style="margin-top:14px;">EXPERIMENTAL. ' +
+      esc(d.method) +
+      "</div>";
+  }
+  document.addEventListener("ed:panel", function (e) {
+    if (e.detail.type === "experimental" && isExperimental()) draw(e.detail);
+  });
+  document.addEventListener("ed:view", function () {
+    window.EdShell.showPanel("experimental", isExperimental() ? {} : null);
+  });
+})();

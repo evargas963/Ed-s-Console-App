@@ -53,24 +53,30 @@ def test_the_console_keeps_the_record_once_both_answers_are_in_and_serves_it_exp
             "answer": {"candles": candles},
         }
 
+    def tsla_rows() -> list:
+        return [r for r in server.experimental()["open_gap"] if r["ticker"] == "TSLA"]
+
     for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
         del server._open_gap_answers[key]
     server._open_gap.pop("TSLA", None)
     try:
-        assert server.open_gap("TSLA")["records"] == []  # absent until both answers arrive
+        assert tsla_rows() == []  # absent until both answers arrive
         assert server._write_price_history(answer("5m365", TSLA["extended"])) is None
-        assert server.open_gap("TSLA")["records"] == []  # one answer is not the record
+        assert tsla_rows() == []  # one answer is not the record
         assert server._write_price_history(answer("5m365r", TSLA["regular"])) == "TSLA"
         assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None  # same
         assert ("TSLA", "5m365") not in server._series  # their candles are not held as series
-        (served,) = server.open_gap("TSLA")["records"]
+        (served,) = tsla_rows()
     finally:
         for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
             del server._open_gap_answers[key]
         server._open_gap.pop("TSLA", None)
     assert served["opens"] == 139 and served["matched"] == 85
-    assert served["line"] == (
-        "EXPERIMENTAL · the overnight gap pointed the way the first 5 minutes went on 85 of "
-        "139 opens (61%; 95% 53%-69%), Apr 29 to Nov 13"
-    )
-    assert server.PAGE_PANELS["opengap"]
+    assert (
+        served["count_text"],
+        served["share_text"],
+        served["range_text"],
+        served["span_text"],
+        served["above_half"],
+    ) == ("85 of 139", "61%", "53%-69%", "Apr 29 to Nov 13", True)
+    assert server.PAGE_PANELS["experimental"]

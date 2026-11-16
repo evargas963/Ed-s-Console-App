@@ -337,17 +337,12 @@
     window.EdShell.showPanel("liquidity:deskmap", on ? {} : null);
     window.EdShell.showPanel("forces", on ? {} : null);
     window.EdShell.showPanel("book:deskmap", on ? { venue: venue } : null);
-    window.EdShell.showPanel("opengap", on ? {} : null);
   }
   function takePanel(d) {
     var ok = d.failed == null;
     // an answer for a timeframe no longer on the chart is not drawn; one not produced is none
     if (PER_TF[d.type] && (!ok || d.tf === S.tf)) takePerTf(PER_TF[d.type], ok ? d : null);
     if (d.type === "bars:deskmap" && S.chart && (!ok || d.tf === S.tf)) takeBars(d);
-    if (d.type === "opengap") {
-      S.opengap = ok ? d : null;
-      paintFooter();
-    }
     if (d.type === "book:deskmap") {
       S.micro = ok ? d : null;
       paintCards();
@@ -1293,9 +1288,6 @@
       m = S.micro,
       L = S.levels;
     host.innerHTML = [
-      "Open gap: <b>" +
-        esc(S.opengap && S.opengap.records.length ? S.opengap.records[0].line : "-") +
-        "</b>",
       "Bars: <b>" + (S.bars.length ? "streamed 1m bars" : "-") + "</b>",
       "Book: <b>" + esc(orDash(m && m.provenance && m.provenance.book_source)) + "</b>",
       "Levels: <b>" + esc(orDash(L && L.bar_source)) + "</b>",

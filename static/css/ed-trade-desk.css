@@ -1775,3 +1775,26 @@
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* Trade Desk / Experimental: the open-gap table */
+.xp-table {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 760px;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.xp-table th {
+  text-align: left;
+  font-weight: 700;
+  color: var(--ed-ink);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ed-edge);
+}
+
+.xp-table td {
+  color: var(--ed-ink);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ed-edge);
+}
