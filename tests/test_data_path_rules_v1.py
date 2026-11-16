@@ -119,11 +119,15 @@ async def _daemon_then_console(
     console takes within `read_for` s: [{"topic": ..., "msg": ...}].
     """
     bus, health = MessageBus(), HealthRegistry()
+
+    def handler_for(service: str):  # received when the first captured event was
+        return connection._publisher(service, bus, health, lambda: _EVENTS[0]["ts_recv"])
+
     if not connected:
-        publish(lambda service: connection._publisher(service, bus, health))
+        publish(handler_for)
     sub = bus.subscribe("", policy=LATEST)
     if connected:
-        publish(lambda service: connection._publisher(service, bus, health))
+        publish(handler_for)
     return await _console_reads(bus, sub, read_for)
 
 
@@ -307,8 +311,8 @@ def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(t
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        h = connection._publisher("LEVELONE_OPTIONS", bus, health)
-        for e in _EVENTS:
+        for e in _EVENTS:  # each received at its recorded time
+            h = connection._publisher("LEVELONE_OPTIONS", bus, health, lambda t=e["ts_recv"]: t)
             h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
         deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
         while writer.status()["rows_written"] < len(_EVENTS) and time_et.elapsed() < deadline:

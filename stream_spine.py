@@ -206,10 +206,6 @@ WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
 # The one shape per topic; the daemon builds through these and the writer reads them.
 
 
-def _now(ts_recv: float | None) -> float:
-    return ts_recv if ts_recv is not None else time_et.now()
-
-
 #: Every Schwab message carries `schwab_ts`: the timestamp (ms) Schwab put on the frame that
 #: delivered it. Which value is current is decided by it (docs/DATA_FLOW.md §2 D1).
 
@@ -227,7 +223,7 @@ def quote_msg(
     quote_time_ms: int | None = None,
     trade_time_ms: int | None = None,
     src: str,
-    ts_recv: float | None = None,
+    ts_recv: float,
     native: dict[str, Any] | None = None,
     schwab_ts: int | None = None,
 ) -> dict[str, Any]:
@@ -237,7 +233,7 @@ def quote_msg(
     (BID_TIME_MILLIS, LAST_MIC_ID, ...).
     """
     return {
-        "ts_recv": _now(ts_recv),
+        "ts_recv": ts_recv,
         "schwab_ts": schwab_ts,
         "symbol": symbol,
         "bid": bid,
@@ -260,7 +256,7 @@ def book_msg(
     service: str,
     content: dict[str, Any],
     src: str,
-    ts_recv: float | None = None,
+    ts_recv: float,
     schwab_ts: int | None = None,
 ) -> dict[str, Any]:
     """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim, and its service."""
@@ -277,12 +273,12 @@ def verbatim_msg(
     symbol: str,
     content: dict[str, Any],
     src: str,
-    ts_recv: float | None = None,
+    ts_recv: float,
     schwab_ts: int | None = None,
 ) -> dict[str, Any]:
     """optquote.* (LEVELONE_OPTIONS) and news.* (NEWS_HEADLINE), Schwab's item verbatim."""
     return {
-        "ts_recv": _now(ts_recv),
+        "ts_recv": ts_recv,
         "schwab_ts": schwab_ts,
         "symbol": symbol,
         "content": content,
@@ -300,13 +296,13 @@ def bar_msg(
     close: float | None = None,
     volume: int | None = None,
     src: str,
-    ts_recv: float | None = None,
+    ts_recv: float,
     native: dict[str, Any] | None = None,
     schwab_ts: int | None = None,
 ) -> dict[str, Any]:
     """bar1m.* (CHART_EQUITY). `native` is Schwab's item verbatim (SEQUENCE, CHART_DAY, ...)."""
     return {
-        "ts_recv": _now(ts_recv),
+        "ts_recv": ts_recv,
         "schwab_ts": schwab_ts,
         "symbol": symbol,
         "bar_start_ms": bar_start_ms,
@@ -327,11 +323,11 @@ def subscription_msg(
     symbols: list[str],
     code: int | None,
     reason: str,
-    ts: float | None = None,
+    ts: float,
 ) -> dict[str, Any]:
     """sub.* -- one request the daemon sent and Schwab's answer."""
     return {
-        "ts": _now(ts),
+        "ts": ts,
         "service": service,
         "command": command,
         "symbols": list(symbols),
@@ -534,8 +530,8 @@ class HealthRegistry:
     def __init__(self) -> None:
         self._last: dict[str, float] = {}
 
-    def beat(self, feed: str, ts: float | None = None) -> None:
-        self._last[feed] = ts if ts is not None else time_et.now()
+    def beat(self, feed: str, ts: float) -> None:
+        self._last[feed] = ts
 
     def last(self, feed: str) -> float | None:
         """When this feed last carried data (None: never, this connection)."""
@@ -1048,8 +1044,8 @@ class _Spill:
         self.size += len(data)  # its message is counted by the writer (_spilled)
         return None
 
-    def read(self, n: int) -> list[tuple[Item, int]]:
-        """Up to `n` records from `read_at`: (message, end offset) each.
+    def read(self, n: int, now: float) -> list[tuple[Item, int]]:
+        """Up to `n` records from `read_at`: (message, end offset) each, read at `now`.
 
         A record that does not decode (a damaged file) is its bytes as a KeptFailure with where
         and why, kept as sent in stream_write_failures; its length still places the next
@@ -1065,7 +1061,7 @@ class _Spill:
             length = int.from_bytes(self._in.read(4), "big")
             if at + 4 + length > self.size:
                 self._in.seek(at)
-                out.append((self._unframed(at, self._in.read(self.size - at)), self.size))
+                out.append((self._unframed(at, self._in.read(self.size - at), now), self.size))
                 break
             raw = self._in.read(length)
             try:
@@ -1076,13 +1072,13 @@ class _Spill:
                     raw.decode("latin-1"),
                     f"{self.path.name}: the record at byte {at} "
                     f"does not decode, kept as its bytes (latin-1): {type(e).__name__}: {e}",
-                    time_et.now(),
+                    now,
                 )
             at += 4 + length
             out.append((item, at))
         return out
 
-    def _unframed(self, at: int, raw: bytes) -> KeptFailure:
+    def _unframed(self, at: int, raw: bytes, now: float) -> KeptFailure:
         """Bytes from `at` that make no whole record, as one KeptFailure.
 
         A damaged length, or a crash cut a record off: kept as sent, never cut away unrecorded.
@@ -1092,7 +1088,7 @@ class _Spill:
             raw.decode("latin-1"),
             f"{self.path.name}: the {len(raw)} bytes from byte "
             f"{at} make no whole record, kept as their bytes (latin-1)",
-            time_et.now(),
+            now,
         )
 
     def committed(self, records: int, end: int) -> None:
@@ -1780,7 +1776,7 @@ class CaptureWriter:
         done (_finish_spill).
         """
         spill = self._spills[0]
-        records = spill.read(SPILL_CHUNK)
+        records = spill.read(SPILL_CHUNK, self.clock())
         if records:
             self._batch_spilled = True
             for item, _end in records:

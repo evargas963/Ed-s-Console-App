@@ -148,17 +148,18 @@ def watchlist_message(
     op: str,
     ticker: str,
     request_id: Any,
+    ts_recv: float,
     status: int | None = None,
     answer: Any = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Return the watchlist after one request as its bus record.
+    """Return the watchlist after one request as its bus record, made at `ts_recv`.
 
     The record holds the whole list, what happened to `ticker` (`op`), the console's request
     id, and Schwab's /quotes answer to the check (an add) with its HTTP status, as sent.
     """
     return WATCHLIST_TOPIC, {
         "src": WATCHLIST_SRC,
-        "ts_recv": time_et.now(),
+        "ts_recv": ts_recv,
         "tickers": list(tickers),
         "op": op,
         "ticker": ticker,
@@ -534,13 +535,22 @@ class Daemon:
         """
         ticker, rid = ticker_storage_key(str(req["ticker"])), req["id"]
         status = answer = None
+
+        def told(op: str, **answered: Any) -> None:  # the list now, and what happened, at once
+            self.bus.publish(
+                *watchlist_message(
+                    self.watchlist,
+                    op=op,
+                    ticker=ticker,
+                    request_id=rid,
+                    ts_recv=self.clock(),
+                    **answered,
+                )
+            )
+
         if req["action"] == "remove":
             if ticker not in self.watchlist:
-                self.bus.publish(
-                    *watchlist_message(
-                        self.watchlist, op=NOT_ON_LIST, ticker=ticker, request_id=rid
-                    )
-                )
+                told(NOT_ON_LIST)
                 return
             self.watchlist, op = [t for t in self.watchlist if t != ticker], REMOVED
             for held in (self._chains, self._ranked, self._ladders, self._windows):
@@ -548,9 +558,7 @@ class Daemon:
             self._keep_options()
         else:
             if ticker in self.watchlist:
-                self.bus.publish(
-                    *watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid)
-                )
+                told(ON_LIST)
                 return
             try:
                 quoted, status, answer = await asyncio.to_thread(
@@ -560,15 +568,7 @@ class Daemon:
                 log.warning(
                     "watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e, exc_info=True
                 )
-                self.bus.publish(
-                    *watchlist_message(
-                        self.watchlist,
-                        op=NOT_CHECKED,
-                        ticker=ticker,
-                        request_id=rid,
-                        answer=f"{type(e).__name__}: {e}",
-                    )
-                )
+                told(NOT_CHECKED, answer=f"{type(e).__name__}: {e}")
                 return
             if not quoted:
                 log.warning(
@@ -577,21 +577,10 @@ class Daemon:
                     status,
                     json.dumps(answer),
                 )
-                self.bus.publish(
-                    *watchlist_message(
-                        self.watchlist,
-                        op=INVALID,
-                        ticker=ticker,
-                        request_id=rid,
-                        status=status,
-                        answer=answer,
-                    )
-                )
+                told(INVALID, status=status, answer=answer)
                 return
             if ticker in self.watchlist:  # added by another request during the check
-                self.bus.publish(
-                    *watchlist_message(self.watchlist, op=ON_LIST, ticker=ticker, request_id=rid)
-                )
+                told(ON_LIST)
                 return
             self.watchlist, op = [*self.watchlist, ticker], ADDED
         log.info("watchlist: %s %s; the list: %s", ticker, op, ",".join(self.watchlist))
@@ -599,11 +588,7 @@ class Daemon:
             self.chains.watchlist = list(self.watchlist)
         self.pick_options()  # every ticker's share changes with the list
         self.connection.ask()
-        self.bus.publish(
-            *watchlist_message(
-                self.watchlist, op=op, ticker=ticker, request_id=rid, status=status, answer=answer
-            )
-        )
+        told(op, status=status, answer=answer)
 
     def option_record(self, symbol: str) -> tuple[str, dict[str, Any]] | None:
         """Return `symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record).
@@ -790,7 +775,7 @@ async def record_feed_status(
     quiet feed and a dead one read differently in the database.
     """
     while True:
-        now = time_et.now()
+        now = daemon.connection.clock()
         try:
             stream = daemon.connection.stream
             last_frame = stream.last_frame_ts if stream is not None else None

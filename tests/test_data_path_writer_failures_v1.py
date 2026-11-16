@@ -93,8 +93,8 @@ def _beat(daemon: capture.Daemon) -> dict:
 
 
 def _publish_options(bus, health, events) -> None:
-    h = connection._publisher("LEVELONE_OPTIONS", bus, health)
-    for e in events:
+    for e in events:  # each received at its recorded time
+        h = connection._publisher("LEVELONE_OPTIONS", bus, health, lambda t=e["ts_recv"]: t)
         h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
 
 
@@ -165,6 +165,7 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
         symbol=None,
         content=_EVENTS[0]["content"],
         src="schwab_stream",
+        ts_recv=_EVENTS[0]["ts_recv"],
         schwab_ts=_EVENTS[0]["content"].get("QUOTE_TIME_MILLIS"),
     )
 
@@ -220,7 +221,7 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        h = connection._publisher("LEVELONE_EQUITIES", bus, health)
+        h = connection._publisher("LEVELONE_EQUITIES", bus, health, lambda: _TSLA["ts_recv"])
         h({"content": [big], "timestamp": 2**64})
         await _until(lambda: writer.status()["failures"] >= 1)  # kept as sent
         h({"content": [_TSLA["native"]], "timestamp": 2})
@@ -344,13 +345,17 @@ class _Defect(dict):
 
 
 def _tsla_quotes(bus, health, n: int) -> None:
-    h = connection._publisher("LEVELONE_EQUITIES", bus, health)
+    h = connection._publisher("LEVELONE_EQUITIES", bus, health, lambda: _TSLA["ts_recv"])
     for i in range(n):
         h({"content": [dict(_TSLA["native"])], "timestamp": i})
 
 
 def _defect() -> _Defect:
-    return _Defect(quote_msg(symbol="TSLA", src="schwab_stream", native=_TSLA["native"]))
+    return _Defect(
+        quote_msg(
+            symbol="TSLA", src="schwab_stream", ts_recv=_TSLA["ts_recv"], native=_TSLA["native"]
+        )
+    )
 
 
 def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_once(tmp_path):
@@ -1094,9 +1099,14 @@ _MIX_TABLES = {
 
 
 def _mix_frames() -> list:
-    """Return the mix as the wire carries it: (service, the frame's JSON), one frame per message."""
+    """Return the mix as the wire carries it: (service, the frame's JSON, its recorded receive
+    time), one frame per message."""
     return [
-        (m["service"], json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
+        (
+            m["service"],
+            json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}),
+            m["ts_recv"],
+        )
         for m in _MIX["messages"]
     ]
 
@@ -1123,8 +1133,8 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
         for copy in range(8):  # each copy received earlier, in order
             for m in _MIX["messages"]:
                 key = m["item"]["key"].upper()
-                kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
-                msg["ts_recv"] = m["ts_recv"] - 3.0 * (8 - copy)
+                at = m["ts_recv"] - 3.0 * (8 - copy)
+                kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"], at)
                 writer.insert(f"{kind}.{key}", msg, conn=conn)
         page = conn.execute("PRAGMA page_size").fetchone()[0]
         conn.commit()
@@ -1141,12 +1151,8 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        handlers = {
-            s: connection._publisher(s, bus, health)
-            for s in {m["service"] for m in _MIX["messages"]}
-        }
-        for service, frame in _mix_frames():
-            handlers[service](json.loads(frame))
+        for service, frame, received in _mix_frames():
+            connection._publisher(service, bus, health, lambda t=received: t)(json.loads(frame))
         await _until(
             lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), limit=60.0
         )
@@ -1197,10 +1203,15 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        handlers = {s: connection._publisher(s, bus, health) for s in {s for s, _f in frames}}
+        received = [0.0]  # each frame's recorded receive time, read by the handlers' clock
+        handlers = {
+            s: connection._publisher(s, bus, health, lambda: received[0])
+            for s in {s for s, _f, _t in frames}
+        }
 
         async def publish() -> None:
-            for i, (service, frame) in enumerate(frames):
+            for i, (service, frame, at) in enumerate(frames):
+                received[0] = at
                 handlers[service](json.loads(frame))
                 if i % 500 == 0:
                     await asyncio.sleep(0)
@@ -1287,7 +1298,10 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
     db = tmp_path / "stream_capture.db"
     armed = threading.Event()
     defect = _ArmedDefect(
-        armed, quote_msg(symbol="TSLA", src="schwab_stream", native=_TSLA["native"])
+        armed,
+        quote_msg(
+            symbol="TSLA", src="schwab_stream", ts_recv=_TSLA["ts_recv"], native=_TSLA["native"]
+        ),
     )
     writer = CaptureWriter(
         db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1, hold_cap_bytes=16_000

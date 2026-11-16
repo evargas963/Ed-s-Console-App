@@ -93,7 +93,11 @@ def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) ->
     bus.publish(
         f"quote.{ticker}",
         quote_msg(
-            symbol=ticker, last=price, src="schwab_l1", native={"key": ticker, "LAST_PRICE": price}
+            symbol=ticker,
+            last=price,
+            src="schwab_l1",
+            ts_recv=ts,
+            native={"key": ticker, "LAST_PRICE": price},
         ),
     )
 

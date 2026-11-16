@@ -38,6 +38,7 @@ def test_current_record_set_before_readers_and_a_late_reader_starts_with_it():
                 symbol="SPY",
                 last=747.63,
                 src="schwab_l1",
+                ts_recv=1.0,
                 native={"key": "SPY", "LAST_PRICE": 747.63},
                 schwab_ts=1000,
             ),
@@ -65,6 +66,7 @@ def test_latest_reader_gets_one_newest_record_per_topic():
                     symbol="SPY",
                     last=px,
                     src="schwab_l1",
+                    ts_recv=1.0 + n,
                     native={"key": "SPY", "LAST_PRICE": px},
                     schwab_ts=1000 + n,
                 ),
@@ -266,7 +268,9 @@ def test_writer_drains_full_queue_on_stop(tmp_path):
         sub = bus.subscribe("", policy=LOG)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         for i in range(50):
-            bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=1.0, last_size=i, src="t"))
+            bus.publish(
+                "quote.SPY", quote_msg(symbol="SPY", bid=1.0, last_size=i, src="t", ts_recv=1.0 + i)
+            )
         stop = asyncio.Event()
         stop.set()  # stop BEFORE the writer ever runs
         await w.run(sub, stop=stop)
@@ -285,7 +289,7 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
         bad = object()
         bus.publish("quote.SPY", bad)  # not a dict -> insert raises inside
-        bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t"))
+        bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t", ts_recv=1.0))
         stop = asyncio.Event()
         stop.set()
         await w.run(sub, stop=stop)

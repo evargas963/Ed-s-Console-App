@@ -8,11 +8,11 @@ Schwab put on a frame, and the client that records when each frame was read.
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable
 from typing import Any, override
 
 from schwab.streaming import StreamClient
 
-import time_et
 from numeric_contract import schwab_number
 
 #: schwab-py's field names of each service's items, as its add_*_handler names them (NEWS_HEADLINE
@@ -86,15 +86,16 @@ class TimedStream(StreamClient):
     Schwab's stream has been read).
     """
 
-    def __init__(self, client: object) -> None:
+    def __init__(self, client: object, clock: Callable[[], float]) -> None:
         super().__init__(client)
-        self.last_frame_ts = time_et.now()
+        self.clock = clock
+        self.last_frame_ts = clock()
         self.schwab_ts: float | None = None
 
     @override
     async def _receive(self) -> dict[str, Any]:
         msg = await super()._receive()
-        self.last_frame_ts = time_et.now()
+        self.last_frame_ts = self.clock()
         t = schwab_time(msg)
         if t is not None and (self.schwab_ts is None or t > self.schwab_ts):
             self.schwab_ts = t
