@@ -42,6 +42,7 @@ from stream_spine import (
     verbatim_msg,
 )
 from tests.real_chains import MRVL, SPY_0DTE
+from tests.schwab_rest_standin import SPY_QUOTES
 from time_et import ET
 
 
@@ -239,11 +240,12 @@ def test_after_the_last_option_close_rows_before_the_newest_five_sessions_are_re
 
     Schwab's /markets says the market was open 09-30, 10-01, 10-02, 10-05, 10-06 and 10-07, so the
     newest five sessions run from 2026-10-01 00:00 ET. Every row received before it is removed
-    from each table, except the newest watchlist row, which the daemon reads at its start.
+    from the daemon's operational tables (feed status here); Schwab's quotes, option quotes and
+    the watchlist are kept whole (operator 2026-11-15: "yes stop the delete").
     """
     assert (
         _kept_at(tmp_path, "2026-10-07 17:00", 30.0)
-        == "quotes:1 options:1 feed:1 watchlist:1 newest-watchlist:09-30 12:00"
+        == "quotes:2 options:2 feed:1 watchlist:2 newest-watchlist:09-30 12:00"
     )
 
 
@@ -254,29 +256,35 @@ _MIX = json.loads(
         encoding="utf-8"
     )
 )
-_COPIES = 54  # 400,680 option quotes: twenty-one parts of the keep
+_COPIES = 907  # 442 contracts' /quotes answers each: 400,894 rows, twenty-one parts of the keep
 _FIVE_SESSIONS = "2026-10-01 00:00"  # the newest five sessions' start at 2026-10-07 17:00 ET
 
 
 @pytest.fixture(scope="module")
 def _old_file(tmp_path_factory) -> Path:
-    """INDUCED CONDITIONS: the writer's own file, indexed as production's stream_capture.db is.
+    """INDUCED CONDITIONS: the writer's own file, its tables indexed by receipt time.
 
-    The index is PRAGMA index_list on it: its quote, book and option tables by receipt time. The
-    file holds the mix's option quotes as the writer stores them, one copy for each of the 54
-    minutes before the mix, each received a week earlier (2026-09-28, before the newest five
-    sessions began).
+    The file holds Schwab's /quotes answers as the writer stores them (rest_quotes_raw, a table
+    the keep trims): each of SPY's 442 contracts' answers (tests/schwab_rest_standin.SPY_QUOTES,
+    as Schwab sent them), one copy a minute for 907 minutes, each received a week before the mix
+    (before the newest five sessions began).
     """
     db = tmp_path_factory.mktemp("old") / "stream_capture.db"
     writer = CaptureWriter(db)
     conn = sqlite3.connect(db)
+    start = _MIX["messages"][0]["ts_recv"] - 7 * 86_400
     for copy in range(_COPIES):
-        for m in _MIX["messages"]:
-            if m["service"] == "LEVELONE_OPTIONS":
-                key = m["item"]["key"].upper()
-                kind, msg = connection._message(m["service"], key, m["item"], m["schwab_ts"])
-                msg["ts_recv"] = m["ts_recv"] - 7 * 86_400 - 60.0 * copy
-                writer.insert(f"{kind}.{key}", msg, conn=conn)
+        for symbol, entry in SPY_QUOTES.items():
+            topic, msg = (
+                "quotesanswer",
+                {
+                    "src": "schwab_quotes",
+                    "ts_recv": start - 60.0 * copy,
+                    "status": 200,
+                    "body": json.dumps({symbol: entry}),
+                },
+            )
+            writer.insert(topic, msg, conn=conn)
     conn.commit()
     conn.close()
     return db
@@ -327,9 +335,9 @@ def _status_while_locked(db, writer: CaptureWriter, ready) -> tuple[dict, int]:
 
 
 def _old_rows(db) -> int:
-    return _rows(
-        db, f"SELECT COUNT(*) FROM stream_options_quotes_raw WHERE ts_recv < {_et(_FIVE_SESSIONS)}"
-    )[0][0]
+    return _rows(db, f"SELECT COUNT(*) FROM rest_quotes_raw WHERE ts_recv < {_et(_FIVE_SESSIONS)}")[
+        0
+    ][0]
 
 
 def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(
@@ -337,7 +345,7 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
 ):
     """The old file, and the whole mix arriving while the keep runs.
 
-    The old file is _old_file: 400,680 option quotes before the newest five sessions, twenty-one
+    The old file is _old_file: 400,894 /quotes answers before the newest five sessions, twenty-one
     parts of the keep. Every message is written while old rows remain (every message queued is
     written in each round between parts), and the keep then removes every old row and nothing
     else.
@@ -374,7 +382,7 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
 ):
     """A stop asked during the keep writes what was queued and removes nothing more.
 
-    The keep has the old file's 400,680 option quotes to remove (twenty-one parts) when the mix's
+    The keep has the old file's 400,894 /quotes answers to remove (twenty-one parts) when the mix's
     first ten equity quotes and the stop are handed to the writer: it writes the ten and ends,
     having run at most the one part in progress when they arrived, none after it took the stop.
     The bound holds while run() hands the ten (microseconds) within one part's time (a
@@ -454,20 +462,26 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
 def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held(tmp_path):
     """A keep part refused after a commit counts none of the committed as held.
 
-    INDUCED CONDITIONS: one captured equity quote received a week earlier, a trigger that makes
-    the keep's DELETE abort (STAND-IN for a keep part the database refuses), the keep asked, and
-    the mix's first ten equity quotes held in memory while another connection holds the write
-    lock. Once the lock is let go the ten are committed, and the keep's part after them is
-    refused: in the pause that follows, held is the queue alone, nothing waits and nothing
-    spills.
+    INDUCED CONDITIONS: one of Schwab's /quotes answers received a week earlier (SPY's first
+    contract's, tests/schwab_rest_standin.SPY_QUOTES), a trigger that makes the keep's DELETE
+    abort (STAND-IN for a keep part the database refuses), the keep asked, and the mix's first ten
+    equity quotes held in memory while another connection holds the write lock. Once the lock is
+    let go the ten are committed, and the keep's part after them is refused: in the pause that
+    follows, held is the queue alone, nothing waits and nothing spills.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0)
-    old = {**_eleventh(), "ts_recv": _et("2026-09-28 13:00")}
+    symbol, entry = next(iter(SPY_QUOTES.items()))
+    old = {
+        "src": "schwab_quotes",
+        "ts_recv": _et("2026-09-28 13:00"),
+        "status": 200,
+        "body": json.dumps({symbol: entry}),
+    }
     with sqlite3.connect(db) as conn:
-        writer.insert(f"quote.{old['symbol']}", old, conn=conn)
+        writer.insert("quotesanswer", old, conn=conn)
         conn.execute(
-            "CREATE TRIGGER keep_refused BEFORE DELETE ON stream_quotes_raw "
+            "CREATE TRIGGER keep_refused BEFORE DELETE ON rest_quotes_raw "
             "BEGIN SELECT RAISE(ABORT, 'a keep part the database refuses'); END"
         )
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)

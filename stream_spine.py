@@ -36,6 +36,7 @@ from typing import IO, Any
 
 import time_et
 from db_authority import canonical_db_path
+from json_blob_codec import encode_text_blob
 from time_et import ct_label
 
 log = logging.getLogger(__name__)
@@ -60,10 +61,6 @@ STREAM_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
-    bid REAL, ask REAL, last REAL,
-    bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
-    total_volume INTEGER,
-    quote_time_ms INTEGER, trade_time_ms INTEGER,
     native_json TEXT,
     schwab_ts INTEGER
 );
@@ -83,12 +80,9 @@ CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
-    bar_start_ms INTEGER,
-    open REAL, high REAL, low REAL, close REAL, volume INTEGER,
     native_json TEXT,
     schwab_ts INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
 -- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer API,
 -- docs/schwab/schwab_streamer_api.pdf §1.1 "Services available"; answers code 0).
 CREATE TABLE IF NOT EXISTS stream_news_raw (
@@ -107,6 +101,23 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     native_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
+-- Schwab's /chains answers (one expiry each) and /quotes answers, every one the chain sweep asked
+-- for, the body exactly as received, gzip-compressed (json_blob_codec.encode_text_blob), with its
+-- HTTP status; kept five sessions (KEPT_BY_TIME).
+CREATE TABLE IF NOT EXISTS rest_chains_raw (
+    ts_recv REAL NOT NULL,
+    symbol TEXT NOT NULL,
+    expiry TEXT NOT NULL,
+    status INTEGER NOT NULL,
+    body BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rcr_ts ON rest_chains_raw(ts_recv);
+CREATE TABLE IF NOT EXISTS rest_quotes_raw (
+    ts_recv REAL NOT NULL,
+    status INTEGER NOT NULL,
+    body BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rqr_ts ON rest_quotes_raw(ts_recv);
 -- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole
 -- answer.
 CREATE TABLE IF NOT EXISTS stream_markets_raw (
@@ -540,21 +551,10 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
         ),
     ),
     "quote": (
-        "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-        "last_size,total_volume,quote_time_ms,trade_time_ms,native_json,schwab_ts) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO stream_quotes_raw(ts_recv,symbol,native_json,schwab_ts) VALUES(?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
-            m["bid"],
-            m["ask"],
-            m["last"],
-            m["bid_size"],
-            m["ask_size"],
-            m["last_size"],
-            m["total_volume"],
-            m["quote_time_ms"],
-            m["trade_time_ms"],
             _json(m["native"]),
             m["schwab_ts"],
         ),
@@ -581,17 +581,10 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
         ),
     ),
     "bar1m": (
-        "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
-        "volume,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO stream_bars_raw(ts_recv,symbol,native_json,schwab_ts) VALUES(?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
-            m["bar_start_ms"],
-            m["open"],
-            m["high"],
-            m["low"],
-            m["close"],
-            m["volume"],
             _json(m["native"]),
             m["schwab_ts"],
         ),
@@ -608,6 +601,20 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
     "pricehistory": (
         "INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json) VALUES(?,?,?,?)",
         lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"])),
+    ),
+    "chainanswer": (
+        "INSERT INTO rest_chains_raw(ts_recv,symbol,expiry,status,body) VALUES(?,?,?,?,?)",
+        lambda m: (
+            m["ts_recv"],
+            m["symbol"],
+            m["expiry"],
+            m["status"],
+            encode_text_blob(m["body"]),
+        ),
+    ),
+    "quotesanswer": (
+        "INSERT INTO rest_quotes_raw(ts_recv,status,body) VALUES(?,?,?)",
+        lambda m: (m["ts_recv"], m["status"], encode_text_blob(m["body"])),
     ),
     "markets": (
         "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json) VALUES(?,?,?,?)",
@@ -703,17 +710,15 @@ _TABLES = {
 HOLD_CAP_BYTES = 2 * 1024**3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
-#: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time
-#: (the newest stream_watchlist row always stays: the daemon reads it at its start)
+#: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time:
+#: what Schwab sends again on request (price history), every chain round's answers, and the
+#: daemon's own operational record. Schwab's quotes, books, option quotes, bars, news, market
+#: hours and the watchlist are kept (operator 2026-11-15: "yes stop the delete"; the keep table
+#: in ACTIVE_PROGRAM.md STORE-ENOUGH)
 KEPT_BY_TIME = (
-    ("stream_quotes_raw", "ts_recv"),
-    ("stream_book_raw", "ts_recv"),
-    ("stream_options_quotes_raw", "ts_recv"),
-    ("stream_bars_raw", "ts_recv"),
-    ("stream_news_raw", "ts_recv"),
     ("stream_pricehistory_raw", "ts_recv"),
-    ("stream_markets_raw", "ts_recv"),
-    ("stream_watchlist", "ts_recv"),
+    ("rest_chains_raw", "ts_recv"),
+    ("rest_quotes_raw", "ts_recv"),
     ("stream_subscriptions", "ts"),
     ("stream_feed_status", "ts"),
     ("stream_write_failures", "ts"),
@@ -1637,7 +1642,7 @@ class CaptureWriter:
     def prune(self, before: float) -> None:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME.
 
-        The newest stream_watchlist row stays. It runs on the writer thread, one part of
+        It runs on the writer thread, one part of
         PRUNE_ROWS at a time between rounds of live writes (each round takes every message
         queued) while nothing is held on disk; a stop before it ends leaves the rest for the
         next one.
@@ -1648,12 +1653,9 @@ class CaptureWriter:
     def _prune_part(self, conn: sqlite3.Connection) -> None:
         """Run the next part of the keep in progress (prune), in one transaction."""
         table, column = self._prune[0]
-        newest = (
-            f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
-        )
         removed = conn.execute(
             f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-            f"WHERE {column} < ?{newest} LIMIT ?)",
+            f"WHERE {column} < ? LIMIT ?)",
             (self._prune_before, PRUNE_ROWS),
         ).rowcount
         conn.commit()

@@ -104,8 +104,11 @@ from Schwab to the screen (daemon, console, page), are these:
   records (D4): while the database refuses writes it holds every message, in memory up to its cap
   and
   past it on disk, growing with Schwab's rate. Enforced by: `tests/test_data_path_rules_v1.py`.
-- **D4. The stream's tables in `ed.db` are the memory, of what the operator trades, for five
-  trading sessions.** Its one writer records every message Schwab sends but option quotes and option books, which it
+- **D4. The stream's tables in `ed.db` are the record of what the operator trades.** What Schwab
+  cannot send again (quotes, books, option quotes, bars, news, market hours) is kept; what it can
+  (price history), every chain round's answers and the daemon's own operational tables are kept
+  five sessions (`stream_spine.KEPT_BY_TIME`; operator 2026-11-15, the keep table in
+  `ACTIVE_PROGRAM.md` STORE-ENOUGH). Its one writer records every message Schwab sends but option quotes and option books, which it
   records only for the contracts the daemon keeps (`capture.Daemon.saves`, operator 2026-10-09):
   each watchlist ticker's soonest expiration not passed (today's when one is listed, else the
   nearest), at the strike nearest its price (the price row's) and the 5 listed strikes each side
@@ -113,18 +116,17 @@ from Schwab to the screen (daemon, console, page), are these:
   ticker keeps the window last computed, so its contracts go on being recorded), and the contract
   selected on the Flow
   panel. What the daemon streams and pushes, and the levels, are unchanged. Once after each close
-  of the last option market the daemon has the writer remove every row received before the newest
-  five sessions in Schwab's /markets answers began (`capture.keep_sessions`,
+  of the last option market the daemon has the writer remove, from the tables of
+  `KEPT_BY_TIME` only, every row received before the newest five sessions in Schwab's /markets
+  answers began (`capture.keep_sessions`,
   `time_et.sessions_since`, `CaptureWriter.prune`: `PRUNE_ROWS` rows a transaction, one between
   rounds of live writes, each round writing at most one batch (`batch_rows`) of the messages
   queued, so a writer that is behind commits as often as one that is not; none while messages
   wait in the queue, and none once the writer has taken the stop, which waits at most for the part
-  in progress; the newest watchlist row always kept); while today's market is unknown or open, or
-  fewer
-  sessions are held, nothing is removed. The freed pages are reused (no VACUUM), so the file stays
-  about one week's size. Enforced by: `tests/test_data_path_stream_kept_v1.py`. No other
-  stream table keeps old data (the chain captures and level crosses, in the same file, are kept
-  beyond five sessions, §3.3), except the writer's own spill files below that hold Schwab's messages
+  in progress); while today's market is unknown or open, or fewer sessions are held, nothing is
+  removed. The freed pages are reused (no VACUUM). Enforced by:
+  `tests/test_data_path_stream_kept_v1.py`. The chain captures and level crosses, in the same
+  file, are kept too (§3.3), and so are the writer's own spill files below that hold Schwab's messages
   until they are written back: those that hold messages while the database refuses writes, those
   a stop, a kill or the writer's death left on disk (written back at the next start), and one
   the disk would not delete once written back (deleted at the next start). A message whose row is
@@ -439,9 +441,8 @@ the program.
   waiting has been written and pushed as `liquidity` (a `levels` push when the published
   snapshot changed); and the levels loop (`_publish_missing_price_levels`) for a ticker with
   none yet for the market's session (the console's start, a new session). It reads the
-  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it loads them
-  from the daemon's record (`stream_bars_raw`, Schwab's newest bar of each minute) before it
-  takes any pushed bar (the push queue holds the bars that arrive meanwhile), then keeps each
+  console's bars (`_bars_1m`), whose one owner is the bar writer (`_bar_writer`): it takes
+  Schwab's price history the daemon pushes before any pushed bar (no database read) (the push queue holds the bars that arrive meanwhile), then keeps each
   pushed bar, and stops at the console's shutdown once the bars queued are kept
   (`stop_bar_writer`). The console's old bar store (`ed.db` `price_bars_1m`: bars its
   quote accumulator built and price-history re-seeds before 2026-09-26, then Schwab's streamed

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
-from json_blob_codec import decode_json_blob, encode_json_blob
+from json_blob_codec import decode_json_blob, encode_json_blob, encode_text_blob
 from option_contract import read_chain
 from time_et import ET
 
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS complete_chain_captures (
     chain_json TEXT NOT NULL,
     chain_spot REAL,
     chain_spot_ts REAL,
+    chains_answer BLOB,
     PRIMARY KEY (ticker, expiry, ts_utc)
 );
 CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
@@ -47,6 +48,10 @@ CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
 """
 # `spot` is each expiry's own underlyingPrice as Schwab sent it; `chain_spot` / `chain_spot_ts`
 # the chain's one spot (Schwab's LAST_PRICE when the chain was complete) and its trade time.
+# `chain_json` is the chain as the levels took it (each contract's Greeks and quote from the
+# stream or /quotes, the one producer of each); `chains_answer` is Schwab's /chains answer for the
+# expiry, the body exactly as received (json_blob_codec.encode_text_blob), absent in captures
+# written before 2026-11-15.
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -80,6 +85,7 @@ def persist_complete_chain_capture(
     ts_utc: float,
     chain_spot: float | None = None,
     chain_spot_ts: float | None = None,
+    chains_answer: str | None = None,
 ) -> dict[str, Any]:
     """Append one COMPLETE single-expiry capture.
 
@@ -110,7 +116,7 @@ def persist_complete_chain_capture(
     conn.execute(
         "INSERT INTO complete_chain_captures "
         "(ticker, expiry, ts_utc, spot, completeness_basis, chain_json, chain_spot, "
-        "chain_spot_ts) VALUES (?,?,?,?,?,?,?,?)",
+        "chain_spot_ts, chains_answer) VALUES (?,?,?,?,?,?,?,?,?)",
         (
             tk,
             exp,
@@ -120,6 +126,7 @@ def persist_complete_chain_capture(
             encode_json_blob(clean, default=str),
             chain_spot,
             chain_spot_ts,
+            None if chains_answer is None else encode_text_blob(chains_answer),
         ),
     )
     return {
