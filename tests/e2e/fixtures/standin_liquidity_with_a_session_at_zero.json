@@ -10,11 +10,14 @@
    "source_levels": [
     {
      "label": "VWAP_M1",
-     "value": -44.3533325484506
+     "value": -44.3533325484506,
+     "value_text": "-44.35"
     }
    ],
    "confluence_score": 1,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "-44.35",
+   "zone_high_text": "-44.35"
   },
   {
    "zone_label": "-",
@@ -25,35 +28,44 @@
    "source_levels": [
     {
      "label": "ORB_HIGH",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     },
     {
      "label": "ORB_MID",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     },
     {
      "label": "ORB_LOW",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     },
     {
      "label": "TODAY_VAH",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     },
     {
      "label": "TODAY_POC",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     },
     {
      "label": "TODAY_VAL",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     },
     {
      "label": "OVERNIGHT_LOW",
-     "value": 0.0
+     "value": 0.0,
+     "value_text": "0.00"
     }
    ],
    "confluence_score": 7,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "0.00",
+   "zone_high_text": "0.00"
   },
   {
    "zone_label": "-",
@@ -64,11 +76,14 @@
    "source_levels": [
     {
      "label": "VWAP",
-     "value": 2.9153649326952222
+     "value": 2.9153649326952222,
+     "value_text": "2.92"
     }
    ],
    "confluence_score": 1,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "2.92",
+   "zone_high_text": "2.92"
   },
   {
    "zone_label": "-",
@@ -79,11 +94,14 @@
    "source_levels": [
     {
      "label": "VWAP_P1",
-     "value": 50.18406241384104
+     "value": 50.18406241384104,
+     "value_text": "50.18"
     }
    ],
    "confluence_score": 1,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "50.18",
+   "zone_high_text": "50.18"
   },
   {
    "zone_label": "-",
@@ -94,11 +112,14 @@
    "source_levels": [
     {
      "label": "PDL",
-     "value": 758.7901
+     "value": 758.7901,
+     "value_text": "758.79"
     }
    ],
    "confluence_score": 1,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "758.79",
+   "zone_high_text": "758.79"
   },
   {
    "zone_label": "-",
@@ -109,11 +130,14 @@
    "source_levels": [
     {
      "label": "PD_VAL",
-     "value": 761.19
+     "value": 761.19,
+     "value_text": "761.19"
     }
    ],
    "confluence_score": 1,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "761.19",
+   "zone_high_text": "761.19"
   },
   {
    "zone_label": "-",
@@ -124,23 +148,29 @@
    "source_levels": [
     {
      "label": "PD_POC",
-     "value": 764.35
+     "value": 764.35,
+     "value_text": "764.35"
     },
     {
      "label": "OVERNIGHT_HIGH",
-     "value": 764.98
+     "value": 764.98,
+     "value_text": "764.98"
     },
     {
      "label": "PD_VAH",
-     "value": 765.34
+     "value": 765.34,
+     "value_text": "765.34"
     },
     {
      "label": "PDH",
-     "value": 765.65
+     "value": 765.65,
+     "value_text": "765.65"
     }
    ],
    "confluence_score": 4,
-   "interpretation_notes": "No live price: the side of the price is not known"
+   "interpretation_notes": "No live price: the side of the price is not known",
+   "zone_low_text": "764.35",
+   "zone_high_text": "765.65"
   }
  ],
  "summary": {

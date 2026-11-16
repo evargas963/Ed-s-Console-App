@@ -17,8 +17,7 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num,
-    classOf = window.EdShell.classOf;
+  var classOf = window.EdShell.classOf;
   function isFlow() {
     var s = window.EdShell.getState();
     return s.workspace === "options" && s.subview === "flow";
@@ -95,30 +94,30 @@
     // row = [label, displayed value, canonical key (data-k), backend classification | null]
     // The depth ladder is classified by the engine under its own wildcard keys ("depth.*.<leaf>").
     var rowsTob = [
-      ["Bid", num(tob.bid), "top_of_book.bid", bk("top_of_book.bid")],
-      ["Ask", num(tob.ask), "top_of_book.ask", bk("top_of_book.ask")],
+      ["Bid", orDash(tob.bid_text), "top_of_book.bid", bk("top_of_book.bid")],
+      ["Ask", orDash(tob.ask_text), "top_of_book.ask", bk("top_of_book.ask")],
       ["Bid size", orDash(tob.bid_size_text), "top_of_book.bid_size", bk("top_of_book.bid_size")],
       ["Ask size", orDash(tob.ask_size_text), "top_of_book.ask_size", bk("top_of_book.ask_size")],
     ];
     var rowsBook = [
-      ["Mark", num(d.mark), "mark", bk("mark")],
-      ["Weighted mid", num(d.microprice), "microprice", bk("microprice")],
-      ["Spread (pts)", num(d.spread_pts), "spread_pts", bk("spread_pts")],
+      ["Mark", orDash(d.mark_text), "mark", bk("mark")],
+      ["Weighted mid", orDash(d.microprice_text), "microprice", bk("microprice")],
+      ["Spread (pts)", orDash(d.spread_pts_text), "spread_pts", bk("spread_pts")],
       [
         "Depth 1 · imbalance",
-        num(depth["1"].imbalance, 3),
+        orDash(depth["1"].imbalance_text),
         "depth.1.imbalance",
         bk("depth.*.imbalance"),
       ],
       [
         "Depth 3 · imbalance",
-        num(depth["3"].imbalance, 3),
+        orDash(depth["3"].imbalance_text),
         "depth.3.imbalance",
         bk("depth.*.imbalance"),
       ],
       [
         "Depth 5 · imbalance",
-        num(depth["5"].imbalance, 3),
+        orDash(depth["5"].imbalance_text),
         "depth.5.imbalance",
         bk("depth.*.imbalance"),
       ],
@@ -138,40 +137,42 @@
     var rowsFlow = [
       [
         "Top-book pressure",
-        num(flow.top_book_pressure, 3),
+        orDash(flow.top_book_pressure_text),
         "flow.top_book_pressure",
         fk("top_book_pressure"),
       ],
       [
         "Tape pressure 30s",
-        num(flow.tape_pressure_30s, 3) + " · unsigned " + num(flow.tape_unsigned_30s, 2),
+        orDash(flow.tape_pressure_30s_text) +
+          " · unsigned " +
+          orDash(flow.tape_unsigned_30s_text),
         "flow.tape_pressure_30s",
         fk("tape_pressure_30s"),
       ],
       [
         "Tape pressure 2m",
-        num(flow.tape_pressure_2m, 3) + " · unsigned " + num(flow.tape_unsigned_2m, 2),
+        orDash(flow.tape_pressure_2m_text) + " · unsigned " + orDash(flow.tape_unsigned_2m_text),
         "flow.tape_pressure_2m",
         fk("tape_pressure_2m"),
       ],
       [
         "Tape pressure 5m",
-        num(flow.tape_pressure_5m, 3) + " · unsigned " + num(flow.tape_unsigned_5m, 2),
+        orDash(flow.tape_pressure_5m_text) + " · unsigned " + orDash(flow.tape_unsigned_5m_text),
         "flow.tape_pressure_5m",
         fk("tape_pressure_5m"),
       ],
       [
         "Cum Δ (proxy)",
-        num(flow.cum_delta_proxy, 1) +
+        orDash(flow.cum_delta_proxy_text) +
           " · unsigned " +
-          num(flow.cum_delta_unsigned, 2) +
+          orDash(flow.cum_delta_unsigned_text) +
           (flow.cum_delta_window ? " · " + flow.cum_delta_window : ""),
         "flow.cum_delta_proxy",
         fk("cum_delta_proxy"),
       ],
       [
         "Cum Δ slope (proxy)",
-        num(flow.cum_delta_slope, 3),
+        orDash(flow.cum_delta_slope_text),
         "flow.cum_delta_slope",
         fk("cum_delta_slope"),
       ],

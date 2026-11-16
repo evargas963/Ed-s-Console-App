@@ -29,6 +29,7 @@ from l1_trade_observation import (
 )
 from numeric_contract import (
     count_text,
+    fixed_text,
     float_finite_or_none,
     percent_text,
     price_text,
@@ -354,7 +355,15 @@ def _book_pressure_curve(
     cum = 0.0
     for price, vol in levels[:max_levels]:
         cum += vol
-        out.append({"price": price, "volume": vol, "volume_text": count_text(vol), "cum": cum})
+        out.append(
+            {
+                "price": price,
+                "price_text": price_text(price),
+                "volume": vol,
+                "volume_text": count_text(vol),
+                "cum": cum,
+            }
+        )
     return out
 
 
@@ -385,9 +394,11 @@ def _book_wall_candidates(
                 {
                     "side": side,
                     "price": price,
+                    "price_text": price_text(price),
                     "volume": vol,
                     "volume_text": count_text(vol),
                     "median_mult": vol / median,
+                    "median_mult_text": fixed_text(vol / median, 1),
                 }
             )
     return out
@@ -421,6 +432,7 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
             "bid_total_text": count_text(lv["bid_total"]),
             "ask_total_text": count_text(lv["ask_total"]),
             "imbalance": lv["imbalance"],
+            "imbalance_text": fixed_text(lv["imbalance"], 3),
         }
 
     return {
@@ -432,11 +444,16 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
             "ask_size": ask_size,
             "bid_size_text": count_text(bid_size),
             "ask_size_text": count_text(ask_size),
+            "bid_text": price_text(bid),
+            "ask_text": price_text(ask),
         },
         "crossed": crossed,
         "mark": mark,
         "microprice": microprice,
         "spread_pts": spread_pts,
+        "mark_text": price_text(mark),
+        "microprice_text": price_text(microprice),
+        "spread_pts_text": price_text(spread_pts),
         "depth": depth,
         "depth_pressure": {
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
@@ -1000,33 +1017,30 @@ class OrderFlowEngine:
         # the book, extracted once by its one producer; `ticker` lets the route serialize this
         # same computed state (carry, not recompute)
         book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
-        # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
-        top_book_pressure = _compute_top_book_pressure(data)
-
-        # Tape metrics
-        tape_pressure_30s = _compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now)
-        tape_pressure_2m = _compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now)
-        tape_pressure_5m = _compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now)
-
-        # Cumulative delta
-        cum_delta_proxy = _compute_cum_delta_proxy(data)
         cum_first, cum_last = cum_delta_window(canonical_tape_prints(data["content"]))
-        cum_delta_slope = _compute_cum_delta_slope(data, now)
+        # each flow number and the decimals the screen shows it with: the pressures, each
+        # value's unsigned share of the size it covers, the cumulative delta
+        flow = {
+            # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
+            "top_book_pressure": (_compute_top_book_pressure(data), 3),
+            "tape_pressure_30s": (_compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now), 3),
+            "tape_pressure_2m": (_compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now), 3),
+            "tape_pressure_5m": (_compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now), 3),
+            "tape_unsigned_30s": (_compute_unsigned(data, OF_TAPE_WINDOW_30S_SEC, now), 2),
+            "tape_unsigned_2m": (_compute_unsigned(data, OF_TAPE_WINDOW_2M_SEC, now), 2),
+            "tape_unsigned_5m": (_compute_unsigned(data, OF_TAPE_WINDOW_5M_SEC, now), 2),
+            "cum_delta_unsigned": (_compute_unsigned(data, None, now), 2),
+            "cum_delta_proxy": (_compute_cum_delta_proxy(data), 1),
+            "cum_delta_slope": (_compute_cum_delta_slope(data, now), 3),
+        }
 
         return {
             # Carry the single canonical microstructure state so the route serializes THIS
             # computed result (same book) rather than recomputing from raw data.
             "book_microstructure": book_micro,
-            "top_book_pressure": top_book_pressure,
-            "tape_pressure_30s": tape_pressure_30s,
-            "tape_pressure_2m": tape_pressure_2m,
-            "tape_pressure_5m": tape_pressure_5m,
-            # each value's unsigned share of the size it covers, served beside it
-            "tape_unsigned_30s": _compute_unsigned(data, OF_TAPE_WINDOW_30S_SEC, now),
-            "tape_unsigned_2m": _compute_unsigned(data, OF_TAPE_WINDOW_2M_SEC, now),
-            "tape_unsigned_5m": _compute_unsigned(data, OF_TAPE_WINDOW_5M_SEC, now),
-            "cum_delta_unsigned": _compute_unsigned(data, None, now),
-            "cum_delta_proxy": cum_delta_proxy,
+            # each flow number, and beside it its text as the screen shows it
+            **{name: value for name, (value, _places) in flow.items()},
+            **{f"{name}_text": fixed_text(value, places) for name, (value, places) in flow.items()},
             # the window the cumulative delta sums: the tape's first and last print (Schwab trade
             # time), served beside the number
             "cum_delta_window": (
@@ -1034,5 +1048,4 @@ class OrderFlowEngine:
                 if cum_first is not None and cum_last is not None
                 else None
             ),
-            "cum_delta_slope": cum_delta_slope,
         }

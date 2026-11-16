@@ -162,6 +162,7 @@
         lv.push({
           id: "gamma_flip",
           price: Number(t.gamma_flip),
+          price_text: t.gamma_flip_text,
           label: "Γ flip",
           color: P.accent,
           style: 2,
@@ -171,6 +172,7 @@
         lv.push({
           id: "call_wall",
           price: Number(t.call_wall),
+          price_text: t.call_wall_text,
           label: "Call wall",
           color: P.down,
           style: 0,
@@ -180,6 +182,7 @@
         lv.push({
           id: "put_wall",
           price: Number(t.put_wall),
+          price_text: t.put_wall_text,
           label: "Put wall",
           color: P.up,
           style: 0,
@@ -200,11 +203,11 @@
       win,
       prof,
       sd,
-      spot,
+      spot == null ? null : _liveQuote.spot_disp,
       tradeTime,
     );
   }
-  function paintHead(el, lastBar, win, prof, sd, spot, tradeTime) {
+  function paintHead(el, lastBar, win, prof, sd, spotText, tradeTime) {
     var n = prof.name;
     var ab = window.EdShell.asOfBadge;
     var asof =
@@ -235,10 +238,10 @@
         : '<span><span class="sw" style="background:var(--ed-accent)"></span>' + n + "</span>") +
       '<span><span class="sw" style="background:var(--ed-accent)"></span>flip</span>' +
       "<span>spot " +
-      window.EdShell.num(spot) +
+      orDash(spotText) +
       (tradeTime ? " · last trade " + esc(tradeTime) : "") +
       "</span>" +
-      (top ? "<span>largest |" + n + "| " + esc(top.strike) + " · " + esc(shown) + "</span>" : "") +
+      (top ? "<span>largest |" + n + "| " + esc(top.strike_text) + " · " + esc(shown) + "</span>" : "") +
       "</div>";
   }
 
