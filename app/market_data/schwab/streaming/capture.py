@@ -8,7 +8,7 @@ every watchlist ticker, each in its turn in one rotation, a ticker on a page bef
 
   0. WATCHLIST The one list of tickers Schwab is asked for (Watchlist): the daemon holds it,
              is its only writer, and keeps every change as a `watchlist` record (the writer
-             stores it in stream_capture.db stream_watchlist; the newest is read at startup).
+             stores it in the database's stream_watchlist; the newest is read at startup).
              The console, in this program, asks for an add or a removal (console_frame):
              {"op": "watchlist", "action": "add"|"remove", "ticker": T, "id": n}. An added
              ticker is checked with one /quotes request: one Schwab names in
@@ -75,7 +75,6 @@ from app.market_data.schwab.streaming.program_lock import (
 )
 from app.options.order_flow import streaming as console_feed
 from config import build_config, load_dotenv_file
-from db_authority import canonical_console_db_path
 from feed.chain_sweep import ChainSweep
 from feed.connection import SERVICES, Connection, held_key
 from feed.schwab_client import SchwabClientState, build_client_from_token, safe_get_quotes
@@ -758,7 +757,7 @@ def _start_log() -> None:
     writes (a selection the operator makes to read it, a slow console) never stops the daemon: no
     line waits on it. From here an error reaches both (main logs one that ends the daemon).
     WINDOW_ONLY's lines go to the window alone: what Schwab streamed is recorded in
-    stream_capture.db, not a second time in the file.
+    the database, not a second time in the file.
     """
     folder = runtime_layout.logs_dir()
     folder.mkdir(parents=True, exist_ok=True)
@@ -934,7 +933,7 @@ async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) 
         bus.unsubscribe(sub)
 
 
-#: trading sessions stream_capture.db keeps (the operator's setting), and how often keep_sessions
+#: trading sessions the stream's tables keep (the operator's setting), and how often keep_sessions
 #: looks
 SESSIONS_KEPT = 5
 KEEP_EVERY_SEC = 60.0
@@ -1081,7 +1080,6 @@ async def run(lock_fd: int, request: StopRequest) -> int:
     stop_on_interrupt(stop, asyncio.get_running_loop())
     bus, health = MessageBus(), HealthRegistry()
     writer = CaptureWriter()
-    db_path = canonical_console_db_path()
     daemon = Daemon(
         bus,
         health,
@@ -1094,7 +1092,8 @@ async def run(lock_fd: int, request: StopRequest) -> int:
     tasks = [
         asyncio.create_task(writer.run(wsub, stop=stop), name="writer"),
         asyncio.create_task(
-            run_chains(daemon, db_path, schwab_client, stop, failures=writer), name="chain sweep"
+            run_chains(daemon, writer.db_path, schwab_client, stop, failures=writer),
+            name="chain sweep",
         ),
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(show_stream(bus, stop), name="stream window"),

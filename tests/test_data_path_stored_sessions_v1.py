@@ -46,8 +46,7 @@ def _record_answers(path: Path) -> int:
     with sqlite3.connect(path) as conn:
         conn.executescript(STREAM_SCHEMA_SQL)
         conn.executemany(
-            "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) "
-            "VALUES(?,?,?,?,'test')",
+            "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json) VALUES(?,?,?,?)",
             rows,
         )
     conn.close()
@@ -100,7 +99,7 @@ def _env(tmp_path: Path) -> dict:
 
 
 def test_a_stored_chain_is_priced_on_the_stored_market_answers(tmp_path):
-    _record_answers(tmp_path / "data" / "stream_capture.db")
+    _record_answers(tmp_path / "data" / "ed.db")
     run = subprocess.run(
         [
             sys.executable,
@@ -137,7 +136,7 @@ def test_the_console_holds_the_answers_before_its_loops_and_its_feed(tmp_path, s
     recorded are held before the console's loop and its feed start; with none recorded yet (the
     program's writer makes the tables at its start), it holds 0.
     """
-    path = tmp_path / "data" / "stream_capture.db"
+    path = tmp_path / "data" / "ed.db"
     held = _record_answers(path) if store == "answers" else 0
     env = program_env(tmp_path)
     waited, fed = "waiting for the capture daemon's heartbeat", "Live-plane feed started"

@@ -549,8 +549,7 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
             ).fetchone():
                 return []
             return con.execute(
-                "SELECT symbol, series, native_json, src FROM stream_pricehistory_raw "
-                "ORDER BY rowid"
+                "SELECT symbol, series, native_json FROM stream_pricehistory_raw ORDER BY rowid"
             ).fetchall()
         finally:
             con.close()
@@ -576,14 +575,14 @@ def test_the_daemons_writer_records_every_answer_as_schwab_sent_it(tmp_path):
     finally:
         schwab.close()
     recorded = rows()[:5]
-    assert [(symbol, series, src) for symbol, series, _n, src in recorded] == [
-        ("SPY", "1m", "schwab_pricehistory"),
-        ("SPY", "1m60", "schwab_pricehistory"),
-        ("SPY", "5m", "schwab_pricehistory"),
-        ("SPY", "15m", "schwab_pricehistory"),
-        ("SPY", "30m", "schwab_pricehistory"),
+    assert [(symbol, series) for symbol, series, _n in recorded] == [
+        ("SPY", "1m"),
+        ("SPY", "1m60"),
+        ("SPY", "5m"),
+        ("SPY", "15m"),
+        ("SPY", "30m"),
     ]
-    for _s, series, native, _src in recorded:
+    for _s, series, native in recorded:
         assert json.loads(native) == HISTORY[("SPY", *_SERIES[series])]["body"], (
             f"{series}: recorded as sent"
         )

@@ -30,6 +30,7 @@ from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import last_capture_per_day
 from feed import schwab_client as sc
 from feed.chain_sweep import ChainSweep
+from json_blob_codec import decode_json_blob
 from math_exposure_core import compute_exposures_by_strike, put_call_volume_ratio
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
 from tests.schwab_rest_standin import (
@@ -246,8 +247,9 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
     with sqlite3.connect(tmp_path / "ed_console.db") as conn:  # 10:15 ET: the 10:00 window
         rows = conn.execute(
-            "SELECT ticker, expiry, spot, n_contracts FROM complete_chain_captures ORDER BY ticker"
+            "SELECT ticker, expiry, spot, chain_json FROM complete_chain_captures ORDER BY ticker"
         ).fetchall()
+    rows = [(*r[:3], len(decode_json_blob(r[3]))) for r in rows]
     assert rows == [
         ("SPY", "2026-11-20", SPY["spot"], len(SPY["chain"])),
         ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"])),

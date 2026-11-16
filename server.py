@@ -70,7 +70,7 @@ from calibration.complete_chain_capture import (
 )
 from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
-from db_authority import canonical_stream_db_path
+from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from l1_trade_observation import canonical_tape_prints
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
@@ -473,7 +473,7 @@ async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError(f"live console refused: {_binding}")
     # Before the loops and the feed: everything priced from here on has the recorded sessions, and
     # the daemon's answers then replace them.
-    _load_stored_sessions(canonical_stream_db_path())
+    _load_stored_sessions(canonical_db_path())
 
     # The levels loop: the stored levels at startup, then the status line and the price levels
     # (the chains arrive from the daemon, _on_chain).
@@ -1909,7 +1909,7 @@ def _status_line(now: float) -> str:
             + ("open" if st is not None and st["schwab_socket_open"] else "NOT OPEN"),
             prices,
             f"levels: {len(as_of)} tickers, newest as of {newest}",
-            _feed_record_state(canonical_stream_db_path(), now),
+            _feed_record_state(canonical_db_path(), now),
             (
                 f"chains: the daemon's last round of the watchlist took {round_sec:.0f} s"
                 if round_sec

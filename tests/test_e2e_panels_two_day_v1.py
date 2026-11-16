@@ -138,7 +138,6 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 spot=row["spot"],
                 completeness_basis=capture["completeness_basis"],
                 ts_utc=capture["ts_utc"],
-                source=capture["source"],
                 chain_spot=capture["chain_spot"],
                 chain_spot_ts=capture["chain_spot_ts"],
             )

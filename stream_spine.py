@@ -6,7 +6,7 @@ feed health, and the database writer.
   - Every Schwab message is published once on the MessageBus and becomes its topic's current
     record (the newest by Schwab's time); the writer reads every message (LOG), the console
     socket and the browser socket read each changed topic's current record (LATEST).
-  - Raw stream data goes ONLY to stream_capture.db -- ed_console.db is never written here.
+  - Every message goes to the one database (db_authority.canonical_db_path).
   - The writer runs on its own thread with its own SQLite connection, so a slow disk can
     never stall the Schwab socket.
   - A message the writer cannot store as a row is kept as sent, with its error, in
@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import IO, Any
 
 import time_et
-from db_authority import canonical_stream_db_path
+from db_authority import canonical_db_path
 from time_et import ct_label
 
 log = logging.getLogger(__name__)
@@ -50,10 +50,10 @@ type Outcome = RowWritten | KeptFailure | None
 
 
 def resolve_stream_db_path(default: Path | str | None = None) -> Path:
-    """Return the one stream-database path (runtime_layout). `default` is for tests."""
+    """Return the one database's path (runtime_layout). `default` is for tests."""
     if default is not None:
         return Path(default).resolve()
-    return canonical_stream_db_path()
+    return canonical_db_path()
 
 
 STREAM_SCHEMA_SQL = """
@@ -64,28 +64,29 @@ CREATE TABLE IF NOT EXISTS stream_quotes_raw (
     bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
     total_volume INTEGER,
     quote_time_ms INTEGER, trade_time_ms INTEGER,
-    src TEXT NOT NULL,
-    native_json TEXT
+    native_json TEXT,
+    schwab_ts INTEGER
 );
 CREATE TABLE IF NOT EXISTS stream_book_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
     service TEXT NOT NULL,
     native_json TEXT NOT NULL,
-    src TEXT NOT NULL
+    schwab_ts INTEGER
 );
 CREATE TABLE IF NOT EXISTS stream_options_quotes_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
     native_json TEXT NOT NULL,
-    src TEXT NOT NULL
+    schwab_ts INTEGER
 );
 CREATE TABLE IF NOT EXISTS stream_bars_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
     bar_start_ms INTEGER,
     open REAL, high REAL, low REAL, close REAL, volume INTEGER,
-    src TEXT NOT NULL
+    native_json TEXT,
+    schwab_ts INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_sbr_sym_ts ON stream_bars_raw(symbol, bar_start_ms);
 -- NEWS_HEADLINE items, verbatim (not in Schwab's Streamer API,
@@ -94,7 +95,7 @@ CREATE TABLE IF NOT EXISTS stream_news_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
     native_json TEXT NOT NULL,
-    src TEXT NOT NULL
+    schwab_ts INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_snr_sym_ts ON stream_news_raw(symbol, ts_recv);
 -- Schwab's /pricehistory answers, verbatim: one row per series asked (PRICE_HISTORY), the whole
@@ -103,8 +104,7 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
     series TEXT NOT NULL,
-    native_json TEXT NOT NULL,
-    src TEXT NOT NULL
+    native_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
 -- Schwab's /markets answers, verbatim: one row per market date asked, its status and the whole
@@ -113,8 +113,7 @@ CREATE TABLE IF NOT EXISTS stream_markets_raw (
     ts_recv REAL NOT NULL,
     date TEXT NOT NULL,
     status INTEGER NOT NULL,
-    native_json TEXT NOT NULL,
-    src TEXT NOT NULL
+    native_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_smkr_date_ts ON stream_markets_raw(date, ts_recv);
 -- The watchlist, the one list of tickers Schwab is asked for (written only by the daemon): one row
@@ -126,8 +125,7 @@ CREATE TABLE IF NOT EXISTS stream_watchlist (
     op TEXT NOT NULL,
     tickers_json TEXT NOT NULL,
     status INTEGER,
-    native_json TEXT,
-    src TEXT NOT NULL
+    native_json TEXT
 );
 -- Every subscribe/unsubscribe the daemon sent and Schwab's answer. With it, a gap in the
 -- data tables can be told apart: "we were not subscribed" versus "subscribed, nothing
@@ -525,17 +523,6 @@ class HealthRegistry:
 
 # ---------------------------------------------------------------------------- the writer
 
-#: columns added after a table was first made: (table, column, type)
-_ADDED_COLUMNS = (
-    ("stream_quotes_raw", "native_json", "TEXT"),
-    ("stream_quotes_raw", "schwab_ts", "INTEGER"),
-    ("stream_book_raw", "schwab_ts", "INTEGER"),
-    ("stream_options_quotes_raw", "schwab_ts", "INTEGER"),
-    ("stream_bars_raw", "schwab_ts", "INTEGER"),
-    ("stream_bars_raw", "native_json", "TEXT"),
-    ("stream_news_raw", "schwab_ts", "INTEGER"),
-)
-
 #: each kind's insert and the row it binds, built from the message. The builder is handed every
 #: message of its kind as it came, one without the shape its table needs included: what it raises
 #: then is the message's own failure (ROW_FAILURES), so its parameter is not a dict by type.
@@ -554,8 +541,8 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
     ),
     "quote": (
         "INSERT INTO stream_quotes_raw(ts_recv,symbol,bid,ask,last,bid_size,ask_size,"
-        "last_size,total_volume,quote_time_ms,trade_time_ms,src,native_json,schwab_ts) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "last_size,total_volume,quote_time_ms,trade_time_ms,native_json,schwab_ts) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
@@ -568,37 +555,34 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
             m["total_volume"],
             m["quote_time_ms"],
             m["trade_time_ms"],
-            m["src"],
             _json(m["native"]),
             m["schwab_ts"],
         ),
     ),
     "book": (
-        "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,src,schwab_ts) "
-        "VALUES(?,?,?,?,?,?)",
+        "INSERT INTO stream_book_raw(ts_recv,symbol,service,native_json,schwab_ts) "
+        "VALUES(?,?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
             m["service"],
             json.dumps(m["content"]),
-            m["src"],
             m["schwab_ts"],
         ),
     ),
     "optquote": (
-        "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,src,schwab_ts) "
-        "VALUES(?,?,?,?,?)",
+        "INSERT INTO stream_options_quotes_raw(ts_recv,symbol,native_json,schwab_ts) "
+        "VALUES(?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
             json.dumps(m["content"]),
-            m["src"],
             m["schwab_ts"],
         ),
     ),
     "bar1m": (
         "INSERT INTO stream_bars_raw(ts_recv,symbol,bar_start_ms,open,high,low,close,"
-        "volume,src,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "volume,native_json,schwab_ts) VALUES(?,?,?,?,?,?,?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
@@ -608,33 +592,30 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
             m["low"],
             m["close"],
             m["volume"],
-            m["src"],
             _json(m["native"]),
             m["schwab_ts"],
         ),
     ),
     "news": (
-        "INSERT INTO stream_news_raw(ts_recv,symbol,native_json,src,schwab_ts) VALUES(?,?,?,?,?)",
+        "INSERT INTO stream_news_raw(ts_recv,symbol,native_json,schwab_ts) VALUES(?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["symbol"],
             json.dumps(m["content"]),
-            m["src"],
             m["schwab_ts"],
         ),
     ),
     "pricehistory": (
-        "INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json,src) "
-        "VALUES(?,?,?,?,?)",
-        lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"]), m["src"]),
+        "INSERT INTO stream_pricehistory_raw(ts_recv,symbol,series,native_json) VALUES(?,?,?,?)",
+        lambda m: (m["ts_recv"], m["symbol"], m["series"], json.dumps(m["answer"])),
     ),
     "markets": (
-        "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) VALUES(?,?,?,?,?)",
-        lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"]), m["src"]),
+        "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json) VALUES(?,?,?,?)",
+        lambda m: (m["ts_recv"], m["date"], m["status"], json.dumps(m["answer"])),
     ),
     "watchlist": (
-        "INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json,src) "
-        "VALUES(?,?,?,?,?,?,?)",
+        "INSERT INTO stream_watchlist(ts_recv,symbol,op,tickers_json,status,native_json) "
+        "VALUES(?,?,?,?,?,?)",
         lambda m: (
             m["ts_recv"],
             m["ticker"],
@@ -642,7 +623,6 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
             json.dumps(m["tickers"]),
             m["status"],
             json.dumps(m["answer"]),
-            m["src"],
         ),
     ),
     "sub": (
@@ -1096,11 +1076,10 @@ class _Spill:
 
 
 class CaptureWriter:
-    """Writes every bus message to stream_capture.db from its own thread, in batches.
+    """Writes every bus message to the one database from its own thread, in batches.
 
     Each round writes up to `batch_rows` queued messages, and commits once the batch has
-    `batch_rows` rows or
-    `batch_sec` has passed. Never points at ed_console.db. A message
+    `batch_rows` rows or `batch_sec` has passed. A message
     whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
     is rolled back and its messages, and every one after, are held in order and written again,
@@ -1128,8 +1107,6 @@ class CaptureWriter:
         clock: Callable[[], float] = time_et.now,
     ) -> None:
         p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
-        if p.name == "ed_console.db":
-            raise ValueError(f"the stream writer never writes the console's database ({p})")
         p.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = p
         self.batch_rows = int(batch_rows)
@@ -1185,9 +1162,6 @@ class CaptureWriter:
             for table, index in RECEIPT_TIME_INDEXES.items():
                 if table not in tables:
                     conn.execute(index)
-            for table, column, kind in _ADDED_COLUMNS:  # a database made before them
-                if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
             conn.commit()
             progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
             # spill files an earlier writer left beside the database (named in the order they

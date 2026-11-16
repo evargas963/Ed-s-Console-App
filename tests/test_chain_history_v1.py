@@ -203,9 +203,9 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
         assert _rotate(sweep, client) == {"SPY"}
     with sqlite3.connect(tmp_path / "ed_console.db") as c:
         rows = c.execute(
-            "SELECT ts_utc, expiry, spot, n_contracts, chain_json FROM complete_chain_captures "
-            "ORDER BY ts_utc"
+            "SELECT ts_utc, expiry, spot, chain_json FROM complete_chain_captures ORDER BY ts_utc"
         ).fetchall()
+    rows = [(*r[:3], len(decode_json_blob(r[3])), r[3]) for r in rows]
     assert [(_et(r[0]), r[1], r[2], r[3]) for r in rows] == [
         ("2026-09-30 15:31", "2026-11-20", 766.31, 442),
         ("2026-09-30 16:01", "2026-11-20", 766.31, 442),

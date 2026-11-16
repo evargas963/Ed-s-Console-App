@@ -70,7 +70,7 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
             ).fetchone():
                 return []
             return con.execute(
-                "SELECT date, status, native_json, src FROM stream_markets_raw ORDER BY rowid"
+                "SELECT date, status, native_json FROM stream_markets_raw ORDER BY rowid"
             ).fetchall()
         finally:
             con.close()
@@ -103,9 +103,9 @@ def test_the_daemon_asks_each_date_once_and_records_every_answer_as_sent(tmp_pat
     assert all(q["markets"] == "equity,option" for q in schwab.asked(MARKETS))
     recorded = rows()
     assert sorted(r[0] for r in recorded) == sorted(wanted)
-    for day, status, native, src in recorded:
+    for day, status, native in recorded:
         sent = MARKETS_ANSWERS[day] if day in MARKETS_ANSWERS else None
-        assert src == "schwab_markets"
+        assert status is not None, day
         if sent is not None:
             assert (status, json.loads(native)) == (sent["status"], json.loads(sent["body"])), day
 

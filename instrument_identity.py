@@ -2,7 +2,7 @@
 Canonical ticker key: Schwab's own symbol.
 
 It is the key of every value the console holds and every row the capture daemon records
-(stream_capture.db).
+(the one database, db_authority.canonical_db_path).
 
 Policy (Repair v1):
 - Equity-style symbols: uppercase alphanumeric, e.g. `spy` -> `SPY`.

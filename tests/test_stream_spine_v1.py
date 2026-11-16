@@ -15,8 +15,6 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-import pytest
-
 import stream_spine as ss
 from stream_spine import (
     LATEST,
@@ -152,31 +150,6 @@ def test_quote_without_native_stores_null_not_a_fabricated_value(tmp_path):
         assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is None
 
 
-def test_existing_stream_capture_db_migrates_native_json_column(tmp_path):
-    """A daemon restart against a DB written without the native_json column must not crash.
-
-    ALTER TABLE ADD COLUMN is idempotent forward migration, not a fresh-DB assumption.
-    """
-    db = tmp_path / "stream_capture.db"
-    with closing(sqlite3.connect(db)) as con:
-        con.executescript("""
-            CREATE TABLE stream_quotes_raw (
-                ts_recv REAL NOT NULL, symbol TEXT NOT NULL,
-                bid REAL, ask REAL, last REAL,
-                bid_size INTEGER, ask_size INTEGER, last_size INTEGER,
-                total_volume INTEGER, quote_time_ms INTEGER, trade_time_ms INTEGER,
-                src TEXT NOT NULL
-            );
-        """)
-        con.commit()
-    w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)
-    w.insert(
-        "quote.SPY", quote_msg(symbol="SPY", bid=1.0, src="t", ts_recv=1.0, native={"key": "SPY"})
-    )
-    with closing(sqlite3.connect(db)) as con:
-        assert con.execute("SELECT native_json FROM stream_quotes_raw").fetchone()[0] is not None
-
-
 def test_book_content_stored_verbatim_never_flattened(tmp_path):
     """Schwab's SPY NASDAQ_BOOK message as the capture daemon stored it.
 
@@ -201,10 +174,9 @@ def test_book_content_stored_verbatim_never_flattened(tmp_path):
         ),
     )
     with closing(sqlite3.connect(db)) as con:
-        row = con.execute(
-            "SELECT symbol, service, native_json, src FROM stream_book_raw"
-        ).fetchone()
-    assert row[0] == "SPY" and row[1] == "NASDAQ_BOOK" and row[3] == "schwab_book"
+        row = con.execute("SELECT symbol, service, native_json FROM stream_book_raw").fetchone()
+        columns = {r[1] for r in con.execute("PRAGMA table_info(stream_book_raw)")}
+    assert row[0] == "SPY" and row[1] == "NASDAQ_BOOK" and "src" not in columns
     assert json.loads(row[2]) == content
 
 
@@ -248,10 +220,9 @@ def test_options_quote_content_stored_verbatim_never_flattened(tmp_path):
         ),
     )
     with closing(sqlite3.connect(db)) as con:
-        row = con.execute(
-            "SELECT symbol, native_json, src FROM stream_options_quotes_raw"
-        ).fetchone()
-    assert row[0] == contract and row[2] == _OPTION_QUOTE["source"]
+        row = con.execute("SELECT symbol, native_json FROM stream_options_quotes_raw").fetchone()
+        columns = {r[1] for r in con.execute("PRAGMA table_info(stream_options_quotes_raw)")}
+    assert row[0] == contract and "src" not in columns
     assert json.loads(row[1]) == _OPTION_QUOTE["content"]
 
 
@@ -328,12 +299,6 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
     asyncio.run(go())
 
 
-def test_writer_refuses_the_consoles_database_through_a_relative_path():
-    """A relative path whose file is `ed_console.db` (`data/x/../ed_console.db`) is refused too."""
-    with pytest.raises(ValueError):
-        CaptureWriter("data/nosuchdir/../ed_console.db")
-
-
 def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
     """A schema setup that fails after the connect closes the SQLite connection it opened.
 
@@ -371,7 +336,7 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
 
 
 def test_db_path_a_resolves_the_canonical_default():
-    assert ss.resolve_stream_db_path() == ss.canonical_stream_db_path()
+    assert ss.resolve_stream_db_path() == ss.canonical_db_path()
 
 
 def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
@@ -394,7 +359,7 @@ def test_db_path_b_ambient_override_cannot_move_production(tmp_path):
     """A process started with STREAM_CAPTURE_DB_PATH set still resolves the canonical path."""
     done = _in_own_python(
         "import stream_spine as ss\n"
-        "print(ss.resolve_stream_db_path() == ss.canonical_stream_db_path(),"
+        "print(ss.resolve_stream_db_path() == ss.canonical_db_path(),"
         " ss.resolve_stream_db_path())\n",
         STREAM_CAPTURE_DB_PATH=str(tmp_path / "override.db"),
     )
@@ -419,7 +384,7 @@ def test_db_path_d_capture_writer_default_is_its_runtime_roots_stream_database(t
         ED_RUNTIME_ROOT=str(root),
     )
     assert done.returncode == 0, done.stderr
-    assert Path(done.stdout.strip()) == (root / "data" / "stream_capture.db").resolve(), done.stdout
+    assert Path(done.stdout.strip()) == (root / "data" / "ed.db").resolve(), done.stdout
 
 
 def test_db_path_e_explicit_test_path_still_bypasses_the_resolver(tmp_path):

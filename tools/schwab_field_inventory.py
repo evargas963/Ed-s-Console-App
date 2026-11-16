@@ -2,7 +2,7 @@
 
 Each run calls every REST market-data and account endpoint (several asset types and request
 variants), reads the key names the capture daemon received on the stream (read-only from
-stream_capture.db) and schwab-py's field list for every streaming service. Rows already in the
+the one database) and schwab-py's field list for every streaming service. Rows already in the
 CSV and not seen this run are kept with their last_seen date; nothing is dropped. A run writes
 field names and JSON types, never values; it keeps the schwab_doc and sample columns, which are
 written from a probe's raw replies. Opens no streaming socket (Schwab allows one per user: the
@@ -30,7 +30,7 @@ from pathlib import Path
 import time_et
 from app.market_data.schwab.streaming.capture import stored_watchlist
 from config import build_config, load_dotenv_file
-from db_authority import canonical_stream_db_path
+from db_authority import canonical_db_path
 from feed.schwab_client import build_client_from_token
 from feed.stream import streaming_fields
 from option_contract import listed_expiries
@@ -367,9 +367,9 @@ def main() -> int:
         print(state.message)
         return 1
     today = dt.datetime.fromtimestamp(time_et.now()).date().isoformat()
-    roster = [t for t in stored_watchlist(canonical_stream_db_path()) if not t.startswith("$")]
+    roster = [t for t in stored_watchlist(canonical_db_path()) if not t.startswith("$")]
     rest, endpoint_of, status = rest_rows(state.client, roster)
-    stream_seen = captured_stream_paths(canonical_stream_db_path())
+    stream_seen = captured_stream_paths(canonical_db_path())
     documented = streaming_fields()
 
     rows = _read(OUT)
