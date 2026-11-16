@@ -30,6 +30,7 @@ from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from push import tape as push_tape
+from push import terrain as push_terrain
 from state import level_store
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_live
@@ -179,7 +180,7 @@ def build_e2e_panels() -> dict:
                     "strikes": push_strikes.strikes(TK, chain_at, AUTO),
                     "strikes_wider": push_strikes.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
                     "strikes_all": push_strikes.strikes(TK, chain_at, ALL),
-                    "terrain": server.terrain(TK, chain_at),
+                    "terrain": push_terrain.terrain(TK, chain_at),
                     "surface": server.gamma_surface(
                         TK, chain_at, {**AUTO, "cols": None, "expiry": None}
                     ),

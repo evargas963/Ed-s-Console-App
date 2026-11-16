@@ -63,9 +63,10 @@ from fastapi.testclient import TestClient
 import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
+from push import terrain as push_terrain
 from tests.capture_store import store_capture
 
-chain = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+chain =json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 store_capture(
     server.get_db().db_path,
     ticker=chain["ticker"],
@@ -84,7 +85,7 @@ with TestClient(server.app):
             if not server._chains_waiting:
                 break
     tk = server.ticker_storage_key(chain["ticker"])
-    served = server.terrain(tk, time_et.now())
+    served = push_terrain.terrain(tk, time_et.now())
 print(json.dumps([served["call_charm_wall"], served["put_charm_wall"]]))
 """
 

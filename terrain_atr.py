@@ -5,7 +5,7 @@ on TSLA); ATR normalises distance into "can price get there".
 
 Daily, weekly and monthly ATR(14) by Wilder's smoothing (math_volatility.compute_atr), each from
 Schwab's own candles of that length (/pricehistory daily, weekly and monthly, as sent); today's
-daily candle is the one Schwab pushes until its series holds the day (server._atr).
+daily candle is the one Schwab pushes until its series holds the day (push.terrain.atr).
 """
 
 from __future__ import annotations

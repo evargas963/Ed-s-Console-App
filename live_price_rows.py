@@ -19,7 +19,7 @@ from typing import Any
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from numeric_contract import count_text, price_text
+from numeric_contract import change_percent_text, count_text, price_text
 from time_et import age_text, ct_label
 
 SPOT_SOURCE = "streaming_plane"
@@ -96,6 +96,8 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "outage": outage,
         "bid": field("bid"),
         "ask": field("ask"),
+        "bid_text": price_text(field("bid")),
+        "ask_text": price_text(field("ask")),
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
         "mark": field("mark"),  # Schwab MARK
@@ -109,6 +111,9 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         # included) and REGULAR_MARKET_CHANGE_PERCENT
         "chg_pct": field("chg_pct"),
         "chg_pct_regular": field("chg_pct_regular"),
+        # each as the screen shows it, signed with two decimals
+        "chg_pct_text": change_percent_text(field("chg_pct")),
+        "chg_pct_regular_text": change_percent_text(field("chg_pct_regular")),
         "net_change": field("net_change"),
         "open_price": field("open_price"),
         "high_price": field("high_price"),

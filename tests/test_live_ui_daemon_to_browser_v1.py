@@ -164,6 +164,8 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert row["spot_disp"] == "583.41" and row["trade_time_ct"] is not None
         assert row["feed_live"] is True and row["spot_source"] == "streaming_plane"
         assert row["bid"] == pytest.approx(583.40) and row["ask"] == pytest.approx(583.42)
+        # the header's bid × ask as the screen shows them, two decimals
+        assert (row["bid_text"], row["ask_text"]) == ("583.40", "583.42")
         assert row["trade_ts"] == pytest.approx(now, abs=0.001)  # epoch SECONDS
         assert row["trade_age_text"] in ("0s", "1s")
         assert "forming_1m" not in row
@@ -411,6 +413,7 @@ def test_a_page_before_the_first_schwab_quote_reads_no_price_until_one_comes():
         msg, row = await _next_row(ws, "SPY")
         assert msg["type"] == "quotes"
         assert (row["spot"], row["spot_disp"], row["bid"], row["ask"]) == (None, None, None, None)
+        assert (row["bid_text"], row["ask_text"]) == (None, None)  # nothing sent: no text
         bus.publish("quote.SPY", _trade("SPY", 583.41, time_et.now()))
         _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
         assert row["spot_disp"] == "583.41"
