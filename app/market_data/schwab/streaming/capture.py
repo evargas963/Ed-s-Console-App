@@ -78,7 +78,7 @@ from app.options.order_flow import streaming as console_feed
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
 from feed.connection import SERVICES, Connection, held_key
-from feed.schwab_client import SchwabClientState, build_client_from_token, safe_get_quotes
+from feed.schwab_client import SchwabClientState, build_client_from_token, check_ticker
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
 from stream_spine import (
@@ -168,24 +168,6 @@ def watchlist_message(
         "status": status,
         "answer": answer,
     }
-
-
-def check_ticker(client: object, ticker: str) -> tuple[bool, int, object]:
-    """One /quotes request for `ticker`: (Schwab quotes it, its status, its answer as sent).
-
-    A ticker Schwab names in errors.invalidSymbols, or does not quote, or an answer other than
-    200, is not a ticker Schwab answers for.
-    """
-    resp: Any = safe_get_quotes(client, [ticker])
-    try:
-        answer = resp.json()
-    except ValueError:
-        return False, resp.status_code, resp.text
-    return (
-        resp.status_code == 200 and isinstance(answer, dict) and ticker in answer,
-        resp.status_code,
-        answer,
-    )
 
 
 # ---------------------------------------------------------------------------- the option rule
