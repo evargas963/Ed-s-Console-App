@@ -38,7 +38,8 @@ from push import forces as push_forces
 from push import levels as push_levels
 from push import strikes as push_strikes
 from push import tape as push_tape
-from state import bar_store, cross_store, level_store, price_level_store
+from push import terrain as push_terrain
+from state import bar_store, cross_store, level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
 from tests.feed_live_helper import ROUND_SEC, daemon_status
@@ -203,7 +204,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 {
                     "strikes": push_strikes.strikes(tk, at, AUTO),
                     "strikes_wider": push_strikes.strikes(tk, at, {**AUTO, "scope": "wider"}),
-                    "terrain": server.terrain(tk, at),
+                    "terrain": push_terrain.terrain(tk, at),
                     "surface": server.gamma_surface(tk, at, {**AUTO, "cols": None, "expiry": None}),
                     "surface_missing_expiry": server.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": MISSING_EXPIRY}

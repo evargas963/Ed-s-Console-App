@@ -22,6 +22,7 @@ import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
+from push import terrain as push_terrain
 from server import ticker_storage_key
 from state import level_store
 from tests.feed_live_helper import daemon_status
@@ -139,7 +140,7 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
-    t = server.terrain(ticker_storage_key(tk), time_et.now())
+    t = push_terrain.terrain(ticker_storage_key(tk), time_et.now())
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
         assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
@@ -151,7 +152,7 @@ def test_with_no_levels_the_atr_is_absent():
 
     A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
-    t = server.terrain("ZZNOLEVELSATR", time_et.now())
+    t = push_terrain.terrain("ZZNOLEVELSATR", time_et.now())
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 

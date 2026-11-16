@@ -34,6 +34,7 @@ from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import PRICE_HISTORY, ChainSweep, price_history_message
 from push import bars as push_bars
+from push import terrain as push_terrain
 from state import bar_store
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.page_on_socket import pages
@@ -266,7 +267,7 @@ def test_today_s_candle_is_the_one_schwab_pushes():
         pushed(opened)  # the reset to 0 and the prior session's last: no regular trade yet
         early = datetime(2026, 11, 10, 8, 0, tzinfo=ET)
         assert push_bars.todays_candles(tk, early) == [] == push_bars.todays_candles(tk, opened)
-        assert server._atr(tk, opened).daily == _wilder_atr(before)
+        assert push_terrain.atr(tk, opened).daily == _wilder_atr(before)
         pushed(after)
         (today,) = push_bars.todays_candles(tk, after)
         assert (today.open, today.high, today.low, today.close) == (
@@ -276,7 +277,7 @@ def test_today_s_candle_is_the_one_schwab_pushes():
             schwabs["close"],
         )
         assert today.ts == opened.timestamp()
-        assert server._atr(tk, after).daily == _wilder_atr(sent)
+        assert push_terrain.atr(tk, after).daily == _wilder_atr(sent)
         drawn = push_bars.chart_bars(tk, "D", [], after)[-1]
         assert (drawn["o"], drawn["h"], drawn["l"], drawn["c"]) == (
             today.open,
@@ -331,10 +332,10 @@ def test_the_atr_and_the_daily_chart_read_one_candle_for_today():
         series(sent[:-1])
         pushed = dict(sent[-1], low=495)
         assert push_bars.chart_bars(tk, "D", [], after)[-1]["l"] == 495 != sent[-1]["low"]
-        assert server._atr(tk, after).daily == _wilder_atr([*sent[:-1], pushed])
+        assert push_terrain.atr(tk, after).daily == _wilder_atr([*sent[:-1], pushed])
         series(sent)
         assert push_bars.chart_bars(tk, "D", [], after)[-1]["l"] == sent[-1]["low"] == 500.25
-        assert server._atr(tk, after).daily == _wilder_atr(sent)
+        assert push_terrain.atr(tk, after).daily == _wilder_atr(sent)
     finally:
         bar_store._series.pop((tk, "1d"), None)
         lmp._by_ticker.pop(tk, None)
@@ -385,13 +386,13 @@ def test_the_console_takes_schwabs_bars_and_candles_from_the_push_and_computes_t
                 for c in minutes
             ], tk
             daily = HISTORY[(tk, "daily", "1")]["body"]["candles"]
-            assert server._atr(tk, answered).daily == _wilder_atr(daily), tk
+            assert push_terrain.atr(tk, answered).daily == _wilder_atr(daily), tk
         for tk in ("SPY", "AMD"):
-            atr = server._atr(tk, answered)
+            atr = push_terrain.atr(tk, answered)
             weekly, monthly = (HISTORY[(tk, kind, "1")]["body"]["candles"] for kind in _SENT)
             assert atr.weekly == _wilder_atr(weekly), tk
             assert atr.monthly == _wilder_atr(monthly), tk
-        tsla = server._atr("TSLA", answered)
+        tsla = push_terrain.atr("TSLA", answered)
         assert (tsla.weekly, tsla.monthly) == (None, None), "not arrived: no ATR, none made up"
     finally:
         for tk, series in asked:
@@ -532,7 +533,7 @@ def test_a_console_just_started_takes_its_first_price_history_without_loading_a_
 
 def test_before_schwab_sends_the_candles_the_atr_is_absent():
     """No daily candles: each ATR is None. The producer does not attach a sentence."""
-    atr = server._atr("ZZNOCANDLES", datetime(2026, 10, 7, 10, 0, tzinfo=ET))
+    atr = push_terrain.atr("ZZNOCANDLES", datetime(2026, 10, 7, 10, 0, tzinfo=ET))
     assert (atr.daily, atr.weekly, atr.monthly) == (None, None, None)
     assert not hasattr(atr, "daily_reason")
 
