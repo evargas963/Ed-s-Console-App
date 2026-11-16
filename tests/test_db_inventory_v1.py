@@ -31,7 +31,7 @@ def test_every_stream_table_the_writer_creates_is_counted_with_its_columns(tmp_p
     assert set(tables) == set(CREATED)
     assert all(t.rows == 0 for t in tables.values())
     quotes = [c.name for c in tables["stream_quotes_raw"].columns]
-    assert quotes[:13] == [
+    assert quotes == [
         "ts_recv",
         "symbol",
         "bid",
@@ -43,10 +43,10 @@ def test_every_stream_table_the_writer_creates_is_counted_with_its_columns(tmp_p
         "total_volume",
         "quote_time_ms",
         "trade_time_ms",
-        "src",
         "native_json",
+        "schwab_ts",
     ]
-    assert "schwab_ts" in quotes  # added by the writer after the CREATE, still counted
+    assert "src" not in quotes  # one value in every row: dropped (ONE-DB)
     for table, index in RECEIPT_TIME_INDEXES.items():
         name = index.split()[2]
         assert name in tables[table].indexes

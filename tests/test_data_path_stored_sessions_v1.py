@@ -46,8 +46,7 @@ def _record_answers(path: Path) -> int:
     with sqlite3.connect(path) as conn:
         conn.executescript(STREAM_SCHEMA_SQL)
         conn.executemany(
-            "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json,src) "
-            "VALUES(?,?,?,?,'test')",
+            "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json) VALUES(?,?,?,?)",
             rows,
         )
     conn.close()
