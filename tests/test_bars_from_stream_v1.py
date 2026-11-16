@@ -187,5 +187,10 @@ def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute
         "Mon 09/21 09:14 AM CT",
         "Mon 09/21 09:15 AM CT",
     ]
+    # and as the chart's time axis marks it: year, month, day, time of day (Central Time)
+    assert [b["ticks"] for b in body["bars"]] == [
+        ["2026", "Sep", "Sep 21", "09:14"],
+        ["2026", "Sep", "Sep 21", "09:15"],
+    ]
     assert not any("forming" in b for b in body["bars"])
     assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}

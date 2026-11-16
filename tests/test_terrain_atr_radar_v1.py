@@ -44,8 +44,8 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         assert body["tf"] == "1" and len(body["bars"]) == 5
         row = body["bars"][-1]
         # each bar carries its served change (live_price_rows.with_change: the bar change is
-        # served, the page computes nothing)
-        assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct", "time_ct"}
+        # served, the page computes nothing) and its served times (time_et.ct_label, ct_ticks)
+        assert set(row) == {"t", "o", "h", "l", "c", "v", "chg", "chg_pct", "time_ct", "ticks"}
         assert (row["t"], row["c"]) == (rows[-1][0], rows[-1][4])
         ts = [b["t"] for b in body["bars"]]
         assert ts == sorted(ts), "bars must be newest-last (ascending time)"

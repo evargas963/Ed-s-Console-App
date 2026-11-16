@@ -143,6 +143,7 @@ from time_et import (
     age_text,
     auction,
     ct_label,
+    ct_ticks,
     et_date_str_from_ts_utc,
     last_open,
     market_session_date,
@@ -2322,7 +2323,8 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     The page's socket sends it (live_ui, PAGE_PANELS) to every chart, at once and with each new
     bar (BARS_PANELS). [{t,o,h,l,c,v}] epoch-seconds bar starts (chart_bars), over the span of its
     newest `limit` 1-minute bars, from the bars the console holds (_bars_1m): no database, no
-    Schwab call; each bar with its start as the screen shows it (`time_ct`, the chart's readout).
+    Schwab call; each bar with its start as the screen shows it (`time_ct`, the chart's readout
+    and crosshair) and as its time axis marks it (`ticks`, time_et.ct_ticks).
     `last_bar`: the newest completed minute and its label. A `tf` not in
     LEVEL_TIMEFRAMES or a `limit` not a count up to BARS_LIMIT_MAX raises: the socket sends that
     panel's words. `ticker` is the levels' own key.
@@ -2333,7 +2335,10 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     held = [_bar_dict(c) for c in _bars_1m(ticker, limit)]
     shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
     return {
-        "bars": [{**_lpr.with_change(b), "time_ct": ct_label(b["t"])} for b in shown],
+        "bars": [
+            {**_lpr.with_change(b), "time_ct": ct_label(b["t"]), "ticks": ct_ticks(b["t"])}
+            for b in shown
+        ],
         "tf": tf,
         "last_bar": {"t": held[-1]["t"], "label": ct_label(held[-1]["t"])} if held else None,
     }
