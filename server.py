@@ -271,6 +271,22 @@ def _schwab_bar(
     return Candle(start / 1000.0, o, h, lo, c, schwab_count(volume))
 
 
+def _take_open_gap(tk: str, series: str, sent: list[dict[str, Any]]) -> str | None:
+    """Take one of the open-gap record's two answers; the ticker when its record changed.
+
+    Each answer is held until both are in, then the record is computed from the newest of each.
+    """
+    _open_gap_answers[(tk, series)] = sent
+    both = [(tk, s) for s in OPEN_GAP_SERIES if (tk, s) in _open_gap_answers]
+    if len(both) < len(OPEN_GAP_SERIES):
+        return None
+    record = open_gap_record(*(_open_gap_answers[k] for k in both))
+    if tk in _open_gap and _open_gap[tk] == record:
+        return None
+    _open_gap[tk] = record
+    return tk
+
+
 def _write_price_history(msg: dict[str, Any]) -> str | None:
     """One series of a ticker's price history as Schwab's /pricehistory answered it.
 
@@ -282,16 +298,8 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     """
     tk = ticker_storage_key(msg["symbol"])
     sent = msg["answer"]["candles"]
-    if msg["series"] in OPEN_GAP_SERIES:  # the open-gap record's inputs, held until both are in
-        _open_gap_answers[(tk, msg["series"])] = sent
-        both = [(tk, s) for s in OPEN_GAP_SERIES if (tk, s) in _open_gap_answers]
-        if len(both) < len(OPEN_GAP_SERIES):
-            return None
-        record = open_gap_record(*(_open_gap_answers[k] for k in both))
-        if tk in _open_gap and _open_gap[tk] == record:
-            return None
-        _open_gap[tk] = record
-        return tk
+    if msg["series"] in OPEN_GAP_SERIES:
+        return _take_open_gap(tk, msg["series"], sent)
     if msg["series"] not in {*MINUTE_SERIES, *SCHWAB_SERIES.values(), "1w", "1mo"}:
         return None  # a series no screen reads: the daemon records it, the console holds none
     if msg["series"] not in MINUTE_SERIES:
