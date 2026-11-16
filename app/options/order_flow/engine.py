@@ -88,11 +88,15 @@ class WallCandidate(TypedDict):
 
     side: str
     price: float
+    #: its price as the screen shows it (price_text)
+    price_text: str | None
     volume: float
     #: its size as the screen shows it (count_text)
     volume_text: str | None
     #: its size over the median of its side's levels
     median_mult: float
+    #: that ratio as the screen shows it (fixed_text, one decimal)
+    median_mult_text: str | None
 
 
 @dataclass(frozen=True)
