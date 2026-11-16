@@ -46,6 +46,7 @@ import sqlite3
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from itertools import zip_longest
 from pathlib import Path
@@ -720,13 +721,16 @@ async def stop_on_request(stop: asyncio.Event, request: StopRequest) -> None:
 
     This is the one waiter on the request (program_lock.StopRequest, which launch.py stop sets);
     the stop it sets is the one Ctrl+C sets, so everything held is written and the program exits
-    EXIT_STOPPED. It waits on its own thread, STOP_WAIT_SEC at a time, so a stop from anywhere
-    else ends it within that; a request asked twice stops it once.
+    EXIT_STOPPED. It waits STOP_WAIT_SEC at a time on a thread of its own, never one of the
+    loop's shared threads, which the pages' panels and the chain sweep can all hold; a stop from
+    anywhere else ends it within that wait; a request asked twice stops it once.
     """
-    while not stop.is_set():
-        if await asyncio.to_thread(request.wait, STOP_WAIT_SEC):
-            log.info("capture daemon: stop requested (launch.py stop)")
-            stop.set()
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="stop request") as own:
+        while not stop.is_set():
+            if await loop.run_in_executor(own, request.wait, STOP_WAIT_SEC):
+                log.info("capture daemon: stop requested (launch.py stop)")
+                stop.set()
 
 
 #: the window's interrupts: Ctrl+C, and Ctrl+Break where Windows has it
