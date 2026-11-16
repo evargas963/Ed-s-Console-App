@@ -575,7 +575,7 @@ test.describe('Trade Desk renders served values', () => {
     const pin = page.locator('#tdmChart .tvc-pin');
     await expect(pin).toBeVisible();
     await expect(pin).toContainText('Bar change+0.25 (+0.03%)');
-    // its time is the one served with the bar (server.bars' time_ct), not formatted on the page
+    // its time is the one served with the bar (push.bars' time_ct), not formatted on the page
     const shown = await pin.textContent();
     expect(bars.some((b) => shown.includes(b.time_ct))).toBe(true);
     expect(errs).toEqual([]);

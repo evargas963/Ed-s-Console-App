@@ -33,6 +33,7 @@ import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import PRICE_HISTORY, ChainSweep, price_history_message
+from push import bars as push_bars
 from state import bar_store
 from stream_spine import LATEST, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.page_on_socket import pages
@@ -264,10 +265,10 @@ def test_today_s_candle_is_the_one_schwab_pushes():
         series(before)
         pushed(opened)  # the reset to 0 and the prior session's last: no regular trade yet
         early = datetime(2026, 11, 10, 8, 0, tzinfo=ET)
-        assert server._todays_candles(tk, early) == [] == server._todays_candles(tk, opened)
+        assert push_bars.todays_candles(tk, early) == [] == push_bars.todays_candles(tk, opened)
         assert server._atr(tk, opened).daily == _wilder_atr(before)
         pushed(after)
-        (today,) = server._todays_candles(tk, after)
+        (today,) = push_bars.todays_candles(tk, after)
         assert (today.open, today.high, today.low, today.close) == (
             schwabs["open"],
             schwabs["high"],
@@ -276,7 +277,7 @@ def test_today_s_candle_is_the_one_schwab_pushes():
         )
         assert today.ts == opened.timestamp()
         assert server._atr(tk, after).daily == _wilder_atr(sent)
-        drawn = server.chart_bars(tk, "D", [], after)[-1]
+        drawn = push_bars.chart_bars(tk, "D", [], after)[-1]
         assert (drawn["o"], drawn["h"], drawn["l"], drawn["c"]) == (
             today.open,
             today.high,
@@ -284,7 +285,7 @@ def test_today_s_candle_is_the_one_schwab_pushes():
             today.close,
         )
         series(sent)
-        assert server.chart_bars(tk, "D", [], after)[-1] == {
+        assert push_bars.chart_bars(tk, "D", [], after)[-1] == {
             "t": schwabs["datetime"] / 1000,
             "o": schwabs["open"],
             "h": schwabs["high"],
@@ -329,10 +330,10 @@ def test_the_atr_and_the_daily_chart_read_one_candle_for_today():
             lmp.record_from_level_one_equity(tk, q["native"], received_ts=q["ts_recv"])
         series(sent[:-1])
         pushed = dict(sent[-1], low=495)
-        assert server.chart_bars(tk, "D", [], after)[-1]["l"] == 495 != sent[-1]["low"]
+        assert push_bars.chart_bars(tk, "D", [], after)[-1]["l"] == 495 != sent[-1]["low"]
         assert server._atr(tk, after).daily == _wilder_atr([*sent[:-1], pushed])
         series(sent)
-        assert server.chart_bars(tk, "D", [], after)[-1]["l"] == sent[-1]["low"] == 500.25
+        assert push_bars.chart_bars(tk, "D", [], after)[-1]["l"] == sent[-1]["low"] == 500.25
         assert server._atr(tk, after).daily == _wilder_atr(sent)
     finally:
         bar_store._series.pop((tk, "1d"), None)

@@ -158,7 +158,7 @@
   }
 
   // The zones, the levels and the bars at the toolbar's timeframe: the `liquidity:map`,
-  // `levels:liquidity` and `bars:liq` panels (server.liquidity, server.levels, server.bars) the
+  // `levels:liquidity` and `bars:liq` panels (server.liquidity, server.levels, push.bars) the
   // program sends on the page's socket while the map is on, at once and each time one changes;
   // each for the ticker on screen.
   var PANELS = { "liquidity:map": "liquidity", "levels:liquidity": "levels", "bars:liq": "bars" };
