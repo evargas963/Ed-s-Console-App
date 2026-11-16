@@ -27,7 +27,7 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from feed import chain_sweep as cs
 from feed import schwab_client as sc
-from json_blob_codec import decode_json_blob
+from json_blob_codec import decode_json_blob, decode_text_blob
 from option_contract import read_chain
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
@@ -188,6 +188,43 @@ def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab)
         and spot is None
         and reason == "chain for 2026-11-20 returned HTTP 502"
     )
+
+
+def test_every_chains_and_quotes_answer_is_recorded_as_received(tmp_path, schwab):
+    """Schwab's /chains and /quotes answers are recorded byte for byte (operator 2026-11-15).
+
+    The sweep publishes each answer's body as received; the daemon's writer stores it
+    (rest_chains_raw, rest_quotes_raw), and the capture keeps the expiry's /chains answer beside
+    the chain the levels took (chains_answer). Each stored body decodes to the published text
+    exactly, and that text is the stand-in host's answer: its contracts are the chain's.
+    """
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: et_ts("2026-09-30 15:31:57"))
+    assert _rotate(sweep, client) == {"SPY"}
+    answers = [(t, m) for t, m in published if t in ("chainanswer.SPY", "quotesanswer")]
+    writer = CaptureWriter(tmp_path / "stream_capture.db")
+    for topic, msg in answers:
+        writer.insert(topic, msg)
+    with sqlite3.connect(tmp_path / "stream_capture.db") as c:
+        chains = c.execute("SELECT symbol, expiry, status, body FROM rest_chains_raw").fetchall()
+        quotes = c.execute("SELECT status, body FROM rest_quotes_raw").fetchall()
+    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+        (kept,) = c.execute("SELECT chains_answer FROM complete_chain_captures").fetchall()
+    sent = {m["expiry"]: m["body"] for t, m in answers if t == "chainanswer.SPY"}
+    assert [(s, e, st, decode_text_blob(b)) for s, e, st, b in chains] == [
+        ("SPY", e, 200, body) for e, body in sent.items()
+    ]
+    assert [(st, decode_text_blob(b)) for st, b in quotes] == [
+        (m["status"], m["body"]) for t, m in answers if t == "quotesanswer"
+    ] and quotes, "the /quotes answers are recorded"
+    assert decode_text_blob(kept[0]) == sent["2026-11-20"]
+    stored = {c["symbol"] for c in decode_json_blob(_stored_chain(tmp_path))}
+    answered = sc.flatten_chain_contracts(json.loads(sent["2026-11-20"]))
+    assert {c["symbol"] for c in answered} == stored
+
+
+def _stored_chain(tmp_path) -> bytes:
+    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+        return c.execute("SELECT chain_json FROM complete_chain_captures").fetchone()[0]
 
 
 def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tmp_path, schwab):

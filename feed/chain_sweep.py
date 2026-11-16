@@ -935,7 +935,7 @@ class ChainSweep:
                         ts_utc=chain.started,
                         chain_spot=chain.spot,
                         chain_spot_ts=chain.spot_ts,
-                        chains_answer=chain.bodies[expiry],
+                        chains_answer=chain.bodies.get(expiry),  # absent: not recorded
                     )
         except Exception:
             self._written[ticker] = before  # unwritten: the window's next chain, if any, tries

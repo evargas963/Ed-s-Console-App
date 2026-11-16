@@ -469,7 +469,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         conn.execute(
             "CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
             "ts_utc REAL NOT NULL, spot REAL, completeness_basis TEXT NOT NULL, "
-            "chain_json TEXT NOT NULL, chain_spot REAL, chain_spot_ts REAL, "
+            "chain_json TEXT NOT NULL, chain_spot REAL, chain_spot_ts REAL, chains_answer BLOB, "
             "refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
         )
     failures_db = tmp_path / "stream_capture.db"

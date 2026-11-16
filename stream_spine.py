@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS stream_pricehistory_raw (
 CREATE INDEX IF NOT EXISTS idx_sphr_sym_ts ON stream_pricehistory_raw(symbol, series, ts_recv);
 -- Schwab's /chains answers (one expiry each) and /quotes answers, every one the chain sweep asked
 -- for, the body exactly as received, gzip-compressed (json_blob_codec.encode_text_blob), with its
--- HTTP status.
+-- HTTP status; kept five sessions (KEPT_BY_TIME).
 CREATE TABLE IF NOT EXISTS rest_chains_raw (
     ts_recv REAL NOT NULL,
     symbol TEXT NOT NULL,
@@ -710,19 +710,15 @@ _TABLES = {
 HOLD_CAP_BYTES = 2 * 1024**3
 #: spill records written back in one transaction
 SPILL_CHUNK = 5000
-#: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time
-#: (the newest stream_watchlist row always stays: the daemon reads it at its start)
+#: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time:
+#: what Schwab sends again on request (price history), every chain round's answers, and the
+#: daemon's own operational record. Schwab's quotes, books, option quotes, bars, news, market
+#: hours and the watchlist are kept (operator 2026-11-15: "yes stop the delete"; the keep table
+#: in ACTIVE_PROGRAM.md STORE-ENOUGH)
 KEPT_BY_TIME = (
-    ("stream_quotes_raw", "ts_recv"),
-    ("stream_book_raw", "ts_recv"),
-    ("stream_options_quotes_raw", "ts_recv"),
-    ("stream_bars_raw", "ts_recv"),
-    ("stream_news_raw", "ts_recv"),
     ("stream_pricehistory_raw", "ts_recv"),
     ("rest_chains_raw", "ts_recv"),
     ("rest_quotes_raw", "ts_recv"),
-    ("stream_markets_raw", "ts_recv"),
-    ("stream_watchlist", "ts_recv"),
     ("stream_subscriptions", "ts"),
     ("stream_feed_status", "ts"),
     ("stream_write_failures", "ts"),
@@ -1646,7 +1642,7 @@ class CaptureWriter:
     def prune(self, before: float) -> None:
         """Remove every row received before `before` from the tables of KEPT_BY_TIME.
 
-        The newest stream_watchlist row stays. It runs on the writer thread, one part of
+        It runs on the writer thread, one part of
         PRUNE_ROWS at a time between rounds of live writes (each round takes every message
         queued) while nothing is held on disk; a stop before it ends leaves the rest for the
         next one.
@@ -1657,12 +1653,9 @@ class CaptureWriter:
     def _prune_part(self, conn: sqlite3.Connection) -> None:
         """Run the next part of the keep in progress (prune), in one transaction."""
         table, column = self._prune[0]
-        newest = (
-            f" AND rowid < (SELECT MAX(rowid) FROM {table})" if table == "stream_watchlist" else ""
-        )
         removed = conn.execute(
             f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-            f"WHERE {column} < ?{newest} LIMIT ?)",
+            f"WHERE {column} < ? LIMIT ?)",
             (self._prune_before, PRUNE_ROWS),
         ).rowcount
         conn.commit()
