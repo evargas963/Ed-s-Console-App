@@ -589,3 +589,14 @@ def test_every_bar_carries_its_change():
         bar = live_price_rows.with_change({"o": b["open"], "c": b["close"]})
         assert bar["chg"] == pytest.approx(b["close"] - b["open"])
         assert bar["chg_pct"] == pytest.approx((b["close"] - b["open"]) / b["open"] * 100)
+        # as the pinned readout shows it: signed, two decimals, the percent beside it
+        chg, pct = b["close"] - b["open"], (b["close"] - b["open"]) / b["open"] * 100
+        chg_sign, pct_sign = ("+" if chg >= 0 else "-"), ("+" if pct >= 0 else "-")
+        want = f"{chg_sign}{abs(chg):.2f} ({pct_sign}{abs(pct):.2f}%)"
+        assert bar["chg_text"] == want, b
+
+
+def test_a_bar_with_an_open_of_zero_shows_its_change_alone():
+    """A percent of an open of 0 is not a number: the text is the change alone."""
+    bar = live_price_rows.with_change({"o": 0.0, "c": 1.5})
+    assert (bar["chg_pct"], bar["chg_text"]) == (None, "+1.50")
