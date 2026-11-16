@@ -275,8 +275,8 @@ def _take_open_gap(tk: str, series: str, sent: list[dict[str, Any]]) -> None:
     """Take one of the open-gap record's two answers.
 
     Each answer is held until both are in, then the record is computed from the newest of each.
-    A record that changed is pushed to every open page, whatever ticker it shows: the
-    Experimental panel holds every ticker's (no bars or candles changed, so no levels are built).
+    A record that changed is pushed to the pages showing that ticker (no bars or candles changed,
+    so no levels are built).
     """
     _open_gap_answers[(tk, series)] = sent
     both = [(tk, s) for s in OPEN_GAP_SERIES if (tk, s) in _open_gap_answers]
@@ -286,8 +286,7 @@ def _take_open_gap(tk: str, series: str, sent: list[dict[str, Any]]) -> None:
     if tk in _open_gap and _open_gap[tk] == record:
         return
     _open_gap[tk] = record
-    for page_ticker in live_ui.selected(app.state):
-        live_ui.changed(app.state, page_ticker, "experimental")
+    live_ui.changed(app.state, tk, "experimental")
 
 
 def _write_price_history(msg: dict[str, Any]) -> str | None:
@@ -4117,16 +4116,17 @@ def _open_gap_served(tk: str, record: OpenGapRecord) -> dict[str, Any]:
     }
 
 
-def experimental() -> dict[str, Any]:
-    """The Trade Desk's Experimental tab: every ticker's open-gap record, EXPERIMENTAL.
+def experimental(tk: str) -> dict[str, Any]:
+    """The Trade Desk's Experimental tab for the selected ticker: its open-gap record.
 
-    Each ticker whose two Schwab answers have arrived with an open that counts, by ticker; the
-    others are not listed until then.
+    `open_gap` holds it once the ticker's two Schwab answers have arrived with an open that
+    counts, and is empty until then.
     """
+    key = ticker_storage_key(tk)
+    held = [_open_gap[key]] if key in _open_gap else []
     return {
-        "open_gap": [
-            _open_gap_served(tk, r) for tk, r in sorted(_open_gap.items()) if r is not None
-        ],
+        "ticker": key,
+        "open_gap": [_open_gap_served(key, r) for r in held if r is not None],
         "method": (
             "For each open in Schwab's 5-minute bars (about 6½ months back): did the overnight "
             "gap (the last price before the open against the prior session's close) point the "
@@ -4143,7 +4143,7 @@ def experimental() -> dict[str, Any]:
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
 #: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
-    "experimental": lambda _a: experimental(),
+    "experimental": lambda a: experimental(a.ticker),
     "expiries": lambda a: expiries(a.ticker, a.now),
     "vanna": lambda a: strike_bars("vanna_rows", a.ticker, a.now, a.params),
     "charm": lambda a: strike_bars("charm_rows", a.ticker, a.now, a.params),

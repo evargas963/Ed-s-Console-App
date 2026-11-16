@@ -55,15 +55,17 @@ def test_the_console_keeps_the_record_once_both_answers_are_in_and_serves_it_exp
         }
 
     def tsla_rows() -> list:
-        return [r for r in server.experimental()["open_gap"] if r["ticker"] == "TSLA"]
+        return server.experimental("TSLA")["open_gap"]
 
     for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
         del server._open_gap_answers[key]
     server._open_gap.pop("TSLA", None)
     try:
         with pages() as on_socket:
-            # a page showing another ticker: the Experimental panel holds every ticker's record
-            page = on_socket.open("SPY", "experimental")
+            # the tab shows the selected ticker's record (operator 2026-11-15): a page showing
+            # TSLA is told of TSLA's, a page showing SPY is not
+            page = on_socket.open("TSLA", "experimental")
+            other = on_socket.open("SPY", "experimental")
             assert tsla_rows() == []  # absent until both answers arrive
             assert server._write_price_history(answer("5m365", TSLA["extended"])) is None
             assert tsla_rows() == []  # one answer is not the record
@@ -71,9 +73,11 @@ def test_the_console_keeps_the_record_once_both_answers_are_in_and_serves_it_exp
             # no bars or candles are held from either: no ticker's bars changed
             assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
             assert on_socket.told(page, 0.5) == {"experimental"}, "the page is told at once"
+            assert on_socket.told(other) == set(), "a page showing another ticker is not"
             assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
             assert on_socket.told(page, 0.2) == set(), "the same answer again tells nothing"
         assert ("TSLA", "5m365") not in server._series  # their candles are not held as series
+        assert server.experimental("SPY")["ticker"] == "SPY"  # each ticker its own panel
         (served,) = tsla_rows()
     finally:
         for key in [k for k in server._open_gap_answers if k[0] == "TSLA"]:
