@@ -27,12 +27,12 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
-import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import CaptureWriter
 from feed import chain_sweep as cch
 from feed import schwab_client as sc
+from push import verdict as push_verdict
 from stream_spine import HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
@@ -429,7 +429,7 @@ def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
     now = at.timestamp()
     lmp.record_feed_heartbeat(daemon.status(now))
     try:
-        verdict = server.terrain_staleness(computed, "SPY", now=now)
+        verdict = push_verdict.terrain_staleness(computed, "SPY", now=now)
     finally:
         lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
         lmp.record_feed_down()

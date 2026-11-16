@@ -6,9 +6,9 @@ A contract's quote time and book time stay when the feed is down.
 from __future__ import annotations
 
 import live_market_plane as lmp
-import server
 import time_et
 from app.options.order_flow import state as of_state
+from push import contract as push_contract
 
 _SYM = "ZZOPT  261016C00100000"
 _WHEN = 1790380799830  # Fri 09/25 06:59 PM CT
@@ -38,7 +38,7 @@ def test_a_down_feed_keeps_the_contracts_quote_time_and_book_time():
     )
     try:
         lmp.record_feed_down()
-        body = server.options_microstructure(_SYM, time_et.now())
+        body = push_contract.options_microstructure(_SYM, time_et.now())
     finally:
         of_state._LIVE_STATE._top.pop(_SYM, None)
         of_state._LIVE_STATE._book.pop(_SYM, None)

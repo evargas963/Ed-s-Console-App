@@ -11,16 +11,16 @@ from __future__ import annotations
 import pytest
 
 import live_market_plane as lmp
-import server as srv
 from liquidity_models import ZONE_DISPLAY
 from push import levels as push_levels
+from push import liquidity as push_liquidity
 from tests.feed_live_helper import daemon_status
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
 
 def test_a_ticker_with_no_levels_published_gets_no_zones_and_the_reason():
     """Before the bar writer publishes a ticker's levels, the panel says so and draws no zone."""
-    body = srv.liquidity_snapshot("ZZNOLV", FRIDAY)
+    body = push_liquidity.liquidity_snapshot("ZZNOLV", FRIDAY)
     assert (body["available"], body["zones"]) == (False, [])
     assert body["reason"] == push_levels.NO_PRICE_LEVELS_REASON
 
@@ -31,7 +31,7 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
 
     Not a crash, not a fabricated distance, never VWAP standing in for the spot.
     """
-    body = srv.liquidity_snapshot(TK, FRIDAY)
+    body = push_liquidity.liquidity_snapshot(TK, FRIDAY)
     assert body["zones"]
     lows = [z["zone_low"] for z in body["zones"]]
     assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
@@ -55,8 +55,10 @@ def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
     )
     lmp.record_from_level_one_equity(TK, {"LAST_PRICE": last}, received_ts=at)
-    body = srv.liquidity_snapshot(TK, FRIDAY)
-    distances = [srv._distance_to_spot(z["zone_low"], z["zone_high"], last) for z in body["zones"]]
+    body = push_liquidity.liquidity_snapshot(TK, FRIDAY)
+    distances = [
+        push_liquidity._distance_to_spot(z["zone_low"], z["zone_high"], last) for z in body["zones"]
+    ]
     assert distances and distances == sorted(distances)
     z = body["zones"][0]
     first = [s["label"] for s in z["source_levels"]]

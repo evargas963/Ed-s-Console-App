@@ -22,6 +22,7 @@ import server
 from liquidity_models import PlaybookConfig
 from liquidity_value_engine import HOLD_MIN_TOUCHES, bars_from_candles, hold_counts, wilson_interval
 from micro_structure import Candle
+from push import liquidity as push_liquidity
 from state import bar_store
 from tests.feed_live_helper import price_history
 from time_et import ET, session, sessions
@@ -135,7 +136,7 @@ def test_ten_days_are_too_few_touches_to_show_a_rate():
     )
     assert all(by[15].touches < HOLD_MIN_TOUCHES for by in got.values())
     pdh = got["PDH"][15]
-    assert server.hold_text(pdh) == f"- ({pdh.touches} touches)"
+    assert push_liquidity.hold_text(pdh) == f"- ({pdh.touches} touches)"
 
 
 def test_the_wilson_interval():
@@ -153,7 +154,7 @@ def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
         server._write_price_history(
             {"symbol": "SPY", "series": series, "answer": _answer("SPY", series)}
         )
-    rows = server.hold_rates("SPY", EVENING)
+    rows = push_liquidity.hold_rates("SPY", EVENING)
     names = [r["level"] for r in rows]
     assert names[0] == "Prior day high" and "Opening range high" in names
     pdh = hold_counts(
@@ -164,6 +165,6 @@ def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
         config=PlaybookConfig(),
     )["PDH"]
     assert rows[0]["text"] == (
-        server.hold_text(pdh[15]) + " [30 min: " + server.hold_text(pdh[30]) + "]"
+        push_liquidity.hold_text(pdh[15]) + " [30 min: " + push_liquidity.hold_text(pdh[30]) + "]"
     )
-    assert "Osler 2000" in server.HOLD_NOTE and "not a forecast" in server.HOLD_NOTE
+    assert "Osler 2000" in push_liquidity.HOLD_NOTE and "not a forecast" in push_liquidity.HOLD_NOTE
