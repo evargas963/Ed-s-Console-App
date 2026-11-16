@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from math_forces import Forces
 from option_contract import OptionContract
 from terrain_engine import StrikeValue, TerrainSnapshot
 
@@ -42,7 +43,7 @@ class PublishedLevels:
     #: the contracts Schwab listed in the newest chain, each record by its symbol
     contracts: Mapping[str, OptionContract]
     #: read from the stored captures, recomputed only when `captures_key` changes
-    forces: dict[str, Any]
+    forces: Forces
     prior_day: TerrainSnapshot | None
     captures_key: tuple[float | None, str]
 
@@ -59,7 +60,28 @@ class PublishedLevels:
 
 #: ticker (its storage key) -> its levels as last published
 _levels: dict[str, PublishedLevels] = {}
+#: ticker (its storage key) -> why its newest chain is not priced: the daemon's chain fetch failed
+#: with Schwab's answer, or pricing it failed. Cleared by the next chain priced.
+_failures: dict[str, str] = {}
 _lock = threading.Lock()
+
+
+def chain_failed(tk: str, why: str) -> None:
+    """Hold why ticker `tk`'s (its storage key) newest chain is not priced."""
+    with _lock:
+        _failures[tk] = why
+
+
+def chain_priced(tk: str) -> None:
+    """Clear ticker `tk`'s chain failure: its newest chain is priced."""
+    with _lock:
+        _failures.pop(tk, None)
+
+
+def chain_failure(ticker: str) -> str | None:
+    """Return why the ticker's newest chain is not priced, or None while none failed."""
+    with _lock:
+        return _failures.get(ticker_storage_key(ticker))
 
 
 def published_levels(ticker: str) -> PublishedLevels | None:

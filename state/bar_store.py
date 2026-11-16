@@ -10,9 +10,11 @@ them here, never a database (docs/DATA_FLOW.md §2 D6).
 from __future__ import annotations
 
 import threading
+from typing import Any
 
 from instrument_identity import ticker_storage_key
 from micro_structure import Candle
+from open_gap import OpenGapRecord
 
 #: one RTH day of 1-minute bars
 CANDLE_1M_MAX_BARS: int = 390
@@ -27,7 +29,43 @@ _bars: dict[str, list[Candle]] = {}
 #: (ticker, series) -> Schwab's newest answer of that series, oldest first: every series of the
 #: daemon's PRICE_HISTORY but MINUTE_SERIES
 _series: dict[tuple[str, str], list[Candle]] = {}
+#: the series the open-gap record is computed from, in open_gap_record's order: Schwab's 5-minute
+#: bars of the regular session and with extended hours, each asked once a day
+OPEN_GAP_SERIES = ("5m365r", "5m365")
+#: (ticker, series of OPEN_GAP_SERIES) -> Schwab's newest answer of it, as sent
+_open_gap_answers: dict[tuple[str, str], list[dict[str, Any]]] = {}
+#: ticker -> its open-gap record from both answers (None: no open counted)
+_open_gap: dict[str, OpenGapRecord | None] = {}
 _lock = threading.Lock()
+
+
+def take_open_gap_answer(tk: str, series: str, sent: list[dict[str, Any]]) -> bool:
+    """Hold Schwab's newest answer of open-gap `series` for `tk`; True once both are held."""
+    with _lock:
+        _open_gap_answers[(tk, series)] = sent
+        return all((tk, s) in _open_gap_answers for s in OPEN_GAP_SERIES)
+
+
+def open_gap_answers(tk: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return `tk`'s two held open-gap answers, regular session first (take_open_gap_answer)."""
+    regular, extended = OPEN_GAP_SERIES
+    with _lock:
+        return _open_gap_answers[(tk, regular)], _open_gap_answers[(tk, extended)]
+
+
+def hold_open_gap(tk: str, record: OpenGapRecord | None) -> bool:
+    """Hold `tk`'s open-gap record. True when it changed."""
+    with _lock:
+        if tk in _open_gap and _open_gap[tk] == record:
+            return False
+        _open_gap[tk] = record
+    return True
+
+
+def open_gap(tk: str) -> OpenGapRecord | None:
+    """Return `tk`'s open-gap record; None while none is held or no open counted."""
+    with _lock:
+        return _open_gap.get(tk)
 
 
 def keep_bar(tk: str, bar: Candle) -> None:

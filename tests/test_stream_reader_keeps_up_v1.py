@@ -323,7 +323,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                     "held": len(conn.held["LEVELONE_OPTIONS"]),
                     "options": len(daemon.option_order),
                     "levels": level_store.published_levels("SPY") is not None,
-                    "why": server._terrain_refresh_last_error.get("SPY"),
+                    "why": level_store.chain_failure("SPY"),
                 },
             )
             await asyncio.sleep(2 * ofs.HEARTBEAT_SEC)  # the beats that restamp it
