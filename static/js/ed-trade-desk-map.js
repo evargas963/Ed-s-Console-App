@@ -455,7 +455,8 @@
         ? { price: vp.poc, label: "POC est " + levelText("TODAY_POC"), color: P.warn }
         : null,
     );
-    S.chart.setVwap(S.fam.vwap && S.levels ? S.levels.vwap_series : []);
+    var vwap = S.fam.vwap && S.levels && S.levels.vwap_series;
+    S.chart.setVwap(vwap ? vwap : []);
   }
   function paintChartOverlays() {
     if (!S.chart || !S.bars.length) return;

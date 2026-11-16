@@ -32,6 +32,8 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
+from push import chain as push_chain
+from push import levels as push_levels
 from push import strike_rows
 from state import level_store
 from stream_spine import verbatim_msg
@@ -1202,7 +1204,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         book = level_store.published_levels(tk)
         overlaid = book.gamma_surface["stream_overlay_contracts"]
         kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
-        panel = server.chain(
+        panel = push_chain.chain(
             tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
         )
         shown = {row["symbol"]: row.get("totalVolume") for row in panel["contracts"]}
@@ -1481,7 +1483,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     (LAST_PRICE 269.395), taken in by the plane and made the price row by the daemon's own
     function. The matrix stays ranked at the chain's price; its window, its
     spot, its one-day move and each row's distance are the live price's, the move the same two
-    prices the levels panel serves (server.expected_move).
+    prices the levels panel serves (push.levels.expected_move).
     """
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]
@@ -1492,7 +1494,7 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     try:
         publish_capture(tk, CRWD.chain, at.timestamp(), CRWD.spot, at.date().isoformat(), at)
         body = server.confluence_payload(tk, str(CRWD.chain[0]["expirationDate"])[:10], at)
-        levels = {r["id"]: r["price"] for r in server.levels_payload(tk, "1", at)["levels"]}
+        levels = {r["id"]: r["price"] for r in push_levels.levels_payload(tk, "1", at)["levels"]}
     finally:
         _forget(tk)
     moves = {

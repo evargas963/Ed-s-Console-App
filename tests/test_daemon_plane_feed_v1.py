@@ -17,9 +17,9 @@ from pathlib import Path
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import server
 import time_et
 from app.options.order_flow.engine import read_book
+from push import book as push_book
 from stream_spine import book_msg, quote_msg
 from tests.feed_live_helper import RTH_INSTANT, daemon_status
 
@@ -126,7 +126,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
     _reset(tmp_path)
     fx = _push_real_spy_books()
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        body = server.order_flow_microstructure("SPY", svc, time_et.now())
+        body = push_book.order_flow_microstructure("SPY", svc, time_et.now())
         prov = body["provenance"]
         assert (body["venue"], prov["book_source"]) == (svc, svc)
         assert prov["n_bid_levels"] == len(fx[svc]["content"]["BIDS"])
@@ -146,7 +146,7 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     _push_real_spy_books()
 
     def stale(svc):
-        return server.order_flow_microstructure("SPY", svc, RTH_INSTANT)["ages"]["book_stale"]
+        return push_book.order_flow_microstructure("SPY", svc, RTH_INSTANT)["ages"]["book_stale"]
 
     held = {
         "schwab_socket_open": True,

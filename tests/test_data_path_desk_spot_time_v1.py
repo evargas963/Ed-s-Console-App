@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import live_market_plane as lmp
-import server
+from push import levels as push_levels
 from time_et import ET
 
 _SENT = json.loads(
@@ -33,7 +33,7 @@ def test_the_desk_spot_carries_schwabs_trade_time_when_the_feed_is_down():
     lmp._fields_by_ticker.pop("SPY", None)
     lmp.record_from_level_one_equity("SPY", item, received_ts=_SENT["ts_recv"])
     try:
-        body = server.levels_payload("SPY", "1", datetime.fromtimestamp(_SENT["ts_recv"], ET))
+        body = push_levels.levels_payload("SPY", "1", datetime.fromtimestamp(_SENT["ts_recv"], ET))
     finally:
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)

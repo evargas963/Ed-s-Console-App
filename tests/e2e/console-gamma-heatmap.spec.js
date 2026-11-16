@@ -486,7 +486,7 @@ test.describe('Ed Console shell + gamma heatmap', () => {
 
   test('Strike Detail redraws on the program\'s next chain, not just on a new strike selection', async ({ page }) => {
     // induced: the real chain with the volume of the call at the price changed, in its contracts
-    // and its ladder row (server.chain builds both from the same rows)
+    // and its ladder row (push.chain builds both from the same rows)
     // the server serves the volume with its text (numeric_contract.count_text)
     const withVol = (c, vol) => (c && c.symbol === CALL_K.symbol
       ? Object.assign({}, c, { totalVolume: vol, volume_text: vol.toLocaleString('en-US') }) : c);

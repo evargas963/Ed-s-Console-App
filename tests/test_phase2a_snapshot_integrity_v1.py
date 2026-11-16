@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import liquidity_value_engine as LVE
-import server
 from liquidity_value_engine import PlaybookConfig
 from micro_structure import Candle
-from server import materialize_price_level_snapshot
+from state import price_level_store
+from state.price_level_store import materialize_price_level_snapshot
 from tests.conftest import most_recent_trading_day_et
 from time_et import ET, sessions
 
@@ -52,8 +52,8 @@ def _bars(session, high_of_interior: float = 105.0) -> list:
 
 def _fresh():
     """Drop this test ticker's snapshots from the producer's cache: the next one is generation 1."""
-    for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == "ZZRC324"]:
-        del server._MATERIALIZED_SNAPSHOTS[key]
+    for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == "ZZRC324"]:
+        del price_level_store._MATERIALIZED_SNAPSHOTS[key]
 
 
 def _daily(session, bars) -> list:
