@@ -44,7 +44,7 @@ test.describe('ticker / expiry / measure controls', () => {
   });
 
   test('the chart\'s time axis and crosshair read the served labels of SPY\'s real bars', async ({ page }) => {
-    // each bar's marks and crosshair time are served (server.bars: time_et.ct_ticks, ct_label);
+    // each bar's marks and crosshair time are served (push.bars: time_et.ct_ticks, ct_label);
     // the page formats no time
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('.vtab[data-view="chart"]').click();

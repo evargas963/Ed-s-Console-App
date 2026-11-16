@@ -17,6 +17,7 @@ import app.options.order_flow.streaming as ofs
 import server
 import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
+from push import bars as push_bars
 from state import bar_store
 from stream_spine import bar_msg
 from tests.feed_live_helper import price_history
@@ -191,7 +192,7 @@ def test_the_price_history_is_taken_promptly_and_exactly_while_options_are_price
 def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute():
     for m in (0, 1):
         server._write_streamed_bar(_bar(T0 + 60 * m))
-    body = server.bars(TK, T0 + 120.0, {"tf": "1", "limit": 1500})
+    body = push_bars.bars(TK, T0 + 120.0, {"tf": "1", "limit": 1500})
     assert [b["t"] for b in body["bars"]] == [T0, T0 + 60]
     # each bar's start as the chart's readout shows it, served
     assert [b["time_ct"] for b in body["bars"]] == [
