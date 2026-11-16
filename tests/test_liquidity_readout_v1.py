@@ -1,6 +1,6 @@
 """The Desk Liquidity card's order-imbalance readout, on Schwab's real books.
 
-The readout is engine.book_readout, engine.readout_card and server.liquidity_readout.
+The readout is engine.book_readout, engine.readout_card and push.book.liquidity_readout.
 
 Books: SPY's NYSE_BOOK and NASDAQ_BOOK as sent on 2026-09-25 at 10:30 ET, one of each
 (tests/fixtures/real_spy_nyse_nasdaq_books.json), and every SPY NYSE_BOOK and NASDAQ_BOOK message
@@ -31,10 +31,10 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
-import server
 from app.options.order_flow import engine as e
 from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
+from push import book as push_book
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import daemon_status
@@ -115,7 +115,7 @@ def build_readout_payload(
             lmp.record_feed_heartbeat(daemon_status(now, schwab_socket_open=True, held=held_after))
         if feed_down:
             lmp.record_feed_down()
-        return json.loads(json.dumps(server.order_flow_microstructure("SPY", "NYSE_BOOK", now)))
+        return json.loads(json.dumps(push_book.order_flow_microstructure("SPY", "NYSE_BOOK", now)))
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("SPY", None)
@@ -373,7 +373,7 @@ def _served(readout: dict) -> dict:
     history.LEAN.forget("SPY")
     try:
         history.LEAN.record("SPY", _END - 1, readout)
-        return server.liquidity_readout("SPY", _END)["venues"]
+        return push_book.liquidity_readout("SPY", _END)["venues"]
     finally:
         history.LEAN.forget("SPY")
 

@@ -34,6 +34,7 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from push import bars as push_bars
+from push import book as push_book
 from push import forces as push_forces
 from push import levels as push_levels
 from push import strikes as push_strikes
@@ -234,7 +235,9 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         else {}
                     ),
                     "chain": server.chain(tk, at, {"expiry": None}),
-                    "book": {venue: server.book(tk, at, {"venue": venue}) for venue in real.venues},
+                    "book": {
+                        venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
+                    },
                     "liquidity": server.liquidity_snapshot(tk, now),
                     "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)

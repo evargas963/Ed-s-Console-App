@@ -380,7 +380,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
         return {
             "row": row,
             "spot": server.resolve_spot("SPY", now=now),
-            "equity_book": server.order_flow_microstructure("SPY", "NYSE_BOOK", now),
+            "equity_book": push_book.order_flow_microstructure("SPY", "NYSE_BOOK", now),
             "option_book": live_payload.options_live_payload(_CONTRACT, now),
         }  # a TSLA option
     finally:

@@ -378,7 +378,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
             "NOT LIVE",
             "Schwab marks $SPX Closed",
         )
-        book = server.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
+        book = push_book.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
         assert (book["top_feed_label"], book["top_outage"]) == (
             "NOT LIVE",
             "Schwab marks $SPX Closed",

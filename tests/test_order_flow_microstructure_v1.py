@@ -16,10 +16,10 @@ import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import server
 from app.options.order_flow.engine import OrderFlowEngine
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState
+from push import book as push_book
 from stream_spine import quote_msg, verbatim_msg
 from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_live
 
@@ -657,7 +657,7 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
             },
             received_ts=now,
         )
-        body = server.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
+        body = push_book.order_flow_microstructure("ZZTB", "NYSE_BOOK", now)
         top = body["top_of_book"]
         assert (top["bid_size"], top["ask_size"]) == (3, 5) and body["top_outage"] is None
         # the equity's MARK is served as the price row holds it; no mid is computed beside it
