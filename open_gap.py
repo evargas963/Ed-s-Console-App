@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-from micro_structure import Candle
+from calc.micro_structure import Candle
 from time_et import ET, Session
 
 #: the 95% interval's z

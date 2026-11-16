@@ -6,7 +6,7 @@ math_exposure_core.compute_exposures_by_strike. Induced (named): fields taken ou
 contracts, as Schwab leaves a field out.
 """
 
-from math_levels import compute_max_pain
+from calc.math_levels import compute_max_pain
 from tests.real_chains import CRWD, crwd_exposures
 
 

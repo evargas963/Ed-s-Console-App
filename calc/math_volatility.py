@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from itertools import pairwise
 
-from micro_structure import Candle
+from calc.micro_structure import Candle
 
 # ── ATR (Average True Range) ────────────────────────────────────────────────
 

@@ -2,8 +2,8 @@
 
 OPERATOR CONCERN (confirmed): a chain covering only ±5% was labeled TRUSTED even though the
 console's own convergence study (tools/study_flip_span_convergence_v1.py, quoted in
-math_levels.GAMMA_FLIP_MIN_SPAN_PCT's provenance) measured the flip error at 1.38% of spot there —
-~10x the 0.117% at ±10%, and concluded "0.05 is measurably INSUFFICIENT".
+calc.math_levels.GAMMA_FLIP_MIN_SPAN_PCT's provenance) measured the flip error at 1.38% of spot
+there — ~10x the 0.117% at ±10%, and concluded "0.05 is measurably INSUFFICIENT".
 
 ROOT CAUSE: one constant did double duty — the chain-FETCH width (a cost/latency decision) and the
 flip-LEVEL trust verdict. Only the latter is refuted by the study.
@@ -28,12 +28,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from calc.terrain_read import (
-    REGIME_LONG_GAMMA,
-    REGIME_UNAVAILABLE,
-    build_terrain_read,
-)
-from math_levels import (
+from calc.math_levels import (
     GAMMA_FLIP_LEVEL_APPROX,
     GAMMA_FLIP_MIN_SPAN_PCT,
     GAMMA_FLIP_NARROW,
@@ -42,6 +37,11 @@ from math_levels import (
     compute_gamma_flip_v2,
     compute_gamma_profile,
     contract_inputs,
+)
+from calc.terrain_read import (
+    REGIME_LONG_GAMMA,
+    REGIME_UNAVAILABLE,
+    build_terrain_read,
 )
 from option_contract import read_chain
 from time_et import EQUITY_OPTIONS, ET, sessions

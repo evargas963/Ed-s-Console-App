@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import collections
 
+from calc.math_levels import compute_max_pain
 from math_exposure_core import key_level_strikes_with_oi
-from math_levels import compute_max_pain
 from tests.real_chains import CRWD, crwd_exposures
 
 

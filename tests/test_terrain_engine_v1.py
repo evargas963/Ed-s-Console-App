@@ -13,7 +13,7 @@ import json
 
 import pytest
 
-from math_levels import GAMMA_FLIP_TRUSTED
+from calc.math_levels import GAMMA_FLIP_TRUSTED
 from option_contract import read_chain, read_contract
 from terrain_engine import (
     TERRAIN_SCHEMA_VERSION,

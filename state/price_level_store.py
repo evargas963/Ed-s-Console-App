@@ -10,6 +10,7 @@ import threading
 from datetime import date, datetime
 
 from calc.liquidity_models import PlaybookConfig
+from calc.micro_structure import Candle
 from instrument_identity import ticker_storage_key
 from liquidity_value_engine import (
     Bar,
@@ -18,7 +19,6 @@ from liquidity_value_engine import (
     prior_session,
     snapshot_input_fingerprint,
 )
-from micro_structure import Candle
 from time_et import market_session_date, sessions
 
 #: (ticker, session_date_iso) -> the ONE published price-level snapshot for its current bar input

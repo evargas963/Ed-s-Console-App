@@ -53,9 +53,7 @@ source_modules = [
     "head.calc",
     "head.terrain_engine",
     "head.math_exposure_core",
-    "head.math_levels",
     "head.liquidity_value_engine",
-    "head.micro_structure",
     "head.app.options.order_flow.engine",
 ]
 forbidden_modules = [

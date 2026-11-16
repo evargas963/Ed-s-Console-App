@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from calc.micro_structure import Candle
 from liquidity_value_engine import (
     PlaybookConfig,
     bars_from_candles,
@@ -23,7 +24,6 @@ from liquidity_value_engine import (
     build_premarket_snapshot,
     build_price_level_snapshot,
 )
-from micro_structure import Candle
 from tests.conftest import most_recent_trading_day_et
 from time_et import ET, sessions
 

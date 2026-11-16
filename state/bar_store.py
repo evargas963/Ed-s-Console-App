@@ -12,8 +12,8 @@ from __future__ import annotations
 import threading
 from typing import Any
 
+from calc.micro_structure import Candle
 from instrument_identity import ticker_storage_key
-from micro_structure import Candle
 from open_gap import OpenGapRecord
 
 #: one RTH day of 1-minute bars

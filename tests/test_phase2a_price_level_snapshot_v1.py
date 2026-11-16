@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import server as srv
+from calc.micro_structure import Candle
 from liquidity_value_engine import (
     PHASE2A_LEVEL_IDS,
     bars_from_candles,
@@ -18,7 +19,6 @@ from liquidity_value_engine import (
     compute_session_vwap_series,
     prior_session,
 )
-from micro_structure import Candle
 from push import levels as push_levels
 from push import liquidity as push_liquidity
 from server import _schwab_bar

@@ -12,7 +12,7 @@ from typing import Any
 
 import live_market_plane as lmp
 import live_price_rows as _lpr  # with_change: the bar-change computation
-from micro_structure import Candle
+from calc.micro_structure import Candle
 from numeric_contract import count_text, price_text
 from push.asked import tf_asked
 from state import bar_store

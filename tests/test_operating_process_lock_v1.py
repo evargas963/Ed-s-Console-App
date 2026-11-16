@@ -131,7 +131,7 @@ def test_reset_guard_blocks_destructive_git_on_product():
     for cmd in (
         "git restore -- static/chart.html",
         "git checkout -- server.py",
-        "git restore -- math_levels.py",
+        "git restore -- calc/math_levels.py",
         "git checkout -- math_exposure_core.py",
         "git clean -fd static/",
         "git reset --hard",

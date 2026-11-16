@@ -17,6 +17,7 @@ from calc.liquidity_models import (
     ZoneType,
     volume_profile,
 )
+from calc.micro_structure import Candle
 from liquidity_value_engine import (
     bars_from_candles,
     build_premarket_snapshot,
@@ -24,7 +25,6 @@ from liquidity_value_engine import (
     cluster_price_levels_into_zones,
     get_overnight_levels,
 )
-from micro_structure import Candle
 from time_et import ET, sessions
 
 

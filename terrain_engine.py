@@ -15,6 +15,18 @@ from datetime import datetime
 from typing import Any, NamedTuple, TypedDict
 
 from calc.confluence_composite import iv_by_strike
+from calc.math_levels import (
+    CharmBucket,
+    compute_charm_by_strike,
+    compute_gamma_flip_v2,
+    compute_gamma_profile,
+    compute_gamma_support_levels,
+    compute_max_pain,
+    contract_inputs,
+    merge_charm_maps,
+    pick_charm_wall_strikes,
+    repriced_to_close,
+)
 from calc.terrain_read import (
     LEVEL_ABOVE,
     LEVEL_BELOW,
@@ -42,18 +54,6 @@ from math_exposure_core import (
     schwab_iv_to_sigma,
     strike_total_oi,
     strike_total_volume,
-)
-from math_levels import (
-    CharmBucket,
-    compute_charm_by_strike,
-    compute_gamma_flip_v2,
-    compute_gamma_profile,
-    compute_gamma_support_levels,
-    compute_max_pain,
-    contract_inputs,
-    merge_charm_maps,
-    pick_charm_wall_strikes,
-    repriced_to_close,
 )
 from numeric_contract import (
     count_text,
@@ -866,7 +866,7 @@ def same_day_levels(
     exposure books (`books`, from Schwab's gamma and delta as sent), its gamma profile and its
     charm map (`charm_by_expiry`). With none listed today Schwab
     sends no Greek at today's close, so the next listed expiry is priced as if it expired at
-    today's option close (math_levels.repriced_to_close) and read the same way. Absent when the
+    today's option close (calc.math_levels.repriced_to_close) and read the same way. Absent when the
     chain lists no expiry from today on. A later expiry's are absent too when `now` is past
     today's close (a chain is valued at that close, time_et.valuation_instant, so they stand
     there) or no option window is held for today.

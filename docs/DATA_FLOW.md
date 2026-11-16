@@ -1149,7 +1149,7 @@ behavior (AGENTS.md).
     read as the book holds it: Schwab's gamma and delta as sent, its flip, GSF and GRC from its
     gamma profile, its charm walls from its charm map. With none listed today, the next listed
     expiry keeps its open interest and implied volatility, and its gamma and delta are rebuilt as
-    if it expired at today's option close (`math_levels.repriced_to_close`): Black-Scholes-Merton
+    if it expired at today's option close (`calc.math_levels.repriced_to_close`): Black-Scholes-Merton
     with the chain's own rate and dividend yield as sent (`interestRate`, `dividendYield`; never
     the stock stream's Dividend Yield, another field), at the time every other greek uses
     (`time_to_expiry_years`, including its 10-minute floor) from the valuation instant to that
@@ -1158,7 +1158,7 @@ behavior (AGENTS.md).
     strike's total unknown, as in the whole book; the other side's known value still ranks
     (operator 2026-10-31: "you're guide is how would a financial banking app work"). Charm follows
     the same rule, in both books, and a strike whose contracts all have open interest 0 is 0 on
-    the charm map (`math_levels.compute_charm_by_strike`, its one producer; operator 2026-11-11:
+    the charm map (`calc.math_levels.compute_charm_by_strike`, its one producer; operator 2026-11-11:
     "Yes, move it"). The close is the regular window Schwab's /markets sent: the
     index window for an index it names with "$" and for every symbol on the exchanges' 4:15 p.m.
     ET list, the equity-option window for every other ticker (the exchanges keep designated ETF

@@ -42,6 +42,8 @@ from app.options.order_flow.streaming import (
 )
 from calc.liquidity_models import PlaybookConfig
 from calc.math_forces import Forces, forces_absent
+from calc.math_levels import compute_charm_by_strike
+from calc.micro_structure import Candle
 from calc.terrain_read import crossed
 from calibration.complete_chain_capture import (
     CAPTURE_BASIS,
@@ -64,8 +66,6 @@ from math_exposure_core import (
     strike_total_oi,
     strike_volume_legs,
 )
-from math_levels import compute_charm_by_strike
-from micro_structure import Candle
 from numeric_contract import (
     compact_text,
     count_text,

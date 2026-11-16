@@ -138,7 +138,7 @@ def bsm_gamma_delta(
 
     Hull, Options, Futures and Other Derivatives, ch. 19, the rate r and dividend yield q as
     decimals: gamma = e^(-qT) * phi(d1) / (S * sigma * sqrt(T)), the gamma the profile sums
-    (math_levels._gamma_profile_totals); delta = e^(-qT) * N(d1) for a call and
+    (calc.math_levels._gamma_profile_totals); delta = e^(-qT) * N(d1) for a call and
     e^(-qT) * (N(d1) - 1) for a put, negative as Schwab's is.
     """
     d1, vt = d1_vt(spot, strike, t_years, sigma, r - q)
@@ -495,7 +495,7 @@ def compute_exposures_by_strike(
             float,
         )
         sigma = iv / 100.0  # schwab_iv_to_sigma: 0 or less is no sigma
-        # the chain's own rate and dividend yield, percents as sent (math_levels._profile_row)
+        # the chain's own rate and dividend yield, percents as sent (calc.math_levels._profile_row)
         vanna = bs_vanna_array(spt, strike, years, sigma, rate / 100.0, dividend / 100.0)
         terms.update(
             dex_dollars=delta * oi * mult * spt,

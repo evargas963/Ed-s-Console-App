@@ -20,8 +20,8 @@ import pytest
 
 import server
 from calc.liquidity_models import PlaybookConfig
+from calc.micro_structure import Candle
 from liquidity_value_engine import HOLD_MIN_TOUCHES, bars_from_candles, hold_counts, wilson_interval
-from micro_structure import Candle
 from push import liquidity as push_liquidity
 from state import bar_store
 from tests.feed_live_helper import price_history

@@ -33,7 +33,7 @@ def same_day_note(snap: TerrainSnapshot) -> str | None:
 
     None when they are today's own expiry as Schwab sent it (or there are none); with no expiry
     listed today, they are the next one re-priced to today's close (terrain_engine.same_day_levels,
-    math_levels.repriced_to_close), and the note says so.
+    calc.math_levels.repriced_to_close), and the note says so.
     """
     if snap.same_day_repriced_from is None:
         return None

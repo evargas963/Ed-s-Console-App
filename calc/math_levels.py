@@ -1,5 +1,4 @@
-"""
-math_levels.py: chartable key-level engine.
+"""Chartable key-level engine.
 
 Walls, pins, inflections, support/resistance derived from options exposure structure.
 """
