@@ -135,7 +135,9 @@ def terrain_strikes_payload(
             for v in (r.value, r.prior)
             if v is not None
         ]
-        both += [windows[sc][1]["max_abs"]] if windows[sc][1]["max_abs"] is not None else []
+        drawn_max = windows[sc][1]["max_abs"]
+        if drawn_max is not None:
+            both.append(drawn_max)
         windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
     return {
         "ticker": tk,
