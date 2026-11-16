@@ -49,7 +49,7 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         # served, the page computes nothing), its served times (time_et.ct_label, ct_ticks) and
         # its volume as the screen shows it
         assert set(row) == {
-            *("t", "o", "h", "l", "c", "v", "chg", "chg_pct"),
+            *("t", "o", "h", "l", "c", "v", "chg", "chg_pct", "chg_text"),
             *("time_ct", "ticks", "v_text"),
         }
         assert row["v_text"] == count_text(row["v"])

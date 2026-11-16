@@ -563,7 +563,8 @@ test.describe('Trade Desk renders served values', () => {
     await intercept(page);
     // induced: SPY's last 60 real 5-minute bars, each with its served change set to 0.25, so a
     // click lands on one whose change is known
-    const bars = BARS.bars.slice(-60).map((b) => Object.assign({}, b, { chg: 0.25, chg_pct: 0.0325 }));
+    const bars = BARS.bars.slice(-60).map((b) => Object.assign({}, b,
+      { chg: 0.25, chg_pct: 0.0325, chg_text: '+0.25 (+0.03%)' }));   // as live_price_rows serves it
     deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: bars }));
     await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk'); localStorage.setItem('ed_sub', 'desk'); });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
