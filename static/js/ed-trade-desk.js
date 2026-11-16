@@ -713,6 +713,102 @@
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "experimental";
   }
+  // the served direction as its color: up, down, or none (a value not sent)
+  function dir(up) {
+    return up === true ? "xp-up" : up === false ? "xp-down" : "";
+  }
+  function edge(up) {
+    return up === true ? "up" : up === false ? "down" : "";
+  }
+  function todayCard(t) {
+    return (
+      '<div class="xp-card ' +
+      edge(t.gap_up) +
+      '"><div class="xp-lab">' +
+      esc(t.label) +
+      '</div><div class="xp-big ' +
+      dir(t.gap_up) +
+      '">' +
+      esc(t.gap_text) +
+      '</div><div class="xp-sub">' +
+      esc(t.when_text) +
+      "</div></div>"
+    );
+  }
+  function followedCard(m, others) {
+    return (
+      '<div class="xp-card accent"><div class="xp-lab">' +
+      esc(m.title) +
+      '</div><div><span class="xp-big">' +
+      esc(m.share_text) +
+      '</span><span class="xp-count">' +
+      esc(m.count_text) +
+      '</span></div><div class="xp-bar"><div class="xp-band" style="left:' +
+      m.band_left +
+      "%;width:" +
+      m.band_width +
+      '%"></div><div class="xp-half"></div><div class="xp-mark" style="left:' +
+      m.mark +
+      '%"></div></div><div class="xp-scale"><span>' +
+      esc(m.range_text) +
+      "</span><span>coin flip at 50%</span></div>" +
+      others
+        .map(function (o) {
+          return '<div class="xp-sub" style="margin-top:8px">' + esc(o.line) + "</div>";
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+  function resultRow(r) {
+    return (
+      '<div class="xp-card ' +
+      edge(r.called) +
+      ' xp-result"><span class="xp-lab">' +
+      esc(r.label) +
+      '</span><span class="xp-big ' +
+      dir(r.five_up) +
+      '">' +
+      esc(r.five_text) +
+      '</span><span class="' +
+      dir(r.called) +
+      '">' +
+      esc(r.called_text) +
+      "</span></div>"
+    );
+  }
+  function lastTable(rec) {
+    return (
+      '<div style="margin-top:14px"><div class="xp-lab">' +
+      esc(rec.last_title) +
+      '</div><table class="xp-last"><tr><th>Day</th><th>Gap</th><th>First 5 min</th>' +
+      '<th class="r">Called</th></tr>' +
+      rec.last
+        .map(function (o) {
+          return (
+            "<tr><td>" +
+            esc(o.day_text) +
+            '</td><td class="' +
+            dir(o.gap_up) +
+            '">' +
+            esc(o.gap_text) +
+            '</td><td class="' +
+            dir(o.five_up) +
+            '">' +
+            esc(o.five_text) +
+            '</td><td class="r ' +
+            dir(o.called) +
+            '">' +
+            (o.called ? "✓" : "✗") +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      '</table></div><div class="xp-foot">' +
+      esc(rec.footer) +
+      "</div>"
+    );
+  }
   function draw(d) {
     var h = document.getElementById("xpBody");
     if (!h) return;
@@ -720,43 +816,22 @@
       window.EdShell.placeholder(h, "the Experimental panel was not produced: " + d.failed);
       return;
     }
-    // Right Now's own card: the share of opens the gap called as its hero, the edge green when
-    // the whole 95% range is above a coin flip
-    var card = d.open_gap
-      .map(function (r) {
-        return (
-          '<div class="td-stage ' +
-          (r.above_half ? "td-accent-green" : "td-accent-amber") +
-          '"><div class="td-stage-h"><span class="td-stage-title">Open gap</span></div>' +
-          '<div class="td-hero"><span class="' +
-          (r.above_half ? "pos" : "") +
-          '">' +
-          esc(r.share_text) +
-          '</span><span class="unit"> of opens called</span></div>' +
-          '<div class="fl-row"><span class="k">Opens the gap called</span><span class="v">' +
-          esc(r.count_text) +
-          "</span></div>" +
-          '<div class="fl-row"><span class="k">95% range</span><span class="v">' +
-          esc(r.range_text) +
-          "</span></div>" +
-          '<div class="fl-row"><span class="k">Days</span><span class="v">' +
-          esc(r.span_text) +
-          "</span></div></div>"
-        );
-      })
-      .join("");
+    // the approved mock-up: today's gap, how that direction was followed, today's result, the
+    // last 10 opens
     h.innerHTML =
-      '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Experimental</span>' +
-      '<span class="fl-sym">' +
+      '<div class="xp-view"><div class="xp-head"><span class="xp-sym">' +
       esc(d.ticker) +
-      '</span><span class="fl-meta">did the overnight gap point the way the first 5 minutes ' +
-      "went?</span></div></div>" +
-      '<div class="td-grid">' +
-      card +
+      '</span><span class="xp-lab">Open gap</span></div><div class="xp-top">' +
+      todayCard(d.today) +
+      d.records
+        .map(function (rec) {
+          return followedCard(rec.main, rec.others);
+        })
+        .join("") +
       "</div>" +
-      '<div class="fl-row" style="margin-top:14px;"><span class="k">' +
-      esc(d.method) +
-      "</span></div>";
+      d.today.results.map(resultRow).join("") +
+      d.records.map(lastTable).join("") +
+      "</div>";
   }
   document.addEventListener("ed:panel", function (e) {
     // the selected ticker's only: one asked before a switch is not drawn
