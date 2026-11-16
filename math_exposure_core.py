@@ -11,7 +11,7 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import numpy as np
 
@@ -22,8 +22,83 @@ from time_et import Session, time_to_expiry_years
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-#: one strike's fields, by name: a sum, a count or the `dollarized` flag; None is not known
-type Bucket = dict[str, float | None]
+
+class Bucket(TypedDict):
+    """One strike's exposure book: each leg's sums, the counts of what was not reported, the
+    net fields (_finish_bucket) and the `dollarized` flag. None is not known: a sum a contract's
+    unreported value enters (open interest, volume), or a dollar field or vanna built without
+    spot. A gamma, delta or open-interest-times-multiplier sum is always a number (a term not
+    known adds nothing and is counted unreported)."""
+
+    oi_unreported: int
+    volume_unreported: int
+    call_gamma_unreported: int
+    call_delta_unreported: int
+    call_vanna_unreported: int
+    call_oi_mult_unreported: int
+    put_gamma_unreported: int
+    put_delta_unreported: int
+    put_vanna_unreported: int
+    put_oi_mult_unreported: int
+    dollarized: bool
+    call_oi: float | None
+    put_oi: float | None
+    call_oi_mult: float
+    put_oi_mult: float
+    call_gamma: float
+    put_gamma: float
+    call_vanna: float | None
+    put_vanna: float | None
+    call_delta: float
+    put_delta: float
+    net_gamma: float
+    net_delta: float
+    call_dex_dollars: float | None
+    put_dex_dollars: float | None
+    net_dex_dollars: float | None
+    call_gex_1pct: float | None
+    put_gex_1pct: float | None
+    net_gex_1pct: float | None
+    call_volume: float | None
+    put_volume: float | None
+    net_vanna: float | None
+
+
+#: a bucket field that holds a number (every field but the counts and the flag)
+type BucketField = Literal[
+    "call_oi",
+    "put_oi",
+    "call_oi_mult",
+    "put_oi_mult",
+    "call_gamma",
+    "put_gamma",
+    "call_vanna",
+    "put_vanna",
+    "call_delta",
+    "put_delta",
+    "net_gamma",
+    "net_delta",
+    "call_dex_dollars",
+    "put_dex_dollars",
+    "net_dex_dollars",
+    "call_gex_1pct",
+    "put_gex_1pct",
+    "net_gex_1pct",
+    "call_volume",
+    "put_volume",
+    "net_vanna",
+]
+#: a count of a leg's contracts whose term was not reported
+type UnreportedField = Literal[
+    "call_gamma_unreported",
+    "call_delta_unreported",
+    "call_vanna_unreported",
+    "call_oi_mult_unreported",
+    "put_gamma_unreported",
+    "put_delta_unreported",
+    "put_vanna_unreported",
+    "put_oi_mult_unreported",
+]
 
 # ── Black-Scholes Greeks per share: the one place their formulas live ──
 
@@ -207,36 +282,41 @@ def book_net_gex(exposures: dict[float, Bucket]) -> float | None:
 #: Bucket fields priced from Schwab's gamma / delta / volatility -> the counts of contracts on the
 #: field's legs whose term is not known (see compute_exposures_by_strike). A leg with one has no
 #: value for the field; every other sum is Schwab's inputs computed, 0 included.
-_GREEK_FIELD_UNREPORTED = {
-    f"{leg}_{field}": tuple(
-        f"{s}_{greek}_unreported" for s in (("call", "put") if leg == "net" else (leg,))
-    )
-    for greek, fields in (
-        ("gamma", ("gamma", "gex_1pct")),
-        ("delta", ("delta", "dex_dollars")),
-        ("vanna", ("vanna",)),
-        ("oi_mult", ("oi_mult",)),
-    )
-    for field in fields
-    for leg in ("call", "put", "net")
+_GREEK_FIELD_UNREPORTED: dict[BucketField, tuple[UnreportedField, ...]] = {
+    "call_gamma": ("call_gamma_unreported",),
+    "put_gamma": ("put_gamma_unreported",),
+    "net_gamma": ("call_gamma_unreported", "put_gamma_unreported"),
+    "call_gex_1pct": ("call_gamma_unreported",),
+    "put_gex_1pct": ("put_gamma_unreported",),
+    "net_gex_1pct": ("call_gamma_unreported", "put_gamma_unreported"),
+    "call_delta": ("call_delta_unreported",),
+    "put_delta": ("put_delta_unreported",),
+    "net_delta": ("call_delta_unreported", "put_delta_unreported"),
+    "call_dex_dollars": ("call_delta_unreported",),
+    "put_dex_dollars": ("put_delta_unreported",),
+    "net_dex_dollars": ("call_delta_unreported", "put_delta_unreported"),
+    "call_vanna": ("call_vanna_unreported",),
+    "put_vanna": ("put_vanna_unreported",),
+    "net_vanna": ("call_vanna_unreported", "put_vanna_unreported"),
+    "call_oi_mult": ("call_oi_mult_unreported",),
+    "put_oi_mult": ("put_oi_mult_unreported",),
 }
 
 
-def bucket_metric(bucket: Bucket, key: str) -> float | None:
+def bucket_metric(bucket: Bucket, key: BucketField) -> float | None:
     """One exposure-bucket field, or None when it is not known.
 
     Not known: absent, not finite, or a Greek field on a leg where a contract's term is not known
     (see _GREEK_FIELD_UNREPORTED).
     """
-    if not isinstance(bucket, dict) or key not in bucket:
+    if key not in bucket:
         return None
-    for u in _GREEK_FIELD_UNREPORTED[key] if key in _GREEK_FIELD_UNREPORTED else ():
-        if bucket.get(u):
-            return None
+    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED.get(key, ())):
+        return None
     return float_finite_or_none(bucket[key])
 
 
-def bucket_metric_abs(bucket: Bucket, key: str) -> float | None:
+def bucket_metric_abs(bucket: Bucket, key: BucketField) -> float | None:
     v = bucket_metric(bucket, key)
     return abs(v) if v is not None else None
 
@@ -270,11 +350,14 @@ def _empty_bucket(dollarized: bool) -> Bucket:
         # Contracts on each leg whose gamma / delta / vanna term is not known: openInterest or
         # multiplier not reported, or open interest above 0 with no Greek (Schwab sent -999 or
         # none). That leg's sum of it is not known; a contract with open interest 0 adds 0.
-        **{
-            f"{s}_{g}_unreported": 0
-            for s in ("call", "put")
-            for g in ("gamma", "delta", "vanna", "oi_mult")
-        },
+        "call_gamma_unreported": 0,
+        "call_delta_unreported": 0,
+        "call_vanna_unreported": 0,
+        "call_oi_mult_unreported": 0,
+        "put_gamma_unreported": 0,
+        "put_delta_unreported": 0,
+        "put_vanna_unreported": 0,
+        "put_oi_mult_unreported": 0,
         # True when the book was built WITH spot, i.e. the *_dollars / *_gex_1pct fields are
         # real dollar values. Set explicitly at build; never inferred from values.
         "dollarized": dollarized,
@@ -302,6 +385,8 @@ def _empty_bucket(dollarized: bool) -> Bucket:
         # traded contracts per leg (Schwab totalVolume)
         "call_volume": 0.0,
         "put_volume": 0.0,
+        # net vanna needs spot, as the other dollar fields (_finish_bucket)
+        "net_vanna": with_spot,
     }
 
 
@@ -357,14 +442,15 @@ def compute_exposures_by_strike(
     enters is None (open interest, volume), a term it leaves unknown adds nothing and is counted
     unreported.
     """
-    rows = [c for c in contracts if c.strike is not None and c.side is not None]
-    at = {k: i for i, k in enumerate(dict.fromkeys(c.strike for c in rows))}
+    # each contract with a strike and a side, with its strike
+    rows = [(c, k) for c in contracts if (k := c.strike) is not None and c.side is not None]
+    at = {k: i for i, k in enumerate(dict.fromkeys(k for _c, k in rows))}
     empty = _EMPTY_BUCKET[spot is not None]
-    exposures: dict[float, Bucket] = {k: dict(empty) for k in at}
+    exposures: dict[float, Bucket] = {k: empty.copy() for k in at}
     if not rows:
         return exposures, _diagnostics(len(contracts), 0, 0)
     # each contract's slot: its strike's call leg (2i) or put leg (2i + 1)
-    slot = np.array([2 * at[c.strike] + (c.side != "CALL") for c in rows])
+    slot = np.array([2 * at[k] + (c.side != "CALL") for c, k in rows])
     slots = 2 * len(at)
     # Schwab's values as read (option_contract), one row per contract; not sent: NaN
     oi, mult, volume, delta, gamma, iv, strike, rate, dividend = np.array(
@@ -380,7 +466,7 @@ def compute_exposures_by_strike(
                 c.interest_rate,
                 c.dividend_yield,
             )
-            for c in rows
+            for c, _k in rows
         ],
         float,
     ).T
@@ -397,7 +483,10 @@ def compute_exposures_by_strike(
         # to the session close) at the caller's one valuation instant `now`, per expiry
         tte = expiry_years(now, product, sessions)
         years = np.array(
-            [np.nan if (t := tte(str(c.expiration), c.settlement)) is None else t for c in rows],
+            [
+                np.nan if (t := tte(str(c.expiration), c.settlement)) is None else t
+                for c, _k in rows
+            ],
             float,
         )
         sigma = iv / 100.0  # schwab_iv_to_sigma: 0 or less is no sigma
@@ -408,16 +497,11 @@ def compute_exposures_by_strike(
             gex_1pct=gamma * oi * mult * spt * spt * 0.01,  # $-GEX per 1% spot move
             vanna=vanna * 0.01 * oi * mult,  # per 1 vol point
         )
-    sums = {
-        "volume": _slot_sums(slot, volume, slots, sticky=True),
-        "oi": _slot_sums(slot, oi, slots, sticky=True),
-        **{
-            term: _slot_sums(slot[known], value[known], slots, sticky=False)
-            for term, value in terms.items()
-        },
-    }
+    volume_sums = _sticky_sums(slot, volume, slots)
+    oi_sums = _sticky_sums(slot, oi, slots)
+    sums = {term: _known_sums(slot[known], value[known], slots) for term, value in terms.items()}
     unreported = {
-        f"{g}_unreported": (
+        g: (
             np.bincount(slot[~known], minlength=slots)
             + (
                 np.bincount(slot[counted & np.isnan(terms[g])], minlength=slots)
@@ -428,38 +512,51 @@ def compute_exposures_by_strike(
         for g in ("oi_mult", "gamma", "delta", "vanna")
     }
     strike_of = slot // 2
-    per_strike = {
-        "volume_unreported": np.bincount(strike_of[np.isnan(volume)], minlength=len(at)).tolist(),
-        "oi_unreported": np.bincount(strike_of[np.isnan(oi)], minlength=len(at)).tolist(),
-    }
-    buckets = list(exposures.values())
-    for key, values in per_strike.items():
-        for b, v in zip(buckets, values, strict=True):
-            b[key] = v
-    for field, values in (*unreported.items(), *sums.items()):
-        call, put = f"call_{field}", f"put_{field}"
-        for i, b in enumerate(buckets):
-            b[call], b[put] = values[2 * i], values[2 * i + 1]
-    for b in buckets:
+    volume_unreported = np.bincount(strike_of[np.isnan(volume)], minlength=len(at)).tolist()
+    oi_unreported = np.bincount(strike_of[np.isnan(oi)], minlength=len(at)).tolist()
+    for i, b in enumerate(exposures.values()):
+        c, p = 2 * i, 2 * i + 1  # the strike's call and put legs
+        b["volume_unreported"], b["oi_unreported"] = volume_unreported[i], oi_unreported[i]
+        b["call_oi_mult_unreported"] = unreported["oi_mult"][c]
+        b["put_oi_mult_unreported"] = unreported["oi_mult"][p]
+        b["call_gamma_unreported"] = unreported["gamma"][c]
+        b["put_gamma_unreported"] = unreported["gamma"][p]
+        b["call_delta_unreported"] = unreported["delta"][c]
+        b["put_delta_unreported"] = unreported["delta"][p]
+        b["call_vanna_unreported"] = unreported["vanna"][c]
+        b["put_vanna_unreported"] = unreported["vanna"][p]
+        b["call_volume"], b["put_volume"] = volume_sums[c], volume_sums[p]
+        b["call_oi"], b["put_oi"] = oi_sums[c], oi_sums[p]
+        b["call_oi_mult"], b["put_oi_mult"] = sums["oi_mult"][c], sums["oi_mult"][p]
+        b["call_delta"], b["put_delta"] = sums["delta"][c], sums["delta"][p]
+        b["call_gamma"], b["put_gamma"] = sums["gamma"][c], sums["gamma"][p]
+        if spot is not None:  # the dollar fields and vanna, priced with spot
+            b["call_dex_dollars"] = sums["dex_dollars"][c]
+            b["put_dex_dollars"] = sums["dex_dollars"][p]
+            b["call_gex_1pct"], b["put_gex_1pct"] = sums["gex_1pct"][c], sums["gex_1pct"][p]
+            b["call_vanna"], b["put_vanna"] = sums["vanna"][c], sums["vanna"][p]
         _finish_bucket(b)
     missing = int((~known).sum() + (known & (np.isnan(delta) | np.isnan(gamma))).sum())
     return exposures, _diagnostics(len(contracts), int(known.sum()), missing)
 
 
-def _slot_sums(
-    slot: NDArray[np.int64], values: NDArray[np.float64], slots: int, *, sticky: bool
-) -> list[float | None]:
+def _known_sums(slot: NDArray[np.int64], values: NDArray[np.float64], slots: int) -> list[float]:
     """Each slot's sum of `values`, added in order from 0.0 as one contract at a time adds it.
 
-    `sticky`: a value not sent (NaN) leaves its slot's sum not known (None); otherwise a term not
-    known adds nothing.
+    A term not known (NaN) adds nothing (the leg counts it unreported).
     """
     sent = ~np.isnan(values)
     # bincount adds each slot's values one at a time, in the order given
-    out = np.bincount(slot[sent], weights=values[sent], minlength=slots).tolist()
-    if sticky:
-        for s in np.unique(slot[~sent]).tolist():
-            out[s] = None
+    return np.bincount(slot[sent], weights=values[sent], minlength=slots).tolist()
+
+
+def _sticky_sums(
+    slot: NDArray[np.int64], values: NDArray[np.float64], slots: int
+) -> list[float | None]:
+    """Each slot's sum of `values` (_known_sums); a value not sent (NaN) leaves it not known."""
+    out: list[float | None] = list(_known_sums(slot, values, slots))
+    for s in np.unique(slot[np.isnan(values)]).tolist():
+        out[s] = None
     return out
 
 
@@ -472,8 +569,17 @@ def _finish_bucket(b: Bucket) -> None:
     """
     b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
     b["net_delta"] = b["call_delta"] - b["put_delta"]
-    for f in ("dex_dollars", "gex_1pct", "vanna"):
-        b[f"net_{f}"] = b[f"call_{f}"] - b[f"put_{f}"] if b["dollarized"] else None
+    b["net_dex_dollars"] = _net(b["call_dex_dollars"], b["put_dex_dollars"], b["dollarized"])
+    b["net_gex_1pct"] = _net(b["call_gex_1pct"], b["put_gex_1pct"], b["dollarized"])
+    b["net_vanna"] = _net(b["call_vanna"], b["put_vanna"], b["dollarized"])
+
+
+def _net(call: float | None, put: float | None, dollarized: bool) -> float | None:
+    """Return a dollar field's or vanna's net, +call/-put; None without spot (not dollarized).
+
+    Dollarized, each leg is a number (a term not known adds nothing).
+    """
+    return call - put if dollarized and call is not None and put is not None else None
 
 
 def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
@@ -533,10 +639,13 @@ def merge_exposure_books(
         for strike, bucket in exposures.items():
             cur = merged.get(strike)
             if cur is None:
-                merged[strike] = dict(bucket)
+                merged[strike] = bucket.copy()
                 continue
-            for k in _BUCKET_FLAGS:
-                cur[k] = cur[k] or bucket[k]
+            cur["dollarized"] = cur["dollarized"] or bucket["dollarized"]
+            for k in _BUCKET_COUNTS:
+                cur[k] += bucket[k]
+            for k in _BUCKET_KNOWN_SUMS:
+                cur[k] += bucket[k]
             for k in _BUCKET_SUMS:
                 v, now = bucket[k], cur[k]
                 cur[k] = None if v is None or now is None else now + v
@@ -545,13 +654,50 @@ def merge_exposure_books(
     return merged, _diagnostics(total, used, missing)
 
 
-#: The per-strike bucket fields that are flags (OR-ed when books merge); every other field is
-#: a sum, None when no contract reported it (_empty_bucket, compute_exposures_by_strike).
-_BUCKET_FLAGS = frozenset({"dollarized"})
-#: the per-strike bucket fields that are sums: every field but the flags and the net fields, which
-#: _finish_bucket computes from the legs
-_BUCKET_SUMS = tuple(
-    k for k in _EMPTY_BUCKET[True] if k not in _BUCKET_FLAGS and not k.startswith("net_")
+#: The per-strike bucket fields summed when books merge (the flag is OR-ed; the net fields
+#: _finish_bucket computes from the legs): the counts, the sums always known, and the sums a
+#: value not reported leaves not known in either book (None)
+_BUCKET_COUNTS: tuple[Literal["oi_unreported", "volume_unreported"] | UnreportedField, ...] = (
+    "oi_unreported",
+    "volume_unreported",
+    "call_gamma_unreported",
+    "call_delta_unreported",
+    "call_vanna_unreported",
+    "call_oi_mult_unreported",
+    "put_gamma_unreported",
+    "put_delta_unreported",
+    "put_vanna_unreported",
+    "put_oi_mult_unreported",
+)
+_BUCKET_KNOWN_SUMS: tuple[
+    Literal["call_oi_mult", "put_oi_mult", "call_gamma", "put_gamma", "call_delta", "put_delta"],
+    ...,
+] = ("call_oi_mult", "put_oi_mult", "call_gamma", "put_gamma", "call_delta", "put_delta")
+_BUCKET_SUMS: tuple[
+    Literal[
+        "call_oi",
+        "put_oi",
+        "call_vanna",
+        "put_vanna",
+        "call_dex_dollars",
+        "put_dex_dollars",
+        "call_gex_1pct",
+        "put_gex_1pct",
+        "call_volume",
+        "put_volume",
+    ],
+    ...,
+] = (
+    "call_oi",
+    "put_oi",
+    "call_vanna",
+    "put_vanna",
+    "call_dex_dollars",
+    "put_dex_dollars",
+    "call_gex_1pct",
+    "put_gex_1pct",
+    "call_volume",
+    "put_volume",
 )
 
 
@@ -618,9 +764,10 @@ def strike_oi_legs(bucket: Bucket) -> tuple[float, float] | None:
 
     A leg with no contract listed is a known 0.0, the sum of none.
     """
-    if bucket["oi_unreported"] != 0:
+    call, put = bucket["call_oi"], bucket["put_oi"]
+    if bucket["oi_unreported"] != 0 or call is None or put is None:
         return None
-    return bucket["call_oi"], bucket["put_oi"]
+    return call, put
 
 
 def strike_volume_legs(bucket: Bucket) -> tuple[float, float] | None:
@@ -629,9 +776,10 @@ def strike_volume_legs(bucket: Bucket) -> tuple[float, float] | None:
     0 is a real zero; else None. A leg with no listed contract is a known 0.0. THE one reader:
     GEX-by-Strike rows, heatmap cells and the put/call volume ratio.
     """
-    if bucket["volume_unreported"] != 0:
+    call, put = bucket["call_volume"], bucket["put_volume"]
+    if bucket["volume_unreported"] != 0 or call is None or put is None:
         return None
-    return bucket["call_volume"], bucket["put_volume"]
+    return call, put
 
 
 def strike_total_volume(bucket: Bucket) -> float | None:
@@ -699,8 +847,8 @@ def exposures_have_dollar_gex(exposures: dict[float, Bucket]) -> bool:
     whose gammas are all invalid still reads as dollarized.
     """
     for b in exposures.values():
-        if isinstance(b, dict) and "dollarized" in b:
-            return bool(b["dollarized"])
+        if "dollarized" in b:
+            return b["dollarized"]
     return False
 
 
@@ -725,9 +873,9 @@ def net_gex_dollars_at_strike(bucket: Bucket) -> float | None:
     return bucket_metric(bucket, "net_gex_1pct")
 
 
-def strike_of_largest(
-    exposures: dict[float, Bucket],
-    metric_fn: Callable[[Bucket], float | None],
+def strike_of_largest[B](
+    exposures: Mapping[float, B],
+    metric_fn: Callable[[B], float | None],
 ) -> tuple[float | None, float | None]:
     """Return (strike, value) where `metric_fn` of a strike's bucket is largest and above 0.
 

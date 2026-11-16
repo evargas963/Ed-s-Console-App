@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 
@@ -80,6 +80,18 @@ def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
 
 #: one level of a book: (price, TOTAL_VOLUME, the level's per-exchange rows), as Schwab sent them
 Level = tuple[float, float, Exchanges | None]
+
+
+class WallCandidate(TypedDict):
+    """A level whose displayed size is an outlier on its side (_book_wall_candidates)."""
+
+    side: str
+    price: float
+    volume: float
+    #: its size as the screen shows it (count_text)
+    volume_text: str | None
+    #: its size over the median of its side's levels
+    median_mult: float
 
 
 @dataclass(frozen=True)
@@ -348,7 +360,7 @@ def _book_pressure_curve(
 
 def _book_wall_candidates(
     levels: list[tuple[float, float]], side: str, depth: int
-) -> list[dict[str, str | float]]:
+) -> list[WallCandidate]:
     """Return HEURISTIC displayed-size anomalies as wall candidates.
 
     They are candidates, NOT objectively-known liquidity walls. A level is a candidate when its
@@ -366,7 +378,7 @@ def _book_wall_candidates(
     median = vols[n // 2] if n % 2 else (vols[n // 2 - 1] + vols[n // 2]) / 2.0
     if median <= 0:
         return []
-    out: list[dict[str, str | float]] = []
+    out: list[WallCandidate] = []
     for price, vol in lv:
         if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
             out.append(
@@ -390,11 +402,11 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
     bid, ask = cb["bid"], cb["ask"]
     bid_size, ask_size = cb["bid_size"], cb["ask_size"]
     bid_levels, ask_levels = cb["bid_levels"], cb["ask_levels"]
-    have_quotes = bid is not None and ask is not None
-    crossed = bid > ask if have_quotes else None  # unknown without both quotes
+    # unknown without both quotes
+    crossed = None if bid is None or ask is None else bid > ask
 
     microprice = _microprice(bid, ask, bid_size, ask_size)
-    spread_pts = ask - bid if have_quotes else None
+    spread_pts = None if bid is None or ask is None else ask - bid
     mark = cb["mark"]
 
     # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
@@ -667,7 +679,6 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict[str
         depth = OF_BOOK_DEPTH_DEEP if view == "weighted" else int(view)
         bt, at = _book_side_depth_total(bids, depth), _book_side_depth_total(asks, depth)
         imb = _book_imbalance_from_totals(bt, at)
-        both = bt is not None and at is not None
         views[view] = {
             "imbalance": imb,
             "pct": _pct(_book_imbalance_from_totals(_weighted_total(bids), _weighted_total(asks)))
@@ -675,8 +686,8 @@ def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict[str
             else _pct(imb),
             "bid_total": bt,
             "ask_total": at,
-            "difference": abs(bt - at) if both else None,
-            "total_depth": bt + at if both else None,
+            "difference": None if bt is None or at is None else abs(bt - at),
+            "total_depth": None if bt is None or at is None else bt + at,
             "span_bid": _span(bids, depth),
             "span_ask": _span(asks, depth),
         }
@@ -717,9 +728,10 @@ def book_readout(books: dict[str, Book | None]) -> dict[str, dict[str, Any]]:
     if not held:
         out[COMPOSITE] = {"status": "no_book", "book_time_ms": None, "books": list(BOOK_VENUES)}
         return out
-    times = [b.book_time_ms for b in held.values()]
+    times = [t for b in held.values() if (t := b.book_time_ms) is not None]
     (bids, bid_partial), (asks, ask_partial) = (_composite_side(held, s) for s in ("BIDS", "ASKS"))
-    out[COMPOSITE] = _readout(bids, asks, None if None in times else min(times))
+    # its time is its older book's; a book with no time leaves it none
+    out[COMPOSITE] = _readout(bids, asks, min(times) if len(times) == len(held) else None)
     out[COMPOSITE]["books"] = list(held)
     out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
     return out
@@ -1019,7 +1031,7 @@ class OrderFlowEngine:
             # time), served beside the number
             "cum_delta_window": (
                 "prints " + ct_label(cum_first) + " to " + ct_label(cum_last)
-                if cum_first is not None
+                if cum_first is not None and cum_last is not None
                 else None
             ),
             "cum_delta_slope": cum_delta_slope,
