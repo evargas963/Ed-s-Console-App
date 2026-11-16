@@ -127,6 +127,16 @@ def dollars_text(value: float | None) -> str | None:
     return f"-${text[1:]}" if text.startswith("-") else f"${text}"
 
 
+def change_percent_text(value: float | None) -> str | None:
+    """Return a percent change as the screen shows it: signed, two decimals (+0.57%, -1.25%).
+
+    None when there is none.
+    """
+    if value is None:
+        return None
+    return f"{float(value):+.2f}%"
+
+
 def percent_text(value: float | None) -> str | None:
     """Return a signed percentage as the screen shows it, whole (+22%, -21%, 0%).
 

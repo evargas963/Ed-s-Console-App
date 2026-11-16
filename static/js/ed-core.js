@@ -1014,14 +1014,14 @@
       ba.title = q.quoteTime ? "quote " + q.quoteTime : "";
     }
     // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included). Formatting only; absent reads "-".
+    // (extended hours included), drawn as served (live_price_rows); absent reads "-".
     [
-      [document.getElementById("hChgReg"), "REG ", q.chgPctRegular],
-      [chg, "EXT ", q.chgPct],
+      [document.getElementById("hChgReg"), "REG ", q.chgPctRegular, q.chgPctRegularText],
+      [chg, "EXT ", q.chgPct, q.chgPctText],
     ].forEach(function (c) {
       if (!c[0]) return;
       if (c[2] != null) {
-        c[0].textContent = c[1] + (c[2] >= 0 ? "+" : "") + fmt(c[2]) + "%";
+        c[0].textContent = c[1] + orDash(c[3]);
         c[0].className = "chg mono " + (c[2] >= 0 ? "pos" : "neg");
       } else {
         c[0].textContent = c[1] + "-";
@@ -1035,7 +1035,7 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spot, chgPct, tradeTime) {
+  function setWlRow(sym, spot, chgPct, chgPctText, tradeTime) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
     if (pe) {
       pe.textContent = spot == null ? "UNAVAILABLE" : fmt(spot);
@@ -1044,7 +1044,7 @@
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
       if (chgPct != null) {
-        ce.textContent = (chgPct >= 0 ? "+" : "") + fmt(chgPct) + "%";
+        ce.textContent = orDash(chgPctText); // served: "+0.57%"
         ce.className = "wl-chg " + (chgPct >= 0 ? "pos" : "neg");
       } else {
         ce.textContent = "-";
@@ -1261,6 +1261,8 @@
         ask: q.ask,
         chgPct: q.chg_pct,
         chgPctRegular: q.chg_pct_regular,
+        chgPctText: q.chg_pct_text,
+        chgPctRegularText: q.chg_pct_regular_text,
         quoteTime: q.quote_time_ct,
         feedCls: q.feed_live ? "" : "stale",
         feedLabel: q.feed_label,
@@ -1270,7 +1272,7 @@
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot, q.chg_pct, q.trade_time_ct);
+      setWlRow(wlSym, q.spot, q.chg_pct, q.chg_pct_text, q.trade_time_ct);
       markWlHealthy();
     });
     window.dispatchEvent(new CustomEvent("ed:quote_tick", { detail: q }));
