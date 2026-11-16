@@ -2,8 +2,10 @@
   "$SPX": {
     "ask": 7724.54,
     "ask_size": null,
+    "ask_text": "7724.54",
     "bid": 7673.82,
     "bid_size": null,
+    "bid_text": "7673.82",
     "chg_pct": 0.565707,
     "chg_pct_regular": 0.565707,
     "chg_pct_regular_text": "+0.57%",
@@ -34,8 +36,10 @@
   "SPY": {
     "ask": 760.19,
     "ask_size": 280.0,
+    "ask_text": "760.19",
     "bid": 760.18,
     "bid_size": 80.0,
+    "bid_text": "760.18",
     "chg_pct": -0.49479,
     "chg_pct_regular": -0.49479,
     "chg_pct_regular_text": "-0.49%",

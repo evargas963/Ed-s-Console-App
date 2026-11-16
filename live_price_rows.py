@@ -96,6 +96,8 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "outage": outage,
         "bid": field("bid"),
         "ask": field("ask"),
+        "bid_text": price_text(field("bid")),
+        "ask_text": price_text(field("ask")),
         "bid_size": field("bid_size"),
         "ask_size": field("ask_size"),
         "mark": field("mark"),  # Schwab MARK
