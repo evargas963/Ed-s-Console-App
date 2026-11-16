@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import server as srv
 from option_contract import read_chain
+from push import strikes as push_strikes
 from state import level_store
 from tests.real_chains import CRWD
 
@@ -21,7 +22,7 @@ def test_the_strike_panel_carries_the_chain_time():
         srv._publish_levels(
             tk, read_chain(CRWD.chain), fetched, chain_spot=(CRWD.spot, fetched), now=CRWD.now
         )
-        body = srv.terrain_strikes_payload(tk, "auto", None, 0, fetched + 21)
+        body = push_strikes.terrain_strikes_payload(tk, "auto", None, 0, fetched + 21)
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

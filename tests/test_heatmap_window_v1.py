@@ -25,6 +25,7 @@ import server
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strike_rows
+from push import strikes as push_strikes
 from state import level_store
 from terrain_engine import SCOPE_ROWS, strike_window
 from tests.feed_live_helper import daemon_status
@@ -91,7 +92,7 @@ def _heat(at=_AT, **kw):
 
 def _strikes(scope):
     """Return the per-strike panels' answer at the captures' day, centred on the price."""
-    return server.terrain_strikes_payload(TK, scope, None, 0, _AT.timestamp())
+    return push_strikes.terrain_strikes_payload(TK, scope, None, 0, _AT.timestamp())
 
 
 def _every_strike():

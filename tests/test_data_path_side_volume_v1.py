@@ -7,6 +7,7 @@ import server as srv
 import time_et
 from math_exposure_core import compute_exposures_by_strike, net_gex_dollars_at_strike
 from option_contract import read_chain
+from push import strikes as push_strikes
 from state import level_store
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import NFLX, SPY_0DTE
@@ -26,7 +27,9 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
         tk, {"LAST_PRICE": spot, "TRADE_TIME_MILLIS": 1000}, received_ts=1.0
     )
     try:
-        body = srv.strikes(tk, time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
+        body = push_strikes.strikes(
+            tk, time_et.now(), {"scope": "auto", "centre": None, "shift": 0}
+        )
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

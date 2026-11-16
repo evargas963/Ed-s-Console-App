@@ -23,6 +23,7 @@ from math_exposure_core import (
     strike_volume_legs,
 )
 from option_contract import OptionContract, read_chain
+from push import strikes as push_strikes
 from server import project_gamma_surface, ticker_storage_key
 from state import level_store
 from tests.real_chains import MRVL
@@ -392,7 +393,7 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     surface = project_gamma_surface(chain, snap.books)
     try:
         window = {"scope": "all", "centre": None, "shift": 0}
-        measures = server.strikes("MRVL", NOW.timestamp(), window)["measures"]
+        measures = push_strikes.strikes("MRVL", NOW.timestamp(), window)["measures"]
     finally:
         with level_store._lock:
             level_store._levels.pop("MRVL", None)
