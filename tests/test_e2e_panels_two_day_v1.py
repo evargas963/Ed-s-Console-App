@@ -34,6 +34,7 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from push import forces as push_forces
+from push import strikes as push_strikes
 from push import tape as push_tape
 from state import bar_store, cross_store, level_store
 from stream_spine import book_msg
@@ -198,8 +199,8 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
         return json.loads(
             json.dumps(
                 {
-                    "strikes": server.strikes(tk, at, AUTO),
-                    "strikes_wider": server.strikes(tk, at, {**AUTO, "scope": "wider"}),
+                    "strikes": push_strikes.strikes(tk, at, AUTO),
+                    "strikes_wider": push_strikes.strikes(tk, at, {**AUTO, "scope": "wider"}),
                     "terrain": server.terrain(tk, at),
                     "surface": server.gamma_surface(tk, at, {**AUTO, "cols": None, "expiry": None}),
                     "surface_missing_expiry": server.gamma_surface(

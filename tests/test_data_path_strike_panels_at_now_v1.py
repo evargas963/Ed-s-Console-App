@@ -19,6 +19,7 @@ import live_market_plane as lmp
 import server
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
+from push import strikes as push_strikes
 from state import level_store
 from tests.feed_live_helper import daemon_status
 from tests.real_chains import CRWD
@@ -61,7 +62,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
             now=CRWD.now,
         )
         last = _QUOTE["native"]["LAST_PRICE"]
-        strikes = server.terrain_strikes_payload(tk, "auto", None, 0, at)
+        strikes = push_strikes.terrain_strikes_payload(tk, "auto", None, 0, at)
         listed = [r["strike"] for r in strikes["today"]["all"]]
         assert strikes["spot_strike"] == min(listed, key=lambda k: abs(k - last))
         assert all(v["note"] is None for v in strikes["views"].values() if v["centre"] is not None)

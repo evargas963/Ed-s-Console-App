@@ -18,6 +18,7 @@ from pathlib import Path
 import server as srv
 import time_et
 from numeric_contract import count_text
+from push import strikes as push_strikes
 from state import bar_store
 
 
@@ -69,7 +70,7 @@ def test_terrain_strikes_endpoint_shape_and_scopes():
 
     For today + prior capture, sorted by strike, read-only.
     """
-    body = srv.strikes("SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
+    body = push_strikes.strikes("SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
     assert json.loads(json.dumps(body)) == body  # the socket's frame, as it is
     assert body["ticker"] == "SPY"
     for side in ("today", "migration", "views"):
