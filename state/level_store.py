@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from instrument_identity import ticker_storage_key
+from math_forces import Forces
 from option_contract import OptionContract
 from terrain_engine import StrikeValue, TerrainSnapshot
 
@@ -42,7 +43,7 @@ class PublishedLevels:
     #: the contracts Schwab listed in the newest chain, each record by its symbol
     contracts: Mapping[str, OptionContract]
     #: read from the stored captures, recomputed only when `captures_key` changes
-    forces: dict[str, Any]
+    forces: Forces
     prior_day: TerrainSnapshot | None
     captures_key: tuple[float | None, str]
 

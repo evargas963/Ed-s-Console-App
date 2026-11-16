@@ -101,6 +101,7 @@ from math_exposure_core import (
     strike_total_oi,
     strike_volume_legs,
 )
+from math_forces import Forces, forces_absent
 from math_levels import compute_charm_by_strike
 from micro_structure import Candle
 from numeric_contract import (
@@ -123,6 +124,7 @@ from open_gap import (
     today_open,
 )
 from option_contract import OptionContract, chain_row
+from push import forces as push_forces
 from state import bar_store, cross_store, level_store
 from state.level_store import PublishedLevels, published_levels
 from terrain_atr import Atr, compute_atrs
@@ -2475,40 +2477,11 @@ def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NoHeatmap:
     return book_heatmap_for_ticker(ticker, _venue_asked(params), minutes=minutes)
 
 
-def forces(ticker: str) -> dict[str, Any]:
-    """Return the `forces` panel: the ticker's forces, as the levels producer computed them."""
-    held = published_levels(ticker)
-    return _forces_absent(ticker) if held is None else held.forces
-
-
-def _forces_absent(tk: str) -> dict[str, Any]:
-    """Return the forces numbers before two market days of captures exist, or when the read fails.
-
-    Each number is None. Nothing stands in for it.
-    """
-    return {
-        "ticker": tk,
-        "available": False,
-        "doi_below": None,
-        "doi_above": None,
-        "doi_below_text": None,
-        "doi_above_text": None,
-        "dex_below_dollars": None,
-        "dex_above_dollars": None,
-        "dex_below_text": None,
-        "dex_above_text": None,
-        "charm_below": None,
-        "charm_above": None,
-        "charm_below_text": None,
-        "charm_above_text": None,
-    }
-
-
 def _forces_from_captures(
     tk: str,
     captures: list[dict[str, Any]],
     charm_by_strike: dict[float, Bucket] | None = None,
-) -> dict[str, Any]:
+) -> Forces:
     """Build the forces rows from banked chains.
 
     Each day's OI totalled by side of the NEWER capture's spot — bucketing each day by its own
@@ -2519,7 +2492,7 @@ def _forces_from_captures(
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
-    payload: dict[str, Any] = _forces_absent(tk)
+    payload = forces_absent(tk)
     try:
         rows = [
             (c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
@@ -2599,7 +2572,7 @@ def _forces_from_captures(
             }
     except Exception as e:
         log.warning("forces for %s failed (%s)", tk, e, exc_info=True)
-        payload = _forces_absent(tk)
+        payload = forces_absent(tk)
     return payload
 
 
@@ -4192,7 +4165,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "book": lambda a: book(a.ticker, a.now, a.params),
     "bookmap": lambda a: bookmap(a.ticker, a.params),
     "contract": lambda a: options_microstructure(_contract_asked(a.params), a.now),
-    "forces": lambda a: forces(a.ticker),
+    "forces": lambda a: push_forces.forces(a.ticker),
     "desk": lambda a: desk_events_payload(
         a.ticker, _venue_asked(a.params), _tf_asked(a.params), a.at
     ),
