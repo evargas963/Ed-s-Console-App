@@ -1,4 +1,4 @@
-"""The open-gap record, EXPERIMENTAL, as the operator's approved mock-up shows it (2026-11-15).
+"""The open-gap record, EXPERIMENTAL, as the operator's approved design shows it (2026-11-15).
 
 Real data: TSLA's two Schwab /pricehistory answers of 2026-11-15, 5-minute bars a year back, the
 regular session alone (5m365r) and with extended hours (5m365), as production recorded them
@@ -6,7 +6,7 @@ regular session alone (5m365r) and with extended hours (5m365), as production re
 day's session (AGENTS.md rule 8): its first bar of every one of its 180 days is 09:30 ET.
 
 The expected values were worked outside this code, by a script of their own over production's
-record the same day (the mock-up's numbers): 85 of 139 opens called; up gaps followed 43 of 74,
+record the same day (the design's numbers): 85 of 139 opens called; up gaps followed 43 of 74,
 down gaps 42 of 65; the last 10 opens below. The interval is Wilson's formula, worked by hand.
 """
 
@@ -85,7 +85,7 @@ def test_today_s_open_from_schwab_s_bars_is_the_record_s_own_once_its_bar_has_cl
     assert today_open(candles, today, prior, _et("2026-10-07 09:33")) is None, "bar not closed"
 
 
-def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_the_mock_up():
+def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_designed():
     def answer(series: str, candles: list) -> dict:
         return {
             "src": "schwab_pricehistory",
