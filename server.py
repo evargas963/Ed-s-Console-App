@@ -2997,6 +2997,9 @@ def gamma_surface_payload(
             _why.append("it is not on the watchlist")
         if _levels_why:
             _why.append(_levels_why)
+    elif _watched is not None and tk not in _watched:
+        # no chain is coming for it, at any hour: that, not how old its last levels are
+        _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
     elif _levels_why:
         _why = [_levels_why]
     elif _warming:
