@@ -4,7 +4,7 @@
 // list. STAND-INS: the program's socket, its beats carrying the watchlist alone (no rows), and the
 // console's watchlist routes (fixtures/watchlist.js).
 const { test, expect } = require('@playwright/test');
-const { routeWatchlist } = require('./fixtures/watchlist');
+const { routeWatchlist, beatNow } = require('./fixtures/watchlist');
 const { watchRequests, holdClock } = require('./fixtures/settled');
 
 // one beat as the program sends it, the daemon's status reduced to its time, its watchlist and
@@ -74,8 +74,10 @@ test('a change the daemon makes reaches the rail with the next beat; an add here
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY']);
   list.push('AMD');                                       // added on another page: the daemon's list
+  beatNow(page);                                          // the program's next beat carries it
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['SPY', 'AMD'], { timeout: 2500 });
   list.splice(0, 1);                                      // SPY removed on another page
+  beatNow(page);
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['AMD'], { timeout: 2500 });
   await page.evaluate(() => window.EdShell.addSymbol('MU'));
   await expect(page.locator('.wl-row .wl-sym')).toHaveText(['AMD', 'MU']);
