@@ -34,6 +34,7 @@ from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from push import forces as push_forces
+from push import tape as push_tape
 from state import bar_store, cross_store, level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
@@ -239,7 +240,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     },
                     "bars_flow": server.bars(tk, at, FLOW_BARS),
                     # the option tape: the daemon streams none of these contracts, and says so
-                    "tape": server.tape(tk, at),
+                    "tape": push_tape.tape(tk, at),
                 }
             )
         )

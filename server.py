@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import heapq
 import json
 import logging
 import os
@@ -39,8 +38,6 @@ from app.options.order_flow.engine import (
 )
 from app.options.order_flow.history import (
     LEAN,
-    recent_prints,
-    tape_row,
 )
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import (
@@ -68,7 +65,6 @@ from confluence_composite import at_price, build_matrix, window_rows
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
-from l1_trade_observation import canonical_tape_prints
 from liquidity_models import ZONE_DISPLAY, PlaybookConfig
 from liquidity_value_engine import (
     HOLD_BASELINE_LEVELS,
@@ -118,6 +114,8 @@ from push import bookmap as push_bookmap
 from push import experimental as push_experimental
 from push import expiries as push_expiries
 from push import forces as push_forces
+from push import tape as push_tape
+from push.answers import unavailable
 from push.asked import tf_asked, venue_asked
 from push.verdict import (
     LEVELS_STALE,
@@ -563,14 +561,6 @@ def favicon() -> Response:
 _CROSS_WORD = {"up": "above", "down": "below"}
 
 
-def unavailable(ticker: str, reason: str, **fields: Any) -> dict[str, Any]:
-    """Return a route's answer when the value it serves is not held for `ticker`.
-
-    It says why, with the route's own `fields`.
-    """
-    return {"ticker": ticker, "available": False, **fields, "reason": reason}
-
-
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
 _terrain_loop_running: bool = False
 _terrain_loop_thread: threading.Thread | None = None
@@ -625,27 +615,11 @@ def _streamed_greeks_for_ticker(
     heartbeat; omitted, this call reads it.
     """
     out: dict[str, dict[str, Any]] = {}
-    for sym in _held_option_symbols_for_ticker(listed, now, feed):
+    for sym in lmp.held_option_symbols(listed, now, feed):
         held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
         if held:
             out[sym] = {k: v for r in held for k, v in r.items()}
     return out
-
-
-def _held_option_symbols_for_ticker(
-    listed: Collection[str], now: float, feed: lmp.FeedNow | None = None
-) -> list[str]:
-    """Every contract of the ticker's chain (`listed`) on the daemon's latest LEVELONE_OPTIONS beat.
-
-    A missing or too-old beat keeps that set; it does not say the feed is live.
-    `feed` is one read of that heartbeat; omitted, this call reads it.
-    """
-    if feed is None:
-        feed = lmp.feed_now(now)
-    opts = feed.held.get("LEVELONE_OPTIONS")
-    if not opts:
-        return []
-    return [sym for sym in opts if sym in listed]
 
 
 def _overlaid_symbols(pre: list[OptionContract], post: list[OptionContract]) -> list[str]:
@@ -718,7 +692,7 @@ def _stamp_gamma_surface_cell_stream_state(
     `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
     ticker (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
     (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
-    beat, ticked or not (_held_option_symbols_for_ticker). A missing beat is not live: those
+    beat, ticked or not (live_market_plane.held_option_symbols). A missing beat is not live: those
     cells keep the last streamed value and are not live. Each leg carries the time it was last
     received (`ts_recv`), never an age: the stamp stands until the feed next changes.
       'live'         — the feed is delivering this symbol now.
@@ -1194,7 +1168,7 @@ def _publish_levels(
     feed = lmp.feed_now(now.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
-    held = set(_held_option_symbols_for_ticker(listed, now.timestamp(), feed))
+    held = set(lmp.held_option_symbols(listed, now.timestamp(), feed))
     # inside the window each contract's newest values (the stream's, or its /quotes answer's
     # when that was received since this chain began); the close values are the chain as sent.
     # The cell stamp says whether that stream is live.
@@ -2227,52 +2201,6 @@ def strike_bars(key: str, tk: str, now: float, params: dict[str, Any]) -> dict[s
     if isinstance(window, str):
         return unavailable(tk, window)
     return strike_bar_payload(tk, key, *window, now)
-
-
-#: the most prints the `tape` panel shows
-TAPE_ROWS = 100
-
-
-def tape(ticker: str, now: float) -> dict[str, Any]:
-    """Return the `tape` panel at `now`: the newest option trade prints of the ticker.
-
-    The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
-    (the live state's prints, history.recent_prints), of every contract of `ticker` the daemon
-    streams
-    (_held_option_symbols_for_ticker), merged newest trade first by Schwab's own trade time
-    (TRADE_TIME_MILLIS; operator 2026-11-12: "yes we should use schwab's data"), prints of one
-    trade time in the order received, a print Schwab sent no trade time with after every one
-    that has one; capped at TAPE_ROWS across the merge, each with its contract's terms and open
-    interest from the chain record and its premium (history.tape_row). No aggressor side.
-    `ticker` is the levels' own key.
-    """
-    held = published_levels(ticker)
-    if held is None:
-        return unavailable(ticker, "the console holds no chain of this ticker yet", rows=[])
-    symbols = _held_option_symbols_for_ticker(held.contracts, now)
-    if not symbols:
-        return unavailable(ticker, "the daemon streams no option contract of this ticker", rows=[])
-    # the newest TAPE_ROWS of all the contracts' kept prints are picked first, and only those are
-    # made rows: each contract's last TAPE_ROWS received are the ones looked at
-    newest = heapq.nlargest(
-        TAPE_ROWS,
-        (
-            (p, sym)
-            for sym in symbols
-            for p in reversed(canonical_tape_prints(get_content_for_symbol(sym))[-TAPE_ROWS:])
-        ),
-        key=lambda kept: (
-            kept[0]["time_millis"] is not None,
-            kept[0]["time_millis"],
-            kept[0]["server_received_ts"],
-        ),
-    )
-    rows = [tape_row(recent_prints(sym, [p], 1)[0], held.contracts[sym]) for p, sym in newest]
-    return {
-        "available": bool(rows),
-        "rows": rows,
-        "reason": None if rows else "no trade prints for these contracts since the console started",
-    }
 
 
 def _forces_from_captures(
@@ -3777,7 +3705,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "chain": lambda a: chain(a.ticker, a.now, a.params),
     "levels": lambda a: levels_payload(a.ticker, tf_asked(a.params), a.at),
     "bars": lambda a: bars(a.ticker, a.now, a.params),
-    "tape": lambda a: tape(a.ticker, a.now),
+    "tape": lambda a: push_tape.tape(a.ticker, a.now),
     "book": lambda a: book(a.ticker, a.now, a.params),
     "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
     "contract": lambda a: options_microstructure(_contract_asked(a.params), a.now),
