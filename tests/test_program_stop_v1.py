@@ -114,22 +114,21 @@ def test_a_stop_is_taken_while_every_shared_worker_thread_is_busy(tmp_path):
         waiter = asyncio.create_task(capture.stop_on_request(stop, request))
         await asyncio.sleep(0.1)
         ask_to_stop(db)
-        started = time_et.elapsed()
         try:
-            await asyncio.wait_for(waiter, timeout=5)
-            return time_et.elapsed() - started, stop.is_set()
+            # taken within its wait, with a second to spare; later raises TimeoutError
+            await asyncio.wait_for(waiter, timeout=capture.STOP_WAIT_SEC + 1.0)
+            return stop.is_set()
         finally:
             release.set()
             await asyncio.gather(*busy)
 
     try:
-        took, stopped = asyncio.run(go())
+        stopped = asyncio.run(go())
     finally:
         release.set()
         release_owner_lock(fd, lock)
         request.close()
     assert stopped
-    assert took < capture.STOP_WAIT_SEC + 1.0, f"the stop was taken {took:.2f} s after it was asked"
 
 
 def test_the_programs_own_stop_ends_the_waiter_at_once(tmp_path):
