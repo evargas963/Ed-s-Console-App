@@ -36,6 +36,7 @@ from feed import connection
 from feed.chain_sweep import ChainSweep, chain_messages
 from feed.schwab_client import build_client_from_token, flatten_chain_contracts
 from option_contract import read_chain
+from state import level_store
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import pages
@@ -612,9 +613,9 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             assert "WATCHLIST UNKNOWN" not in server._status_line(time_et.now())
             assert "daemon not reporting" in server._status_line(time_et.now())
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(off, None)
-            server._terrain_cache.pop(on, None)
+        with level_store._lock:
+            level_store._levels.pop(off, None)
+            level_store._levels.pop(on, None)
         server._terrain_refresh_last_error.pop(on, None)
         lmp.record_feed_down()
 

@@ -32,6 +32,7 @@ import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from math_exposure_core import bucket_metric, merge_exposure_books
 from option_contract import read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import compute_terrain
 from terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
@@ -67,8 +68,8 @@ def _clean():
     served = Pages()
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     with server._chains_waiting_lock:
         server._chains_delivered.discard(TK)
     yield served
@@ -77,8 +78,8 @@ def _clean():
     lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
 
 
 def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float = _T) -> None:
@@ -123,8 +124,8 @@ def _put_chain(fetched_ts=_T):
     return _publish(_RECORDS, fetched_ts)
 
 
-def _cached() -> server.PublishedLevels:
-    return server.published_levels(TK)
+def _cached() -> level_store.PublishedLevels:
+    return level_store.published_levels(TK)
 
 
 def _drain():
@@ -639,9 +640,9 @@ def _store(tk: str, ts: float, spot: float = _SPOT) -> None:
 
 
 def _forget(*tickers):
-    with server._terrain_cache_lock:
+    with level_store._lock:
         for tk in tickers:
-            server._terrain_cache.pop(tk, None)
+            level_store._levels.pop(tk, None)
 
 
 def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
@@ -665,7 +666,7 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     try:
         assert server._load_stored_levels([tk]) == 1
         _drain()
-        loaded = server.published_levels(tk).served()
+        loaded = level_store.published_levels(tk).served()
     finally:
         _forget(tk)
     assert loaded["computed_ts_utc"] == _T
@@ -698,7 +699,7 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
         gate.set()
         _drain()
     try:
-        held = server.published_levels(tk)
+        held = level_store.published_levels(tk)
     finally:
         _forget(tk)
         with server._chains_waiting_lock:
@@ -724,8 +725,7 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
         gate.set()
         _drain()
     try:
-        with server._terrain_cache_lock:
-            order = [tk for tk in server._terrain_cache if tk in (TK, *stored)]
+        order = [tk for tk, _ in level_store.every_published() if tk in (TK, *stored)]
     finally:
         _forget(*stored)
     assert order == [TK, *stored]
@@ -778,5 +778,5 @@ def test_a_delivered_chain_is_priced_at_the_pricing_jobs_own_instant():
     inside the producer.
     """
     server._price_chain(TK, server.DELIVERED, _RECORDS, _T, (_SPOT, _T), _AT)
-    surface = server.published_levels(TK).gamma_surface
+    surface = level_store.published_levels(TK).gamma_surface
     assert surface["stream_overlay_computed_ts_utc"] == _T

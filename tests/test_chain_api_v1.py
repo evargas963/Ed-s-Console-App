@@ -27,6 +27,7 @@ import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import GREEKS, LISTED, read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
 from time_et import ET
@@ -50,9 +51,9 @@ def _clean():
     yield
     ofls.clear_all_live_state()
     lmp.record_feed_down()
-    with srv._terrain_cache_lock:
+    with level_store._lock:
         for tk in ("TSLA", "MRVL"):
-            srv._terrain_cache.pop(tk, None)
+            level_store._levels.pop(tk, None)
             lmp._by_ticker.pop(tk, None)
             lmp._fields_by_ticker.pop(tk, None)
 
@@ -203,7 +204,7 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     body = _get(ticker="TSLA")
     overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
     assert overlaid["totalVolume"] == streamed
-    assert srv.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
+    assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
     assert overlaid["volume_text"] == f"{streamed:,.0f}"  # the streamed volume, as shown
     assert all(
         overlaid[k] == v
@@ -262,7 +263,7 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     assert overlaid["totalVolume"] == volume and overlaid["gamma"] == target["gamma"]
     assert overlaid["gamma"] != gamma
     assert overlaid["openInterest"] == target["openInterest"]  # the chain's
-    assert srv.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
+    assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
 
 
 def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it():

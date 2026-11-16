@@ -87,7 +87,8 @@ from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import chain_messages
 from fastapi.testclient import TestClient
-fx = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+from state import level_store
+fx =json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 with TestClient(server.app) as client:
     ofs._on_chain_callback = server._on_chain
     for topic, msg in chain_messages("SPY", fx["chain"], fx["capture_ts_utc"], """
@@ -102,7 +103,7 @@ with TestClient(server.app) as client:
     asked["contract"] = "SPY   261120C00875000"
     for panel in server.PAGE_PANELS.values():
         panel(Asked("SPY", time_et.now(), asked))
-assert server.published_levels("SPY") is not None, """
+assert level_store.published_levels("SPY") is not None, """
     """"the daemon's chain was priced"
 """
 )

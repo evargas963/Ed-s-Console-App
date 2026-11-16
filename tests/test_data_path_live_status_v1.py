@@ -30,6 +30,7 @@ import live_price_rows
 import server
 import time_et
 from option_contract import read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import pages
@@ -72,8 +73,8 @@ def _clean():
     lmp.record_feed_down()
     for kept in (lmp._by_ticker, lmp._fields_by_ticker):
         kept.pop(TK, None)
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     server._last_feed_stamp.clear()
 
 
@@ -188,7 +189,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     The cell is stale, and its tooltip carries Schwab's time and the age.
     """
     at = _priced_when_the_status_was_sent(-0.5)
-    gex = [cell["gex"] for cell in server.published_levels(TK).gamma_surface["cells"]]
+    gex = [cell["gex"] for cell in level_store.published_levels(TK).gamma_surface["cells"]]
     kept = ofls.get_stream_greeks(SYM)
     _beat(_AT, socket_open=False, options=[])
     server.restamp_open_surfaces(_AT)
@@ -199,7 +200,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
         for col, pair in zip(cell["stream"], cell["contracts"])
         if col and (pair.get("call") == SYM or pair.get("put") == SYM)
     ]
-    after = [cell["gex"] for cell in server.published_levels(TK).gamma_surface["cells"]]
+    after = [cell["gex"] for cell in level_store.published_levels(TK).gamma_surface["cells"]]
     assert kept and ofls.get_stream_greeks(SYM) == kept
     assert after == gex
     assert cells and all(col["state"] == "stale" for col in cells)
@@ -449,13 +450,13 @@ def test_a_change_to_one_tickers_held_contracts_restamps_that_surface_alone():
 
     try:
         beat(crwd[:1])
-        before = {tk: server.published_levels(tk) for tk in names}
+        before = {tk: level_store.published_levels(tk) for tk in names}
         beat(crwd[:2])
-        after = {tk: server.published_levels(tk) for tk in names}
+        after = {tk: level_store.published_levels(tk) for tk in names}
     finally:
-        with server._terrain_cache_lock:
+        with level_store._lock:
             for tk in names:
-                server._terrain_cache.pop(tk, None)
+                level_store._levels.pop(tk, None)
     assert after[TSLA.ticker] is before[TSLA.ticker], "the other surface is not restamped"
     old, new = before[CRWD.ticker], after[CRWD.ticker]
     assert new.gamma_surface is not old.gamma_surface, "the changed surface is restamped"
@@ -474,7 +475,7 @@ def test_a_change_to_one_tickers_held_contracts_restamps_that_surface_alone():
 
 def _sym_states() -> list[str]:
     """Return the states of SYM's legs on SPY's published heatmap."""
-    return _leg_states(server.published_levels(TK).gamma_surface)
+    return _leg_states(level_store.published_levels(TK).gamma_surface)
 
 
 def _publish_chain(at: float) -> None:
@@ -528,7 +529,7 @@ def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
     assert job[0] == server.REPRICE
     states = _sym_states()
     assert states and set(states) == {"live"}
-    assert server.published_levels(TK).gamma_surface["stream_overlay_contracts"] == 1
+    assert level_store.published_levels(TK).gamma_surface["stream_overlay_contracts"] == 1
 
 
 def test_the_beat_after_a_new_surface_stamps_it_whatever_beat_stamped_the_last():

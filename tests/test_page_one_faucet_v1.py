@@ -31,6 +31,7 @@ from app.options.order_flow.engine import compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from numeric_contract import count_text, dollars_text
 from option_contract import read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
@@ -73,8 +74,8 @@ def _publish(fetched_ts: float):
 
 
 def _forget():
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(TK, None)
+    with level_store._lock:
+        level_store._levels.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
@@ -89,7 +90,7 @@ def held():
     """
     _publish(_AT.timestamp())
     _daemon(time_et.now())  # live now, as the routes read it
-    yield server.published_levels(TK)
+    yield level_store.published_levels(TK)
     _forget()
 
 
@@ -256,8 +257,8 @@ def test_the_spot_row_is_served(route):
     try:
         body = route()
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("SPY", None)
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
@@ -344,8 +345,8 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
         server._publish_levels("$SPX", read_chain(fx["contracts"]), fx["ts_utc"], now=at)
         body = server.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop("$SPX", None)
+        with level_store._lock:
+            level_store._levels.pop("$SPX", None)
         lmp._by_ticker.pop("$SPX", None)
         lmp._fields_by_ticker.pop("$SPX", None)
         lmp.record_feed_down()

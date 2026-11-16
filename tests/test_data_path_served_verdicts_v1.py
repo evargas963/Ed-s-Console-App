@@ -24,6 +24,7 @@ import live_price_rows
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
+from state import level_store
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status
@@ -48,9 +49,9 @@ def _et(hh: int, mm: int = 0, day: str = "2026-10-07") -> datetime:
 
 
 def _forget() -> None:
-    with server._terrain_cache_lock:
+    with level_store._lock:
         for tk in ("TSLA", "SPY"):
-            server._terrain_cache.pop(tk, None)
+            level_store._levels.pop(tk, None)
     for tk in ("TSLA", "SPY"):
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
@@ -191,16 +192,16 @@ def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_
         published("SPY", SPY_0DTE, _et(16, 16, "2026-10-30"))
         before = server.terrain("SPY", _et(7, 29, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(8, 0, day))
-        in_pre_market = server.published_levels("SPY").computed_ts_utc
+        in_pre_market = level_store.published_levels("SPY").computed_ts_utc
         live = server.terrain("SPY", _et(8, 1, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(9, 27, day))
-        in_gap = server.published_levels("SPY").computed_ts_utc
+        in_gap = level_store.published_levels("SPY").computed_ts_utc
         gap = server.terrain("SPY", _et(9, 28, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(9, 31, day))
-        at_open = server.published_levels("SPY").computed_ts_utc
+        at_open = level_store.published_levels("SPY").computed_ts_utc
         published("TSLA", TSLA, _et(16, 1, day))
         published("TSLA", TSLA, _et(16, 5, day))
-        after_close = server.published_levels("TSLA").computed_ts_utc
+        after_close = level_store.published_levels("TSLA").computed_ts_utc
         closed = server.terrain("TSLA", _et(16, 6, day).timestamp())["levels_state"]
     finally:
         record_markets(json.loads(held["body"]))
@@ -320,7 +321,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
             chain_spot=(friday["spot"], friday["ts_utc"]),
             now=at,
         )
-        return server.published_levels("SPY")
+        return level_store.published_levels("SPY")
 
     _forget()
     try:

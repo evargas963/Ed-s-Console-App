@@ -41,6 +41,7 @@ from feed.chain_sweep import (
     price_history_message,
 )
 from liquidity_value_engine import bars_from_candles
+from state import bar_store
 from stream_spine import (
     LATEST,
     LOG,
@@ -1145,7 +1146,7 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
                 min(c["low"] for c in monday),
                 max(c["high"] for c in monday),
             ), tk
-            held = {b.ts: b for b in server._bars_1m(tk, server.BARS_KEPT)}
+            held = {b.ts: b for b in bar_store.bars_1m(tk, bar_store.BARS_KEPT)}
             assert len(held) == len(candles), tk
             minute = held[r["bar_start_ms"] / 1000]
             assert (minute.open, minute.high, minute.low, minute.close, minute.volume) == (
@@ -1234,7 +1235,7 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             }
             levels_input = {
                 b["timestamp"] / 1000: (b["open"], b["high"], b["low"], b["close"], b["volume"])
-                for b in bars_from_candles(server._bars_1m(tk, 2500))
+                for b in bars_from_candles(bar_store.bars_1m(tk, 2500))
                 if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old
             }
             assert served == recorded == levels_input, tk

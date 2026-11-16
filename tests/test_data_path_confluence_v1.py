@@ -32,6 +32,7 @@ from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from numeric_contract import price_text
 from option_contract import read_chain
+from state import level_store
 from stream_spine import verbatim_msg
 from terrain_engine import TerrainSnapshot, compute_terrain
 from tests.capture_store import store_capture
@@ -97,8 +98,8 @@ def _chain_spot(tk: str, quote: dict) -> tuple:
 
 
 def _forget(tk: str) -> None:
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
@@ -146,7 +147,7 @@ def _store_by_expiry(tk: str, chain: list, spot: float, at: datetime) -> None:
         )
 
 
-def _published_0dte() -> server.PublishedLevels:
+def _published_0dte() -> level_store.PublishedLevels:
     """SPY's captured 0DTE chain (SPY_0DTE) published by the levels producer.
 
     Published as the stored capture it is, at Schwab's price in it.
@@ -155,16 +156,15 @@ def _published_0dte() -> server.PublishedLevels:
     publish_capture(
         "SPY", held.chain, held.now.timestamp(), held.spot, held.now.date().isoformat(), held.now
     )
-    return server.published_levels("SPY")
+    return level_store.published_levels("SPY")
 
 
-def _hold_with(levels: server.PublishedLevels, **snap_fields) -> None:
+def _hold_with(levels: level_store.PublishedLevels, **snap_fields) -> None:
     """`levels` held with its snapshot's `snap_fields` in their place.
 
     The request ranks the expiry it shows on them (_ranked_matrix).
     """
-    with server._terrain_cache_lock:
-        server._terrain_cache["SPY"] = replace(levels, snap=replace(levels.snap, **snap_fields))
+    level_store.publish("SPY", replace(levels, snap=replace(levels.snap, **snap_fields)))
 
 
 def _book_magnitudes(live: TerrainSnapshot, expiry: str, spot: float) -> dict:
@@ -191,7 +191,7 @@ def _nflx_far_book() -> tuple[dict, dict]:
             NFLX.now.date().isoformat(),
             NFLX.now,
         )
-        live = server.published_levels("NFLX").snap
+        live = level_store.published_levels("NFLX").snap
     finally:
         _forget("NFLX")
     book = next(b for (e, _d), (b, _x) in live.books.items() if e == "2027-12-17")
@@ -260,7 +260,7 @@ def test_an_am_settled_expiry_past_the_year_is_scored():
     tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
     try:
         publish_capture(tk, fx["chain"], fx["ts_utc"], fx["spot"], at.date().isoformat(), at)
-        live = server.published_levels(tk).snap
+        live = level_store.published_levels(tk).snap
     finally:
         _forget(tk)
     mags = _book_magnitudes(live, "2027-12-17", fx["spot"])
@@ -296,13 +296,13 @@ def test_a_missing_factor_is_not_called_flat():
     )
 
 
-def _publish_close(tk: str = "SPY") -> server.PublishedLevels:
+def _publish_close(tk: str = "SPY") -> level_store.PublishedLevels:
     """SPY's 2026-10-22 close capture, published as the stored capture it is, at Schwab's price."""
     held = SPY_CLOSE
     publish_capture(
         tk, held.chain, held.now.timestamp(), held.spot, held.now.date().isoformat(), held.now
     )
-    return server.published_levels(tk)
+    return level_store.published_levels(tk)
 
 
 def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
@@ -317,7 +317,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
         book = live.snap.books[("2026-10-22", 0.0)][0]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     assert body["available"] is True
     assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
     weights = in_score_weights(body["preset"])
@@ -358,7 +358,7 @@ def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
         _publish_close()
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     top, bottom = body["rows"][0]["strike"], body["rows"][-1]["strike"]
     assert top > bottom, "the rows run highest strike first"
     for lane, levels in body["rail_lanes"].items():
@@ -407,7 +407,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         bucket = live.snap.books[("2026-10-22", 0.0)][0][strike]
         body = server.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
     walls = [level for level in _rail_levels(body) if level["abbrev"] == "CW"]
@@ -446,7 +446,7 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
         )
         body = server.confluence_payload("SPY", fx["expiry"], at)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     shown = [r for r in body["rows"] if r["strike"] in zero]
     assert len(shown) >= 4
     assert all(r["charm_text"] == "0" and r["charm_reason"] is None for r in shown)
@@ -609,7 +609,7 @@ def mrvl_answers() -> dict:
         }
         front_passed = server.confluence_payload("MRVL", "2026-10-09", _SUNDAY)
     finally:
-        server._terrain_cache.pop("MRVL", None)
+        level_store._levels.pop("MRVL", None)
     return json.loads(
         json.dumps(
             {
@@ -667,7 +667,7 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
         opened = server.confluence_payload(tk, None, _SUNDAY)
         asked = server.confluence_payload(tk, listed[0], _SUNDAY)
     finally:
-        server._terrain_cache.pop(tk, None)
+        level_store._levels.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
     assert (opened["available"], opened["expiry"]) == (True, "2026-10-16")
     assert "2026-10-09" not in [e["expiry"] for e in opened["expiries"]]
@@ -703,7 +703,7 @@ def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
         _hold_with(levels, charm_by_expiry=levels.snap.charm_by_expiry | {expiry: earlier})
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     row = next(r for r in body["rows"] if r["strike"] == strike)
     assert earlier[strike]["net_charm"] != at_capture[strike]["net_charm"]
     assert row["charm_text"] == screen_text(earlier[strike]["net_charm"], "compact")
@@ -726,7 +726,7 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
         _hold_with(levels, iv_by_expiry=levels.snap.iv_by_expiry | {expiry: puts})
         body = server.confluence_payload("SPY", expiry, held.now)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     differ = [
         r
         for r in body["rows"]
@@ -1019,8 +1019,8 @@ def _first_chain_keeps_the_capture(now, capture_at):
         first = server.confluence_payload(tk, expiry, now)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
         _store_by_expiry(tk, fresh, held.spot, capture_at)
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), now.timestamp(), chain_spot=spot, now=now
@@ -1145,8 +1145,8 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         first = server.confluence_payload(tk, expiry, before)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = shown["pc_vol_text"]
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
         _store_by_expiry(tk, fresh, held.spot, datetime(2026, 10, 2, 16, 0, tzinfo=ET))
         closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
         server._publish_levels(
@@ -1198,7 +1198,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
                 ),
             )
         publish_capture(tk, held["chain"], held["ts_utc"], held["spot"], "2026-10-16", after)
-        book = server.published_levels(tk)
+        book = level_store.published_levels(tk)
         overlaid = book.gamma_surface["stream_overlay_contracts"]
         kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
         panel = server.chain(
@@ -1305,7 +1305,9 @@ def test_a_newer_capture_is_the_count_the_next_chain_keeps():
             tk, read_chain(_zero_counts(fresh)), after.timestamp(), chain_spot=spot, now=after
         )
         kept = next(
-            ct for ct in server.published_levels(tk).priced_chain if ct.symbol == target["symbol"]
+            ct
+            for ct in level_store.published_levels(tk).priced_chain
+            if ct.symbol == target["symbol"]
         )
     finally:
         _forget(tk)
@@ -1329,12 +1331,12 @@ def test_the_close_values_stand_until_the_next_open():
         server._publish_levels(
             tk, read_chain(older["chain"]), after.timestamp(), chain_spot=spot, now=after
         )
-        balance = server.published_levels(tk)
+        balance = level_store.published_levels(tk)
         server._publish_levels(tk, now=before)
         server._publish_levels(
             tk, read_chain(newer["chain"]), before.timestamp(), chain_spot=spot, now=before
         )
-        held = server.published_levels(tk)
+        held = level_store.published_levels(tk)
     finally:
         _forget(tk)
     other = [
@@ -1465,7 +1467,7 @@ def test_a_chain_whose_every_expiry_has_passed_says_so():
         _publish_close()
         body = server.confluence_payload("SPY", None, sunday)
     finally:
-        server._terrain_cache.pop("SPY", None)
+        level_store._levels.pop("SPY", None)
     assert body["available"] is False
     assert body["reason"] == "no expiry on this chain is still open"
 
