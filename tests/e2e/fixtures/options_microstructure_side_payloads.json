@@ -43,21 +43,24 @@
         "ask_total_text": null,
         "bid_total": null,
         "bid_total_text": null,
-        "imbalance": null
+        "imbalance": null,
+        "imbalance_text": null
       },
       "3": {
         "ask_total": null,
         "ask_total_text": null,
         "bid_total": null,
         "bid_total_text": null,
-        "imbalance": null
+        "imbalance": null,
+        "imbalance_text": null
       },
       "5": {
         "ask_total": null,
         "ask_total_text": null,
         "bid_total": null,
         "bid_total_text": null,
-        "imbalance": null
+        "imbalance": null,
+        "imbalance_text": null
       }
     },
     "depth_pressure": {
@@ -74,20 +77,32 @@
         "top_book_pressure": "DERIVED"
       },
       "cum_delta_proxy": -8.0,
+      "cum_delta_proxy_text": "-8.0",
       "cum_delta_slope": -3.750951500097202,
+      "cum_delta_slope_text": "-3.751",
       "cum_delta_unsigned": 0.0,
+      "cum_delta_unsigned_text": "0.00",
       "cum_delta_window": "prints Fri 10/23 08:32 AM CT to Fri 10/23 08:32 AM CT",
       "estimate_note": "Estimated, not Schwab's: Schwab sends no buyer or seller side. Each last trade is signed by Lee and Ready (1991) against Schwab's bid and ask held with it: above their midpoint counts as buying, below as selling, at it the tick test (above the trade before, buying; below, selling; unchanged, the last change's side). A trade with no bid and ask, or at the midpoint before any price change, is unsigned; its share of the size is shown beside each value. On Nasdaq this method was right 81% of the time, the tick test alone 78% (Ellis, Michaely and O'Hara 2000); Finucane (2000) found the two about equal. Schwab's stream is not every trade. Pressure: signed size over the signed size in the window, -1 to +1.",
       "tape_pressure_2m": -0.6666666666666666,
+      "tape_pressure_2m_text": "-0.667",
       "tape_pressure_30s": -0.6666666666666666,
+      "tape_pressure_30s_text": "-0.667",
       "tape_pressure_5m": -0.6666666666666666,
+      "tape_pressure_5m_text": "-0.667",
       "tape_unsigned_2m": 0.0,
+      "tape_unsigned_2m_text": "0.00",
       "tape_unsigned_30s": 0.0,
+      "tape_unsigned_30s_text": "0.00",
       "tape_unsigned_5m": 0.0,
-      "top_book_pressure": -0.6631578947368421
+      "tape_unsigned_5m_text": "0.00",
+      "top_book_pressure": -0.6631578947368421,
+      "top_book_pressure_text": "-0.663"
     },
     "mark": 2.025,
+    "mark_text": "2.02",
     "microprice": 2.021684210526316,
+    "microprice_text": "2.02",
     "provenance": {
       "book_source": "unavailable",
       "book_time_ms": null,
@@ -100,6 +115,7 @@
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
     "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
     "spread_pts": 0.009999999999999787,
+    "spread_pts_text": "0.01",
     "status": "no_book",
     "streaming_plane": {
       "feed_health": {
@@ -120,9 +136,11 @@
       "ask": 2.03,
       "ask_size": 79.0,
       "ask_size_text": "79",
+      "ask_text": "2.03",
       "bid": 2.02,
       "bid_size": 16.0,
-      "bid_size_text": "16"
+      "bid_size_text": "16",
+      "bid_text": "2.02"
     },
     "top_outage": null,
     "wall_candidates": []
@@ -171,21 +189,24 @@
         "ask_total_text": null,
         "bid_total": null,
         "bid_total_text": null,
-        "imbalance": null
+        "imbalance": null,
+        "imbalance_text": null
       },
       "3": {
         "ask_total": null,
         "ask_total_text": null,
         "bid_total": null,
         "bid_total_text": null,
-        "imbalance": null
+        "imbalance": null,
+        "imbalance_text": null
       },
       "5": {
         "ask_total": null,
         "ask_total_text": null,
         "bid_total": null,
         "bid_total_text": null,
-        "imbalance": null
+        "imbalance": null,
+        "imbalance_text": null
       }
     },
     "depth_pressure": {
@@ -202,20 +223,32 @@
         "top_book_pressure": "DERIVED"
       },
       "cum_delta_proxy": -1.0,
+      "cum_delta_proxy_text": "-1.0",
       "cum_delta_slope": null,
+      "cum_delta_slope_text": null,
       "cum_delta_unsigned": 0.0,
+      "cum_delta_unsigned_text": "0.00",
       "cum_delta_window": "prints Fri 10/23 08:32 AM CT to Fri 10/23 08:32 AM CT",
       "estimate_note": "Estimated, not Schwab's: Schwab sends no buyer or seller side. Each last trade is signed by Lee and Ready (1991) against Schwab's bid and ask held with it: above their midpoint counts as buying, below as selling, at it the tick test (above the trade before, buying; below, selling; unchanged, the last change's side). A trade with no bid and ask, or at the midpoint before any price change, is unsigned; its share of the size is shown beside each value. On Nasdaq this method was right 81% of the time, the tick test alone 78% (Ellis, Michaely and O'Hara 2000); Finucane (2000) found the two about equal. Schwab's stream is not every trade. Pressure: signed size over the signed size in the window, -1 to +1.",
       "tape_pressure_2m": -1.0,
+      "tape_pressure_2m_text": "-1.000",
       "tape_pressure_30s": -1.0,
+      "tape_pressure_30s_text": "-1.000",
       "tape_pressure_5m": -1.0,
+      "tape_pressure_5m_text": "-1.000",
       "tape_unsigned_2m": 0.0,
+      "tape_unsigned_2m_text": "0.00",
       "tape_unsigned_30s": 0.0,
+      "tape_unsigned_30s_text": "0.00",
       "tape_unsigned_5m": 0.0,
-      "top_book_pressure": -0.2
+      "tape_unsigned_5m_text": "0.00",
+      "top_book_pressure": -0.2,
+      "top_book_pressure_text": "-0.200"
     },
     "mark": 3.05,
+    "mark_text": "3.05",
     "microprice": 3.048,
+    "microprice_text": "3.05",
     "provenance": {
       "book_source": "unavailable",
       "book_time_ms": null,
@@ -228,6 +261,7 @@
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
     "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
     "spread_pts": 0.020000000000000018,
+    "spread_pts_text": "0.02",
     "status": "no_book",
     "streaming_plane": {
       "feed_health": {
@@ -248,9 +282,11 @@
       "ask": 3.06,
       "ask_size": 57.0,
       "ask_size_text": "57",
+      "ask_text": "3.06",
       "bid": 3.04,
       "bid_size": 38.0,
-      "bid_size_text": "38"
+      "bid_size_text": "38",
+      "bid_text": "3.04"
     },
     "top_outage": null,
     "wall_candidates": []

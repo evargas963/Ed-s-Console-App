@@ -89,6 +89,16 @@ def iv_text(value: float | None) -> str | None:
     return price_text(value)
 
 
+def fixed_text(value: float | None, places: int) -> str | None:
+    """Return a measure with no unit of its own as the screen shows it: `places` decimals.
+
+    A ratio, an imbalance, a pressure or a share. None when there is none.
+    """
+    if value is None:
+        return None
+    return f"{float(value):.{places}f}"
+
+
 def count_text(value: float | None) -> str | None:
     """Return a count (shares, contracts, open interest, volume) as the screen shows it.
 

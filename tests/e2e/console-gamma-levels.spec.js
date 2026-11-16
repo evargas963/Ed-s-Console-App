@@ -12,16 +12,17 @@ const { routeWatchlist } = require('./fixtures/watchlist');
 // tests/test_vanna_charm_by_strike_v1.py)
 const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 
+// each price with its text as the server serves it (two decimals, numeric_contract.price_text)
 const LEVELS = {
-  ticker: 'SPY', schema_version: 1, spot: 100.0, spot_source: 'schwab_quote_last',
+  ticker: 'SPY', schema_version: 1, spot: 100.0, spot_text: '100.00', spot_source: 'schwab_quote_last',
   bar_source: 'price_bars_1m',
   // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
-    { id: 'PDH', price: 101.5, family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5,
+    { id: 'PDH', price: 101.5, price_text: '101.50', family: 'session', label: 'Prior Day High', evidence_tier: 'MEASURED', distance: 1.5,
       provenance: { producer: 'session_levels' }, staleness: { as_of_ts_utc: 1757000000 } },
-    { id: 'VWAP', price: 100.02, family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02,
+    { id: 'VWAP', price: 100.02, price_text: '100.02', family: 'vwap', label: 'VWAP', evidence_tier: 'MEASURED', distance: 0.02,
       provenance: { producer: 'liquidity_value_engine' }, staleness: { as_of_ts_utc: 1757000000 } },
-    { id: 'POC', price: 99.4, family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6,
+    { id: 'POC', price: 99.4, price_text: '99.40', family: 'value', label: 'Point of Control', evidence_tier: 'DERIVED', distance: -0.6,
       provenance: { producer: 'value_area' }, staleness: { as_of_ts_utc: 1757000000 } },
   ],
   by_distance: ['VWAP', 'POC', 'PDH'],
@@ -29,6 +30,10 @@ const LEVELS = {
   families_absent: [{ family: 'gamma', reason: 'sent as the terrain panel' }],
   degraded: [],
 };
+
+// a 0DTE pair as served: the whole book's call wall and the same-day one, each with its text
+const ZERO_DTE_CALL_WALL = { id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
+  carried_text: '600.00', price_text: '580.00', staleness: { as_of_time_ct: '12:32:07 CT' } };
 
 // the panels the page's socket sends this test (a test sets its own levels before the page
 // opens), and the program's side of that socket
@@ -103,10 +108,7 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('the 0DTE table shows the served same-day price beside the level it reprices', async ({ page }) => {
-    panels.levels = Object.assign({}, LEVELS, {
-      zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-        staleness: { as_of_time_ct: '12:32:07 CT' } }],
-    });
+    panels.levels = Object.assign({}, LEVELS, { zero_dte: [ZERO_DTE_CALL_WALL] });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     const row = page.locator('#levelsBody .zd-row', { hasText: 'Call wall' });
     await expect(row.locator('.lv-px').nth(0)).toContainText('600.00');
@@ -129,11 +131,7 @@ test.describe('D — Gamma Levels view', () => {
   });
 
   test('the 0DTE table still shows when the canonical list is empty', async ({ page }) => {
-    panels.levels = Object.assign({}, LEVELS, {
-      levels: [],
-      zero_dte: [{ id: 'call_wall', label: 'Call wall', carried: 600, price: 580,
-        staleness: { as_of_time_ct: '12:32:07 CT' } }],
-    });
+    panels.levels = Object.assign({}, LEVELS, { levels: [], zero_dte: [ZERO_DTE_CALL_WALL] });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#levelsBody .placeholder')).toHaveCount(0);
     await expect(page.locator('#levelsBody th', { hasText: 'Regular' })).toBeVisible();
@@ -147,7 +145,8 @@ test.describe('D — Gamma Levels view', () => {
     await expect(pdh).toContainText('101.50');
     expect(sock.subscribes[sock.subscribes.length - 1].panels['levels:view']).toEqual({ tf: '1' });
     const asked = sock.subscribes.length;
-    panels.levels = Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) => (r.id === 'PDH' ? Object.assign({}, r, { price: 101.75 }) : r)) });
+    panels.levels = Object.assign({}, LEVELS, { levels: LEVELS.levels.map((r) => (r.id === 'PDH'
+      ? Object.assign({}, r, { price: 101.75, price_text: '101.75' }) : r)) });
     sock.changed('levels');
     await expect(pdh).toContainText('101.75');
     const words = 'the program could not produce this panel: ValueError: tf \'2\' is not one of 1, 3, 5, 15, 30, 60, D';

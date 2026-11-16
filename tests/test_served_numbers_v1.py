@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 
 from numeric_contract import compact_text, count_text, dollars_text, iv_text, strike_text
+from terrain_engine import OPTION_LEVELS
 
 FX = Path(__file__).parent / "fixtures"
 E2E = Path(__file__).parent / "e2e" / "fixtures"
@@ -72,6 +73,7 @@ def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_mak
     spy = json.loads((E2E / "panels_spy_two_day.json").read_text(encoding="utf-8"))["strikes"]
     assert spy["max_abs_row"] == {
         "strike": 775.0,
+        "strike_text": "775",
         "value": 1503567229.88173,
         "volume": 9877.0,
         "text": "$1.50B",
@@ -129,6 +131,127 @@ def test_the_books_sizes_are_served_whole():
     assert levels and walls
     for row in levels + walls:
         assert row["volume_text"] == screen_text(row["volume"], "count")
+
+
+def price(value: float | None) -> str | None:
+    """Return a price as the operator's format shows it, two decimals, worked apart from code."""
+    return None if value is None else f"{value:.2f}"
+
+
+def listed(value: float | None) -> str | None:
+    """Return a strike as listed, to the cent with no trailing zeros, worked apart from the code."""
+    return None if value is None else f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def _panels(name: str) -> dict:
+    return json.loads((E2E / f"panels_{name}_two_day.json").read_text(encoding="utf-8"))
+
+
+def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
+    """SPY's and AMZN's levels: the spot, each level, each 0DTE pair, the POC and the zones."""
+    for name in ("spy", "amzn"):
+        p = _panels(name)
+        for tf, lv in p["levels"].items():
+            assert lv["spot_text"] == price(lv["spot"]), (name, tf)
+            assert lv["levels"], (name, tf)
+            for r in lv["levels"]:
+                assert r["price_text"] == price(r["price"]), (name, tf, r["id"])
+            for r in lv["zero_dte"]:
+                assert (r["price_text"], r["carried_text"]) == (
+                    price(r["price"]),
+                    price(r["carried"]),
+                )
+            vp = lv["volume_profile"]
+            # the profile's POC is drawn with the TODAY_POC level's text: the same price
+            texts = {r["id"]: r["price_text"] for r in lv["levels"]}
+            assert vp is None or texts["TODAY_POC"] == price(vp["poc"])
+        zones = p["liquidity"]["zones"]
+        assert zones, name
+        for z in zones:
+            assert (z["zone_low_text"], z["zone_high_text"]) == (
+                price(z["zone_low"]),
+                price(z["zone_high"]),
+            )
+            for s in z["source_levels"]:
+                assert s["value_text"] == price(s["value"])
+
+
+def test_every_option_level_and_ratio_of_the_terrain_is_served():
+    """SPY's and AMZN's terrain: each option level, each on the 0DTE basis, the put/call ratios
+    (two decimals) and the one-day move (its points two decimals, its days whole)."""
+    for name in ("spy", "amzn"):
+        t = _panels(name)["terrain"]
+        for level, _label in OPTION_LEVELS:
+            assert t[f"{level}_text"] == price(t[level]), (name, level)
+        assert t["same_day_text"] == {k: price(v) for k, v in t["same_day"].items()}
+        assert t["pcr_all_text"] == price(t["pcr_all"])
+        assert t["pcr_by_expiry_text"] == {k: price(v) for k, v in t["pcr_by_expiry"].items()}
+        move = t["implied_1d_move"]
+        assert (t["move_points_text"], t["move_dte_text"]) == (
+            price(move["points"]),
+            f"{round(move['dte_used']):,}",
+        )
+    spy = _panels("spy")["terrain"]
+    assert (spy["call_wall_text"], spy["gamma_flip_text"], spy["pcr_all_text"]) == (
+        "775.00",
+        "761.22",
+        "1.83",
+    )
+
+
+def test_the_charts_bars_and_the_books_prices_are_served_with_two_decimals():
+    """SPY's and AMZN's bars at each timeframe, and each venue's top of book, mark, spread, levels
+    and walls; each depth's imbalance three decimals."""
+    for name in ("spy", "amzn"):
+        p = _panels(name)
+        for tf, bars in p["bars"].items():
+            assert bars["bars"], (name, tf)
+            for b in bars["bars"]:
+                assert [b[f"{k}_text"] for k in "ohlc"] == [price(b[k]) for k in "ohlc"]
+        for venue, book in p["book"].items():
+            tob = book["top_of_book"]
+            assert (tob["bid_text"], tob["ask_text"]) == (price(tob["bid"]), price(tob["ask"]))
+            for k in ("mark", "microprice", "spread_pts"):
+                assert book[f"{k}_text"] == price(book[k]), (name, venue, k)
+            for d in book["depth"].values():
+                im = d["imbalance"]
+                assert d["imbalance_text"] == (None if im is None else f"{im:.3f}")
+            for r in book["depth_pressure"]["bid"] + book["depth_pressure"]["ask"]:
+                assert r["price_text"] == price(r["price"])
+            for w in book["wall_candidates"]:
+                assert w["price_text"] == price(w["price"])
+                assert w["median_mult_text"] == f"{w['median_mult']:.1f}"
+
+
+def test_the_strikes_and_their_moves_are_served_as_listed():
+    """SPY's chain ladder, per-strike rows, window centre and day-over-day level moves.
+
+    The strikes that grew and traded most, as listed.
+    """
+    p = _panels("spy")
+    for r in p["chain"]["ladder"]:
+        assert r["strike_text"] == listed(r["strike"])
+        for c in (r["call"], r["put"]):
+            if c is not None:
+                assert (c["bid_text"], c["ask_text"]) == (price(c["bid"]), price(c["ask"]))
+    assert p["chain"]["spot_text"] == price(p["chain"]["spot"])
+    strikes = p["strikes"]
+    for sc in ("all", "near", "far"):
+        for r in strikes["today"][sc]:
+            assert r["strike_text"] == listed(r["strike"])
+        assert strikes["views"][sc]["centre_text"] == listed(strikes["views"][sc]["centre"])
+        m = strikes["migration"][sc]
+        assert m["grew_text"] == "/".join(map(listed, m["grew"]))
+        assert m["busiest_text"] == "–".join(map(listed, m["busiest"]))
+    # SPY's walls and flip, 2026-11-11 to 2026-11-12: the call wall moved up 15, the put wall
+    # stood, the flip rose 0.45
+    assert [
+        (v["prior_text"], v["today_text"], v["change_text"]) for v in strikes["level_moves"]
+    ] == [
+        ("760", "775", "+15"),
+        ("760", "760", "unchanged"),
+        ("760.77", "761.22", "+0.45"),
+    ]
 
 
 def test_the_heatmaps_strikes_are_served_as_listed():
