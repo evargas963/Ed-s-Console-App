@@ -6,6 +6,7 @@ import live_market_plane as lmp
 import server as srv
 import time_et
 from option_contract import read_chain
+from push import chain as push_chain
 from state import level_store
 from tests.real_chains import CRWD
 
@@ -28,7 +29,7 @@ def test_the_chain_spot_carries_schwabs_trade_time():
         received_ts=1790380799.83,
     )
     try:
-        body = srv.chain(tk, time_et.now(), {"expiry": exp})
+        body = push_chain.chain(tk, time_et.now(), {"expiry": exp})
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

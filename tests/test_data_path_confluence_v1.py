@@ -1203,7 +1203,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         book = level_store.published_levels(tk)
         overlaid = book.gamma_surface["stream_overlay_contracts"]
         kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
-        panel = server.chain(
+        panel = push_chain.chain(
             tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
         )
         shown = {row["symbol"]: row.get("totalVolume") for row in panel["contracts"]}

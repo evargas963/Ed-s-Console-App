@@ -81,7 +81,6 @@ from numeric_contract import (
     compact_text,
     count_text,
     dollars_text,
-    iv_text,
     price_text,
     schwab_count,
     schwab_number,
@@ -90,10 +89,11 @@ from numeric_contract import (
 from open_gap import (
     open_gap_record,
 )
-from option_contract import OptionContract, chain_row
+from option_contract import OptionContract
 from push import bars as push_bars
 from push import book as push_book
 from push import bookmap as push_bookmap
+from push import chain as push_chain
 from push import experimental as push_experimental
 from push import expiries as push_expiries
 from push import forces as push_forces
@@ -129,7 +129,6 @@ from terrain_engine import (
     ExpiryKey,
     StrikeValue,
     TerrainSnapshot,
-    chain_ladder,
     compute_terrain,
     nearest_strike,
     side_total,
@@ -1973,123 +1972,6 @@ async def post_flow_contract(selected: FlowContract):
         )
     await select_flow_contract(contract)
     return {"ok": True, "contract": contract}
-
-
-#: the chain panel's reason while no chain of the ticker is held and no chain error is recorded
-NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
-
-
-def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
-    """Return one expiry of the ticker's full chain at `now`, from the chain the daemon delivered.
-
-    The `chain` panel: the Chain ladder, Strike Detail and Structures, each its own reader with
-    its own `expiry` (the selected expiry, or None for the chain's front one, the levels' first
-    listed). Every contract Schwab listed, as the chain screens show it (option_contract.chain_row:
-    a value Schwab did not send is null) -- from the chain the daemon delivered
-    (strike_range=ALL), with each live streamed contract's streamed fields as its values (the
-    stream owns them), by the levels' own rule on the same inputs (the chain's listed contracts,
-    its fetch time). Every watchlist ticker's chain is kept. Answers `status: unavailable` with a
-    reason when no chain is held. `ticker` is the levels' own key.
-    """
-    t = ticker
-    expiry = params.get("expiry")
-    # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
-    held, verdict = terrain_cache_get(t, now)
-    listed = held.snap.expiries if held is not None else None
-    requested = expiry.strip()[:10] if isinstance(expiry, str) and expiry.strip() else None
-    resolved_expiry = requested or (listed[0] if listed else None)
-
-    def _unavailable(reason: str) -> dict[str, Any]:
-        return {
-            "ticker": t,
-            "spot": None,
-            "expiry": resolved_expiry,
-            "contracts": [],
-            "ladder": [],
-            "status": "unavailable",
-            **verdict,
-            "scope": {"kind": "unavailable", "reason": reason},
-        }
-
-    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
-        return _unavailable(f"expiry {expiry!r} is not an expiry date or null")
-    if held is None:
-        return _unavailable(level_store.chain_failure(t) or NO_CHAIN_YET)
-    if not held.priced_chain:
-        return _unavailable(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
-    if resolved_expiry is None:
-        return _unavailable("no listed expiry for this ticker")
-    # the contracts as the levels priced them (_publish_levels, each with its newest values):
-    # one computation, the screen's
-    response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
-    if not response_contracts:
-        return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    # each contract with its open interest, volume, IV, bid and ask as the screen shows them
-    shown = [
-        {
-            **chain_row(c),
-            "oi_text": count_text(c.open_interest),
-            "volume_text": count_text(c.volume),
-            "iv_text": iv_text(c.volatility),
-            "bid_text": price_text(c.bid),
-            "ask_text": price_text(c.ask),
-        }
-        for c in response_contracts
-    ]
-    live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
-    ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
-    if not_on_ladder:
-        log.warning(
-            "%s %s: %d contract(s) Schwab sent have no strike or no CALL/PUT side and are not "
-            "on the chain ladder",
-            t,
-            resolved_expiry,
-            not_on_ladder,
-        )
-    # each ladder strike's net GEX in this expiry, as the heatmap publishes it (its column of the
-    # surface): Strike Detail shows it beside this expiry's contracts -- one value, one producer.
-    # No surface, no column for this expiry, or no value at the strike: unknown (None)
-    surf = held.gamma_surface
-    col = (
-        None
-        if surf is None
-        else next(
-            (i for i, e in enumerate(surf["expirations"]) if e["expiry"] == resolved_expiry), None
-        )
-    )
-    net_gex = None if col is None else {c["strike"]: c["gex"][col] for c in surf["cells"]}
-    for row in ladder:
-        row["strike_text"] = strike_text(row["strike"])
-        row["net_gex"] = None if net_gex is None else net_gex.get(row["strike"])
-        row["net_gex_text"] = dollars_text(row["net_gex"])
-    return {
-        "ticker": t,
-        "spot": live_spot,
-        "spot_text": price_text(live_spot),
-        "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
-        "expiry": resolved_expiry,
-        "spot_strike": nearest_strike(
-            {c.strike for c in response_contracts if c.strike is not None}, live_spot
-        ),
-        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
-        "adjusted_deliverable_symbols": [c.symbol for c in response_contracts if c.non_standard],
-        # Schwab's lastTradingDay, an instant in epoch milliseconds, as its date on the market's
-        # clock (ET); a contract Schwab sent none for has no entry
-        "last_trading_day_et": {
-            c.symbol: et_date_str_from_ts_utc(ms / 1000.0)
-            for c in response_contracts
-            if isinstance(ms := c.listing.get("lastTradingDay"), float)
-        },
-        # two contracts listed at one (strike, side): the chain is not strike-unique
-        "has_duplicate_contracts": len({(c.strike, c.side) for c in response_contracts})
-        < len(response_contracts),
-        **verdict,
-        "contracts": shown,
-        "status": "ok",
-        "ladder": ladder,
-        "n_strikes": len({r["strike"] for r in ladder}),
-        "scope": {"kind": "complete_single_expiry"},
-    }
 
 
 #: /api/health's Schwab reason when the console has no current heartbeat from the daemon
