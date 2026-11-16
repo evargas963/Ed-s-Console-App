@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import server
+from state import level_store
 
 
 def drawn(
@@ -27,8 +28,8 @@ def drawn(
     """
     node = shutil.which("node")
     assert node, "Node.js is required on PATH (the same prerequisite as Playwright E2E)"
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
     try:
         server._publish_levels(
             tk,
@@ -46,8 +47,8 @@ def drawn(
         )
         surface = server.gamma_surface_payload(tk, "all", None, 0, None, None, now)
     finally:
-        with server._terrain_cache_lock:
-            server._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
     path = tmp_path / "surface.json"
     path.write_text(json.dumps(surface), encoding="utf-8")
     r = subprocess.run(

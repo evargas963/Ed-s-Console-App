@@ -15,6 +15,7 @@ from math_exposure_core import (
 )
 from micro_structure import Candle
 from option_contract import read_chain
+from state import bar_store, level_store
 from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
@@ -106,7 +107,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
     forget_bars(tk)
     try:
         for b in tape:
-            srv._keep_bar(tk, _candle(b))
+            bar_store.keep_bar(tk, _candle(b))
         srv._write_price_history({"symbol": tk, "series": "1d", "answer": {"candles": daily}})
         srv._publish_price_levels(tk, now)  # as the bar writer does
         payload = srv.levels_payload(tk, "1", now)
@@ -178,8 +179,8 @@ def test_strikes_payload_carries_server_side_sums():
         body = srv.strikes(C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
         live = srv.resolve_spot(C.ticker, now=time_et.now())[0]
     finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(C.ticker, None)
+        with level_store._lock:
+            level_store._levels.pop(C.ticker, None)
         lmp._by_ticker.pop(C.ticker, None)
         lmp._fields_by_ticker.pop(C.ticker, None)
         lmp.record_feed_down()
@@ -279,12 +280,12 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
             == pushed[other]["bar_start_ms"] / 1000.0
         )
         # the route reads no bar: with the ticker's bars gone from memory it serves the same levels
-        kept = srv._bars.pop(tk)
+        kept = bar_store._bars.pop(tk)
         again = srv.levels_payload(tk, "15", now)
         assert [(r["id"], r["price"]) for r in again["levels"]] == [
             (r["id"], r["price"]) for r in served["levels"]
         ]
-        srv._bars[tk] = kept
+        bar_store._bars[tk] = kept
 
         # a new session: the levels loop builds its levels (10-02 is its prior day: Schwab's daily
         # high 772.65, which the recorded stream's bars, topping at 772.49, missed)

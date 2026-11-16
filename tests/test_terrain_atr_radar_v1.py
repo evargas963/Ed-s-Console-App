@@ -18,12 +18,13 @@ from pathlib import Path
 import server as srv
 import time_et
 from numeric_contract import count_text
+from state import bar_store
 
 
 def test_the_bars_panel_serves_canonical_bars_shape():
     """The `bars` panel is newest-last {t,o,h,l,c,v} rows.
 
-    The rows come from the console's 1-minute bars in memory (server._bars: price_bars_1m loaded
+    The rows come from the console's 1-minute bars in memory (state.bar_store: price_bars_1m loaded
     at startup, then each streamed bar).
     """
     # Real SPY 1-minute bars (tests/fixtures), each kept by the console's own bar writer.
@@ -36,7 +37,7 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         (b["timestamp"] / 1000.0, b["open"], b["high"], b["low"], b["close"], b["volume"])
         for b in fx
     ]
-    srv._bars.pop("SPY", None)
+    bar_store._bars.pop("SPY", None)
     try:
         for b in fx:
             srv._write_streamed_bar({"symbol": "SPY", "bar_start_ms": b["timestamp"], **b})
@@ -59,7 +60,7 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         full = srv.bars("SPY", at, {"tf": "1", "limit": len(rows)})["bars"]
         assert [(b["t"], b["o"], b["h"], b["l"], b["c"], b["v"]) for b in full] == rows
     finally:
-        srv._bars.pop("SPY", None)
+        bar_store._bars.pop("SPY", None)
 
 
 def test_terrain_strikes_endpoint_shape_and_scopes():

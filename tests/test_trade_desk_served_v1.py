@@ -29,6 +29,7 @@ from db import LevelCrossEvent
 from liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from micro_structure import Candle
 from option_contract import read_chain
+from state import bar_store, cross_store, level_store
 from terrain_engine import (
     WALL_BREACHED,
     WALL_CONTAINS,
@@ -84,12 +85,12 @@ def _desk_events(tk, crosses, now, tf):
             for r in crosses
         ]
     )
-    server._crosses.pop(tk, None)
-    server._load_crosses([tk])
+    cross_store._crosses.pop(tk, None)
+    cross_store.load([tk])
     try:
         return server.desk_events_payload(tk, "NYSE_BOOK", tf, now), stored
     finally:
-        server._crosses.pop(tk, None)
+        cross_store._crosses.pop(tk, None)
 
 
 @pytest.mark.parametrize(
@@ -181,12 +182,12 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
             for r in fx
         ]
     )
-    server._crosses.pop(tk, None)
-    server._load_crosses([tk])
+    cross_store._crosses.pop(tk, None)
+    cross_store.load([tk])
     try:
         body = server.desk_events_payload(tk, "NYSE_BOOK", "30", _WED_EVENING)
     finally:
-        server._crosses.pop(tk, None)
+        cross_store._crosses.pop(tk, None)
     start = datetime(2026, 10, 7, 9, 30, tzinfo=time_et.ET).timestamp()
     assert body["window_start_ts_utc"] == start
     # the events: the window's crosses, one per (time, value, direction)
@@ -307,11 +308,11 @@ def _spy_bars() -> list:
 
 
 def _forget(tk):
-    server._bars.pop(tk, None)
+    bar_store._bars.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
     for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
         del server._MATERIALIZED_SNAPSHOTS[key]
 
@@ -332,7 +333,7 @@ def _priced(tk, chain, spot, ts_utc):
         ],
         now=datetime.fromtimestamp(ts_utc, time_et.ET),
     )
-    return server.published_levels(tk).served()
+    return level_store.published_levels(tk).served()
 
 
 def _live_price(tk, last):
@@ -360,7 +361,7 @@ def spy_levels():
     terrain = _priced(DESK, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now.timestamp())
     spot = bars[-1]["close"]
     for b in bars:
-        server._keep_bar(
+        bar_store.keep_bar(
             DESK,
             Candle(
                 ts=b["timestamp"] / 1000,

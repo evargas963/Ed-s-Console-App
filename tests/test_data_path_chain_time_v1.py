@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import server as srv
 from option_contract import read_chain
+from state import level_store
 from terrain_engine import compute_terrain
 from tests.real_chains import CRWD
 from time_et import sessions
@@ -41,7 +42,7 @@ def test_the_terrain_carries_the_chain_time():
         )
         body = srv.terrain(tk, fetched)
     finally:
-        with srv._terrain_cache_lock:
-            srv._terrain_cache.pop(tk, None)
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
     assert body["call_wall"] == published["call_wall"]
     assert body["levels_time_ct"] == "Fri 09/25 06:59 PM CT"

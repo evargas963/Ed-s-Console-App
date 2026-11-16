@@ -20,6 +20,7 @@ from liquidity_value_engine import (
 )
 from micro_structure import Candle
 from server import _schwab_bar, materialize_price_level_snapshot
+from state import bar_store
 from tests.feed_live_helper import daemon_bars, schwab_daily
 from time_et import ET, sessions
 
@@ -79,9 +80,9 @@ def _daily(tk: str) -> list:
     """`tk`'s daily candles as the bar writer holds them (server._write_price_history)."""
     srv._write_price_history(_daily_msg(tk))
     try:
-        return list(srv._series[(tk, "1d")])
+        return list(bar_store._series[(tk, "1d")])
     finally:
-        srv._series.pop((tk, "1d"), None)
+        bar_store._series.pop((tk, "1d"), None)
 
 
 def _prior(tk: str, session):
@@ -222,9 +223,9 @@ def _published(tk: str, now: datetime) -> None:
     It is published as the bar writer publishes it (its tiny prior session is stamped degraded,
     and still served).
     """
-    srv._bars.pop(tk, None)
+    bar_store._bars.pop(tk, None)
     for b in _tape():
-        srv._keep_bar(tk, b)
+        bar_store.keep_bar(tk, b)
     srv._write_price_history(_daily_msg(tk))  # the tape's sessions as Schwab's daily candles
     srv._publish_price_levels(tk, now)
 
@@ -236,8 +237,8 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute():
         _published("ZZP2A", noon)
         payload = srv.levels_payload("ZZP2A", "1", noon)
     finally:
-        srv._bars.pop("ZZP2A", None)
-        srv._series.pop(("ZZP2A", "1d"), None)
+        bar_store._bars.pop("ZZP2A", None)
+        bar_store._series.pop(("ZZP2A", "1d"), None)
     by_id = {lv["id"]: lv for lv in payload["levels"]}
     ids = [lv["id"] for lv in payload["levels"]]
     assert len(ids) == len(set(ids)), "level ids must be UNIQUE per payload"
@@ -260,8 +261,8 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
         levels = {lv["id"]: lv["price"] for lv in srv.levels_payload("ZZP2B", "1", noon)["levels"]}
         liq = srv.liquidity_snapshot("ZZP2B", noon)
     finally:
-        srv._bars.pop("ZZP2B", None)
-        srv._series.pop(("ZZP2B", "1d"), None)
+        bar_store._bars.pop("ZZP2B", None)
+        bar_store._series.pop(("ZZP2B", "1d"), None)
     copies = {"raw_levels", "raw_levels_used", "as_of_cutoff_et", "level_semantic_scope"}
     assert not copies & set(liq), "the snapshot's values are served once, by the levels panel"
     used = {s["label"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}

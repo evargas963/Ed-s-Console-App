@@ -24,6 +24,7 @@ import time_et
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
+from state import cross_store, level_store
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import clock_from, daemon_status, mark_feed_live, publish_capture
@@ -57,12 +58,12 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
         tk, held.chain, held.now.timestamp(), held.spot, held.now.date().isoformat(), held.now
     )
     mark_feed_live(tk, now=now)
-    published = server.published_levels(tk).served()
+    published = level_store.published_levels(tk).served()
     return {name: published[k] for k, name in server.CROSS_LEVELS}
 
 
 def _stored(tk: str) -> list:
-    return server.get_db().get_recent_crosses(tk, n=server.CROSSES_KEPT)
+    return server.get_db().get_recent_crosses(tk, n=cross_store.CROSSES_KEPT)
 
 
 def _print(msg: dict, tk: str = "SPY") -> list:
@@ -90,10 +91,10 @@ def _print(msg: dict, tk: str = "SPY") -> list:
 
 
 def _forget(tk: str = "SPY") -> None:
-    with server._terrain_cache_lock:
-        server._terrain_cache.pop(tk, None)
-    with server._crosses_lock:
-        server._crosses.pop(tk, None)
+    with level_store._lock:
+        level_store._levels.pop(tk, None)
+    with cross_store._lock:
+        cross_store._crosses.pop(tk, None)
     server._last_tick_spot.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
@@ -120,8 +121,8 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
         at_strike = _print(SPY_PRINT_ON_A_STRIKE)
         up = _print(SPY_PRINT_A_STRIKE_AWAY)
         down = _print(SPY_AFTER_HOURS_PRINT)
-        with server._crosses_lock:
-            held = list(server._crosses["SPY"])
+        with cross_store._lock:
+            held = list(cross_store._crosses["SPY"])
     finally:
         _forget()
     assert {
@@ -157,7 +158,7 @@ def test_only_the_four_watched_levels_are_crossed_each_under_its_listed_name():
             chain_spot=(SPY_FULL.spot, SPY_FULL.now.timestamp()),
             now=SPY_FULL.now,
         )
-        snap = server.published_levels("SPY").snap
+        snap = level_store.published_levels("SPY").snap
     finally:
         _forget()
     named = dict(server.OPTION_LEVELS)
@@ -194,8 +195,8 @@ def test_a_level_crossed_again_is_stored_again():
         first = _print(SPY_PRINT_A_STRIKE_AWAY, tk)
         back = _print(SPY_PRINT_ON_A_STRIKE, tk)
         again = _print(SPY_PRINT_A_STRIKE_AWAY, tk)
-        with server._crosses_lock:
-            held = {c["cross_id"] for c in server._crosses[tk]}
+        with cross_store._lock:
+            held = {c["cross_id"] for c in cross_store._crosses[tk]}
     finally:
         _forget(tk)
     assert set(_named(first)) == BETWEEN
@@ -459,7 +460,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
 def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
     """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
 
-    The one reader (server._merged_recent_crosses) serves one event per (time, value, direction)
+    The one reader (state.cross_store.merged_recent) serves one event per (time, value, direction)
     that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json (newest
     first, as the database returns them): 400 rows, 243 events, up to 6 levels on one event, held
     oldest first as the console's start holds them.
@@ -471,12 +472,12 @@ def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
     )["rows"]
     assert len(rows) == 400
     tk = "ZZRC88"
-    with server._crosses_lock:
-        server._crosses[tk] = rows[::-1]
+    with cross_store._lock:
+        cross_store._crosses[tk] = rows[::-1]
     try:
-        events = server._merged_recent_crosses(tk, 400)
+        events = cross_store.merged_recent(tk, 400)
     finally:
-        with server._crosses_lock:
-            server._crosses.pop(tk, None)
+        with cross_store._lock:
+            cross_store._crosses.pop(tk, None)
     assert len(events) == 243
     assert max(len(e["level_names"]) for e in events) == 6
