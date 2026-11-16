@@ -24,6 +24,7 @@ import time_et
 from app.options.order_flow import streaming as ofs
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
+from push import strikes as push_strikes
 from state import cross_store, level_store
 from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
@@ -349,9 +350,9 @@ def stopped_price_answers() -> dict:
             "levels": server.levels_payload("SPY", "1", at),
             "confluence": server.confluence_payload("SPY", "2026-10-22", at),
             "terrain": server.terrain("SPY", at.timestamp()),
-            "strikes": server.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
+            "strikes": push_strikes.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
             "surface": surface,
-            "strikes_next_close": server.terrain_strikes_payload(
+            "strikes_next_close": push_strikes.terrain_strikes_payload(
                 "SPY", "auto", None, 0, next_close.timestamp()
             ),
             "surface_next_close": surface_next_close,
