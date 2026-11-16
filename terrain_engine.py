@@ -483,9 +483,21 @@ def strike_window(
     return lo, lo + n - 1, ks[c]
 
 
+class LadderRow(TypedDict):
+    """One row of the chain ladder: a strike, and the call and put listed at it (chain_ladder)."""
+
+    strike: float
+    first: bool
+    spot: bool
+    call: dict[str, Any] | None
+    put: dict[str, Any] | None
+    call_itm: bool | None
+    put_itm: bool | None
+
+
 def chain_ladder(
     contracts: list[OptionContract], spot: float | None, shown: list[dict[str, Any]]
-) -> tuple[list[dict[str, float | bool | dict[str, Any] | None]], int]:
+) -> tuple[list[LadderRow], int]:
     """Return one expiry's chain as the ladder draws it, and how many contracts it could not place.
 
     A contract it cannot place has no strike, or a putCall other than CALL/PUT. Strikes high to
@@ -502,7 +514,7 @@ def chain_ladder(
             continue
         by_k.setdefault(c.strike, {"call": [], "put": []})[c.side.lower()].append(row)
     spot_k = nearest_strike(by_k, spot)
-    rows: list[dict[str, float | bool | dict[str, Any] | None]] = []
+    rows: list[LadderRow] = []
     for k in sorted(by_k, reverse=True):
         g = by_k[k]
         rows.extend(

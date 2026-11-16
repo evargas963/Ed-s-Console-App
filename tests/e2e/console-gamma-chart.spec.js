@@ -58,7 +58,7 @@ const CHAIN = { spot: SPOT, spot_strike: K, expiry: '2026-09-18', status: 'ok', 
     { symbol: PUT_SYM, putCall: 'PUT', strikePrice: K, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.5, volatility: 12,
       oi_text: '980', volume_text: '410', iv_text: '12.00' },
   ] };
-// server.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
+// push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
 CHAIN.ladder = [{ strike: K, strike_text: String(K), call: CHAIN.contracts[0],
   put: CHAIN.contracts[1], net_gex: null }];
 
