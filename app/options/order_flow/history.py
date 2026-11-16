@@ -19,7 +19,7 @@ from app.options.order_flow.engine import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from l1_trade_observation import canonical_tape_prints
 from option_contract import OptionContract
-from time_et import ct_clock, ct_label
+from time_et import ct_clock, ct_label, ct_ticks
 
 log = logging.getLogger(__name__)
 
@@ -109,8 +109,11 @@ class BookHeatmap(TypedDict):
     until_ct: str
     n_buckets: int
     bucket_sec: float
-    #: each time bucket's start as the screen shows it, by the cells' `t`
+    #: each time bucket's start, by the cells' `t`: its time, as the screen shows it, and as the
+    #: chart's time axis marks it (time_et.ct_ticks)
+    bucket_ts: list[float]
     bucket_ct: list[str]
+    bucket_ticks: list[list[str]]
     display_lo: float
     display_hi: float
     max_size: float
@@ -408,6 +411,7 @@ def book_heatmap_for_ticker(
         key=lambda c: (c["t"], c["price"]),
     )
     display_lo, display_hi = _display_window(cell_list)
+    starts = [t0 + i * bucket_sec for i in range(n_buckets)]
     return {
         "ticker": sym,
         "venue": venue,
@@ -419,7 +423,9 @@ def book_heatmap_for_ticker(
         "until_ct": ct_label(rows[-1][0]),
         "n_buckets": n_buckets,
         "bucket_sec": bucket_sec,
-        "bucket_ct": [ct_label(t0 + i * bucket_sec) for i in range(n_buckets)],
+        "bucket_ts": starts,
+        "bucket_ct": [ct_label(t) for t in starts],
+        "bucket_ticks": [ct_ticks(t) for t in starts],
         # the default price window, and the largest displayed size (the colour scale's top)
         "display_lo": display_lo,
         "display_hi": display_hi,

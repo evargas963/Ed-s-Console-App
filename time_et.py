@@ -44,6 +44,16 @@ def age_text(sec: float) -> str:
     return f"{round(sec / 86400)}d"
 
 
+def ct_ticks(ts_utc: float) -> list[str]:
+    """Return an instant's labels on a chart's time axis, by the chart's kind of mark.
+
+    The year, the month, the day and the time of day, as the axis shows each: "2026", "Nov",
+    "Nov 13", "09:30" (Lightweight Charts' TickMarkType: Year, Month, DayOfMonth, Time).
+    """
+    d = datetime.fromtimestamp(float(ts_utc), CT)
+    return [d.strftime("%Y"), d.strftime("%b"), f"{d:%b} {d.day}", d.strftime("%H:%M")]
+
+
 def ct_clock(ts_utc: float) -> str:
     """Return an instant to the millisecond as the logs show it: "14:01:02.123 CT"."""
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S.%f")[:-3] + " CT"
