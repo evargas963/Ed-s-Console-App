@@ -684,6 +684,24 @@ def safe_get_quotes(client: Any, symbols: "list[str]") -> httpx.Response:
     return client.get_quotes(symbols, fields=["quote"])
 
 
+def check_ticker(client: object, ticker: str) -> tuple[bool, int, object]:
+    """One /quotes request for `ticker`: (Schwab quotes it, its status, its answer as sent).
+
+    A ticker Schwab names in errors.invalidSymbols, or does not quote, or an answer other than
+    200, is not a ticker Schwab answers for.
+    """
+    resp: Any = safe_get_quotes(client, [ticker])
+    try:
+        answer = resp.json()
+    except ValueError:
+        return False, resp.status_code, resp.text
+    return (
+        resp.status_code == 200 and isinstance(answer, dict) and ticker in answer,
+        resp.status_code,
+        answer,
+    )
+
+
 def get_market_hours(client: Any, day: date) -> httpx.Response:
     """One request to Schwab's markets endpoint for equity and option hours on `day`.
 
