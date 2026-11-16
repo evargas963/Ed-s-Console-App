@@ -30,6 +30,7 @@ import live_price_rows
 import server
 import time_et
 from option_contract import read_chain
+from push import book as push_book
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -375,7 +376,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
             "NOT LIVE",
             "Schwab marks $SPX Closed",
         )
-        book = server.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
+        book = push_book.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
         assert (book["top_feed_label"], book["top_outage"]) == (
             "NOT LIVE",
             "Schwab marks $SPX Closed",

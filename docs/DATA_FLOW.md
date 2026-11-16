@@ -320,7 +320,7 @@ the program.
   has two Schwab books, NYSE_BOOK (exchanges) and NASDAQ_BOOK (market makers); each is stored
   under its service and served for the `venue` the screen's venue switch names, never combined,
   but in the Desk Liquidity card's order-imbalance readout (operator 2026-11-03, step 1 of 3):
-  the book panel (`server.book`) serves `readout` whatever the venue, both books and their
+  the book panel (`push.book.book`) serves `readout` whatever the venue, both books and their
   composite (`engine.book_readout`, the operator's decision of 2026-11-04, "the most recent
   balance is the most accurate balance": every quote of the books Schwab sends for the ticker,
   one per contributor, codes matched without regard to case; a contributor in both books (NSDQ,
@@ -980,7 +980,7 @@ the program.
    (`static/js/ed-liquidity-map.js`). The desk chart's live price line carries it too
    (`static/js/ed-trade-desk-map.js`). The desk map's BOOK pill keeps the book's time beside
    that age, and its liquidity card keeps each book's last numbers, greyed, with the book's time
-   and that it is not live (`server.liquidity_readout`, `static/js/ed-trade-desk-map.js`). The Right
+   and that it is not live (`push.book.liquidity_readout`, `static/js/ed-trade-desk-map.js`). The Right
    Now
    book-age row keeps that same time (`static/js/ed-trade-desk.js`). The desk map's
    options card, volatility card, and GAMMA pill keep the chain's time beside that
@@ -997,7 +997,7 @@ the program.
    `static/js/ed-gamma-levels.js`). The
    book's top keeps the last bid and ask, and that panel says its served state (`top_feed_label`
    beside `top_outage`); the book badge says the book's (`book_feed_label`).
-   The book's quote time and book time stay on that panel (`server.order_flow_microstructure`,
+   The book's quote time and book time stay on that panel (`push.book.order_flow_microstructure`,
    `static/js/ed-order-flow.js`). The Flow panel keeps the contract's quote time and book time
    (`server.options_microstructure`, `static/js/ed-gamma-flow.js`). A contract
    the daemon stops holding keeps its last quote; the Flow panel marks it NOT STREAMED. A missing

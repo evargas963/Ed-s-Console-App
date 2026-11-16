@@ -599,7 +599,7 @@
 
   // DETECT's book, FRAME's levels and zones, CONFIRM's levels and the migration's rows: the
   // `book:desk`, `levels:desk`, `liquidity:desk`, `terrain:desk` and `strikes:migration` panels
-  // (server.book, server.levels, server.liquidity, server.terrain, server.strikes) the program
+  // (push.book, server.levels, server.liquidity, server.terrain, server.strikes) the program
   // sends on the page's socket while Right Now is on, at once and each time one changes; a panel
   // not in `_panels` has not been sent yet for the ticker on screen
   var NAMES = ["book:desk", "levels:desk", "liquidity:desk", "terrain:desk", "strikes:migration"];
