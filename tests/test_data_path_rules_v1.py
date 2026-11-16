@@ -42,7 +42,8 @@ from feed.chain_sweep import (
 )
 from liquidity_value_engine import bars_from_candles
 from push import bars as push_bars
-from state import bar_store
+from push import levels as push_levels
+from state import bar_store, price_level_store
 from stream_spine import (
     LATEST,
     LOG,
@@ -1032,7 +1033,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
             "SPY", {"LAST_PRICE": 767.39, "TRADE_TIME_MILLIS": int(at * 1000)}, received_ts=at
         )
         try:
-            body = server.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+            body = push_levels.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         finally:
             lmp._by_ticker.pop("SPY", None)
             lmp._fields_by_ticker.pop("SPY", None)
@@ -1067,7 +1068,7 @@ def test_d5_while_closed_the_price_levels_are_the_last_sessions():
         for tk in _PAIR:
             hold_schwab_daily(tk)
             server._publish_price_levels(tk, closed)
-            body = server.levels_payload(tk, "1", closed)
+            body = push_levels.levels_payload(tk, "1", closed)
             served = {r["id"]: r["price"] for r in body["levels"]}
             assert {"VWAP", "TODAY_POC", "TODAY_VAH", "TODAY_VAL", "ORB_HIGH", "ORB_LOW"} <= set(
                 served
@@ -1139,7 +1140,7 @@ def test_d6_the_price_history_and_a_pushed_bar_build_levels_on_the_whole_history
                 for d, c in at
                 if d.date().isoformat() == "2026-10-06" and 570 <= d.hour * 60 + d.minute < 960
             ]
-            snap = server.canonical_price_level_snapshot(
+            snap = price_level_store.canonical_price_level_snapshot(
                 tk, datetime.fromtimestamp(time_et.now(), ET)
             )
             assert snap.as_of_ts_utc == candles[-1]["datetime"] / 1000, tk

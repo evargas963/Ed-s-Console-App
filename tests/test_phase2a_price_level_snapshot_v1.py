@@ -19,8 +19,10 @@ from liquidity_value_engine import (
     prior_session,
 )
 from micro_structure import Candle
-from server import _schwab_bar, materialize_price_level_snapshot
-from state import bar_store
+from push import levels as push_levels
+from server import _schwab_bar
+from state import bar_store, price_level_store
+from state.price_level_store import materialize_price_level_snapshot
 from tests.feed_live_helper import daemon_bars, schwab_daily
 from time_et import ET, sessions
 
@@ -106,9 +108,9 @@ def _daemon_bars(name: str, tk: str) -> list:
 
 @pytest.fixture(autouse=True)
 def _clean_snapshots():
-    srv._MATERIALIZED_SNAPSHOTS.clear()
+    price_level_store._MATERIALIZED_SNAPSHOTS.clear()
     yield
-    srv._MATERIALIZED_SNAPSHOTS.clear()
+    price_level_store._MATERIALIZED_SNAPSHOTS.clear()
 
 
 # ── the materialized snapshot ────────────────────────────────────────────────
@@ -235,7 +237,7 @@ def test_api_levels_serializes_the_snapshot_and_does_not_compute():
     noon = datetime(2026, 10, 5, 12, 0, tzinfo=ET)
     try:
         _published("ZZP2A", noon)
-        payload = srv.levels_payload("ZZP2A", "1", noon)
+        payload = push_levels.levels_payload("ZZP2A", "1", noon)
     finally:
         bar_store._bars.pop("ZZP2A", None)
         bar_store._series.pop(("ZZP2A", "1d"), None)
@@ -258,7 +260,9 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
     noon = datetime(2026, 10, 5, 12, 0, tzinfo=ET)
     try:
         _published("ZZP2B", noon)
-        levels = {lv["id"]: lv["price"] for lv in srv.levels_payload("ZZP2B", "1", noon)["levels"]}
+        levels = {
+            lv["id"]: lv["price"] for lv in push_levels.levels_payload("ZZP2B", "1", noon)["levels"]
+        }
         liq = srv.liquidity_snapshot("ZZP2B", noon)
     finally:
         bar_store._bars.pop("ZZP2B", None)

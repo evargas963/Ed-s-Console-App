@@ -16,7 +16,7 @@ import server
 import time_et
 from app.market_data.schwab.streaming import capture
 from option_contract import read_chain
-from state import bar_store
+from state import bar_store, price_level_store
 from stream_spine import HealthRegistry, MessageBus
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -55,8 +55,8 @@ def forget_bars(*tickers: str) -> None:
     for tk in tickers:
         bar_store._bars.pop(tk, None)
         bar_store._series.pop((tk, "1d"), None)
-        for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-            del server._MATERIALIZED_SNAPSHOTS[key]
+        for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+            del price_level_store._MATERIALIZED_SNAPSHOTS[key]
 
 
 def spy_minutes() -> list[dict]:

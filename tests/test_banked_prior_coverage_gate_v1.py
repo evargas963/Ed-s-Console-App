@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import server
-from state import bar_store
+from state import bar_store, price_level_store
 from tests.feed_live_helper import daemon_bars, hold_schwab_daily, stream_daemon_bars
 from time_et import ET
 
@@ -38,8 +38,8 @@ def _published(now: datetime) -> dict:
         for tk in _PAIR:
             bar_store._bars.pop(tk, None)
             bar_store._series.pop((tk, "1d"), None)
-            for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-                del server._MATERIALIZED_SNAPSHOTS[key]
+            for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+                del price_level_store._MATERIALIZED_SNAPSHOTS[key]
 
     forget()
     try:
@@ -49,7 +49,7 @@ def _published(now: datetime) -> dict:
         out = {}
         for tk in _PAIR:
             server._publish_price_levels(tk, now)
-            out[tk] = server.canonical_price_level_snapshot(tk, now)
+            out[tk] = price_level_store.canonical_price_level_snapshot(tk, now)
         return out
     finally:
         forget()

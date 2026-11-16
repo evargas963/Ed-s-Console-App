@@ -15,9 +15,9 @@ import statistics
 
 import pytest
 
-import server
 import terrain_engine
 from option_contract import read_chain
+from push import levels as push_levels
 from terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_FULL, TSLA
 from time_et import (
@@ -227,13 +227,13 @@ def test_the_hover_says_modeled_exactly_when_the_levels_are_repriced(book, model
     """SPY's same-day expiry is read as sent: no note. The four with none today are re-priced.
 
     Their note names the expiry re-priced (the front listed one) and says it is a model, on hover
-    (server.same_day_note, operator 2026-11-14: "label with a tooltip ... so it doesn't get in the
-    way").
+    (push.levels.same_day_note, operator 2026-11-14: "label with a tooltip ... so it doesn't get in
+    the way").
     """
     snap = compute_terrain(
         book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
     )
-    note = server.same_day_note(snap)
+    note = push_levels.same_day_note(snap)
     if not modeled:
         assert snap.same_day_repriced_from is None and note is None
         return

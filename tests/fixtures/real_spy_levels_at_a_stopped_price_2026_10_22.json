@@ -11,7 +11,7 @@
   "hvp",
   "call_delta_wall"
  ],
- "degraded": [],
+ "degraded": null,
  "families_absent": [
   {
    "family": "price_levels",
@@ -229,7 +229,7 @@
  "tf": "1",
  "ticker": "SPY",
  "volume_profile": null,
- "vwap_series": [],
+ "vwap_series": null,
  "zero_dte": [
   {
    "carried": 765.0,

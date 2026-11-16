@@ -487,7 +487,7 @@ import json, sys
 sys.path.insert(0, sys.argv[1])
 from datetime import datetime
 import server
-from state import bar_store
+from state import bar_store, price_level_store
 from tests.schwab_rest_standin import HISTORY
 from time_et import ET
 msgs = [{"src": "schwab_pricehistory", "symbol": tk, "series": "1m", """
@@ -499,7 +499,8 @@ server._write_streamed_bars(msgs, now)
 print(json.dumps({"loaded": sorted(set(sys.modules) - before),
                   "bars": [len(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
                            for tk in ("SPY", "TSLA")],
-                  "levels": [server.canonical_price_level_snapshot(tk, now) is not None """
+                  "levels": [price_level_store.canonical_price_level_snapshot(tk, now) """
+    """is not None """
     """for tk in ("SPY", "TSLA")]}))
 """
 )

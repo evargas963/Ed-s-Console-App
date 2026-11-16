@@ -35,9 +35,10 @@ from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from push import bars as push_bars
 from push import forces as push_forces
+from push import levels as push_levels
 from push import strikes as push_strikes
 from push import tape as push_tape
-from state import bar_store, cross_store, level_store
+from state import bar_store, cross_store, level_store, price_level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
 from tests.feed_live_helper import ROUND_SEC, daemon_status
@@ -109,8 +110,8 @@ def _clear(tk: str) -> None:
         bar_store._bars.pop(tk, None)
         for key in [k for k in bar_store._series if k[0] == tk]:
             del bar_store._series[key]
-    for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-        del server._MATERIALIZED_SNAPSHOTS[key]
+    for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        del price_level_store._MATERIALIZED_SNAPSHOTS[key]
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_down()
@@ -229,7 +230,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "liquidity": server.liquidity_snapshot(tk, now),
                     "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
-                    "levels": {tf: server.levels_payload(tk, tf, now) for tf in CHART_TFS},
+                    "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
                         venue: {
                             tf: server.desk_events_payload(tk, venue, tf, now) for tf in DESK_TFS

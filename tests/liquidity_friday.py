@@ -16,7 +16,7 @@ import pytest
 import live_market_plane as lmp
 import server as srv
 from micro_structure import Candle
-from state import bar_store
+from state import bar_store, price_level_store
 from tests.feed_live_helper import daemon_bars
 from time_et import ET
 
@@ -59,8 +59,8 @@ def published():
         with lmp._lock:
             lmp._by_ticker.pop(TK, None)
             lmp._fields_by_ticker.pop(TK, None)
-        for key in [k for k in srv._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
-            del srv._MATERIALIZED_SNAPSHOTS[key]
+        for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == TK]:
+            del price_level_store._MATERIALIZED_SNAPSHOTS[key]
 
     forget()
     for b in friday_bars():

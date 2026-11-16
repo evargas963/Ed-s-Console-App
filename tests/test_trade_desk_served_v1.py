@@ -29,7 +29,8 @@ from db import LevelCrossEvent
 from liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from micro_structure import Candle
 from option_contract import read_chain
-from state import bar_store, cross_store, level_store
+from push import levels as push_levels
+from state import bar_store, cross_store, level_store, price_level_store
 from terrain_engine import (
     WALL_BREACHED,
     WALL_CONTAINS,
@@ -313,8 +314,8 @@ def _forget(tk):
     lmp._fields_by_ticker.pop(tk, None)
     with level_store._lock:
         level_store._levels.pop(tk, None)
-    for key in [k for k in server._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
-        del server._MATERIALIZED_SNAPSHOTS[key]
+    for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+        del price_level_store._MATERIALIZED_SNAPSHOTS[key]
 
 
 def _priced(tk, chain, spot, ts_utc):
@@ -376,7 +377,7 @@ def spy_levels():
 
     def serve(tf="1"):
         _live_price(DESK, spot)
-        return server.levels_payload(DESK, tf, FRIDAY_CLOSE)
+        return push_levels.levels_payload(DESK, tf, FRIDAY_CLOSE)
 
     yield spot, terrain, serve
     _forget(DESK)
@@ -431,7 +432,7 @@ def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
             DESK_EM, fx["chain"], spot, datetime(2026, 9, 2, 12, 0, tzinfo=time_et.ET).timestamp()
         )
         _live_price(DESK_EM, spot)
-        body = server.levels_payload(DESK_EM, "1", FRIDAY_CLOSE)
+        body = push_levels.levels_payload(DESK_EM, "1", FRIDAY_CLOSE)
     finally:
         _forget(DESK_EM)
     by_id = {r["id"]: r for r in body["levels"]}
@@ -553,7 +554,7 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade():
     lmp.record_from_level_one_equity(
         DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at
     )
-    body = server.levels_payload(DESK, "1", FRIDAY_CLOSE)
+    body = push_levels.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
     assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151
     assert body["by_distance"] == [

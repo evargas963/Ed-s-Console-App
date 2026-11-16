@@ -1,7 +1,7 @@
 """The pin: the strike with the most open interest near the price, of the expiry closing today.
 
 terrain_engine.pin_by_open_interest, published as TerrainSnapshot.pin_candidate with its distance
-in expected moves and strike widths and its minutes to the close, and server.pin_note on hover.
+in expected moves and strike widths and its minutes to the close, and push.levels.pin_note on hover.
 The definition is the pinning studies' (Ni, Pearson & Poteshman 2005; Golez & Jackwerth 2012;
 Avellaneda & Lipkin 2003): open interest by strike of the expiry settling at today's close, the
 distance z = ln(price/strike) / (sigma * sqrt(T)), the most open interest with |z| <= 1.
@@ -20,8 +20,8 @@ import math
 
 import pytest
 
-import server
 from option_contract import read_chain
+from push import levels as push_levels
 from terrain_engine import compute_terrain, pin_by_open_interest
 from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, SPY_FULL, TSLA
 from time_et import option_close_product, sessions, time_to_expiry_years
@@ -105,7 +105,7 @@ def test_no_pin_without_an_expiry_closing_ahead_today(ticker, chain):
     )
     assert snap.pin_candidate is None
     assert snap.pin_expected_moves is None and snap.pin_minutes_to_close is None
-    assert server.pin_note(snap) is None
+    assert push_levels.pin_note(snap) is None
 
 
 def test_a_strike_whose_open_interest_is_not_known_is_not_ranked():
@@ -130,7 +130,7 @@ def test_the_note_says_how_far_the_price_is_and_how_long_is_left():
     snap = compute_terrain(
         "SPY", read_chain(SPY_0DTE.chain), SPY_0DTE.spot, now=SPY_0DTE.now, sessions=sessions()
     )
-    assert server.pin_note(snap) == (
+    assert push_levels.pin_note(snap) == (
         "Most open interest within one expected move, of the expiry settling at today's close. "
         "Price 0.73 expected moves (1.6 strike widths) above it; 223 minutes to the close."
     )

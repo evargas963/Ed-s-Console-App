@@ -772,7 +772,7 @@ the program.
   the pin is a level of the publication, `terrain_engine.pin_by_open_interest`: of the expiry
   settling at today's close, the strike with the most open interest within one expected move
   of the price, its distance in expected moves and strike widths and its minutes to the close
-  on hover, `server.pin_note`; the read's advice sentences, which no page read, are no longer made:
+  on hover, `push.levels.pin_note`; the read's advice sentences, which no page read, are no longer made:
   operator 2026-11-13, "if they do not then proceed with your recommendation"). The flip's note
   (`flip_note`, `terrain_read.flip_note`: the flip's modelled curve and Schwab's gamma disagree
   on the sign at the chain's price) is published with the levels and drawn beside the flip on
@@ -804,7 +804,7 @@ the program.
   `tests/fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json`, kept equal to them by
   `test_the_stopped_price_answers_the_browser_renders_are_the_routes_own`). The one-day move's two
   prices are the live price
-  plus and minus the publication's implied move (`server.expected_move`, the one producer;
+  plus and minus the publication's implied move (`push.levels.expected_move`, the one producer;
   the levels panel and the confluence panel carry it). A chain delivered with no spot (the daemon
   held no
   price) has no levels, with its reason.
@@ -972,7 +972,7 @@ the program.
    spot carries that same time and the header's state, and clears on a ticker switch (`#klSpot`,
    painted by the header's `static/js/ed-core.js`). The chain ladder's spot carries it too
    (`server.get_chain`, the chain head). The trade desk's spot carries it too
-   (`server.levels_payload`, the Right Now line). The levels page's spot carries it too
+   (`push.levels.levels_payload`, the Right Now line). The levels page's spot carries it too
    (`static/js/ed-gamma-levels.js`). The gamma chart's spot and its live price line carry it too
    (`static/js/ed-gamma-chart.js`). The desk map's index prices and its VIX row carry it
    too, and an offline order-flow card keeps it beside the outage
@@ -991,9 +991,9 @@ the program.
    GEX-by-strike badge keeps that same time beside its age (`server.terrain_strikes_payload`,
    `#gbsSrc`). The
    gamma chart's GEX badge keeps it too (`static/js/ed-gamma-chart.js`). The desk map's
-   LEVELS pill keeps the snapshot's time beside that age (`server.levels_payload`,
+   LEVELS pill keeps the snapshot's time beside that age (`push.levels.levels_payload`,
    `static/js/ed-trade-desk-map.js`). The levels glance shows each price with the
-   time the payload already carries for it (`server.levels_payload`,
+   time the payload already carries for it (`push.levels.levels_payload`,
    `static/js/ed-gamma-levels.js`). The
    book's top keeps the last bid and ask, and that panel says its served state (`top_feed_label`
    beside `top_outage`); the book badge says the book's (`book_feed_label`).

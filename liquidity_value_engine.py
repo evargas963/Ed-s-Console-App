@@ -691,7 +691,8 @@ class PriceLevelValue:
 class PriceLevelSnapshot:
     """The ONE materialized result for (ticker, session scope) and its input.
 
-    `input_fingerprint` is set by server.materialize_price_level_snapshot, which builds again only
+    `input_fingerprint` is set by state.price_level_store.materialize_price_level_snapshot, which
+    builds again only
     when it changes.
     """
 
