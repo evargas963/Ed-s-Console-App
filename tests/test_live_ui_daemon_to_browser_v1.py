@@ -33,7 +33,7 @@ chains here (each expirationDate's day, Schwab's daysToExpiration as sent). Prov
     gets none.
 
 Then the levels' panels a page shows, each with the parameters its subscribe names (the Vanna and
-Charm tabs, server.strike_bars, with their window), the expected rows
+Charm tabs, push.strike_bars, with their window), the expected rows
 the ones the levels producer published, worked into the window here:
 
   * a page on the tab gets the panel at once, in the window it asks (a window it cannot draw is

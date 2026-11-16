@@ -23,6 +23,8 @@ import pytest
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
+from push import strike_bars as push_strike_bars
+from push import strike_rows
 from state import level_store
 from terrain_engine import SCOPE_ROWS, strike_window
 from tests.feed_live_helper import daemon_status
@@ -178,10 +180,12 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
     """
     _price(None)
     d = _heat()
-    assert d["view"]["note"] == server.WINDOW_NO_PRICE and not any(c["spot"] for c in d["cells"])
+    assert d["view"]["note"] == strike_rows.WINDOW_NO_PRICE and not any(
+        c["spot"] for c in d["cells"]
+    )
     strikes = _strikes("auto")
     assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {
-        server.WINDOW_NO_PRICE
+        strike_rows.WINDOW_NO_PRICE
     }
     every = _every_strike()
     panned = _heat(centre=every[3])  # the operator's pan: no reason needed
@@ -240,10 +244,12 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
     assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
     assert body["views"]["near"]["max_abs_with_prior"] is None  # no near-term rows
     assert set(body["views"]) == {"all", "near", "far"}  # a measure's view is served once
-    for key in server.STRIKE_BAR_METHODS:  # vanna, charm
+    for key in push_strike_bars.STRIKE_BAR_METHODS:  # vanna, charm
 
         def bars(scope, centre=None, shift=0, key=key):
-            return server.strike_bar_payload(TK, key, scope, centre, shift, _AT.timestamp())
+            return push_strike_bars.strike_bar_payload(
+                TK, key, scope, centre, shift, _AT.timestamp()
+            )
 
         d = bars("auto")
         rows = [r["strike"] for r in d["rows"]]

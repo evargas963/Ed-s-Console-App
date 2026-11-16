@@ -1,4 +1,4 @@
-"""The Vanna and Charm panels the page's socket sends (server.strike_bars).
+"""The Vanna and Charm panels the page's socket sends (push.strike_bars).
 
 Operator field-inventory audit, 2026-09-13: both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
@@ -27,6 +27,7 @@ import time_et
 from math_exposure_core import bucket_metric, compute_exposures_by_strike
 from math_levels import compute_charm_by_strike
 from option_contract import read_chain
+from push import strike_bars as push_strike_bars
 from push import tape as push_tape
 from state import level_store
 from tests.conftest import MARKETS_ANSWERS
@@ -69,13 +70,13 @@ def teardown_function(_fn):
 
 
 def test_vanna_by_strike_unavailable_with_no_cached_chain():
-    body = server.strike_bars("vanna_rows", TK, time_et.now(), AUTO)
+    body = push_strike_bars.strike_bars("vanna_rows", TK, time_et.now(), AUTO)
     assert body["available"] is False
     assert body["reason"] == "no levels published for this ticker yet"
 
 
 def test_charm_by_strike_unavailable_with_no_cached_chain():
-    body = server.strike_bars("charm_rows", TK, time_et.now(), AUTO)
+    body = push_strike_bars.strike_bars("charm_rows", TK, time_et.now(), AUTO)
     assert body["available"] is False
     assert body["reason"] == "no levels published for this ticker yet"
 
@@ -95,7 +96,7 @@ def test_a_window_the_panel_cannot_draw_is_unavailable_with_its_words(params, wo
     """A page's parameters the route refused (422) are the panel's reason, never a default."""
     _put_live_chain()
     for rows in ("vanna_rows", "charm_rows"):
-        body = server.strike_bars(rows, TK, time_et.now(), params)
+        body = push_strike_bars.strike_bars(rows, TK, time_et.now(), params)
         assert body == {"ticker": TK, "available": False, "reason": words}
 
 
@@ -105,7 +106,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
     lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
     mark_feed_live(TK)
 
-    body = server.strike_bars("vanna_rows", TK, time_et.now(), ALL)
+    body = push_strike_bars.strike_bars("vanna_rows", TK, time_et.now(), ALL)
     assert body["available"] is True
     # spot is the live price (the header's own), not the price the rows were computed at
     assert body["spot"] == _QUOTE["native"]["LAST_PRICE"] and "priced_at_spot" not in body
@@ -129,7 +130,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
 
 def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_strike():
     _put_live_chain()
-    body = server.strike_bars("charm_rows", TK, time_et.now(), ALL)
+    body = push_strike_bars.strike_bars("charm_rows", TK, time_et.now(), ALL)
     assert body["available"] is True
     rows = {r["strike"]: r["value"] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
@@ -172,8 +173,8 @@ def build_e2e_panels() -> dict:
         return json.loads(
             json.dumps(
                 {
-                    "vanna": server.strike_bars("vanna_rows", TK, at, AUTO),
-                    "charm": server.strike_bars("charm_rows", TK, at, AUTO),
+                    "vanna": push_strike_bars.strike_bars("vanna_rows", TK, at, AUTO),
+                    "charm": push_strike_bars.strike_bars("charm_rows", TK, at, AUTO),
                     "strikes": server.strikes(TK, chain_at, AUTO),
                     "strikes_wider": server.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
                     "strikes_all": server.strikes(TK, chain_at, ALL),
@@ -209,7 +210,7 @@ def test_the_browser_tests_panels_are_the_producers_own():
 
 def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     _put_live_chain()
-    v_rows = server.strike_bars("vanna_rows", TK, time_et.now(), AUTO)["rows"]
-    c_rows = server.strike_bars("charm_rows", TK, time_et.now(), AUTO)["rows"]
+    v_rows = push_strike_bars.strike_bars("vanna_rows", TK, time_et.now(), AUTO)["rows"]
+    c_rows = push_strike_bars.strike_bars("charm_rows", TK, time_et.now(), AUTO)["rows"]
     assert [r["strike"] for r in v_rows] == sorted(r["strike"] for r in v_rows)
     assert [r["strike"] for r in c_rows] == sorted(r["strike"] for r in c_rows)
