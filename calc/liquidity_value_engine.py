@@ -661,7 +661,7 @@ class PriceLevelValue:
 
     @property
     def session_scope(self) -> str:
-        return _SESSION_SCOPE_OF.get(self.semantic_scope, self.semantic_scope)
+        return _SESSION_SCOPE_OF[self.semantic_scope]
 
     def to_contract_dict(self) -> dict[str, Any]:
         label, short = LEVEL_NAMES[self.level_id]
