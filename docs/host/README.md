@@ -4,10 +4,9 @@
 | -------------------------------------------- | ------------------------------------------------------------------- |
 | [BACKUP_AND_MIRROR.md](BACKUP_AND_MIRROR.md) | What Git holds, what stays on the host, and restoring a new machine |
 
-Templates in the repo root: [`.env.example`](../../.env.example) (every setting the code reads;
-copy to `.env`) and
-[`schwab_token.json.example`](../../schwab_token.json.example) (the real file comes from
-`python reauth_schwab.py`).
+Templates in the repo root: [`.env.example`](../../.env.example) (every setting the code reads; copy
+to `.env`) and [`schwab_token.json.example`](../../schwab_token.json.example) (the real file comes
+from `python reauth_schwab.py`).
 
 - Per-worktree venv: `python tools/bootstrap_worktree_venv.py`.
 - Every linked worktree resolves the primary checkout's `data/ed.db`.

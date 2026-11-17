@@ -4,28 +4,28 @@
 
 1. `npm run test:e2e` — validates Node, npm and `@playwright/test` (fail-fast, never a skip),
    installs Chromium if needed, and runs `tests/e2e/*.spec.js` against `uvicorn server:app`
-   (`playwright.config.mjs` `webServer`) in a run-private runtime root (`ED_RUNTIME_ROOT`),
-   removed afterwards: the test server never touches the production database. Each run serves on
-   a free port the config picks (`ED_E2E_PORT`, inherited by Playwright's workers), so runs from
-   two checkouts at once never share a server (`tests/test_e2e_own_port_v1.py`).
-2. `node scripts/run-pytest-full.mjs [pytest args]` — `python -m pytest -n <the machine's
-processors, as CI pins it> --dist loadfile --durations=20`; extra args narrow the run (a test
-   path, `-n 0`).
+   (`playwright.config.mjs` `webServer`) in a run-private runtime root (`ED_RUNTIME_ROOT`), removed
+   afterwards: the test server never touches the production database. Each run serves on a free port
+   the config picks (`ED_E2E_PORT`, inherited by Playwright's workers), so runs from two checkouts
+   at once never share a server (`tests/test_e2e_own_port_v1.py`).
+2. `node scripts/run-pytest-full.mjs [pytest args]` —
+   `python -m pytest -n <the machine's processors, as CI pins it> --dist loadfile --durations=20`;
+   extra args narrow the run (a test path, `-n 0`).
 
 If step 1 fails, step 2 does not run. Each step's exit code is its proof. CI
 (`.github/workflows/pytest.yml`) runs both on each system, each on a runner of its own, side by
-side, and a test marked `alone` (a limit on the wall clock) after the workers, with none beside
-it; the required jobs `pytest-full` and `pytest-windows` pass only when both suites of their
-system passed.
+side, and a test marked `alone` (a limit on the wall clock) after the workers, with none beside it;
+the required jobs `pytest-full` and `pytest-windows` pass only when both suites of their system
+passed.
 
 ## Output goes to a log file
 
 Both steps give their child processes file descriptors on a log under `logs/` (gitignored):
 `logs/test_e2e_install_last.log`, `logs/test_e2e_last.log`, `logs/test_pytest_last.log`, each
-overwritten by the next run (`runWithFileSink`). The terminal receives only a start line, a
-bounded tail of the log and the exit code, so a terminal that stops reading cannot stall a run
-(`tests/test_full_suite_output_sink_v1.py`). A bare `python -m pytest` writes to the terminal:
-use it only for narrow runs you are watching.
+overwritten by the next run (`runWithFileSink`). The terminal receives only a start line, a bounded
+tail of the log and the exit code, so a terminal that stops reading cannot stall a run
+(`tests/test_full_suite_output_sink_v1.py`). A bare `python -m pytest` writes to the terminal: use
+it only for narrow runs you are watching.
 
 ## Checks
 
