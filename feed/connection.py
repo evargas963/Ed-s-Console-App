@@ -156,8 +156,10 @@ def held_key(service: str, sym: str) -> str:
 def _message(
     service: str, sym: str, item: dict[str, Any], schwab_ts: int | None, ts_recv: float
 ) -> tuple[str, dict[str, Any]]:
-    """(topic kind, bus message) for one Schwab item, with the timestamp of Schwab's frame and
-    the time it was received."""
+    """Return (topic kind, bus message) for one Schwab item.
+
+    The message carries the timestamp of Schwab's frame and the time it was received.
+    """
     kind, src = SERVICE_TOPIC[service]
     at = {"src": src, "schwab_ts": schwab_ts, "ts_recv": ts_recv}
     if service == "LEVELONE_EQUITIES":

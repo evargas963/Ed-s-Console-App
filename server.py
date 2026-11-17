@@ -850,7 +850,7 @@ def _publish_levels(
     closed = _closed_since(now, product)
     if closed is not None:
         # its market has closed: the last values computed while it was open stand, with their
-        # time, until its next session; nothing is priced after the close (operator 2026-11-15)
+        # time, until its next session; nothing is priced after the close
         if previous is not None:
             return previous.snap
         # nothing held from the session (a start after the close): Schwab's close values, a
@@ -1077,8 +1077,7 @@ def _on_stream_tick(sym: str) -> None:
         _reprice_from_tick(tk)
 
 
-#: the least time between two reprices a ticker's ticks queue (the operator's setting,
-#: 2026-11-12: "Yes, once a second")
+#: the least time between two reprices a ticker's ticks queue (the operator's setting)
 REPRICE_EVERY_SEC = 1.0
 #: ticker -> when its ticks last queued a reprice (time_et.elapsed), and the one timer that
 #: queues the next for a tick that came sooner

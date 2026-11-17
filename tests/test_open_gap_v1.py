@@ -18,8 +18,9 @@ from datetime import date, datetime
 from pathlib import Path
 
 import server
+from calc.liquidity_value_engine import wilson_interval
 from calc.micro_structure import Candle
-from open_gap import open_gap_record, today_open, wilson
+from open_gap import open_gap_record, today_open
 from push import experimental as push_experimental
 from state import bar_store
 from tests.page_on_socket import pages
@@ -55,11 +56,11 @@ def test_the_record_splits_the_opens_by_the_gaps_direction():
     assert (record.opens[0].day, record.opens[-1].day) == (date(2026, 4, 29), date(2026, 11, 13))
     assert (record.up.opens, record.up.matched) == (74, 43)
     assert (record.down.opens, record.down.matched) == (65, 42)
-    p, n, z = 43 / 74, 74, 1.959964
+    p, n, z = 43 / 74, 74, 1.959963984540054  # the two-sided 95% normal quantile
     centre = (p + z * z / (2 * n)) / (1 + z * z / n)
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
     assert (record.up.low, record.up.high) == (centre - half, centre + half)
-    assert wilson(42, 65) == (record.down.low, record.down.high)
+    assert wilson_interval(42, 65) == (record.down.low, record.down.high)
 
 
 def test_no_counted_open_is_no_record():

@@ -1099,8 +1099,10 @@ _MIX_TABLES = {
 
 
 def _mix_frames() -> list:
-    """Return the mix as the wire carries it: (service, the frame's JSON, its recorded receive
-    time), one frame per message."""
+    """Return the mix as the wire carries it, one frame per message.
+
+    Each is (service, the frame's JSON, its recorded receive time).
+    """
     return [
         (
             m["service"],

@@ -32,7 +32,7 @@ def encode_text_blob(text: str) -> bytes:
 
 
 def decode_text_blob(value: bytes) -> str:
-    """The text encode_text_blob was given, character for character."""
+    """Return the text encode_text_blob was given, character for character."""
     return gzip.decompress(value).decode("utf-8")
 
 

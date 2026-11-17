@@ -66,7 +66,7 @@ log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
 #: seconds a ticker's /chains answers are taken again before they are asked for again (the
-#: operator's setting, 2026-11-12: "every five minutes should do")
+#: operator's setting)
 CHAINS_AGAIN_SEC = 300
 
 
@@ -159,17 +159,13 @@ PRICE_HISTORY: dict[str, tuple[str, int | None, str, int]] = {
 BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
 #: the series asked from a start date instead of a period, by calendar days back, the regular
 #: session's bars only: 90 days, about 60 sessions, of 1-minute bars for the levels' hold rates
-#: (calc.liquidity_value_engine.hold_counts; operator 2026-11-15: "Yes, request it"). Schwab
-#: documents startDate for every frequency but not how far back it answers minute bars: its answers
-#: of 2026-11-15 began 2026-09-29, 34 sessions
+#: (calc.liquidity_value_engine.hold_counts). Schwab documents startDate for every frequency but
+#: not how far back it answers minute bars
 HISTORY_DAYS_BACK = {"1m60": 90, "5m365": 365, "5m365r": 365}
 #: the series asked from a start date with extended hours, the pre-market's bars among them: a
-#: year of 5-minute bars, as far back as Schwab answers, recorded for the study of the open
-#: (ACTIVE_PROGRAM OPEN-5MIN; operator 2026-11-15: "we just simply need to query schwab for it").
+#: year of 5-minute bars, as far back as Schwab answers, for the open-gap record (open_gap.py).
 #: Its twin 5m365r, the regular session's bars alone, is Schwab's own mark of each past day's
-#: session (its first bar the open), which /markets answers only 7 days back (operator
-#: 2026-11-15: "lets do 1"). No screen reads either yet, so the console holds neither
-#: (server._write_price_history)
+#: session (its first bar the open), which /markets answers only 7 days back
 EXTENDED_FROM_START = ("5m365",)
 #: the series asked once per ET date
 DAILY_ONCE = ("1m", "1m60", "5m365", "5m365r")

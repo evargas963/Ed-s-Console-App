@@ -11,7 +11,7 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, get_args
 
 import numpy as np
 
@@ -24,11 +24,14 @@ if TYPE_CHECKING:
 
 
 class Bucket(TypedDict):
-    """One strike's exposure book: each leg's sums, the counts of what was not reported, the
-    net fields (_finish_bucket) and the `dollarized` flag. None is not known: a sum a contract's
+    """One strike's exposure book.
+
+    Each leg's sums, the counts of what was not reported, the net fields (_finish_bucket) and
+    the `dollarized` flag. None is not known: a sum a contract's
     unreported value enters (open interest, volume), or a dollar field or vanna built without
     spot. A gamma, delta or open-interest-times-multiplier sum is always a number (a term not
-    known adds nothing and is counted unreported)."""
+    known adds nothing and is counted unreported).
+    """
 
     oi_unreported: int
     volume_unreported: int
@@ -662,37 +665,11 @@ def merge_exposure_books(
 #: The per-strike bucket fields summed when books merge (the flag is OR-ed; the net fields
 #: _finish_bucket computes from the legs): the counts, the sums always known, and the sums a
 #: value not reported leaves not known in either book (None)
-_BUCKET_COUNTS: tuple[Literal["oi_unreported", "volume_unreported"] | UnreportedField, ...] = (
-    "oi_unreported",
-    "volume_unreported",
-    "call_gamma_unreported",
-    "call_delta_unreported",
-    "call_vanna_unreported",
-    "call_oi_mult_unreported",
-    "put_gamma_unreported",
-    "put_delta_unreported",
-    "put_vanna_unreported",
-    "put_oi_mult_unreported",
-)
-_BUCKET_KNOWN_SUMS: tuple[
-    Literal["call_oi_mult", "put_oi_mult", "call_gamma", "put_gamma", "call_delta", "put_delta"],
-    ...,
-] = ("call_oi_mult", "put_oi_mult", "call_gamma", "put_gamma", "call_delta", "put_delta")
-_BUCKET_SUMS: tuple[
-    Literal[
-        "call_oi",
-        "put_oi",
-        "call_vanna",
-        "put_vanna",
-        "call_dex_dollars",
-        "put_dex_dollars",
-        "call_gex_1pct",
-        "put_gex_1pct",
-        "call_volume",
-        "put_volume",
-    ],
-    ...,
-] = (
+type _CountField = Literal["oi_unreported", "volume_unreported"] | UnreportedField
+type _KnownSumField = Literal[
+    "call_oi_mult", "put_oi_mult", "call_gamma", "put_gamma", "call_delta", "put_delta"
+]
+type _SumField = Literal[
     "call_oi",
     "put_oi",
     "call_vanna",
@@ -703,7 +680,14 @@ _BUCKET_SUMS: tuple[
     "put_gex_1pct",
     "call_volume",
     "put_volume",
+]
+_BUCKET_COUNTS: tuple[_CountField, ...] = (
+    "oi_unreported",
+    "volume_unreported",
+    *get_args(UnreportedField.__value__),
 )
+_BUCKET_KNOWN_SUMS: tuple[_KnownSumField, ...] = get_args(_KnownSumField.__value__)
+_BUCKET_SUMS: tuple[_SumField, ...] = get_args(_SumField.__value__)
 
 
 def overlay_streamed_contract_fields(

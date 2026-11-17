@@ -311,10 +311,10 @@ def _old_file(tmp_path_factory) -> Path:
 
 
 def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> int:
-    """Publish the mix's messages of `services`, each received at its recorded time; return how
-    many were published.
+    """Publish the mix's messages of `services` and return how many were published.
 
-    Each frame is decoded from its JSON through the daemon's handler for its service.
+    Each is received at its recorded time. Each frame is decoded from its JSON through the
+    daemon's handler for its service.
     """
     health = HealthRegistry()
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
