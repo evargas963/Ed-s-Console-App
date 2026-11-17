@@ -136,6 +136,20 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
     assert spy["records"] == [] and spy["ticker"] == "SPY"  # each ticker its own
 
 
+def test_a_page_showing_the_tab_is_told_again_with_each_price_row_of_its_ticker():
+    """Today's card is the live gap before the open and the open's bar after it.
+
+    Both change with the ticker's price, not with the record, so a page left open is sent the
+    tab again with each of its ticker's price rows (live_ui.on_row), as the levels are.
+    """
+    with pages() as on_socket:
+        page = on_socket.open("TSLA", "experimental")
+        other = on_socket.open("SPY", "experimental")
+        on_socket.server.on_row("TSLA")
+        assert on_socket.told(page) == {"experimental"}
+        assert on_socket.told(other) == set(), "a page showing another ticker is not"
+
+
 def test_today_s_card_after_the_open_waits_for_the_bar_then_serves_its_result():
     """2026-10-07, after 09:30 ET: Schwab's 5-minute bars as the console's `5m` series holds them.
 

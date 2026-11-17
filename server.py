@@ -1966,5 +1966,6 @@ CHAIN_PANELS = ("expiries",)
 BARS_PANELS = ("bars", "liquidity", "desk")
 FLOW_PANELS = ("book", "bookmap", "tape", "contract")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
-#: they are measured from): the socket sends them again with each of its price rows
-PRICED_PANELS = ("levels",)
+#: they are measured from; today's gap and open): the socket sends them again with each of its
+#: price rows
+PRICED_PANELS = ("levels", "experimental")
