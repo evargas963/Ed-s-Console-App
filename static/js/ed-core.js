@@ -1016,7 +1016,7 @@
       if (!c[0]) return;
       if (c[2] != null) {
         c[0].textContent = c[1] + orDash(c[3]);
-        c[0].className = "chg mono " + (c[2] >= 0 ? "pos" : "neg");
+        c[0].className = "chg mono " + window.EdDraw.bySign(c[2], "pos", "neg", "");
       } else {
         c[0].textContent = c[1] + "-";
         c[0].className = "chg mono";
@@ -1039,7 +1039,7 @@
     if (ce) {
       if (chgPct != null) {
         ce.textContent = orDash(chgPctText); // served: "+0.57%"
-        ce.className = "wl-chg " + (chgPct >= 0 ? "pos" : "neg");
+        ce.className = "wl-chg " + window.EdDraw.bySign(chgPct, "pos", "neg", "");
       } else {
         ce.textContent = "-";
         ce.className = "wl-chg";

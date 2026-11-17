@@ -485,7 +485,7 @@
         wToday = window.EdDraw.barWidth(gx, maxAbs);
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' +
-          (gy >= 0 ? "pos" : "neg") +
+          window.EdDraw.bySign(gy, "pos", "neg", "") +
           '" style="width:' +
           window.EdDraw.barWidth(gy, maxAbs).toFixed(1) +
           '%"></i>'
@@ -495,7 +495,7 @@
         delta == null
           ? '<span class="mig-delta">-</span>'
           : '<span class="mig-delta ' +
-            (delta >= 0 ? "pos" : "neg") +
+            window.EdDraw.bySign(delta, "pos", "neg", "") +
             '">' +
             esc(m.change_text) + // served: "▲$1.23M" / "▼$1.23M"
             "</span>";
