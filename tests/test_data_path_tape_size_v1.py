@@ -1,28 +1,38 @@
-"""Schwab -> the tape. A print's size keeps every digit; the screen rounds it."""
+"""Schwab -> the tape. A print's size is the count Schwab sent; the screen rounds it.
+
+Real data: SPY's LEVELONE_EQUITIES messages of 2026-11-13 from 10:00 ET as the capture daemon
+recorded them (tests/fixtures/real_spy_levelone_2026_11_13_1000et.json).
+"""
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import calc.l1_trade_observation as l1
 from app.options.order_flow.state import OrderFlowState
 
-
-def test_a_print_keeps_every_digit_of_size():
-    """LAST_SIZE is the count Schwab sent.
-
-    Cutting it to a whole number happens on the screen, and the signed size on the tape is that
-    same count (each message through the live state, its top first as the console takes it; the
-    second trades above its quote's midpoint, so it signs +1).
-    """
-    first = {"key": "SIZE", "LAST_PRICE": 10.0, "LAST_SIZE": 1.0, "TRADE_TIME_MILLIS": 1}
-    second = {"key": "SIZE", "LAST_PRICE": 11.0, "LAST_SIZE": 10.6, "TRADE_TIME_MILLIS": 2}
-    second.update(BID_PRICE=10.9, ASK_PRICE=11.0)
-    printed = l1.extract_vendor_print(second)
-    assert printed["size"] == 10.6
-    state = OrderFlowState()
-    for at, msg in ((1.0, first), (2.0, second)):
-        state.push_option_top("SIZE", msg)
-        state.push_level_one("SIZE", msg, ts_recv=at)
-    points = l1.iter_signed_cum_points(
-        l1.canonical_tape_prints(state.get_content_for_symbol("SIZE"))
+_MSGS = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_spy_levelone_2026_11_13_1000et.json").read_text(
+        encoding="utf-8"
     )
-    assert points[-1][1] == 10.6
+)["messages"]
+
+
+def test_a_print_keeps_the_size_schwab_sent():
+    """LAST_SIZE is the count Schwab sent, and the signed size on the tape is that same count.
+
+    The stream's first three messages hold one sized print: 92 shares at 754.29 against a
+    754.30 / 754.32 quote, below its midpoint, so it signs -1 (each message through the live
+    state, its top first as the console takes it).
+    """
+    printed = l1.extract_vendor_print(_MSGS[2]["item"])
+    assert printed["size"] == 92
+    state = OrderFlowState()
+    for m in _MSGS[:3]:
+        state.push_option_top("SPY", m["item"])
+        state.push_level_one("SPY", m["item"], ts_recv=m["ts_recv"])
+    points = l1.iter_signed_cum_points(
+        l1.canonical_tape_prints(state.get_content_for_symbol("SPY"))
+    )
+    assert points[-1][1] == -92
