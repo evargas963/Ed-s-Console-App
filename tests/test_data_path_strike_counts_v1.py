@@ -1,35 +1,37 @@
-"""Schwab -> the strike rows. Volume and open interest keep every digit; the screen rounds."""
+"""Schwab -> the strike rows. Open interest is the count Schwab sent, summed per strike.
+
+Real data: a captured Schwab SPY chain (tests/real_chains.py: 2026-10-07 12:32 ET), through
+compute_terrain as the console prices it. The expected rows are read straight off the chain;
+the same chain's volume rows are tests/test_option_volume_is_live_v1.py's.
+"""
 
 from __future__ import annotations
 
-from calc.terrain_engine import _per_strike_measure_rows, _per_strike_rows
+from calc.terrain_engine import compute_terrain
+from option_contract import read_chain
+from tests.real_chains import SPY_0DTE
+from time_et import sessions
 
 
-def test_a_strike_keeps_every_digit_of_volume_and_open_interest():
-    """A count Schwab sent as a fraction of a contract is the count on the row.
+def _sum_by_strike(field: str) -> dict[float, int]:
+    out: dict[float, int] = {}
+    for c in SPY_0DTE.chain:
+        k = float(c["strikePrice"])
+        out[k] = out.get(k, 0) + int(c[field])
+    return out
 
-    Cutting it to a
-    whole number happens on the screen, not in the calculation.
+
+def test_a_strike_row_holds_the_open_interest_schwab_sent():
+    """Each strike's open interest is its contracts' counts as sent, call + put.
+
+    Cutting a count to a whole number happens on the screen, not in the calculation.
     """
-    volume = _per_strike_rows(
-        {
-            500.0: {
-                "dollarized": True,
-                "net_gex_1pct": 12.5,
-                "volume_unreported": 0,
-                "call_volume": 10.4,
-                "put_volume": 0.2,
-            },
-        }
+    snap = compute_terrain(
+        SPY_0DTE.ticker,
+        read_chain(SPY_0DTE.chain),
+        SPY_0DTE.spot,
+        now=SPY_0DTE.now,
+        sessions=sessions(),
     )
-    assert volume == [(500.0, 12.5, 10.6)]
-    oi = _per_strike_measure_rows(
-        {
-            500.0: {
-                "oi_unreported": 0,
-                "call_oi": 3.4,
-                "put_oi": 0.2,
-            },
-        }
-    )["oi"]
-    assert oi == [(500.0, 3.6)]
+    oi = {r.strike: r.value for r in snap.per_strike["oi"]}
+    assert oi == _sum_by_strike("openInterest")
