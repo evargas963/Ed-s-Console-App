@@ -50,8 +50,11 @@ jobs:
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" \
             | sha256sum -c -
           tar -xzf gitleaks.tar.gz gitleaks
-          ./gitleaks dir . --config .gitleaks.toml --redact --no-banner
-          ./gitleaks git . --config .gitleaks.toml --redact --no-banner
+          set +e
+          ./gitleaks dir . --config .gitleaks.toml --redact --no-banner -v
+          files_rc=$?
+          ./gitleaks git . --config .gitleaks.toml --redact --no-banner -v
+          [ "$files_rc" -eq 0 ] && [ "$?" -eq 0 ]
       - name: one module reads each Schwab field (AGENTS.md rule 3, ENF-23)
         if: github.event_name == 'pull_request'
         env:
