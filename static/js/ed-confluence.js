@@ -98,30 +98,21 @@
     }
   });
 
-  function anchorY(price, rows) {
-    var n = rows.length;
-    var height = n * 52;
-    if (!n) return 0;
-    var i;
-    for (i = 0; i < n - 1; i++) {
-      var hi = rows[i].strike;
-      var lo = rows[i + 1].strike;
-      if (price <= hi && price >= lo) {
-        var span = hi - lo;
-        var frac = span === 0 ? 0 : (hi - price) / span;
-        return 26 + i * 52 + frac * 52;
-      }
-    }
-    if (price >= rows[0].strike) return 26;
-    return height - 26;
-  }
+  // the matrix's rows are this tall; the rail is drawn against them
+  var ROW_PX = 52;
 
   // the served rail (push.confluence._rail): each price line and each lane's levels inside the rows; the
   // page places them
   function rails(rows, lines, lanes) {
     var n = rows.length;
-    var height = n * 52;
+    var height = n * ROW_PX;
     if (!n) return "";
+    var strikes = rows.map(function (r) {
+      return r.strike;
+    });
+    var anchorY = function (price) {
+      return window.EdDraw.rowAnchorY(price, strikes, ROW_PX);
+    };
     var svg =
       '<svg viewBox="0 0 276 ' +
       height +
@@ -136,33 +127,22 @@
         '" d="M' +
         start +
         " " +
-        anchorY(lv.price, rows) +
+        anchorY(lv.price) +
         ' H290" stroke="#718198" opacity=".7"/>';
     });
     ["session", "options"].forEach(function (lane, laneIndex) {
       var group = lanes[lane];
-      var pos = group.map(function (o) {
-        var y = anchorY(o.price, rows);
-        if (y < 12) return 12;
-        if (y > height - 12) return height - 12;
-        return y;
-      });
-      var i;
-      for (i = 1; i < pos.length; i++) {
-        if (pos[i] < pos[i - 1] + 25) pos[i] = pos[i - 1] + 25;
-      }
-      if (pos.length && pos[pos.length - 1] > height - 12) {
-        pos[pos.length - 1] = height - 12;
-        for (i = pos.length - 2; i >= 0; i--) {
-          if (pos[i] > pos[i + 1] - 25) pos[i] = pos[i + 1] - 25;
-        }
-      }
-      for (i = 0; i < pos.length; i++) {
-        if (pos[i] < 12) pos[i] = 12;
-      }
+      var pos = window.EdDraw.stackLabels(
+        group.map(function (o) {
+          return anchorY(o.price);
+        }),
+        height,
+        25,
+        12,
+      );
       group.forEach(function (lv, index) {
         var x = laneIndex * 138 + 7;
-        var anchor = anchorY(lv.price, rows);
+        var anchor = anchorY(lv.price);
         var label = pos[index];
         var connector = window.EdDraw.apart(label, anchor)
           ? '<path d="M' +
