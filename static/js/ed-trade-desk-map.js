@@ -740,8 +740,14 @@
   }
   function liqBar(side, label, text, shares, total) {
     // shares not sent: no bar; a total of 0 shares: an empty track
-    var s = window.EdDraw.strength(shares, total);
-    var fill = s == null ? "" : '<i class="' + side + '" style="width:' + s * 100 + '%"></i>';
+    var fill =
+      window.EdDraw.strength(shares, total) == null
+        ? ""
+        : '<i class="' +
+          side +
+          '" style="width:' +
+          window.EdDraw.barWidth(shares, total) +
+          '%"></i>';
     return (
       '<div class="liq-bar-h"><span>' +
       label +

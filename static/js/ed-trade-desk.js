@@ -481,15 +481,13 @@
         gx = r.value,
         gy = m ? m.prior : null;
       var hasGy = gy != null && gx != null;
-      var sToday = window.EdDraw.strength(gx, maxAbs),
-        sPrior = window.EdDraw.strength(gy, maxAbs);
       var pos = gx != null && gx >= 0,
-        wToday = sToday == null ? 0 : sToday * 100;
+        wToday = window.EdDraw.barWidth(gx, maxAbs);
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' +
           (gy >= 0 ? "pos" : "neg") +
           '" style="width:' +
-          (sPrior == null ? 0 : sPrior * 100).toFixed(1) +
+          window.EdDraw.barWidth(gy, maxAbs).toFixed(1) +
           '%"></i>'
         : "";
       var delta = m ? m.change : null; // served change

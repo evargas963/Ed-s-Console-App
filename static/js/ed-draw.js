@@ -11,6 +11,11 @@
     if (value == null || isNaN(value) || !(scale > 0)) return null;
     return Math.min(1, Math.abs(value) / scale);
   }
+  // a bar's width, in percent of its track, by strength; 0 when the value is unknown
+  function barWidth(value, scale) {
+    var s = strength(value, scale);
+    return s == null ? 0 : s * 100;
+  }
   // a heat cell's colour: the theme's zero colour toward its positive or negative one by
   // strength; null when strength is
   function heatFill(value, scale, colors) {
@@ -228,6 +233,7 @@
 
   window.EdDraw = {
     strength: strength,
+    barWidth: barWidth,
     heatFill: heatFill,
     heatInk: heatInk,
     centredLeft: centredLeft,

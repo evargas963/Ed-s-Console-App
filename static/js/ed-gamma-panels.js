@@ -275,8 +275,7 @@
         // a strike with no value is unknown: no bar, '-' (never a $0 bar)
         var k = r.strike,
           v = r.value;
-        var s = window.EdDraw.strength(v, maxAbs),
-          w = s == null ? 0 : s * 100,
+        var w = window.EdDraw.barWidth(v, maxAbs),
           pos = v != null && v >= 0;
         bars +=
           '<div class="gbs-row' +
