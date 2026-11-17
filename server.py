@@ -1367,6 +1367,8 @@ def _terrain_loop() -> None:
         lambda: lmp.watchlist() is not None,
     )
     watchlist = lmp.watchlist()
+    if watchlist is None:  # the stop came first: the daemon never said what the watchlist is
+        return
     cross_store.load(watchlist)
     started = datetime.fromtimestamp(time_et.now(), ET)
     _publish_missing_price_levels(watchlist, started)
@@ -1537,11 +1539,11 @@ def _forces_from_captures(
                 It assumes each capture is the whole chain, where a strike not listed holds no
                 contracts.
                 """
-                totals = [
+                newer, older = (
                     side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
                     for per in (per1, per0)
-                ]
-                return None if None in totals else totals[0] - totals[1]
+                )
+                return None if newer is None or older is None else newer - older
 
             # CHARM below/above from the NEWER banked wide chain (full book).
             # Dealer-signed net_charm = call_charm - put_charm per strike.
