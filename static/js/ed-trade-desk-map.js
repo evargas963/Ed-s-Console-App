@@ -45,8 +45,7 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var num = window.EdShell.num,
-    notLive = window.EdShell.notLive;
+  var notLive = window.EdShell.notLive;
   // Schwab's book time stands beside the age words. A book that is not live keeps that
   // time and says so. The words are unchanged when no book time was sent.
   function bookAgeLabel(m, word) {
