@@ -181,7 +181,7 @@ def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
         if cur is None or k != cur_key:
             if cur is not None:
                 out.append(cur)
-            cur = {"t": b["t"], "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "v": b["v"]}
+            cur = dict(b)
             cur_key = k
             continue
         cur["h"] = max(cur["h"], b["h"])

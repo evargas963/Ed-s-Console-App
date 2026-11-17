@@ -913,9 +913,14 @@ def _compute_tape_pressure(data: dict[str, Any], window_sec: float, now: float) 
     )
 
 
+def _window_start_ms(now: float, window_sec: float) -> float:
+    """Return the first millisecond of the window of `window_sec` that ends at `now`."""
+    return now * 1000.0 - int(window_sec * 1000)
+
+
 def _compute_unsigned(data: dict[str, Any], window_sec: float | None, now: float) -> float | None:
     """Return a window's unsigned share of size (every print when None): l1_trade_observation."""
-    cutoff = None if window_sec is None else now * 1000.0 - int(window_sec * 1000)
+    cutoff = None if window_sec is None else _window_start_ms(now, window_sec)
     return unsigned_share(canonical_tape_prints(data["content"]), cutoff)
 
 
@@ -934,7 +939,7 @@ def _compute_cum_delta_slope(
 ) -> float | None:
     """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
     points = iter_signed_cum_points(
-        canonical_tape_prints(data["content"]), now * 1000.0 - int(window_sec * 1000)
+        canonical_tape_prints(data["content"]), _window_start_ms(now, window_sec)
     )
     if len(points) < 2:
         return None
