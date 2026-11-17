@@ -105,6 +105,15 @@ jobs:
             npx playwright install chromium
           fi
 
+      - name: Arial Narrow's widths on Linux, as the operator's Windows draws the Desk
+        # Liberation Sans Narrow is built to Arial Narrow's metrics; fontconfig's metric aliases
+        # give it for "Arial Narrow", so a page's text wraps where it wraps on Windows.
+        timeout-minutes: 3
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends fonts-liberation-sans-narrow
+          fc-match "Arial Narrow"
+
       - name: Run the browser tests
         env:
           CI: "true"
