@@ -196,8 +196,8 @@ then the rule binds with no machine check.
   and in every file whose code a change touches, tests and tools included, a shape refused on an
   added line or on an unchanged line that did not hold it before (`tests/test_check_end_to_end_v1.py`,
   locks); `tools/check_one_reader.py`, the whole repository's second readers printed on every run
-  and a new one refused (in force); `tools/check_credential_leak.py`, every tracked file, no path or
-  line skipped (`tests/test_credential_leak_v1.py`, in force); the production-checkout rail, every
+  and a new one refused (in force); gitleaks, every tracked file in `hardening`, no path or line
+  skipped (`.gitleaks.toml`, in force); the production-checkout rail, every
   file of that checkout (`tools/process_lock_guard.py`, `tests/test_hook_chain_v1.py`, in force).
   `check_integrity` judges a change itself (a test's assertions kept), not what files hold, and
   reads every file of any kind a change touches. Each tool SHAPE adds (import-linter,
@@ -398,6 +398,9 @@ then the rule binds with no machine check.
 - Every text file is stored with LF line endings, a batch file is checked out with CRLF, and
   captured Schwab data (`tests/fixtures/`) is kept byte for byte. Enforced by: git itself, as it
   saves each file (`.gitattributes`).
-- No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py`
-  at commit and in `hardening` (`tests/test_credential_leak_v1.py`).
+- No credential or operator-home path is committed. Enforced by: gitleaks 8.30.1 with
+  `.gitleaks.toml` (its own rules, ours for a bearer token, a key assigned, an AWS key id, a
+  private key's header and the three home-path spellings), at commit on what the commit adds
+  (`.pre-commit-config.yaml`; the program beside `pre-commit` on PATH) and in `hardening` on
+  every tracked file and the PR's commits.
 - Shell steps that depend on each other are joined with `&&`. Enforced by: no machine check — ENF-12.

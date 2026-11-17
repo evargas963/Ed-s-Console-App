@@ -64,8 +64,3 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: python -m tools.check_one_reader --base "origin/$BASE_REF"
-      - name: no credential or operator-home path is committed (AGENTS.md Authority)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: python -m tools.check_credential_leak --base "origin/$BASE_REF"
