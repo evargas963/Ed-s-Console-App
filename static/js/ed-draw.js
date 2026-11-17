@@ -11,6 +11,11 @@
     if (value == null || isNaN(value) || !(scale > 0)) return null;
     return Math.min(1, Math.abs(value) / scale);
   }
+  // the tone a served value is drawn in by its sign: `positive` for 0 and above, `negative` below,
+  // `unknown` when it is not known
+  function bySign(v, positive, negative, unknown) {
+    return v == null ? unknown : v >= 0 ? positive : negative;
+  }
   // a bar's width, in percent of its track, by strength; 0 when the value is unknown
   function barWidth(value, scale) {
     var s = strength(value, scale);
@@ -234,6 +239,7 @@
   window.EdDraw = {
     strength: strength,
     barWidth: barWidth,
+    bySign: bySign,
     heatFill: heatFill,
     heatInk: heatInk,
     centredLeft: centredLeft,

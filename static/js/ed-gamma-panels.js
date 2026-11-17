@@ -155,7 +155,7 @@
     if (net) {
       var v = d.net_gex_at_spot;
       net.textContent = orDash(d.net_gex_at_spot_text);
-      net.style.color = v == null ? "" : v >= 0 ? "var(--ed-pos-ink)" : "var(--ed-neg-ink)";
+      net.style.color = window.EdDraw.bySign(v, "var(--ed-pos-ink)", "var(--ed-neg-ink)", "");
     }
     var reg = document.getElementById("klRegime");
     if (reg) {
@@ -460,7 +460,7 @@
     // NET row is this expiry's net GEX at this strike, served on the same chain panel --
     // the heatmap's own cell, not GEX-by-Strike's all-expiry total beside one expiry's contracts.
     var net = sd ? sd.net_gex : null; // served null: no surface value at this strike
-    var netCls = net == null ? "" : net >= 0 ? "pos" : "neg";
+    var netCls = window.EdDraw.bySign(net, "pos", "neg", "");
     host.innerHTML =
       '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' +

@@ -661,7 +661,7 @@
         var ng = t.net_gex_at_spot; // absent is uncoloured, never read as 0
         c.querySelector(".tdm-hero").innerHTML =
           '<span class="' +
-          (ng == null ? "" : ng >= 0 ? "up" : "dn") +
+          window.EdDraw.bySign(ng, "up", "dn", "") +
           '">' +
           orDash(t.net_gex_at_spot_text) +
           "</span> <small>net dealer gamma at spot, per 1%</small>";
@@ -994,7 +994,7 @@
                 kind: "bars",
                 color: P.ink3,
                 colors: fb.map(function (b) {
-                  return b.chg == null ? P.ink3 : b.chg >= 0 ? P.up : P.down;
+                  return window.EdDraw.bySign(b.chg, P.up, P.down, P.ink3);
                 }),
               },
             ]
@@ -1220,7 +1220,7 @@
         "</b>" +
         (r && r.chg_pct != null
           ? '<em class="' +
-            (r.chg_pct >= 0 ? "up" : "dn") +
+            window.EdDraw.bySign(r.chg_pct, "up", "dn", "") +
             '">' +
             esc(orDash(r.chg_pct_text)) + // served: "+0.57%"
             "</em>"
