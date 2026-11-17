@@ -145,7 +145,7 @@
         return {
           price: r.strike,
           value: r.value,
-          color: !prof.signed ? P.accent : r.value >= 0 ? P.up : P.down,
+          color: !prof.signed ? P.accent : window.EdDraw.bySign(r.value, P.up, P.down, P.accent),
         };
       }),
       prof.scale,
