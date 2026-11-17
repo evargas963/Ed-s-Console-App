@@ -675,13 +675,11 @@
     askPanels();
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:view", load);
-    document.addEventListener("ed:ticker", load);
-    document.addEventListener("ed:book_venue", load);
-    document.addEventListener("ed:scope", askPanels); // a new scope is a new window
-    // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
-  }
+  document.addEventListener("ed:view", load);
+  document.addEventListener("ed:ticker", load);
+  document.addEventListener("ed:book_venue", load);
+  document.addEventListener("ed:scope", askPanels); // a new scope is a new window
+  // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
 })();
 
 /* Trade Desk / "Experimental": the `experimental` panel of the selected ticker as served, every

@@ -68,21 +68,19 @@
     render(h, d.failed != null ? { available: false, reason: d.failed } : d);
   });
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:view", load);
-    document.addEventListener("ed:ticker", load);
-    document.addEventListener("ed:book_venue", load);
-    document.addEventListener("ed:book_window", load);
-    document.addEventListener("click", function (e) {
-      var btn = e.target.closest && e.target.closest("[data-ofh-minutes]");
-      if (!btn) return;
-      _minutes = Number(btn.getAttribute("data-ofh-minutes")) || 60;
-      document.querySelectorAll("[data-ofh-minutes]").forEach(function (b) {
-        b.classList.toggle("on", b === btn);
-      });
-      window.EdShell.emit("ed:book_window", { minutes: _minutes });
+  document.addEventListener("ed:view", load);
+  document.addEventListener("ed:ticker", load);
+  document.addEventListener("ed:book_venue", load);
+  document.addEventListener("ed:book_window", load);
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest && e.target.closest("[data-ofh-minutes]");
+    if (!btn) return;
+    _minutes = Number(btn.getAttribute("data-ofh-minutes")) || 60;
+    document.querySelectorAll("[data-ofh-minutes]").forEach(function (b) {
+      b.classList.toggle("on", b === btn);
     });
-  }
+    window.EdShell.emit("ed:book_window", { minutes: _minutes });
+  });
   // read-only view for tests (e2e) -- never a control surface
   window.EdBookHeatmap = {
     state: function () {
