@@ -160,7 +160,7 @@ def test_both_hosts_wire_the_one_executor_with_the_same_rosters():
 
     assert set(wired) == {"PreToolUse", "preToolUse", "Stop", "UserPromptSubmit"}, wired
     assert all(roster(c) == set(WIRED_ROSTER) for c in guards), wired
-    # the Stop hook keeps the agent working while SHAPE is open (AGENTS.md Authority)
+    # the Stop hook holds a turn while an order is unanswered or production is down
     assert wired["Stop"] == [".venv/Scripts/python.exe tools/keep_going.py"], wired
 
 

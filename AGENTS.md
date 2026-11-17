@@ -39,9 +39,9 @@ field as sent), `tools/check_one_reader.py` in `hardening` (one reader of each S
 between Schwab and the screen — the builder's audit (rule 14), no machine check.
 
 The app is a wire: Schwab → one program → the page. Every value has one producer. The shape below is
-the target (operator 2026-10-29); each rule names the standard tool that enforces it, and the step
-of `ACTIVE_PROGRAM.md` SHAPE that turns that check on. Until its step lands, a rule is still the
-rule: a change that breaks it stops and goes to the operator.
+built (operator 2026-10-29; SHAPE, finished 2026-11-17); each rule names the standard tool that
+enforces it. A rule with no machine check is still the rule: a change that breaks it stops and goes
+to the operator.
 
 Read before writing a change: the parts it touches of `docs/DATA_FLOW.md` (the data and its
 producers), `docs/ARCHITECTURE.md` (where code lives), `ACTIVE_PROGRAM.md` (the work order) and
@@ -51,7 +51,7 @@ producers), `docs/ARCHITECTURE.md` (where code lives), `ACTIVE_PROGRAM.md` (the 
 Every requirement in this file's sections after the Shared rules (whose Standard of care is
 judgment, not things to build), in `.claude/rules/` and in `docs/DATA_FLOW.md` names what enforces
 it: a test, hook or required check, or "no machine check" and the item in `ACTIVE_PROGRAM.md` (an
-ENF item or a SHAPE step) that builds one. Enforced by: no machine check — ENF-12.
+ENF item or STANDARD-CHECKS) that builds one. Enforced by: no machine check — ENF-12.
 
 ## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
 
@@ -170,8 +170,7 @@ Each rule names what enforces it and where it runs. "(in force)" means it runs t
 `hardening` or `locks` refuses leaves the machine) or in the required `hardening`
 (`.github/workflows/hardening.yml`), `pytest-full` or `pytest-windows`
 (`.github/workflows/pytest.yml`) job. "(locks)" means it runs in `.github/workflows/locks.yml`, a
-required job too. "Step N" is the SHAPE step that turns the check on; until then the rule binds with
-no machine check.
+required job too.
 
 1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
    incidents and dates go in the commit message. No patches: a defect is fixed where it is produced,
@@ -194,7 +193,7 @@ no machine check.
    cap and `TRY` (but `TRY003`, which flags a built-in exception's message as Python's own library
    writes it), as one-way counts (locks), to 0 in step 1b; `check_end_to_end` is deleted in step 7
    only once a standard tool refuses every shape its docstring lists (swallowing excepts, missing
-   values replaced or repaired, the page's patch shapes) — the shapes left — SHAPE step 7
+   values replaced or repaired, the page's patch shapes) — the shapes left — STANDARD-CHECKS
 2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's
    own field definition excludes (a negative volume or size). Everything else is taken as sent, a
    gamma included whatever its size (operator 2026-11-04: "we take what schwab gives and we wire it
@@ -224,7 +223,7 @@ no machine check.
    sends — STREAM-ONE; every other REST request for a field the stream sends — no machine check,
    ENF-12; `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a second
    reader (in force); the fields already read by more than one module
-   (`python -m tools.check_one_reader --list`) — ENF-23; import-linter layers, from SHAPE step 1e
+   (`python -m tools.check_one_reader --list`) — ENF-23
 4. **The page draws; it computes nothing.** Every number, total, choice, comparison and date it
    shows is served. It gets data only from the one push. Enforced by: ESLint's
    `no-restricted-globals`: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport
@@ -284,7 +283,7 @@ no machine check.
     that a Calculator imports no State, Push, Feed, database or network — import-linter's "The
     Calculators read no State, Push, Feed, database or network" in `locks.imports.toml`, on each
     Calculator's own import statements (`tests/test_data_path_only_feed_v1.py`, locks); a chain
-    through another root module, and a global — no machine check, SHAPE step 2
+    through another root module, and a global — no machine check, ENF-09
 12. **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose
     states are named constants. Enforced by: pyright 1.1.414 (`requirements-dev.txt`, the census's
     own pin), strict over the files `pyproject.toml` `[tool.pyright]` lists, in `hardening` (in
@@ -365,9 +364,9 @@ no machine check.
   in `hardening`, no path or line skipped (`.gitleaks.toml`, in force); the production-checkout
   rail, every file of that checkout (`tools/process_lock_guard.py`, `tests/test_hook_chain_v1.py`,
   in force). `check_integrity` judges a change itself (a test's assertions kept), not what files
-  hold, and reads every file of any kind a change touches. Each tool SHAPE adds (import-linter,
-  ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). The operator's
-  decisions of 2026-11-04 on what that rule found:
+  hold, and reads every file of any kind a change touches. Each tool SHAPE added (import-linter,
+  ESLint, pyright) runs over the whole repository the same way. The operator's decisions of
+  2026-11-04 on what that rule found:
   - Tests stay independent ("test should remain independent"): a test runs real captured Schwab data
     through the real code and checks it against values worked out outside that code, so the tests
     read Schwab's captured answers themselves; every other file has one reader per field
@@ -435,7 +434,7 @@ no machine check.
   by: no machine check — ENF-08.
 - A function that depends on the clock takes `now`; only an entry point (a route, a loop, a stream
   handler) reads the clock, and the clock is read only in `time_et.py` (rule 11). Enforced by: ruff
-  `TID251` (rule 11); that only an entry point takes the time — SHAPE step 2.
+  `TID251` (rule 11); that only an entry point takes the time — ENF-09.
 - A product change carries end-to-end tests of what it wires, on real captured data, written with it
   (operator 2026-11-05: "we can wire the way it needs to be and then create the tests"). Enforced
   by: the builder's audit (rule 14), no machine check.
@@ -508,25 +507,17 @@ no machine check.
   `tools/operator_law_guard.py` refuses the agent's `gh pr create` without it
   (`tests/test_operator_law_guard_action_bans_v1.py`); that the group is whole — the builder's audit
   (rule 14), no machine check.
-- Work continues until SHAPE is finished: a stop is refused while its row is IN PROGRESS, unless the
-  rules require the stop (his yes to a plan for work outside SHAPE, CLAUDE.md item 3; his yes to a
-  change of request rates, limits or settings, CLAUDE.md item 5; the next bullet's stop list: his
-  stop words, an AUDIT ONLY or DO NOT MERGE task, a destructive data action, a product decision),
-  said in a message that begins `WAITING ON OPERATOR:`. A wait on CI is not a stop: every pull
-  request has auto-merge and Auto-fix on, so it merges by itself or the app wakes the session on a
-  failure, and the next step starts meanwhile (operator 2026-11-07: "i want to be able to walk away
-  while you work"; "you cannot continue stopping"; the agent never polls CI itself). From the third
-  refused stop in a row since the operator last wrote, what is being done is suspect (operator
-  2026-10-30: "at that point in time i would suspect that what you are doing isn't working"): the
-  agent does not try again what already failed, finds the cause down to the line of code or data
-  with evidence (First gate 4), takes a different approach, the simplest that fits Python's
-  guidelines and the shape, and keeps going ("go to bedrock or try some other solution based on our
-  python guidelines ... instead of just churning"); two failed attempts at the same thing are met
-  the same way (CLAUDE.md item 6, operator 2026-10-30). Enforced by: the Stop hook
-  `tools/keep_going.py` refuses every other stop while SHAPE is open, and from the third refusal in
-  a row since the operator last wrote its reason says "If you are trying again what already failed,
-  it is not working" and the rest of the above (`tests/test_keep_going_v1.py`); that a stop marked
-  so is one the rules require, and that the next approach differs — no machine check, ENF-12.
+- SHAPE is finished (operator 2026-11-17: "Yes, close SHAPE"): the one program stands in its five
+  parts, and the hand-built checks a standard tool covers are deleted (the line-ending check for
+  git's `.gitattributes`, the credential scanner for gitleaks); each other hand-built check goes
+  once a standard tool refuses what it refuses (STANDARD-CHECKS). A wait on CI is not a stop: every
+  pull request has auto-merge and Auto-fix on, so it merges by itself or the app wakes the session
+  on a failure, and the next work starts meanwhile (operator 2026-11-07: "i want to be able to walk
+  away while you work"; the agent never polls CI itself). Two failed attempts at the same thing send
+  the agent to the cause, down to the line of code or data with evidence (First gate 4), and a
+  different approach (CLAUDE.md item 6, operator 2026-10-30: "go to bedrock or try some other
+  solution based on our python guidelines ... instead of just churning"). Enforced by: no machine
+  check — ENF-12.
 - Once the operator tells the agent to do something, it does it; it does not choose whether, when or
   what instead (operator 2026-11-07: "once i tell you do something, you must do it. you do not get
   to choose", "this is non negotiable", "you must enforce this rule"). It pushes back only when the
@@ -534,11 +525,11 @@ no machine check.
   `tools/wiring_rules.py` records every message he sends as a numbered message, read by the agent as
   an order with what it breaks or conflicts with, or as not one, put to him to correct (operator
   2026-11-08: "you must ask if it's an order and if it is an order then you must immediately tell me
-  if it breaks anything"), and the Stop hook `tools/keep_going.py` refuses to end a turn, whatever
-  SHAPE's row says, while any message lacks its reading or any order a line
-  `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>` (`tests/test_keep_going_v1.py`,
-  `tests/test_wiring_rules_v1.py`); that the evidence is true and a pushback's reason real — the
-  builder's audit (rule 14), no machine check.
+  if it breaks anything"), and the Stop hook `tools/keep_going.py` refuses to end a turn while any
+  message lacks its reading or any order a line `ORDER n DONE: <evidence>` or
+  `ORDER n PUSHBACK: <reason>` (`tests/test_keep_going_v1.py`, `tests/test_wiring_rules_v1.py`);
+  that the evidence is true and a pushback's reason real — the builder's audit (rule 14), no machine
+  check.
 - Stop for the operator's STOP / PAUSE / HANG IT UP / DO NOT CONTINUE / NO, a task marked AUDIT ONLY
   or DO NOT MERGE, a destructive data action, and a product decision code cannot settle. Say in chat
   what a guarded action is for before running it. A daemon or console start or clean stop needs no
