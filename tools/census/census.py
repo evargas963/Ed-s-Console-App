@@ -1669,15 +1669,16 @@ add(
 for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
     f for f in FILES if f.startswith(".claude/rules/")
 ]:
-    for n, ln in enumerate(TEXT[f].splitlines(), 1):
-        for m in re.finditer(r"no machine check[^;|]*", ln):
-            add(
-                S,
-                "requirements with no machine check",
-                "ENF-12",
-                "regex",
-                f"{f}:{n}: {m.group(0)[:110]}",
-            )
+    # read across line breaks: a wrapped paragraph may break the phrase between two lines
+    for m in re.finditer(r"no\s+machine\s+check[^;|\n]*", TEXT[f]):
+        line = TEXT[f].count("\n", 0, m.start()) + 1
+        add(
+            S,
+            "requirements with no machine check",
+            "ENF-12",
+            "regex",
+            f"{f}:{line}: {' '.join(m.group(0).split())[:110]}",
+        )
 for m in WORK_ROW.finditer(TEXT["ACTIVE_PROGRAM.md"]):
     if m.group(1) != "ID":
         add(
