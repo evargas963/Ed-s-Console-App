@@ -9,6 +9,8 @@ import pytest
 
 from tools.shell_parse import read
 
+pytestmark = pytest.mark.rail
+
 
 def _words(cmd: str) -> list[list[str]]:
     return [list(st.words) for st in read(cmd)]

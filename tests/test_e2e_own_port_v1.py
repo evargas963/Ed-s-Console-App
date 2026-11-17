@@ -12,7 +12,11 @@ import socket
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import pytest
+
 from tests.shared_helpers import node_json
+
+pytestmark = pytest.mark.rail
 
 ROOT = Path(__file__).resolve().parents[1]
 

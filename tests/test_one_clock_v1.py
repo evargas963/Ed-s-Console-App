@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.rail
+
 REPO = Path(__file__).resolve().parent.parent
 #: a clock read in page code
 PAGE_CLOCK = re.compile(r"Date\.now\(|new Date\(\s*\)|performance\.now\(")

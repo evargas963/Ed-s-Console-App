@@ -13,6 +13,8 @@ import pytest
 from tests.shared_helpers import write
 from tools import check_locks
 
+pytestmark = pytest.mark.rail
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
