@@ -76,7 +76,7 @@ relative_files = true
 source = ["."]
 omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
 
-# AGENTS.md rule 12 (SHAPE step 6): a value that crosses a module boundary is a typed record, held
+# AGENTS.md rule 12: a value that crosses a module boundary is a typed record, held
 # by pyright's strict mode over the Calculators and State (the Push files join as their slice lands)
 [tool.pyright]
 pythonVersion = "3.13"

@@ -1659,7 +1659,11 @@ S = "H. Governance"
 for cat, rule, tool in (
     ("requirements with no machine check", "ENF-12", "regex"),
     ("required CI on main not green", "Before saying done", "gh run list"),
-    ("hand-built check tools (replaced by standard tools in SHAPE step 7)", "1", "ls"),
+    (
+        "hand-built check tools (each until a standard tool does its job: STANDARD-CHECKS)",
+        "1",
+        "ls",
+    ),
 ):
     add(S, cat, rule, tool)
 WORK_ROW = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|\s*([A-Z][A-Z ,0-9:-]*?)\s*\|", re.M)
@@ -1721,7 +1725,13 @@ for wf, r_ in latest.items():
             f"{wf}: {state} at {r_['headSha'][:8]} {r_['createdAt']}",
         )
 for f in [f for f in FILES if f.startswith("tools/") and f.endswith(".py")]:
-    add(S, "hand-built check tools (replaced by standard tools in SHAPE step 7)", "1", "ls", f)
+    add(
+        S,
+        "hand-built check tools (each until a standard tool does its job: STANDARD-CHECKS)",
+        "1",
+        "ls",
+        f,
+    )
 for f in [f for f in FILES if f.startswith((".claude/", ".cursor/"))]:
     add(S, "agent configuration files (reported)", "size", "ls", f)
 

@@ -1,40 +1,28 @@
-"""The Stop hook (AGENTS.md Authority: work continues until SHAPE is finished).
-
-While ACTIVE_PROGRAM.md's SHAPE row is IN PROGRESS, the agent's attempt to end its turn is refused
-and it is sent back to the next step.
-
-The way through is a stop the rules allow: the agent's final message begins
-`WAITING ON OPERATOR:` and names why (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5).
-A wait on CI is not one: a pull request merges by itself, and the next step starts meanwhile.
+"""The Stop hook (AGENTS.md Authority): every order answered, and production running main.
 
 Every message is read and every order answered (operator 2026-11-07: "once i tell you do
 something, you must do it. you do not get to choose", "you must enforce this rule"; 2026-11-08:
 "if i send you a message you must ask if it's an order and if it is an order then you must
 immediately tell me if it breaks anything"): each message he sends is recorded as message n in the
-session's ledger in ORDERS (`record_message`, run by tools/wiring_rules.py on every message), and
-whatever the SHAPE row says, a stop is refused while a message is unread or an order unanswered.
+session's ledger in ORDERS (`record_message`, run by tools/wiring_rules.py on every message), and a
+stop is refused while a message is unread or an order unanswered.
 The agent reads message n with a line `MESSAGE n READ: ORDER - <what>; BREAKS: <what it breaks or
 conflicts with, or nothing>` or `MESSAGE n READ: NOT AN ORDER - <why>`, put to him to correct; an
 order is answered with `ORDER n DONE: <evidence>` or `ORDER n PUSHBACK: <reason>`. A reading and
 an answer are kept, so each is given once. The ledger is the session's, outside the repository.
 
 Production runs what main holds (operator 2026-11-07, after Windows Update restarted the machine
-on 2026-11-06 at 20:29 and Ed Console stayed down 25 hours with no one told): a stop is refused,
-whatever SHAPE's row says, while the production checkout (this file's own, where the hooks run) is
-not at its `origin/main` or nothing listens on the console's port, unless the final message begins
-`WAITING ON OPERATOR:` (he may stop it himself). `origin/main` is as last fetched.
-
-From the third refusal in a row the reason sends the agent to the cause and a different approach
-(AGENTS.md Authority); the count is kept per session in COUNTS. Wired by `.claude/settings.json`
-(Stop).
+on 2026-11-06 at 20:29 and Ed Console stayed down 25 hours with no one told): a stop is refused
+while the production checkout (this file's own, where the hooks run) is not at its `origin/main` or
+nothing listens on the console's port, unless the final message begins `WAITING ON OPERATOR:` (he
+may stop it himself). `origin/main` is as last fetched. Wired by `.claude/settings.json` (Stop).
 
     python tools/keep_going.py < payload.json
 Prints Claude Code's `{"decision": "block", "reason": ...}` to refuse the stop; prints nothing to
-let it end. Once SHAPE is finished, only an unanswered order holds a session. The final
-message is the payload's `last_assistant_message` when Claude Code sends one, else the transcript's
-last assistant entry (a line that is not a JSON object is skipped, so one damaged line never
-decides every later stop). A work list, payload, transcript or ledger it cannot read exits 2
-with the reason, which also refuses the stop: "cannot judge" never reads as "may stop"
+let it end. The final message is the payload's `last_assistant_message` when Claude Code sends
+one, else the transcript's last assistant entry (a line that is not a JSON object is skipped, so
+one damaged line never decides every later stop). A payload, transcript or ledger it cannot read
+exits 2 with the reason, which also refuses the stop: "cannot judge" never reads as "may stop"
 (tests/test_hook_chain_v1.py).
 """
 
@@ -50,10 +38,7 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-WORK_LIST = REPO / "ACTIVE_PROGRAM.md"
 WAITING = "WAITING ON OPERATOR:"
-#: the SHAPE row while any of its steps is left
-OPEN = re.compile(r"^\|\s*SHAPE\s*\|\s*IN PROGRESS\s*\|", re.M)
 
 
 #: how much of the transcript's end is read first (a long session's transcript runs past 100 MB)
@@ -224,17 +209,14 @@ def production_wrong(repo: Path = REPO, port: int = CONSOLE_PORT) -> str | None:
 
 
 def decide(
-    work_list: str,
     last: str,
-    in_a_row: int = 1,
     open_orders: list[tuple[int, str, str]] = (),
     production: str | None = None,
 ) -> str | None:
     """Return why the stop is refused, or None when it may end.
 
-    `in_a_row` is which refusal in a row this would be, and from BEDROCK_AT on the reason sends the
-    agent to the cause, not back to the same attempt. An unread message or an unanswered order
-    refuses the stop, whatever the SHAPE row says.
+    An unread message or an unanswered order refuses the stop, WAITING ON OPERATOR or not;
+    production not running main refuses it unless the final message begins WAITING ON OPERATOR.
     """
     if open_orders:
         return (
@@ -253,62 +235,15 @@ def decide(
         return None
     if production is not None:
         return "Production does not run main: " + production
-    if not OPEN.search(work_list):
-        return None
-    why = (
-        "SHAPE in ACTIVE_PROGRAM.md is IN PROGRESS: take its next step now (AGENTS.md Authority: "
-        "work continues until SHAPE is finished; merges do not wait on the operator, and a pull "
-        "request in CI merges by itself while the next step starts). Stop only for a stop the "
-        "rules require (AGENTS.md Authority's stop list; CLAUDE.md items 3 and 5), saying why in "
-        f"a message that begins `{WAITING}`."
-    )
-    if in_a_row < BEDROCK_AT:
-        return why
-    return (
-        f"This is stop {in_a_row} refused in a row since the operator last wrote. "
-        "If you are trying "
-        "again what already failed, it is not working: do not repeat it. Go to bedrock: write down "
-        "why it fails, down to the line of code or data, with "
-        "evidence (AGENTS.md First gate 4); then take a different approach, the simplest one that "
-        "fits Python's guidelines (PEP 20) and the shape, and keep going. " + why
-    )
-
-
-#: the refusal in a row from which the reason sends the agent to bedrock (AGENTS.md Authority)
-BEDROCK_AT = 3
-#: one file per session holding its refusals in a row (Claude Code's payload says only whether
-#: this stop comes while it is continuing because a Stop hook refused one: `stop_hook_active`,
-#: true until the operator next writes, the same run Claude Code's own cap of 8 counts)
-COUNTS = Path(tempfile.gettempdir()) / "ed_keep_going"
-
-
-def in_a_row(payload: dict, counts: Path = COUNTS) -> int:
-    """Return which refusal in a row this stop would be.
-
-    1 after a stop the hook did not refuse, else one more than the session's count in `counts`.
-    The count is replaced whole, never half-written.
-    """
-    count = counts / session(payload)
-    active = payload.get("stop_hook_active") is True
-    previous = int(count.read_text()) if active and count.exists() else 0
-    counts.mkdir(exist_ok=True)
-    written = count.with_name(count.name + ".new")
-    written.write_text(str(previous + 1))
-    written.replace(count)
-    return previous + 1
+    return None
 
 
 def main() -> int:
     try:
         payload = json.load(sys.stdin)
-        work_list = WORK_LIST.read_text(encoding="utf-8")
         said = payload.get("last_assistant_message")
         last = said if isinstance(said, str) else last_message(Path(payload["transcript_path"]))
-        orders = open_messages(payload, last)
-        wrong = production_wrong()
-        why = decide(work_list, last, open_orders=orders, production=wrong)
-        if why is not None:
-            why = decide(work_list, last, in_a_row(payload), orders, wrong)
+        why = decide(last, open_messages(payload, last), production_wrong())
     except (
         OSError,
         ValueError,

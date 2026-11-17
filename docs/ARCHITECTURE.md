@@ -1,11 +1,13 @@
 # Ed Console — Architecture
 
-Where the code lives. The target is one program in five parts, each part a folder (`AGENTS.md` "The
-shape", operator 2026-10-29). §1 is the target, none of whose folders exists yet; §2 is today's
-files and the part each goes to; §3 is the order, the steps of `ACTIVE_PROGRAM.md` SHAPE. This
-document is updated in the same change as every move.
+Where the code lives. One program in five parts (`AGENTS.md` "The shape", operator 2026-10-29),
+built by SHAPE, finished 2026-11-17: Feed in `feed/`, State in `state/`, every Calculator in
+`calc/`, every panel in `push/`. No more folder moves (operator 2026-11-16: "you should make
+everything as simple as possible now"): the Recorder's database modules and the modules every part
+uses stay at the root, and no `recorder/` or `shared/` folder is built. §1 is the structure, §2 the
+plan SHAPE worked from, file by file. This document is updated in the same change as every move.
 
-## 1. The target structure
+## 1. The structure
 
 ```
 EdWebConsole/
@@ -15,24 +17,27 @@ EdWebConsole/
 ├── calc/        pure functions: every derived value (exposures, levels, walls, flip, max pain,
 │                confluence, liquidity, order-flow measures), from inputs and `now` passed in
 ├── push/        the web app: the page and the one WebSocket that sends it a snapshot, then changes
-├── recorder/    the only database writer, and the startup loader that reads history once
-├── shared/      what every part uses: market sessions (Schwab's /markets), config, runtime paths,
-│                instrument identity, formatters
 ├── static/      the page, which draws what is pushed
+├── *.py         at the root: the Recorder (db.py, stream_spine.py's writer, the startup loader)
+│                and what every part uses (market sessions from Schwab's /markets, config, runtime
+│                paths, instrument identity, formatters)
 ├── tests/
 ├── tools/       the few checks the standard tools cannot do
 ├── docs/
 └── start_ed_console.bat (runs launch.py, which starts the one program)
 ```
 
-Imports flow one way, to be enforced by import-linter's layers from SHAPE step 1e, as these folders
-land: push → state → calc; feed → state; recorder ← state; every part may use shared. Until then
-`locks.imports.toml` holds Feed alone: its contracts read the checkout as one package, because grimp
-takes no top-level module, so an import of a root module is an outside name and no layer can be
-drawn across them. Outside the repository: the runtime folder (the one database, the token, logs)
-and worktrees.
+Imports flow one way: push → state → calc; feed → state. `locks.imports.toml` holds the rules that
+matter (only Feed talks to Schwab; the Calculators read no State, Push, Feed, database or network)
+and ruff's ban on `sqlite3` holds the Recorder's; no layers contract is built (operator 2026-11-16).
+Its contracts read the checkout as one package, because grimp takes no top-level module, so an
+import of a root module is an outside name and no layer can be drawn across them. Outside the
+repository: the runtime folder (the one database, the token, logs) and worktrees.
 
-## 2. Where each file goes
+## 2. The plan SHAPE worked from
+
+Each file and the part it was to go to. `feed/`, `state/`, `calc/` and `push/` were built; the rows
+that send a file to `recorder/` or `shared/` stand at the root instead (operator 2026-11-16).
 
 | Today                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Goes to                                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -50,20 +55,14 @@ and worktrees.
 | `start_capture_daemon.bat`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | deleted with the second program                                                                                                                                                                                                                                                                                                    |
 | `launch.py`, `reauth_schwab.py`, `start_ed_console.bat`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | stay at the root                                                                                                                                                                                                                                                                                                                   |
 
-## 3. The order
-
-The steps of `ACTIVE_PROGRAM.md` SHAPE, one small PR each. A step brings its check's one-way count
-(`AGENTS.md` Locks) to 0 with no exception list and deletes what it replaces. Files move into their
-folders as the step that owns them lands; nothing is copied.
-
-## 4. Failure domains
+## 3. Failure domains
 
 The app and each capability fail separately. If Schwab (or its stream) is unavailable, the app still
 starts and serves; the Schwab-dependent panels draw "-" (operator 2026-10-12 and 2026-10-16), and
 nothing is filled in from elsewhere. The app refuses to start only when it cannot run at all (a
 broken Python environment, core code that will not load).
 
-## 5. Runtime state is not source
+## 4. Runtime state is not source
 
 The database, the Schwab token, logs and diagnostics are runtime state, not source.
 `runtime_layout.py` is the one owner of where they live: `ED_RUNTIME_ROOT` moves them; unset, a

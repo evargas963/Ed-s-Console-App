@@ -19,10 +19,8 @@ derived value once, as pure functions; **Push** sends the page a snapshot, then 
 WebSocket, and the page draws it; **Recorder** writes every message to the databases, which no live
 screen reads. Hops: Schwab → program → page.
 
-Today the program is one process with two parts (the capture daemon and the console, §3.1) on one
-port, and the page re-reads routes after each push (§3.2). `ACTIVE_PROGRAM.md` SHAPE step 3 makes
-them one program and step 4 makes the push the page's only data; each step rewrites the sections of
-§3 it replaces, in the same PR.
+The program is one process on one port (§3.1), and the one push, the page's socket, is the page's
+only data (§3.2): SHAPE's steps 3 and 4, finished with SHAPE on 2026-11-17.
 
 The facts below hold today and in the design, except where a bullet says what today lacks:
 
@@ -1002,7 +1000,7 @@ behavior (AGENTS.md).
 4. **One shell, two connections** (operator 2026-09-27). One page; tabs switch what is shown; the
    daemon pushes prices and bars, the console pushes that levels, flow or liquidity changed.
    Superseded by SHAPE (operator 2026-10-29): one shell, one WebSocket from the one program, which
-   carries every value (§1). Enforced by: no machine check — SHAPE step 4.
+   carries every value (§1). Enforced by: no machine check — ENF-12.
 5. **One database** (operator 2026-11-15: "is there a way to get to one db that has all the data we
    need", "yes build it"; replacing his two databases of 2026-10-09/10): `ed.db` holds the stream's
    tables for five sessions (§2 D4), the chain history (decision 7, written by the daemon's chain
