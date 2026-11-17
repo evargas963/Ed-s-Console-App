@@ -14,8 +14,8 @@ fixture tuned by the same hand that writes the assertion proves only that the ha
 
 from __future__ import annotations
 
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
 from time_et import sessions
 

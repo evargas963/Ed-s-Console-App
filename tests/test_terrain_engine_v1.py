@@ -13,9 +13,8 @@ import json
 
 import pytest
 
-from math_levels import GAMMA_FLIP_TRUSTED
-from option_contract import read_chain, read_contract
-from terrain_engine import (
+from calc.math_levels import GAMMA_FLIP_TRUSTED
+from calc.terrain_engine import (
     TERRAIN_SCHEMA_VERSION,
     WALL_BREACHED,
     WALL_CONTAINS,
@@ -27,6 +26,7 @@ from terrain_engine import (
     price_relations,
     wall_geometry_state,
 )
+from option_contract import read_chain, read_contract
 from tests.real_chains import CRWD, MRVL, SPY_0DTE, spy_0dte_book
 from time_et import sessions
 

@@ -10,7 +10,7 @@ profile, the flip and the support levels sum) against a source, not against itse
 
 from __future__ import annotations
 
-from math_exposure_core import bsm_gamma_delta
+from calc.math_exposure_core import bsm_gamma_delta
 
 #: Hull's worked option: price, strike, years to expiry, volatility, rate, dividend yield
 S, K, T, SIGMA, R, Q = 49.0, 50.0, 20 / 52, 0.20, 0.05, 0.0

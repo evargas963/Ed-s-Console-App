@@ -8,12 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from numeric_contract import dollars_text, strike_text
-from push.answers import unavailable
-from push.spot import resolve_spot
-from push.strike_rows import max_abs_served, served, window_asked, windowed
-from push.verdict import terrain_cache_get
-from terrain_engine import (
+from calc.terrain_engine import (
     MigrationRow,
     StrikeRow,
     level_moves,
@@ -22,6 +17,11 @@ from terrain_engine import (
     positioning_migration,
     side_total,
 )
+from numeric_contract import dollars_text, strike_text
+from push.answers import unavailable
+from push.spot import resolve_spot
+from push.strike_rows import max_abs_served, served, window_asked, windowed
+from push.verdict import terrain_cache_get
 
 
 def _served_migration(row: MigrationRow) -> dict[str, Any]:
@@ -103,7 +103,7 @@ def terrain_strikes_payload(
     migration are of every strike.
     """
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
-    # terrain_engine.per_strike_view: {all, near, far} of StrikeRow, and the dex and oi rows),
+    # calc.terrain_engine.per_strike_view: {all, near, far} of StrikeRow, and the dex and oi rows),
     # served as-is; with no levels published, that view of no book: no rows
     levels, verdict = terrain_cache_get(tk, now)
     # no levels published for tk: no rows, no walls; no prior day captured: no prior rows. The

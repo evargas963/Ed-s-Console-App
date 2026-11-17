@@ -731,7 +731,7 @@ test.describe('Trade Desk renders served values', () => {
     sock.changed('terrain');
     await expect(body).toContainText('Γ flip761.22Max pain (0DTE)771.00');   // CONFIRM's rows
     await expect(body).not.toContainText('Γ flip note');                    // this set's flip carries no note
-    // induced: the flip's note as the server words it (terrain_read.FLIP_CURVE_DISAGREES)
+    // induced: the flip's note as the server words it (calc.terrain_read.FLIP_CURVE_DISAGREES)
     deskPanels().terrain = Object.assign({}, TERRAIN, { flip_note: 'The gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.' });
     sock.changed('terrain');
     await expect(body).toContainText('Γ flip noteThe gamma flip is placed by a modelled curve that disagrees with Schwab\'s gamma at today\'s price.');

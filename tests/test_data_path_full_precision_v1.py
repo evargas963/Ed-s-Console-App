@@ -10,9 +10,9 @@ Real data (tests/real_chains.py): SPY's 0DTE chain of 2026-10-07 12:32 ET (20 st
 
 from __future__ import annotations
 
-from math_levels import GAMMA_FLIP_NARROW
+from calc.math_levels import GAMMA_FLIP_NARROW
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import SPY_0DTE
 from time_et import sessions
 

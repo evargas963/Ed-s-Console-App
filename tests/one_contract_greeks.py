@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from math_exposure_core import bs_charm_array, bs_vanna_array
+from calc.math_exposure_core import bs_charm_array, bs_vanna_array
 
 
 def _value(v) -> float | None:

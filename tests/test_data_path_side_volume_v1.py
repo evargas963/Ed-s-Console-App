@@ -5,7 +5,7 @@ from __future__ import annotations
 import live_market_plane as lmp
 import server as srv
 import time_et
-from math_exposure_core import compute_exposures_by_strike, net_gex_dollars_at_strike
+from calc.math_exposure_core import compute_exposures_by_strike, net_gex_dollars_at_strike
 from option_contract import read_chain
 from push import strikes as push_strikes
 from state import level_store

@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-import liquidity_value_engine
 import live_market_plane as lmp
 import server as srv
-from liquidity_models import ZoneType
-from micro_structure import Candle
+from calc import liquidity_value_engine
+from calc.liquidity_models import ZoneType
+from calc.micro_structure import Candle
 from option_contract import read_chain
 from push import liquidity as push_liquidity
 from state import bar_store, level_store

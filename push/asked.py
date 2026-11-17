@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.options.order_flow.engine import BOOK_VENUES
+from calc.order_flow import BOOK_VENUES
 
 #: the chart timeframes the levels' VWAP curve is served in (aggregate_vwap)
 LEVEL_TIMEFRAMES = ("1", "3", "5", "15", "30", "60", "D")

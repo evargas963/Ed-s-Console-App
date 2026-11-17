@@ -1,4 +1,4 @@
-"""liquidity_value_engine.py — Liquidity & Value Playbook Engine.
+"""Liquidity & Value Playbook Engine.
 
 Deterministic institutional intraday zone mapper. Works for any ticker.
 The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
@@ -22,8 +22,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from instrument_identity import ticker_storage_key
-from liquidity_models import (
+from calc.liquidity_models import (
     PlaybookConfig,
     SnapshotOutput,
     SnapshotSummary,
@@ -33,7 +32,8 @@ from liquidity_models import (
     ZoneType,
     volume_profile,
 )
-from micro_structure import Candle
+from calc.micro_structure import Candle
+from instrument_identity import ticker_storage_key
 from numeric_contract import float_finite_or_none, float_positive_or_none
 from time_et import ET, Session
 
@@ -137,7 +137,7 @@ def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
 
 def get_previous_day_levels(
     bars_norm: list[Bar],
-    prior: Candle | None,
+    prior: Candle,
     config: PlaybookConfig,
     *,
     sessions: Mapping[str, Session],
@@ -146,10 +146,8 @@ def get_previous_day_levels(
 
     Its high, low and close as Schwab sent them on its daily candle (`prior`, prior_session),
     and its POC, VAH and VAL estimated from its RTH 1-minute bars (Schwab sends no volume
-    profile), with the count of those bars. No prior session: {}.
+    profile), with the count of those bars.
     """
-    if prior is None:
-        return {}
     prior_date = datetime.fromtimestamp(prior.ts, ET).date()
     prev_bars = [
         b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(sessions, b["_dt"])
@@ -872,15 +870,17 @@ def build_price_level_snapshot(
     )
 
     # ── prior day ────────────────────────────────────────────────────────────
-    eng = get_previous_day_levels(bars_norm, prior, cfg, sessions=sessions)
-    prior_date = eng.get("prior_date")
-    if prior_date is None:
+    prior_date: date | None = None  # not known until the prior session's candle is read
+    if prior is None:
         families_absent.append(
             {"family": "prior_day", "reason": "no Schwab daily candle held for a prior session"}
         )
     else:
+        eng = get_previous_day_levels(bars_norm, prior, cfg, sessions=sessions)
+        day: date = eng["prior_date"]
+        prior_date = day
         producer = f"{_PRODUCER_NS}.get_previous_day_levels"
-        window = f"{prior_date.isoformat()} RTH (most recent prior RTH session)"
+        window = f"{day.isoformat()} RTH (most recent prior RTH session)"
         put(
             (("PDH", eng["pdh"]), ("PDL", eng["pdl"]), ("PDC", eng["pdc"])),
             producer=producer,
@@ -894,7 +894,7 @@ def build_price_level_snapshot(
         )
         if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append(
-                f"prior_day: prior session {prior_date} holds only {eng['rth_bars']} of >= "
+                f"prior_day: prior session {day} holds only {eng['rth_bars']} of >= "
                 f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
                 "estimated from a partial tape"
             )

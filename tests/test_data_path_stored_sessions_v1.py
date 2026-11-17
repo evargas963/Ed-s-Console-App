@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from math_levels import compute_charm_by_strike, pick_charm_wall_strikes
+from calc.math_levels import compute_charm_by_strike, pick_charm_wall_strikes
 from option_contract import read_chain
 from stream_spine import STREAM_SCHEMA_SQL
 from tests.test_console_startup_waits_v1 import program_env, run_until

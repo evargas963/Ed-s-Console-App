@@ -30,8 +30,8 @@ from __future__ import annotations
 
 import pytest
 
-import terrain_engine as TE
-from liquidity_models import volume_profile
+from calc import terrain_engine as TE
+from calc.liquidity_models import volume_profile
 from tests.feed_live_helper import daemon_bars
 from tests.real_chains import CRWD, crwd_exposures
 

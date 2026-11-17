@@ -858,10 +858,10 @@ for f in [f for f in PAGE_ALL if f != "static/index.html"]:
 SERVING = (
     "server.py",
     "live_market_plane.py",
-    "liquidity_value_engine.py",
-    "terrain_engine.py",
-    "confluence_composite.py",
-    "liquidity_models.py",
+    "calc/liquidity_value_engine.py",
+    "calc/terrain_engine.py",
+    "calc/confluence_composite.py",
+    "calc/liquidity_models.py",
 )
 served = {
     (k.value, f)

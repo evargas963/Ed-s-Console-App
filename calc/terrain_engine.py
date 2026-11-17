@@ -14,8 +14,8 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from typing import Any, NamedTuple, TypedDict
 
-from confluence_composite import iv_by_strike
-from math_exposure_core import (
+from calc.confluence_composite import iv_by_strike
+from calc.math_exposure_core import (
     Bucket,
     ExposureDiagnostics,
     book_net_gex,
@@ -35,7 +35,7 @@ from math_exposure_core import (
     strike_total_oi,
     strike_total_volume,
 )
-from math_levels import (
+from calc.math_levels import (
     CharmBucket,
     compute_charm_by_strike,
     compute_gamma_flip_v2,
@@ -47,6 +47,14 @@ from math_levels import (
     pick_charm_wall_strikes,
     repriced_to_close,
 )
+from calc.terrain_read import (
+    LEVEL_ABOVE,
+    LEVEL_BELOW,
+    build_terrain_read,
+    flip_note,
+    level_side,
+    price_side,
+)
 from numeric_contract import (
     count_text,
     dollars_text,
@@ -56,14 +64,6 @@ from numeric_contract import (
     price_text,
 )
 from option_contract import OptionContract
-from terrain_read import (
-    LEVEL_ABOVE,
-    LEVEL_BELOW,
-    build_terrain_read,
-    flip_note,
-    level_side,
-    price_side,
-)
 from time_et import (
     ET,
     SETTLEMENT_AM,
@@ -225,7 +225,7 @@ class TerrainSnapshot:
     contracts_used: int = 0
     strikes_used: int = 0
     dollarized: bool = False
-    #: the note shown beside the gamma flip (terrain_read.flip_note), None for none
+    #: the note shown beside the gamma flip (calc.terrain_read.flip_note), None for none
     flip_note: str | None = None
     error: str = ""
 
@@ -866,7 +866,7 @@ def same_day_levels(
     exposure books (`books`, from Schwab's gamma and delta as sent), its gamma profile and its
     charm map (`charm_by_expiry`). With none listed today Schwab
     sends no Greek at today's close, so the next listed expiry is priced as if it expired at
-    today's option close (math_levels.repriced_to_close) and read the same way. Absent when the
+    today's option close (calc.math_levels.repriced_to_close) and read the same way. Absent when the
     chain lists no expiry from today on. A later expiry's are absent too when `now` is past
     today's close (a chain is valued at that close, time_et.valuation_instant, so they stand
     there) or no option window is held for today.

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import (
     DISPLAY_TAIL_SHARE,
     RecentBooks,
     book_heatmap_for_ticker,
 )
+from app.options.order_flow.state import read_book
 
 _FX = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_tsla_book_rows.json").read_text(
@@ -27,7 +27,7 @@ _FX = json.loads(
 def _books(rows) -> RecentBooks:
     """Return a fresh store fed each captured (ts_recv, venue, book message).
 
-    Fed as the console's intake does: each message read by the one reader (engine.read_book), a
+    Fed as the console's intake does: each message read by the one reader (State's read_book), a
     message with no book not recorded.
     """
     books = RecentBooks()

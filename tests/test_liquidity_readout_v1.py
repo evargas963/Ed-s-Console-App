@@ -31,9 +31,9 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
-from app.options.order_flow import engine as e
 from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
+from calc import order_flow as e
 from push import book as push_book
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
@@ -61,9 +61,9 @@ def _readout(sent: dict) -> dict:
     """engine.book_readout of each venue's book as Schwab sent it.
 
     `sent`: venue -> its message content, or None; each read by the one reader,
-    engine.read_book, as the console's intake reads it.
+    State's read_book, as the console's intake reads it.
     """
-    return e.book_readout({v: None if c is None else e.read_book(c, v) for v, c in sent.items()})
+    return e.book_readout({v: None if c is None else ofls.read_book(c, v) for v, c in sent.items()})
 
 
 #: every venue with no book

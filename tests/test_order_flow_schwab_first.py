@@ -10,8 +10,8 @@ through the live state's one reader of a contract's top (OrderFlowState.push_opt
 
 from __future__ import annotations
 
-from app.options.order_flow.engine import _compute_top_book_pressure
 from app.options.order_flow.state import OrderFlowState
+from calc.order_flow import _compute_top_book_pressure
 from tests.shared_helpers import fixture_json
 
 _REST_QUOTE = next(

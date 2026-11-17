@@ -1,4 +1,4 @@
-"""liquidity_models.py — Data models for Liquidity & Value Playbook Engine.
+"""Data models for the Liquidity & Value Playbook Engine.
 
 Enums and dataclasses for structural snapshots, zones, and price levels.
 Ticker-agnostic; works for any instrument.
@@ -196,8 +196,8 @@ class Zone:
 class SnapshotSummary:
     """Readable auction context interpretation."""
 
-    value_state: str | None = None  # liquidity_value_engine.value_area_relation
-    vwap_relation: str | None = None  # liquidity_value_engine.vwap_against_value
+    value_state: str | None = None  # calc.liquidity_value_engine.value_area_relation
+    vwap_relation: str | None = None  # calc.liquidity_value_engine.vwap_against_value
 
 
 @dataclass

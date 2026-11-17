@@ -1,4 +1,4 @@
-"""Order Flow Engine (app/options/order_flow/engine.py).
+"""Order Flow Engine.
 
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
@@ -15,16 +15,16 @@ from typing import Any, TypedDict
 
 import numpy as np
 
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     canonical_tape_prints,
     cum_delta_window,
     iter_signed_cum_points,
     unsigned_share,
 )
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     compute_cum_delta_proxy as _canonical_cum_delta,
 )
-from l1_trade_observation import (
+from calc.l1_trade_observation import (
     compute_tape_pressure as _canonical_tape_pressure,
 )
 from numeric_contract import (
@@ -34,7 +34,6 @@ from numeric_contract import (
     percent_text,
     price_text,
     schwab_count,
-    schwab_number,
 )
 from time_et import ct_label
 
@@ -56,27 +55,6 @@ Exchanges = tuple[tuple[str, float, float | None], ...]
 
 #: a value inside a Schwab book item, as its JSON was read
 type Json = dict[str, Json] | list[Json] | str | float | None
-
-
-def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
-    """Return a level's own rows, one per exchange or market maker, as sent.
-
-    Each row is (EXCHANGE, BID_VOLUME or ASK_VOLUME, its quote time;
-    docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2, "Quote time in
-    milliseconds", which schwab-py names SEQUENCE; None when not sent). None when the level
-    carries none, or a row lacks its code or size.
-    """
-    if not isinstance(rows, list) or not rows:
-        return None
-    out: list[tuple[str, float, float | None]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            return None
-        code, size = row.get("EXCHANGE"), schwab_count(row.get(size_key))
-        if not isinstance(code, str) or not code or size is None:
-            return None
-        out.append((code, size, schwab_number(row.get("SEQUENCE"))))
-    return tuple(out)
 
 
 #: one level of a book: (price, TOTAL_VOLUME, the level's per-exchange rows), as Schwab sent them
@@ -101,7 +79,8 @@ class WallCandidate(TypedDict):
 
 @dataclass(frozen=True)
 class Book:
-    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK), read once (read_book).
+    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK), read once by State
+    (app.options.order_flow.state.read_book).
 
     Holds its service, BOOK_TIME, and each side's levels in the order Schwab sent them.
     """
@@ -118,45 +97,6 @@ class Book:
     def pairs(self, side: str) -> list[tuple[float, float]]:
         """Return the (price, TOTAL_VOLUME) of each level of `side`, "BIDS" or "ASKS", as sent."""
         return [(p, v) for p, v, _ in self.levels(side)]
-
-
-def read_book(content_item: dict[str, Any], service: str) -> Book | None:
-    """Read a Schwab book message; this is its one reader.
-
-    None when it carries neither side (a side Schwab sent no levels for is empty).
-    """
-    if content_item.get("BIDS") is None and content_item.get("ASKS") is None:
-        return None
-    return Book(
-        service,
-        schwab_number(content_item.get("BOOK_TIME")),
-        tuple(_side_levels(content_item, "BIDS")),
-        tuple(_side_levels(content_item, "ASKS")),
-    )
-
-
-def _side_levels(content_item: dict[str, Any], side: str) -> list[Level]:
-    """Return one side of a Schwab book, "BIDS" or "ASKS".
-
-    (price, TOTAL_VOLUME, the level's per-exchange sizes) for each level, as sent. A level
-    without a number for both price and size is not a level.
-    """
-    price_key, size_key = (
-        ("BID_PRICE", "BID_VOLUME") if side == "BIDS" else ("ASK_PRICE", "ASK_VOLUME")
-    )
-    raw: Json = content_item.get(side)
-    if not raw:
-        return []
-    out: list[Level] = []
-    for level in raw if isinstance(raw, list) else [raw]:
-        for lv in level if isinstance(level, list) else [level]:
-            if not isinstance(lv, dict):
-                continue
-            p = schwab_number(lv.get(price_key))
-            v = schwab_count(lv.get("TOTAL_VOLUME"))
-            if p is not None and v is not None:
-                out.append((p, v, _exchange_sizes(lv.get(side), size_key)))
-    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────

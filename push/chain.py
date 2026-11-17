@@ -9,12 +9,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from calc.terrain_engine import chain_ladder, nearest_strike
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
 from option_contract import chain_row
 from push.spot import resolve_spot
 from push.verdict import terrain_cache_get
 from state import level_store
-from terrain_engine import chain_ladder, nearest_strike
 from time_et import ct_label, et_date_str_from_ts_utc
 
 # the program's one log (capture._start_log: the day's file and the window)

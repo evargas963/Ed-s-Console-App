@@ -119,7 +119,7 @@
     localStorage.setItem(k, v);
   }
   // D: persist UI navigation state (client state, not market truth)
-  // The strike-window scopes, served in the page (meta ed-scopes, from terrain_engine.SCOPES):
+  // The strike-window scopes, served in the page (meta ed-scopes, from calc.terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
   var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute("content"));
   var SCOPE_MODES = SCOPES.map(function (s) {
@@ -1130,7 +1130,7 @@
       subscribePrices();
     });
   }
-  // The strikes a per-strike panel shows are the program's choice (terrain_engine.strike_window):
+  // The strikes a per-strike panel shows are the program's choice (calc.terrain_engine.strike_window):
   // every such panel asks with these -- the scope, and while the operator has panned, the centre
   // strike the drag began on and the rows it moved from there (none: follow the price).
   function windowParams(pan) {

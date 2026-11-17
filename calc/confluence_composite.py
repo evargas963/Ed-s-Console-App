@@ -11,7 +11,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
-from math_exposure_core import (
+from calc.math_exposure_core import (
     Bucket,
     BucketField,
     bucket_metric,
@@ -20,7 +20,7 @@ from math_exposure_core import (
     strike_volume_legs,
     total_gex_dollars_at_strike,
 )
-from math_levels import CharmBucket
+from calc.math_levels import CharmBucket
 from numeric_contract import (
     compact_text,
     count_text,

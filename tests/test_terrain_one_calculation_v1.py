@@ -15,11 +15,10 @@ import math
 from datetime import datetime
 from pathlib import Path
 
-import math_exposure_core
-import terrain_engine
 import time_et
+from calc import math_exposure_core, terrain_engine
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.call_count import calls
 from tests.terrain_digest import canonical, real_terrains
 from time_et import ET

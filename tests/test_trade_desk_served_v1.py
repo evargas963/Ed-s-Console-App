@@ -18,28 +18,27 @@ import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
-from app.options.order_flow.engine import (
+from calc.liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
+from calc.micro_structure import Candle
+from calc.order_flow import (
     _zone,
     book_readout,
     compute_book_microstructure,
-    read_book,
 )
-from calibration.complete_chain_capture import CAPTURE_BASIS
-from db import LevelCrossEvent
-from liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
-from micro_structure import Candle
-from option_contract import read_chain
-from push import desk as push_desk
-from push import levels as push_levels
-from state import bar_store, cross_store, level_store, price_level_store
-from terrain_engine import (
+from calc.terrain_engine import (
     WALL_BREACHED,
     WALL_CONTAINS,
     compute_terrain,
     price_relations,
     wall_lean,
 )
-from terrain_read import level_side
+from calc.terrain_read import level_side
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from db import LevelCrossEvent
+from option_contract import read_chain
+from push import desk as push_desk
+from push import levels as push_levels
+from state import bar_store, cross_store, level_store, price_level_store
 from tests.feed_live_helper import daemon_status, price_history
 from tests.real_chains import (
     SPY_0DTE,
@@ -62,7 +61,7 @@ def test_the_book_side_is_served_from_the_real_book():
     nat = fx["book"]["native"]
     bid5 = sum(r["TOTAL_VOLUME"] for r in nat["BIDS"][:5])
     ask5 = sum(r["TOTAL_VOLUME"] for r in nat["ASKS"][:5])
-    book = read_book(nat, "NYSE_BOOK")  # the one reader, as the console's intake reads it
+    book = ofls.read_book(nat, "NYSE_BOOK")  # the one reader, as the console's intake reads it
     m = compute_book_microstructure({"content": [book]}, now_ts=fx["book"]["ts_recv"])
     assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (bid5, ask5)
     # the book's lean, a word, is the Liquidity readout's (the one producer): this book's top five

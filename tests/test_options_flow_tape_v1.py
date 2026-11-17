@@ -24,9 +24,8 @@ from datetime import datetime
 import live_market_plane as lmp
 import server
 from app.options.order_flow import history, state
-from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import recent_prints, tape_row
-from app.options.order_flow.state import OrderFlowState
+from app.options.order_flow.state import OrderFlowState, read_book
 from app.options.order_flow.streaming import _ingest_pushed
 from option_contract import read_chain, read_contract
 from push import contract as push_contract

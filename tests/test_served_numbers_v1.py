@@ -17,8 +17,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from calc.terrain_engine import OPTION_LEVELS
 from numeric_contract import compact_text, count_text, dollars_text, iv_text, strike_text
-from terrain_engine import OPTION_LEVELS
 
 FX = Path(__file__).parent / "fixtures"
 E2E = Path(__file__).parent / "e2e" / "fixtures"

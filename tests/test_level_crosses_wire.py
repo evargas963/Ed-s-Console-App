@@ -1,6 +1,6 @@
 """Level crosses: found at the live price on each streamed equity quote, stored, read back.
 
-Found by server._on_stream_tick, terrain_read.crossed; stored by EdDB.record_level_crosses;
+Found by server._on_stream_tick, calc.terrain_read.crossed; stored by EdDB.record_level_crosses;
 read back by get_recent_crosses.
 
 Real data: SPY's 2026-10-22 close capture published at the price Schwab sent in it (764.04), then
@@ -22,6 +22,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
+from calc.terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from db import EdDB, LevelCrossEvent
 from option_contract import read_chain
 from push import confluence as push_confluence
@@ -30,7 +31,6 @@ from push import strikes as push_strikes
 from push import surface as push_surface
 from push import terrain as push_terrain
 from state import cross_store, level_store
-from terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import clock_from, daemon_status, mark_feed_live, publish_capture
 from tests.page_on_socket import pages

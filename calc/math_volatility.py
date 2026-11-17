@@ -1,13 +1,10 @@
-"""Volatility-derived transforms: the average true range.
-
-math_volatility.py
-"""
+"""Volatility-derived transforms: the average true range."""
 
 from __future__ import annotations
 
 from itertools import pairwise
 
-from micro_structure import Candle
+from calc.micro_structure import Candle
 
 # ── ATR (Average True Range) ────────────────────────────────────────────────
 

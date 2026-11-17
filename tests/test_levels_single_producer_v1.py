@@ -7,13 +7,13 @@ from datetime import datetime as _dt
 import live_market_plane as lmp
 import server as srv
 import time_et
-from liquidity_value_engine import DAILY_CANDLE_BASIS
-from math_exposure_core import (
+from calc.liquidity_value_engine import DAILY_CANDLE_BASIS
+from calc.math_exposure_core import (
     compute_exposures_by_strike,
     net_gex_dollars_at_strike,
     strike_total_volume,
 )
-from micro_structure import Candle
+from calc.micro_structure import Candle
 from option_contract import read_chain
 from push import levels as push_levels
 from push import strikes as push_strikes
@@ -143,7 +143,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
     for lv in payload["levels"]:
         if lv["family"] == "gamma":
             assert lv["provenance"] == {
-                "producer": "terrain_engine.compute_terrain",
+                "producer": "calc.terrain_engine.compute_terrain",
                 "carried": True,
             }
     # Tier-B (levels-tierb-session-collapse-v1): session families are served from the engine

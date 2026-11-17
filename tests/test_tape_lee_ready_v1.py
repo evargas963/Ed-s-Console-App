@@ -17,10 +17,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.options.order_flow.engine as ofe
 import app.options.order_flow.state as state
 import app.options.order_flow.streaming as ofs
-import l1_trade_observation as l1
+import calc.l1_trade_observation as l1
+from calc import order_flow as ofe
 from feed.connection import SERVICE_TOPIC, held_key
 from stream_spine import MessageBus, quote_msg
 

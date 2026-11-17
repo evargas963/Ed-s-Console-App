@@ -2,7 +2,7 @@
 
 Operator field-inventory audit, 2026-09-13: both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
-BS-vanna faucet) and math_levels.compute_charm_by_strike (the same function the forces panel's
+BS-vanna faucet) and calc.math_levels.compute_charm_by_strike (the same function the forces panel's
 charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
 published (the vanna_rows/charm_rows of the PublishedLevels record it holds),
 zero extra vendor calls or pricing. These tests
@@ -24,8 +24,8 @@ import pytest
 import live_market_plane as lmp
 import server
 import time_et
-from math_exposure_core import bucket_metric, compute_exposures_by_strike
-from math_levels import compute_charm_by_strike
+from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
+from calc.math_levels import compute_charm_by_strike
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes

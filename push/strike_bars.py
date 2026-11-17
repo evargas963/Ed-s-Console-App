@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from calc.terrain_engine import nearest_strike
 from push.answers import unavailable
 from push.spot import resolve_spot
 from push.strike_rows import served, window_asked, windowed
 from state.level_store import published_levels
-from terrain_engine import nearest_strike
 
 #: each per-strike bar panel's published rows and how they are made
 STRIKE_BAR_METHODS = {

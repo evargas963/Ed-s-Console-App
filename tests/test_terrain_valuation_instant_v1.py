@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import TSLA
 from time_et import sessions
 

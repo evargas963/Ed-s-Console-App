@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from time_et import ET, sessions
 
 _FX = Path(__file__).resolve().parent / "fixtures"

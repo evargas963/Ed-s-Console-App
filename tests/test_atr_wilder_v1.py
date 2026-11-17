@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from micro_structure import Candle
-from terrain_atr import compute_atrs
+from calc.micro_structure import Candle
+from calc.terrain_atr import compute_atrs
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"

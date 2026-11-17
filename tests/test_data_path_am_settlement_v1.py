@@ -10,9 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 import time_et
-from math_levels import contract_inputs
+from calc.math_levels import contract_inputs
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 
 _SPX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(

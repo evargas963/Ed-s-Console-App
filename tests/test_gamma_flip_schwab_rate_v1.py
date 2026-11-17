@@ -24,9 +24,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from math_levels import contract_inputs
+from calc.math_levels import contract_inputs
+from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from terrain_engine import compute_terrain
 from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, RealChain
 from time_et import ET, option_close_product, sessions, time_to_expiry_years
 
@@ -119,9 +119,10 @@ def test_no_product_file_reads_the_stock_streams_dividend_yield():
     source). No product file names the pushed one.
     """
     repo = Path(__file__).resolve().parent.parent
+    folders = ("app", "calc", "calibration", "feed", "push", "state")
     product = [
         p
-        for p in [*repo.glob("*.py"), *(repo / "app").rglob("*.py"), *repo.glob("calibration/*.py")]
+        for p in [*repo.glob("*.py"), *(f for d in folders for f in (repo / d).rglob("*.py"))]
         if p.name != "conftest.py"
     ]
     assert len(product) > 40, "every product file is read"

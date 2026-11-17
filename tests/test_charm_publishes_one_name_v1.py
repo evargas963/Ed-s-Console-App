@@ -17,7 +17,7 @@ only if nothing needs it at all.
 
 from __future__ import annotations
 
-from math_exposure_core import pick_absolute_gamma_strike, pick_volatility_point_strikes
+from calc.math_exposure_core import pick_absolute_gamma_strike, pick_volatility_point_strikes
 
 
 def test_the_two_pin_metrics_are_different_quantities():

@@ -46,21 +46,9 @@ omit = ["tests/*", "*/node_modules/*"]
 [tool.pyright]
 pythonVersion = "3.13"
 include = [
-  "terrain_engine.py",
-  "terrain_read.py",
-  "terrain_atr.py",
-  "math_exposure_core.py",
-  "math_levels.py",
-  "math_volatility.py",
-  "confluence_composite.py",
-  "liquidity_value_engine.py",
-  "liquidity_models.py",
-  "micro_structure.py",
-  "l1_trade_observation.py",
-  "app/options/order_flow/engine.py",
+  "calc",
   "live_market_plane.py",
   "live_price_rows.py",
-  "math_forces.py",
   "state",
   "push",
 ]

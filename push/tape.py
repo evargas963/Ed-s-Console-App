@@ -8,7 +8,7 @@ from typing import Any
 import live_market_plane as lmp
 from app.options.order_flow.history import recent_prints, tape_row
 from app.options.order_flow.state import get_content_for_symbol
-from l1_trade_observation import canonical_tape_prints
+from calc.l1_trade_observation import canonical_tape_prints
 from push.answers import unavailable
 from state.level_store import published_levels
 

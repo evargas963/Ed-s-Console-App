@@ -75,6 +75,7 @@ from app.market_data.schwab.streaming.program_lock import (
     release_owner_lock,
 )
 from app.options.order_flow import streaming as console_feed
+from calc.terrain_engine import nearest_position
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
 from feed.connection import SERVICES, Connection, held_key
@@ -88,7 +89,6 @@ from stream_spine import (
     HealthRegistry,
     MessageBus,
 )
-from terrain_engine import nearest_position
 from time_et import (
     ET,
     ct_label,

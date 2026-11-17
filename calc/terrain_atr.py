@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from math_volatility import compute_atr
-from micro_structure import Candle
+from calc.math_volatility import compute_atr
+from calc.micro_structure import Candle
 
 #: ATR(14) needs 15 candles
 ATR_PERIOD = 14

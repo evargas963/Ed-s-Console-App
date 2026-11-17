@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from terrain_engine import OPTION_LEVELS
+from calc.terrain_engine import OPTION_LEVELS
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 NAMES = dict(OPTION_LEVELS)

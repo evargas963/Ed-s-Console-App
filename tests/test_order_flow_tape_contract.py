@@ -18,8 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.options.order_flow.engine as ofe
 from app.options.order_flow.state import OrderFlowState
+from calc import order_flow as ofe
 from tests.shared_helpers import sent
 
 _FX = Path(__file__).resolve().parent / "fixtures"

@@ -23,12 +23,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from math_exposure_core import (
+from calc.math_exposure_core import (
     compute_exposures_by_strike,
     pick_absolute_gamma_strike,
     pick_volatility_point_strikes,
 )
-from terrain_engine import compute_terrain, price_relations
+from calc.terrain_engine import compute_terrain, price_relations
 from tests.real_chains import SPY_0DTE, spy_0dte_book
 from time_et import sessions
 

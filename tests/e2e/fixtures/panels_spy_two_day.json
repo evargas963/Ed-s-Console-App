@@ -54914,7 +54914,7 @@
      "short": "Call wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -54935,7 +54935,7 @@
      "short": "Net call \u0393 peak",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -54956,7 +54956,7 @@
      "short": "Call \u0394 wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -54998,7 +54998,7 @@
      "short": "Call charm wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55022,7 +55022,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -55047,7 +55047,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -55069,7 +55069,7 @@
      "short": "\u0393 flip",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55093,7 +55093,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
      "provenance": {
-      "producer": "liquidity_value_engine.get_overnight_levels",
+      "producer": "calc.liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
       "semantic_scope": "overnight_window",
       "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
@@ -55118,7 +55118,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -55140,7 +55140,7 @@
      "short": "Put wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55161,7 +55161,7 @@
      "short": "Abs \u0393",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55182,7 +55182,7 @@
      "short": "Put \u0394 wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55206,7 +55206,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -55231,7 +55231,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55256,7 +55256,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -55281,7 +55281,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -55306,7 +55306,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55331,7 +55331,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55353,7 +55353,7 @@
      "short": "Max pain",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55377,7 +55377,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55402,7 +55402,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55427,7 +55427,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55449,7 +55449,7 @@
      "short": "Pin candidate",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55473,7 +55473,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -55498,7 +55498,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55523,7 +55523,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -55548,7 +55548,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -55573,7 +55573,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -55598,7 +55598,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
      "provenance": {
-      "producer": "liquidity_value_engine.get_overnight_levels",
+      "producer": "calc.liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
       "semantic_scope": "overnight_window",
       "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
@@ -55620,7 +55620,7 @@
      "short": "Net put \u0393 peak",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55641,7 +55641,7 @@
      "short": "Key \u0394 strike",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -55662,7 +55662,7 @@
      "short": "Put charm wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59042,7 +59042,7 @@
      "short": "Call wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59063,7 +59063,7 @@
      "short": "Net call \u0393 peak",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59084,7 +59084,7 @@
      "short": "Call \u0394 wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59126,7 +59126,7 @@
      "short": "Call charm wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59150,7 +59150,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -59175,7 +59175,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -59197,7 +59197,7 @@
      "short": "\u0393 flip",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59221,7 +59221,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
      "provenance": {
-      "producer": "liquidity_value_engine.get_overnight_levels",
+      "producer": "calc.liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
       "semantic_scope": "overnight_window",
       "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
@@ -59246,7 +59246,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -59268,7 +59268,7 @@
      "short": "Put wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59289,7 +59289,7 @@
      "short": "Abs \u0393",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59310,7 +59310,7 @@
      "short": "Put \u0394 wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59334,7 +59334,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -59359,7 +59359,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59384,7 +59384,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -59409,7 +59409,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -59434,7 +59434,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59459,7 +59459,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59481,7 +59481,7 @@
      "short": "Max pain",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59505,7 +59505,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59530,7 +59530,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59555,7 +59555,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59577,7 +59577,7 @@
      "short": "Pin candidate",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59601,7 +59601,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -59626,7 +59626,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59651,7 +59651,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -59676,7 +59676,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -59701,7 +59701,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -59726,7 +59726,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
      "provenance": {
-      "producer": "liquidity_value_engine.get_overnight_levels",
+      "producer": "calc.liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
       "semantic_scope": "overnight_window",
       "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
@@ -59748,7 +59748,7 @@
      "short": "Net put \u0393 peak",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59769,7 +59769,7 @@
      "short": "Key \u0394 strike",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -59790,7 +59790,7 @@
      "short": "Put charm wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -62786,7 +62786,7 @@
      "short": "Call wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -62807,7 +62807,7 @@
      "short": "Net call \u0393 peak",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -62828,7 +62828,7 @@
      "short": "Call \u0394 wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -62870,7 +62870,7 @@
      "short": "Call charm wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -62894,7 +62894,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -62919,7 +62919,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -62941,7 +62941,7 @@
      "short": "\u0393 flip",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -62965,7 +62965,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
      "provenance": {
-      "producer": "liquidity_value_engine.get_overnight_levels",
+      "producer": "calc.liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
       "semantic_scope": "overnight_window",
       "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
@@ -62990,7 +62990,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -63012,7 +63012,7 @@
      "short": "Put wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63033,7 +63033,7 @@
      "short": "Abs \u0393",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63054,7 +63054,7 @@
      "short": "Put \u0394 wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63078,7 +63078,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -63103,7 +63103,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63128,7 +63128,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -63153,7 +63153,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -63178,7 +63178,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63203,7 +63203,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63225,7 +63225,7 @@
      "short": "Max pain",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63249,7 +63249,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63274,7 +63274,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63299,7 +63299,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_volume_profile_levels",
+      "producer": "calc.liquidity_value_engine.compute_volume_profile_levels",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63321,7 +63321,7 @@
      "short": "Pin candidate",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63345,7 +63345,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -63370,7 +63370,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63395,7 +63395,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "prior_rth_session",
      "provenance": {
-      "producer": "liquidity_value_engine.get_previous_day_levels",
+      "producer": "calc.liquidity_value_engine.get_previous_day_levels",
       "session_scope": "RTH",
       "semantic_scope": "prior_rth_session",
       "window": "2026-11-11 RTH (most recent prior RTH session)",
@@ -63420,7 +63420,7 @@
      "evidence_tier": "derived_certified",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_session_vwap_series",
+      "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
@@ -63445,7 +63445,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "session_rth",
      "provenance": {
-      "producer": "liquidity_value_engine.compute_opening_range",
+      "producer": "calc.liquidity_value_engine.compute_opening_range",
       "session_scope": "RTH",
       "semantic_scope": "session_rth",
       "window": "2026-11-12 first 15m RTH",
@@ -63470,7 +63470,7 @@
      "evidence_tier": "price_fact",
      "semantic_scope": "overnight_window",
      "provenance": {
-      "producer": "liquidity_value_engine.get_overnight_levels",
+      "producer": "calc.liquidity_value_engine.get_overnight_levels",
       "session_scope": "extended",
       "semantic_scope": "overnight_window",
       "window": "2026-11-11 RTH close -> 2026-11-12 RTH open",
@@ -63492,7 +63492,7 @@
      "short": "Net put \u0393 peak",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63513,7 +63513,7 @@
      "short": "Key \u0394 strike",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {
@@ -63534,7 +63534,7 @@
      "short": "Put charm wall",
      "evidence_tier": "DERIVED",
      "provenance": {
-      "producer": "terrain_engine.compute_terrain",
+      "producer": "calc.terrain_engine.compute_terrain",
       "carried": true
      },
      "staleness": {

@@ -23,8 +23,8 @@ import pytest
 
 from app.options.order_flow import state
 from app.options.order_flow import streaming as S
-from app.options.order_flow.engine import read_book
 from app.options.order_flow.history import RecentBooks, book_heatmap_for_ticker
+from app.options.order_flow.state import read_book
 from push import bookmap as push_bookmap
 from stream_spine import book_msg
 
@@ -42,7 +42,7 @@ def _sent(venue: str) -> list[tuple[float, str, dict]]:
 def _books(rows: list[tuple[float, str, dict]]) -> RecentBooks:
     """Feed a fresh store each (ts_recv, venue, book message) as the console's intake does.
 
-    The message is read by the one reader (engine.read_book) first; its time is its BOOK_TIME.
+    The message is read by the one reader (State's read_book) first; its time is its BOOK_TIME.
     """
     books = RecentBooks()
     for _ts_recv, service, content in rows:

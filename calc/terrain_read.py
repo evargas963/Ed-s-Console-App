@@ -8,7 +8,7 @@ what needs a wide chain. So:
     and says when the flip level is approximate.
   * confidence NARROW or UNAVAILABLE, a missing spot, or dealer gamma at spot absent or exactly
     zero: no regime (UNAVAILABLE). The coverage floor is a bound below which the read declines
-    to speak, not proof the sign is right above it (math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
+    to speak, not proof the sign is right above it (calc.math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
 
 The headline says only what published evidence supports: the sign goes with the size of price
 swings, not with a trade direction; the sign is a model (it assumes dealers long calls and short
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
+from calc.math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
 from numeric_contract import price_text
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"

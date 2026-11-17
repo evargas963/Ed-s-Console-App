@@ -15,7 +15,7 @@ import pytest
 
 import live_market_plane as lmp
 import server as srv
-from micro_structure import Candle
+from calc.micro_structure import Candle
 from state import bar_store, price_level_store
 from tests.feed_live_helper import daemon_bars
 from time_et import ET

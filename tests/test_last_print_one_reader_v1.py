@@ -1,6 +1,6 @@
 """The last trade Schwab streams (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) has one reader.
 
-`l1_trade_observation.last_print` reads the three fields of a LEVELONE message; the price store
+`calc.l1_trade_observation.last_print` reads the three fields of a LEVELONE message; the price store
 (`live_market_plane`) and the tape (`order_flow.state`) both take them from it.
 
 Real data: every LEVELONE_EQUITIES message Schwab sent in three seconds of 2026-10-05, 14:00 CT
@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import l1_trade_observation as l1
+import calc.l1_trade_observation as l1
 import live_market_plane as lmp
 from app.options.order_flow import state
 from tools.check_one_reader import fields_read
@@ -32,7 +32,7 @@ def test_only_the_one_reader_takes_the_last_trades_fields_out_of_a_message():
     def read_by(path: str) -> set[str]:
         return fields_read((ROOT / path).read_text(encoding="utf-8"), PRINT_FIELDS)
 
-    assert read_by("l1_trade_observation.py") == PRINT_FIELDS
+    assert read_by("calc/l1_trade_observation.py") == PRINT_FIELDS
     assert read_by("live_market_plane.py") == set()
     assert read_by("app/options/order_flow/state.py") == set()
     own = lmp._PRICE_FIELDS + lmp._COUNT_FIELDS + lmp._CLOCK_FIELDS
