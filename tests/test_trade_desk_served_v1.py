@@ -24,7 +24,6 @@ from calc.order_flow import (
     _zone,
     book_readout,
     compute_book_microstructure,
-    read_book,
 )
 from calc.terrain_engine import (
     WALL_BREACHED,
@@ -62,7 +61,7 @@ def test_the_book_side_is_served_from_the_real_book():
     nat = fx["book"]["native"]
     bid5 = sum(r["TOTAL_VOLUME"] for r in nat["BIDS"][:5])
     ask5 = sum(r["TOTAL_VOLUME"] for r in nat["ASKS"][:5])
-    book = read_book(nat, "NYSE_BOOK")  # the one reader, as the console's intake reads it
+    book = ofls.read_book(nat, "NYSE_BOOK")  # the one reader, as the console's intake reads it
     m = compute_book_microstructure({"content": [book]}, now_ts=fx["book"]["ts_recv"])
     assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (bid5, ask5)
     # the book's lean, a word, is the Liquidity readout's (the one producer): this book's top five

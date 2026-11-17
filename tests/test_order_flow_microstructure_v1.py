@@ -49,11 +49,11 @@ def _book_snapshot() -> dict:
 def _read(data: dict) -> dict:
     """Return `data` with each book message of its content read by the one reader.
 
-    The one reader is engine.read_book, as the live state reads it (a NASDAQ_BOOK); a book the
+    The one reader is State's read_book, as the live state reads it (a NASDAQ_BOOK); a book the
     state already read stays.
     """
     content = [
-        ofe.read_book(c, "NASDAQ_BOOK")
+        ofls.read_book(c, "NASDAQ_BOOK")
         if isinstance(c, dict) and ("BIDS" in c or "ASKS" in c)
         else c
         for c in data["content"]

@@ -22,7 +22,8 @@ import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
-from calc.order_flow import Book, read_book
+from app.options.order_flow.state import read_book
+from calc.order_flow import Book
 from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
 from tests.feed_live_helper import daemon_status
 

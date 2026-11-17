@@ -18,7 +18,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import time_et
-from calc.order_flow import read_book
+from app.options.order_flow.state import read_book
 from push import book as push_book
 from stream_spine import book_msg, quote_msg
 from tests.feed_live_helper import RTH_INSTANT, daemon_status
@@ -104,7 +104,7 @@ def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
     """A real SPY NASDAQ_BOOK message through the real ingest.
 
     The message is from tests/fixtures/real_spy_nyse_nasdaq_books.json. The console holds the
-    book as engine.read_book reads it, every level Schwab sent with its price and size.
+    book as State's read_book reads it, every level Schwab sent with its price and size.
     """
     _reset(tmp_path)
     fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"

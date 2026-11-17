@@ -61,9 +61,9 @@ def _readout(sent: dict) -> dict:
     """engine.book_readout of each venue's book as Schwab sent it.
 
     `sent`: venue -> its message content, or None; each read by the one reader,
-    engine.read_book, as the console's intake reads it.
+    State's read_book, as the console's intake reads it.
     """
-    return e.book_readout({v: None if c is None else e.read_book(c, v) for v, c in sent.items()})
+    return e.book_readout({v: None if c is None else ofls.read_book(c, v) for v, c in sent.items()})
 
 
 #: every venue with no book
