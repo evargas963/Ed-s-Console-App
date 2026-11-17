@@ -140,6 +140,13 @@ def test_a_spec_in_prettier_s_layout_keeps_its_expects(repo):
     assert _found(repo) == []
 
 
+def test_a_poll_prettier_breaks_after_expect_is_the_same_assertion():
+    one_line = SPEC.replace("expect(b)", "expect.poll(() => b)")
+    broken = SPEC.replace("expect(b)", "expect\n    .poll(() => b)")
+    assert ci.js_assertions(broken) == ci.js_assertions(one_line)
+    assert len(ci.js_assertions(broken)["a page"]) == 2
+
+
 def test_a_test_moved_to_another_file_with_its_assertions_passes(repo):
     (repo / "tests/test_a.py").unlink()
     write(repo, "tests/test_b.py", SURVIVES)
