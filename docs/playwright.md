@@ -9,7 +9,7 @@
    a free port the config picks (`ED_E2E_PORT`, inherited by Playwright's workers), so runs from
    two checkouts at once never share a server (`tests/test_e2e_own_port_v1.py`).
 2. `node scripts/run-pytest-full.mjs [pytest args]` — `python -m pytest -n <the machine's
-   processors, as CI pins it> --dist loadfile --durations=20`; extra args narrow the run (a test
+processors, as CI pins it> --dist loadfile --durations=20`; extra args narrow the run (a test
    path, `-n 0`).
 
 If step 1 fails, step 2 does not run. Each step's exit code is its proof. CI
@@ -29,9 +29,9 @@ use it only for narrow runs you are watching.
 
 ## Checks
 
-| Command | Purpose |
-|---------|---------|
-| `npm run test:e2e` / `make test-e2e` | Playwright only |
+| Command                                                        | Purpose                                                                                             |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `npm run test:e2e` / `make test-e2e`                           | Playwright only                                                                                     |
 | `python tests/playwright_ready.py` (`npm run test:e2e:verify`) | Node, npm, `@playwright/test` and Chromium present (`ensure_playwright_ready`; raises, never skips) |
 
 Requirements: Node.js LTS, npm, `npm install` once at the repo root; the browsers are installed by

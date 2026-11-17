@@ -1,7 +1,7 @@
 # Host vs Git
 
-| Doc | Purpose |
-|-----|---------|
+| Doc                                          | Purpose                                                             |
+| -------------------------------------------- | ------------------------------------------------------------------- |
 | [BACKUP_AND_MIRROR.md](BACKUP_AND_MIRROR.md) | What Git holds, what stays on the host, and restoring a new machine |
 
 Templates in the repo root: [`.env.example`](../../.env.example) (every setting the code reads;

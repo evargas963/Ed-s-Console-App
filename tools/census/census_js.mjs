@@ -44,9 +44,7 @@ function isString(n) {
   if (
     n.type === "CallExpression" &&
     n.callee.type === "Identifier" &&
-    /^(esc|fmt|num|money|price|pct|label|html|cls|txt|text)/i.test(
-      n.callee.name,
-    )
+    /^(esc|fmt|num|money|price|pct|label|html|cls|txt|text)/i.test(n.callee.name)
   )
     return true;
   return false;
@@ -85,30 +83,18 @@ for (const file of process.argv.slice(2)) {
         n,
         ids.length &&
           ids.every(
-            (x) =>
-              LAYOUT.test(x) ||
-              x === "Math" ||
-              /^(min|max|abs|round|floor|ceil)$/.test(x),
+            (x) => LAYOUT.test(x) || x === "Math" || /^(min|max|abs|round|floor|ceil)$/.test(x),
           )
           ? "layout-arithmetic"
           : "value-arithmetic",
       );
     } else if (n.type === "BinaryExpression" && COMPARE.has(n.operator)) {
       const ids = names(n);
-      if (!(ids.length && ids.every((x) => LAYOUT.test(x))))
-        emit(n, "value-compare");
-    } else if (
-      n.type === "AssignmentExpression" &&
-      ["+=", "-=", "*=", "/="].includes(n.operator)
-    ) {
+      if (!(ids.length && ids.every((x) => LAYOUT.test(x)))) emit(n, "value-compare");
+    } else if (n.type === "AssignmentExpression" && ["+=", "-=", "*=", "/="].includes(n.operator)) {
       if (isString(n.right)) return;
       const ids = names(n);
-      emit(
-        n,
-        ids.every((x) => LAYOUT.test(x))
-          ? "layout-arithmetic"
-          : "value-arithmetic",
-      );
+      emit(n, ids.every((x) => LAYOUT.test(x)) ? "layout-arithmetic" : "value-arithmetic");
     } else if (
       n.type === "CallExpression" &&
       n.callee.type === "MemberExpression" &&

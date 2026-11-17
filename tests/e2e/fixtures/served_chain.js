@@ -3,14 +3,14 @@
 // the producer itself to real data, and tests/test_served_numbers_v1.py its texts: a strike as
 // listed (numeric_contract.strike_text), the spot two decimals (price_text).
 function strikeText(k) {
-  return k.toFixed(2).replace(/\.?0+$/, '');
+  return k.toFixed(2).replace(/\.?0+$/, "");
 }
 function served(d) {
   const byK = new Map();
   for (const c of d.contracts) {
     const k = Number(c.strikePrice);
     if (!byK.has(k)) byK.set(k, { call: [], put: [] });
-    byK.get(k)[String(c.putCall).toUpperCase() === 'PUT' ? 'put' : 'call'].push(c);
+    byK.get(k)[String(c.putCall).toUpperCase() === "PUT" ? "put" : "call"].push(c);
   }
   const ks = [...byK.keys()].sort((a, b) => b - a);
   const spot = d.spot == null ? null : Number(d.spot);
@@ -18,10 +18,16 @@ function served(d) {
   for (const k of ks) {
     const g = byK.get(k);
     for (let i = 0; i < Math.max(g.call.length, g.put.length); i++) {
-      ladder.push({ strike: k, strike_text: strikeText(k), first: i === 0,
+      ladder.push({
+        strike: k,
+        strike_text: strikeText(k),
+        first: i === 0,
         spot: i === 0 && k === d.spot_strike,
-        call: i < g.call.length ? g.call[i] : null, put: i < g.put.length ? g.put[i] : null,
-        call_itm: spot == null ? null : k < spot, put_itm: spot == null ? null : k > spot });
+        call: i < g.call.length ? g.call[i] : null,
+        put: i < g.put.length ? g.put[i] : null,
+        call_itm: spot == null ? null : k < spot,
+        put_itm: spot == null ? null : k > spot,
+      });
     }
   }
   return Object.assign({}, d, {

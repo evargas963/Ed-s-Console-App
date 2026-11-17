@@ -1201,7 +1201,8 @@
   // the index context and the data-trust row beside it.
   function vixText(vix) {
     if (!vix || vix.spot == null) return "waiting for the VIX stream";
-    var txt = esc(vix.spot_disp) + (vix.chg_pct_text != null ? " (" + esc(vix.chg_pct_text) + ")" : ""); // served
+    var txt =
+      esc(vix.spot_disp) + (vix.chg_pct_text != null ? " (" + esc(vix.chg_pct_text) + ")" : ""); // served
     return vix.trade_time_ct != null ? txt + " · last trade " + esc(vix.trade_time_ct) : txt;
   }
   function paintHeader() {

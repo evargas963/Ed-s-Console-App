@@ -6,8 +6,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 export function projectPython(root) {
-  const venv = process.platform === "win32"
-    ? path.join(root, ".venv", "Scripts", "python.exe")
-    : path.join(root, ".venv", "bin", "python");
+  const venv =
+    process.platform === "win32"
+      ? path.join(root, ".venv", "Scripts", "python.exe")
+      : path.join(root, ".venv", "bin", "python");
   return fs.existsSync(venv) ? venv : "python";
 }

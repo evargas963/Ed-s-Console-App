@@ -1,12 +1,12 @@
 // @ts-check
 // Issue 40/46: Browser install is enforced by `npm run test:e2e` (scripts/run-playwright-e2e.mjs) before tests run.
-import { defineConfig } from '@playwright/test';
-import fs from 'node:fs';
-import net from 'node:net';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { projectPython } from './scripts/project-python.mjs';
+import { defineConfig } from "@playwright/test";
+import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { projectPython } from "./scripts/project-python.mjs";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +15,9 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 // main process picked.
 async function freePort() {
   const server = net.createServer();
-  await new Promise((resolve, reject) => server.once('error', reject).listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve, reject) =>
+    server.once("error", reject).listen(0, "127.0.0.1", resolve),
+  );
   const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
   await new Promise((resolve) => server.close(resolve));
   return port;
@@ -28,24 +30,22 @@ export const e2eBaseURL = `http://127.0.0.1:${process.env.ED_E2E_PORT}`;
 // knob — ED_RUNTIME_ROOT — under which the console DB, stream DB and the DB-adjacent
 // ticker/option signals all resolve canonically and process-private. The inherited stream
 // database selector is deleted first so a live parent value can never win.
-export const e2eRuntimeRoot = fs.mkdtempSync(
-  path.join(os.tmpdir(), 'ed-console-e2e-runtime-'),
-);
+export const e2eRuntimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ed-console-e2e-runtime-"));
 export const e2eServerEnv = (() => {
   const env = { ...process.env };
   delete env.STREAM_CAPTURE_DB_PATH;
   env.ED_RUNTIME_ROOT = e2eRuntimeRoot;
-  env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = '1';
-  env.SCHWAB_TOKEN_PATH = path.join(e2eRuntimeRoot, 'missing_schwab_token.json');
-  env.ED_CI_OFFLINE = '1';
-  env.SCHWAB_API_KEY = 'ci-placeholder-api-key';
-  env.SCHWAB_APP_SECRET = 'ci-placeholder-app-secret';
-  env.SCHWAB_CALLBACK_URL = 'https://127.0.0.1:8182';
+  env.ED_CONSOLE_ALLOW_NONCANONICAL_DB = "1";
+  env.SCHWAB_TOKEN_PATH = path.join(e2eRuntimeRoot, "missing_schwab_token.json");
+  env.ED_CI_OFFLINE = "1";
+  env.SCHWAB_API_KEY = "ci-placeholder-api-key";
+  env.SCHWAB_APP_SECRET = "ci-placeholder-app-secret";
+  env.SCHWAB_CALLBACK_URL = "https://127.0.0.1:8182";
   return env;
 })();
 
 export default defineConfig({
-  testDir: 'tests/e2e',
+  testDir: "tests/e2e",
   timeout: 120000,
   // spec files run side by side; the tests within a file run in order. Every spec mocks its
   // routes per page, so files share only the read-only console server.
@@ -54,20 +54,26 @@ export default defineConfig({
   expect: { timeout: 30000 },
   use: {
     baseURL: e2eBaseURL,
-    trace: 'retain-on-failure',
+    trace: "retain-on-failure",
     // Chromium on Windows asks for a random local port for each connection (SO_RANDOMIZE_PORT);
     // Windows refuses that request now and then while most of the port range is free, and the
     // page load fails with net::ERR_NO_BUFFER_SPACE. Without it Windows picks the port itself.
-    launchOptions: { args: ['--disable-features=TcpPortRandomizationWin'] },
+    launchOptions: { args: ["--disable-features=TcpPortRandomizationWin"] },
     // The console has no built-in ticker (universality, operator 2026-09-23); these specs play
     // an operator who already chose SPY and a watchlist. A spec testing the first run clears it.
     storageState: {
       cookies: [],
-      origins: [{
-        origin: e2eBaseURL,
-        localStorage: JSON.parse(fs.readFileSync(
-          path.join(configDir, 'tests/e2e/fixtures/operator_chose_spy.local_storage.json'), 'utf8')),
-      }],
+      origins: [
+        {
+          origin: e2eBaseURL,
+          localStorage: JSON.parse(
+            fs.readFileSync(
+              path.join(configDir, "tests/e2e/fixtures/operator_chose_spy.local_storage.json"),
+              "utf8",
+            ),
+          ),
+        },
+      ],
     },
   },
   webServer: {
@@ -75,8 +81,8 @@ export default defineConfig({
     url: `${e2eBaseURL}/`,
     timeout: 120000,
     reuseExistingServer: false,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdout: "pipe",
+    stderr: "pipe",
     env: e2eServerEnv,
   },
 });

@@ -11,15 +11,21 @@
 // Returns the list it keeps, so a test can read what the daemon holds or change it as the daemon
 // would for another page.
 const lists = new WeakMap();
-const socketed = new WeakSet();   // the pages whose socket a stand-in already answers
-const beats = new WeakMap();      // each page's beat, sent on demand by beatNow
+const socketed = new WeakSet(); // the pages whose socket a stand-in already answers
+const beats = new WeakMap(); // each page's beat, sent on demand by beatNow
 
 // the program's beat to the page on `ws`: at once, then every second, the list kept for `page`
 function beat(page, ws) {
   const send = () => {
     const list = lists.get(page);
     // (`session`: the daemon's word while Schwab's /markets answer for today is not held)
-    if (list) ws.send(JSON.stringify({ type: 'feed', feed: { ts: Date.now() / 1000, watchlist: list.slice(), session: 'Unknown' } }));
+    if (list)
+      ws.send(
+        JSON.stringify({
+          type: "feed",
+          feed: { ts: Date.now() / 1000, watchlist: list.slice(), session: "Unknown" },
+        }),
+      );
   };
   beats.set(page, send);
   send();
@@ -42,26 +48,55 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
     socketed.add(page);
     await page.routeWebSocket(/\/ws$/, (ws) => beat(page, ws));
   }
-  await page.route('**/api/watchlist**', (route) => {
+  await page.route("**/api/watchlist**", (route) => {
     const req = route.request();
     // stamped as the daemon's record is, on the clock its beats are stamped by
-    const answer = (body) => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify(Object.assign({ ts: Date.now() / 1000 }, body)) });
-    if (req.method() === 'POST') {
+    const answer = (body) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(Object.assign({ ts: Date.now() / 1000 }, body)),
+      });
+    if (req.method() === "POST") {
       const t = String(req.postDataJSON().ticker).toUpperCase();
       if (bad.has(t)) {
-        return answer({ ok: false, op: 'invalid', ticker: t, tickers: list.slice(), status: 200,
-          answer: { errors: { invalidSymbols: [t] } } });
+        return answer({
+          ok: false,
+          op: "invalid",
+          ticker: t,
+          tickers: list.slice(),
+          status: 200,
+          answer: { errors: { invalidSymbols: [t] } },
+        });
       }
       list.push(t);
-      return answer({ ok: true, op: 'added', ticker: t, tickers: list.slice(), status: 200, answer: {} });
+      return answer({
+        ok: true,
+        op: "added",
+        ticker: t,
+        tickers: list.slice(),
+        status: 200,
+        answer: {},
+      });
     }
-    if (req.method() !== 'DELETE') {   // the program serves no GET of the list: 405, as FastAPI answers
-      return route.fulfill({ status: 405, contentType: 'application/json', body: '{"detail":"Method Not Allowed"}' });
+    if (req.method() !== "DELETE") {
+      // the program serves no GET of the list: 405, as FastAPI answers
+      return route.fulfill({
+        status: 405,
+        contentType: "application/json",
+        body: '{"detail":"Method Not Allowed"}',
+      });
     }
-    const t = decodeURIComponent(req.url().split('/api/watchlist/')[1]).toUpperCase();
+    const t = decodeURIComponent(req.url().split("/api/watchlist/")[1]).toUpperCase();
     list.splice(list.indexOf(t), 1);
-    return answer({ ok: true, op: 'removed', ticker: t, tickers: list.slice(), status: null, answer: null });
+    return answer({
+      ok: true,
+      op: "removed",
+      ticker: t,
+      tickers: list.slice(),
+      status: null,
+      answer: null,
+    });
   });
   return list;
 }

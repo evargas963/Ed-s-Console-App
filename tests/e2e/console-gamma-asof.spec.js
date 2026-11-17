@@ -6,118 +6,177 @@
  * chain scope and the chart shows the price-bars clock AND the GEX levels clock as two separate
  * badges. Stale server state -> stale badge styling. Offline.
  */
-const path = require('path');
-const { test, expect } = require('@playwright/test');
-const { routeWatchlist } = require('./fixtures/watchlist');
-const { mockPriceSocket, chainAt } = require('./fixtures/price_socket');
+const path = require("path");
+const { test, expect } = require("@playwright/test");
+const { routeWatchlist } = require("./fixtures/watchlist");
+const { mockPriceSocket, chainAt } = require("./fixtures/price_socket");
 
 // the heatmap, the levels and the strikes panel as the server sends them on CRWD's real chain
 // (held to the server by tests/test_vanna_charm_by_strike_v1.py): LIVE, with the chain's own
 // time and age
-const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
-const SURFACE = REAL.surface, TERRAIN = REAL.terrain, STRIKES = REAL.strikes;
-const BARS = { ticker: 'SPY', bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
-  return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i }; }),
+const REAL = require("./fixtures/vanna_charm_panels_crwd.json");
+const SURFACE = REAL.surface,
+  TERRAIN = REAL.terrain,
+  STRIKES = REAL.strikes;
+const BARS = {
+  ticker: "SPY",
+  bars: [99.6, 99.9, 100.1, 100.0].map(function (c, i) {
+    return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i };
+  }),
   // push.bars' newest minute, labelled by time_et.ct_label
-  last_bar: { t: 1757000180, label: 'Thu 09/04 10:36 AM CT' } };
-const CHAIN = { ticker: 'SPY', spot: 100, spot_strike: 100, expiry: '2026-09-11', status: 'ok',
+  last_bar: { t: 1757000180, label: "Thu 09/04 10:36 AM CT" },
+};
+const CHAIN = {
+  ticker: "SPY",
+  spot: 100,
+  spot_strike: 100,
+  expiry: "2026-09-11",
+  status: "ok",
   adjusted_deliverable_symbols: [],
-  scope: { kind: 'complete_single_expiry' },
+  scope: { kind: "complete_single_expiry" },
   contracts: [
-    { putCall: 'CALL', strikePrice: 100, openInterest: 1200, totalVolume: 540, gamma: 0.021, delta: 0.52, volatility: 12.3, expirationDate: '2026-09-11' },
-    { putCall: 'PUT', strikePrice: 100, openInterest: 980, totalVolume: 410, gamma: 0.019, delta: -0.48, volatility: 12.6, expirationDate: '2026-09-11' } ] };
+    {
+      putCall: "CALL",
+      strikePrice: 100,
+      openInterest: 1200,
+      totalVolume: 540,
+      gamma: 0.021,
+      delta: 0.52,
+      volatility: 12.3,
+      expirationDate: "2026-09-11",
+    },
+    {
+      putCall: "PUT",
+      strikePrice: 100,
+      openInterest: 980,
+      totalVolume: 410,
+      gamma: 0.019,
+      delta: -0.48,
+      volatility: 12.6,
+      expirationDate: "2026-09-11",
+    },
+  ],
+};
 // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
 CHAIN.ladder = [{ strike: 100, call: CHAIN.contracts[0], put: CHAIN.contracts[1], net_gex: null }];
 function routes(over = {}) {
   return async (page) => {
-    await routeWatchlist(page, ['SPY']);
-    await mockPriceSocket(page, [], [], undefined, { bars: BARS, terrain: TERRAIN, strikes: over.strikes || STRIKES,
-      surface: over.surface || SURFACE, chain: chainAt(over.chain || CHAIN) });
+    await routeWatchlist(page, ["SPY"]);
+    await mockPriceSocket(page, [], [], undefined, {
+      bars: BARS,
+      terrain: TERRAIN,
+      strikes: over.strikes || STRIKES,
+      surface: over.surface || SURFACE,
+      chain: chainAt(over.chain || CHAIN),
+    });
   };
 }
 
-test.describe('#4 per-panel source / as-of / freshness', () => {
+test.describe("#4 per-panel source / as-of / freshness", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+    });
   });
 
-  test('GEX-by-strike discloses its terrain source + as-of (not a global LIVE)', async ({ page }) => {
+  test("GEX-by-strike discloses its terrain source + as-of (not a global LIVE)", async ({
+    page,
+  }) => {
     await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const badge = page.locator('#gbsSrc .asof');
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const badge = page.locator("#gbsSrc .asof");
     await expect(badge).toBeVisible();
-    await expect(badge).toContainText('terrain · LIVE');   // the served levels_state
-    await expect(badge).toContainText(STRIKES.levels_age_text);   // the server's own age
+    await expect(badge).toContainText("terrain · LIVE"); // the served levels_state
+    await expect(badge).toContainText(STRIKES.levels_age_text); // the server's own age
   });
 
-  test('GEX-by-strike after its option close reads CLOSE with the close values\' time and age (the route\'s own answer)', async ({ page }) => {
+  test("GEX-by-strike after its option close reads CLOSE with the close values' time and age (the route's own answer)", async ({
+    page,
+  }) => {
     // the strikes panel for SPY's 2026-10-22 close publication, read at 18:00 ET (tests/test_level_crosses_wire.py)
-    const CLOSED = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_at_a_stopped_price_2026_10_22.json'));
+    const CLOSED = require(
+      path.join(__dirname, "..", "fixtures", "real_spy_strikes_at_a_stopped_price_2026_10_22.json"),
+    );
     await routes({ strikes: CLOSED })(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const badge = page.locator('#gbsSrc .asof');
-    await expect(badge).toHaveText('terrain · CLOSE · ' + CLOSED.levels_time_ct + ' · ' + CLOSED.levels_age_text);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const badge = page.locator("#gbsSrc .asof");
+    await expect(badge).toHaveText(
+      "terrain · CLOSE · " + CLOSED.levels_time_ct + " · " + CLOSED.levels_age_text,
+    );
     await expect(badge).not.toHaveClass(/ live/);
   });
 
-  test('GEX-by-strike keeps the chain time beside its age', async ({ page }) => {
+  test("GEX-by-strike keeps the chain time beside its age", async ({ page }) => {
     await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const badge = page.locator('#gbsSrc .asof');
-    await expect(badge).toContainText('terrain · LIVE');
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const badge = page.locator("#gbsSrc .asof");
+    await expect(badge).toContainText("terrain · LIVE");
     await expect(badge).toContainText(STRIKES.levels_time_ct);
     await expect(badge).toContainText(STRIKES.levels_age_text);
-    await expect(page.locator('#gbsBody')).toContainText(String(STRIKES.spot_strike));
+    await expect(page.locator("#gbsBody")).toContainText(String(STRIKES.spot_strike));
   });
 
-  test('Strike Detail discloses the vendor chain scope', async ({ page }) => {
+  test("Strike Detail discloses the vendor chain scope", async ({ page }) => {
     await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     // the spot strike is auto-selected on load -> Strike Detail loads the chain
-    const badge = page.locator('#sdSrc .asof');
-    await expect(badge).toContainText('vendor');
-    await expect(badge).toContainText('complete (ALL)');
+    const badge = page.locator("#sdSrc .asof");
+    await expect(badge).toContainText("vendor");
+    await expect(badge).toContainText("complete (ALL)");
   });
 
-  test('the two panels show DIFFERENT source truths, not one merged status', async ({ page }) => {
+  test("the two panels show DIFFERENT source truths, not one merged status", async ({ page }) => {
     await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#gbsSrc .asof')).toContainText('terrain · LIVE');
-    await expect(page.locator('#sdSrc .asof')).toContainText('vendor');
-    const gbs = await page.locator('#gbsSrc .asof').innerText();
-    const sd = await page.locator('#sdSrc .asof').innerText();
-    expect(gbs).not.toEqual(sd);   // independent disclosures, never one global LIVE
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#gbsSrc .asof")).toContainText("terrain · LIVE");
+    await expect(page.locator("#sdSrc .asof")).toContainText("vendor");
+    const gbs = await page.locator("#gbsSrc .asof").innerText();
+    const sd = await page.locator("#sdSrc .asof").innerText();
+    expect(gbs).not.toEqual(sd); // independent disclosures, never one global LIVE
   });
 
-  test('the Chart shows the price-bars clock AND the GEX levels clock separately', async ({ page }) => {
+  test("the Chart shows the price-bars clock AND the GEX levels clock separately", async ({
+    page,
+  }) => {
     await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.vtab', { hasText: 'Chart' }).click();
-    const asof = page.locator('#chartBody .chart-asof');
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.locator(".vtab", { hasText: "Chart" }).click();
+    const asof = page.locator("#chartBody .chart-asof");
     // bars clock: the served time of the newest minute
-    await expect(asof).toContainText('price 1m · Thu 09/04 10:36 AM CT');
-    await expect(asof).toContainText('GEX terrain · LIVE'); // levels clock (separate)
+    await expect(asof).toContainText("price 1m · Thu 09/04 10:36 AM CT");
+    await expect(asof).toContainText("GEX terrain · LIVE"); // levels clock (separate)
   });
 
-  test('the Chart GEX badge keeps the chain time', async ({ page }) => {
+  test("the Chart GEX badge keeps the chain time", async ({ page }) => {
     await routes()(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('.vtab', { hasText: 'Chart' }).click();
-    const asof = page.locator('#chartBody .chart-asof');
-    await expect(asof).toContainText('GEX terrain · LIVE');
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.locator(".vtab", { hasText: "Chart" }).click();
+    const asof = page.locator("#chartBody .chart-asof");
+    await expect(asof).toContainText("GEX terrain · LIVE");
     await expect(asof).toContainText(STRIKES.levels_time_ct);
     await expect(asof).toContainText(STRIKES.levels_age_text);
   });
 
-  test('a stale terrain generation makes the GEX-by-strike badge read stale (the route\'s own answer)', async ({ page }) => {
+  test("a stale terrain generation makes the GEX-by-strike badge read stale (the route's own answer)", async ({
+    page,
+  }) => {
     // the strikes panel for SPY's 2026-10-22 close publication after the next day's close,
     // 2026-10-23 16:30 ET, no chain fetched since (tests/test_level_crosses_wire.py)
-    const STALE = require(path.join(__dirname, '..', 'fixtures', 'real_spy_strikes_after_the_next_close_2026_10_23.json'));
+    const STALE = require(
+      path.join(
+        __dirname,
+        "..",
+        "fixtures",
+        "real_spy_strikes_after_the_next_close_2026_10_23.json",
+      ),
+    );
     await routes({ strikes: STALE })(page);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const badge = page.locator('#gbsSrc .asof');
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const badge = page.locator("#gbsSrc .asof");
     await expect(badge).toHaveClass(/stale/);
-    await expect(badge).toHaveText('terrain · STALE · ' + STALE.levels_time_ct + ' · ' + STALE.levels_age_text);
-    await expect(badge).toHaveAttribute('title', STALE.levels_stale_reason);
+    await expect(badge).toHaveText(
+      "terrain · STALE · " + STALE.levels_time_ct + " · " + STALE.levels_age_text,
+    );
+    await expect(badge).toHaveAttribute("title", STALE.levels_stale_reason);
   });
 });

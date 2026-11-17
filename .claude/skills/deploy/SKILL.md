@@ -28,6 +28,6 @@ on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)
    holds (`program_lock.program_ports()`), `curl -s http://127.0.0.1:8000/api/health` (its
    `capabilities` say `"schwab":"AVAILABLE"`), and `curl -s http://127.0.0.1:8000/api/build`: its
    `running_commit`, the code the running program loaded, equals `git -C <production> rev-parse
-   origin/main`, and its `checkout_commit` equals it too (`differ` is false). Show each output.
+origin/main`, and its `checkout_commit` equals it too (`differ` is false). Show each output.
 6. Deployed means step 5 passed and the screen was checked during market hours. Until then report the
    change as on disk, not deployed.

@@ -9,91 +9,172 @@
  * buy/sell aggressor side is ever fabricated; `classification` states only the mechanical
  * fact of where a print landed relative to that same tick's own bid/ask.
  */
-const { test, expect } = require('@playwright/test');
-const { pushExpiries } = require('./fixtures/expiries');
-const { routeWatchlist } = require('./fixtures/watchlist');
+const { test, expect } = require("@playwright/test");
+const { pushExpiries } = require("./fixtures/expiries");
+const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
 // tests/test_vanna_charm_by_strike_v1.py)
-const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
+const REAL = require("./fixtures/vanna_charm_panels_crwd.json");
 
 // (and the levels and the heatmap of the same chain)
-const TERRAIN = REAL.terrain, SURFACE = REAL.surface;
-const BARS = { ticker: 'SPY', bars: [] };
+const TERRAIN = REAL.terrain,
+  SURFACE = REAL.surface;
+const BARS = { ticker: "SPY", bars: [] };
 
 const TAPE_ROW = {
   // trade_time_ct: history.tape_row's time_et.ct_clock of trade_time_ms
-  trade_time_ms: 1789166557500, trade_time_ct: '17:42:37.500 CT', symbol: 'SPY   260918C00600000',
-  expiry: '2026-09-18', type: 'CALL', strike: 600,
-  bid: 1.17, bid_size: 187, ask: 1.19, ask_size: 180,
-  trade: 1.18, size: 1, premium: 118.0,
-  volume: 70984, oi: 901, iv: 7.16, delta: 0.357,
+  trade_time_ms: 1789166557500,
+  trade_time_ct: "17:42:37.500 CT",
+  symbol: "SPY   260918C00600000",
+  expiry: "2026-09-18",
+  type: "CALL",
+  strike: 600,
+  bid: 1.17,
+  bid_size: 187,
+  ask: 1.19,
+  ask_size: 180,
+  trade: 1.18,
+  size: 1,
+  premium: 118.0,
+  volume: 70984,
+  oi: 901,
+  iv: 7.16,
+  delta: 0.357,
   // as history.tape_row serves them (numeric_contract.dollars_text, count_text, strike_text,
   // price_text, fixed_text)
-  premium_text: '$118', volume_text: '70,984', iv_text: '7.16',
-  bid_size_text: '187', ask_size_text: '180', size_text: '1', oi_text: '901',
-  strike_text: '600', bid_text: '1.17', ask_text: '1.19', trade_text: '1.18', delta_text: '0.357',
-  classification: 'inside_spread',
+  premium_text: "$118",
+  volume_text: "70,984",
+  iv_text: "7.16",
+  bid_size_text: "187",
+  ask_size_text: "180",
+  size_text: "1",
+  oi_text: "901",
+  strike_text: "600",
+  bid_text: "1.17",
+  ask_text: "1.19",
+  trade_text: "1.18",
+  delta_text: "0.357",
+  classification: "inside_spread",
 };
 
 async function intercept(page, tapeBody) {
-  await routeWatchlist(page, ['SPY']);
-  await pushExpiries(page, ['2026-09-18'], undefined, { tape: tapeBody, bars: BARS, terrain: TERRAIN, surface: SURFACE,
-    chain: { ticker: 'SPY', spot: 100, expiry: null, contracts: [], status: 'unavailable',
-      scope: { kind: 'unavailable', reason: 'no listed expiry for this ticker' } },
-    strikes: REAL.strikes });
+  await routeWatchlist(page, ["SPY"]);
+  await pushExpiries(page, ["2026-09-18"], undefined, {
+    tape: tapeBody,
+    bars: BARS,
+    terrain: TERRAIN,
+    surface: SURFACE,
+    chain: {
+      ticker: "SPY",
+      spot: 100,
+      expiry: null,
+      contracts: [],
+      status: "unavailable",
+      scope: { kind: "unavailable", reason: "no listed expiry for this ticker" },
+    },
+    strikes: REAL.strikes,
+  });
 }
 
-test.describe('Options Flow tape (Gamma pane, native trade prints)', () => {
+test.describe("Options Flow tape (Gamma pane, native trade prints)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); });
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+    });
   });
 
-  test('an empty tape discloses the reason, never a fabricated row', async ({ page }) => {
-    await intercept(page, { ticker: 'SPY', available: false, rows: [],
-      reason: 'no active/additional option contract selected for this ticker' });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const of = page.locator('#ofBody');
-    await expect(of).toContainText('no active/additional option contract selected');
-    await expect(of.locator('tbody tr:not(.of-empty)')).toHaveCount(0);
+  test("an empty tape discloses the reason, never a fabricated row", async ({ page }) => {
+    await intercept(page, {
+      ticker: "SPY",
+      available: false,
+      rows: [],
+      reason: "no active/additional option contract selected for this ticker",
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const of = page.locator("#ofBody");
+    await expect(of).toContainText("no active/additional option contract selected");
+    await expect(of.locator("tbody tr:not(.of-empty)")).toHaveCount(0);
   });
 
-  test('a real trade print renders every required schema column with native values, never fabricated buy/sell', async ({ page }) => {
-    await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [TAPE_ROW] });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const of = page.locator('#ofBody');
-    await expect(of.locator('thead th')).toHaveText(
-      ['Time', 'Symbol', 'Exp', 'Type', 'Strike', 'Bid×Size', 'Ask×Size', 'Trade', 'Size',
-       'Premium', 'Vol', 'OI', 'IV%', 'Δ', 'vs Market']);
-    const row = of.locator('tbody tr').first();
+  test("a real trade print renders every required schema column with native values, never fabricated buy/sell", async ({
+    page,
+  }) => {
+    await intercept(page, {
+      ticker: "SPY",
+      available: true,
+      symbols: [TAPE_ROW.symbol],
+      rows: [TAPE_ROW],
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const of = page.locator("#ofBody");
+    await expect(of.locator("thead th")).toHaveText([
+      "Time",
+      "Symbol",
+      "Exp",
+      "Type",
+      "Strike",
+      "Bid×Size",
+      "Ask×Size",
+      "Trade",
+      "Size",
+      "Premium",
+      "Vol",
+      "OI",
+      "IV%",
+      "Δ",
+      "vs Market",
+    ]);
+    const row = of.locator("tbody tr").first();
     // Schwab's trade time (1789166557500 ms = 2026-09-11 17:42:37 Central), not a receive time
-    await expect(row.locator('td').nth(0)).toHaveText('17:42:37.500 CT');
-    await expect(row.locator('td').nth(1)).toHaveText(TAPE_ROW.symbol);   // exact vendor symbol, verbatim
-    await expect(row.locator('td').nth(2)).toHaveText('09-18');
-    await expect(row.locator('td').nth(3)).toHaveText('CALL');
-    await expect(row.locator('td').nth(4)).toHaveText('600');
-    await expect(row.locator('td').nth(5)).toHaveText('1.17×187');
-    await expect(row.locator('td').nth(6)).toHaveText('1.19×180');
-    await expect(row.locator('td').nth(7)).toHaveText('1.18');
-    await expect(row.locator('td').nth(8)).toHaveText('1');
-    await expect(row.locator('td').nth(9)).toHaveText('$118');
-    await expect(row.locator('td').nth(10)).toHaveText('70,984');
-    await expect(row.locator('td').nth(11)).toHaveText('901');
-    await expect(row.locator('td').nth(12)).toHaveText('7.16');
-    await expect(row.locator('td').nth(13)).toHaveText('0.357');
+    await expect(row.locator("td").nth(0)).toHaveText("17:42:37.500 CT");
+    await expect(row.locator("td").nth(1)).toHaveText(TAPE_ROW.symbol); // exact vendor symbol, verbatim
+    await expect(row.locator("td").nth(2)).toHaveText("09-18");
+    await expect(row.locator("td").nth(3)).toHaveText("CALL");
+    await expect(row.locator("td").nth(4)).toHaveText("600");
+    await expect(row.locator("td").nth(5)).toHaveText("1.17×187");
+    await expect(row.locator("td").nth(6)).toHaveText("1.19×180");
+    await expect(row.locator("td").nth(7)).toHaveText("1.18");
+    await expect(row.locator("td").nth(8)).toHaveText("1");
+    await expect(row.locator("td").nth(9)).toHaveText("$118");
+    await expect(row.locator("td").nth(10)).toHaveText("70,984");
+    await expect(row.locator("td").nth(11)).toHaveText("901");
+    await expect(row.locator("td").nth(12)).toHaveText("7.16");
+    await expect(row.locator("td").nth(13)).toHaveText("0.357");
     // classification is a mechanical bid/ask fact, never a buy/sell verdict
-    await expect(row.locator('.of-cls')).toHaveText('inside');
+    await expect(row.locator(".of-cls")).toHaveText("inside");
     const bodyText = await of.innerText();
     expect(bodyText.toLowerCase()).not.toMatch(/\bbuy\b|\bsell\b|\bbought\b|\bsold\b/);
   });
 
-  test('at-bid and at-ask prints are labelled by mechanical comparison, not aggressor inference', async ({ page }) => {
-    const atBid = { ...TAPE_ROW, trade_time_ms: TAPE_ROW.trade_time_ms + 1000, trade_time_ct: '17:42:38.500 CT', trade: 1.17, trade_text: '1.17', classification: 'at_bid' };
-    const atAsk = { ...TAPE_ROW, trade_time_ms: TAPE_ROW.trade_time_ms + 2000, trade_time_ct: '17:42:39.500 CT', trade: 1.19, trade_text: '1.19', classification: 'at_ask' };
-    await intercept(page, { ticker: 'SPY', available: true, symbols: [TAPE_ROW.symbol], rows: [atAsk, atBid] });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const rows = page.locator('#ofBody tbody tr');
+  test("at-bid and at-ask prints are labelled by mechanical comparison, not aggressor inference", async ({
+    page,
+  }) => {
+    const atBid = {
+      ...TAPE_ROW,
+      trade_time_ms: TAPE_ROW.trade_time_ms + 1000,
+      trade_time_ct: "17:42:38.500 CT",
+      trade: 1.17,
+      trade_text: "1.17",
+      classification: "at_bid",
+    };
+    const atAsk = {
+      ...TAPE_ROW,
+      trade_time_ms: TAPE_ROW.trade_time_ms + 2000,
+      trade_time_ct: "17:42:39.500 CT",
+      trade: 1.19,
+      trade_text: "1.19",
+      classification: "at_ask",
+    };
+    await intercept(page, {
+      ticker: "SPY",
+      available: true,
+      symbols: [TAPE_ROW.symbol],
+      rows: [atAsk, atBid],
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const rows = page.locator("#ofBody tbody tr");
     await expect(rows).toHaveCount(2);
-    await expect(rows.nth(0).locator('.of-cls')).toHaveText('at ask');   // newest-first
-    await expect(rows.nth(1).locator('.of-cls')).toHaveText('at bid');
+    await expect(rows.nth(0).locator(".of-cls")).toHaveText("at ask"); // newest-first
+    await expect(rows.nth(1).locator(".of-cls")).toHaveText("at bid");
   });
 });
