@@ -40,7 +40,7 @@ MARKERS = re.compile(
 #: what an assertion names: a function it calls, a value it reads by its key or its attribute
 NAMED = re.compile(r"""(\w+)\(|['"](\w+)['"]|\.(\w+)\b(?!\s*\()""")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
-JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
+JS_EXPECT = re.compile(r"\bexpect(?:\s*\.\w+)?\s*\([^;]*;")
 TRAILING_COMMA = re.compile(r",([)\]}])")
 #: the head's own attributes and drivers do not decide what the diff shows
 DIFF = ("diff", "-U0", "--text", "--no-ext-diff", "--no-textconv")
