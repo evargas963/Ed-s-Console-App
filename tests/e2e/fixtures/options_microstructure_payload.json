@@ -101,7 +101,8 @@
         "volume": 12.0,
         "volume_text": "12"
       }
-    ]
+    ],
+    "max_volume": 289.0
   },
   "flow": {
     "classification": {

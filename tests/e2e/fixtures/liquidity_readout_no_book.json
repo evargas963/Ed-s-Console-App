@@ -64,7 +64,8 @@
  },
  "depth_pressure": {
   "ask": [],
-  "bid": []
+  "bid": [],
+  "max_volume": null
  },
  "mark": 760.18,
  "mark_text": "760.18",
