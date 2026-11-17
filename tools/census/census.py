@@ -951,9 +951,13 @@ parsed = subprocess.run(
     encoding="utf-8",
     check=True,
 )
+#: the page's drawing modules (AGENTS.md rule 4, eslint.config.mjs DRAWING): their arithmetic is
+#: where a value is placed and how long it is drawn
+DRAWING = ("static/js/ed-draw.js", "static/js/ed-tv-chart.js")
 for ln in parsed.stdout.splitlines():
     d = json.loads(ln)
-    add(S, JS_KIND[d["kind"]], "4", "acorn", f"{d['file']}:{d['line']}: {d['text']}")
+    kind = "layout-arithmetic" if Path(d["file"]).as_posix() in DRAWING else d["kind"]
+    add(S, JS_KIND[kind], "4", "acorn", f"{d['file']}:{d['line']}: {d['text']}")
 lines_matching(
     PAGE_JS,
     [
