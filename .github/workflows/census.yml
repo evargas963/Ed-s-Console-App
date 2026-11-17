@@ -54,8 +54,8 @@ jobs:
       - name: Install the program's and the census's Python checkers
         working-directory: head
         run: >-
-          uv pip install --system -r requirements-dev.txt -r requirements.txt
-          -r tools/census/requirements.txt
+          uv pip install --system -r requirements-dev.txt -r requirements.txt -r
+          tools/census/requirements.txt
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
