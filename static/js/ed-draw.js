@@ -22,6 +22,10 @@
       return Math.round(a[i] + (b[i] - a[i]) * t);
     });
   }
+  // the text colour that reads on a heat cell's colour: light on dark, dark on light
+  function heatInk(c) {
+    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? "#f4f7fb" : "#0a0e17";
+  }
   // the whole rows a drag of `dy` pixels moved, rows `rowPx` tall
   function rowsMoved(dy, rowPx) {
     return Math.round(dy / rowPx);
@@ -205,6 +209,7 @@
   window.EdDraw = {
     strength: strength,
     heatFill: heatFill,
+    heatInk: heatInk,
     rowsMoved: rowsMoved,
     stepWithin: stepWithin,
     fitCount: fitCount,

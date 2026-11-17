@@ -208,7 +208,7 @@
       ' style="background:rgb(' +
       c.join(",") +
       ");color:" +
-      window.EdShell.heatInk(c) +
+      window.EdDraw.heatInk(c) +
       ";font-weight:" +
       (t > 0.65 ? 750 : 550) +
       '"'
