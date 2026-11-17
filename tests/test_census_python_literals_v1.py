@@ -11,6 +11,8 @@ import pytest
 from tools import check_end_to_end as e2e
 from tools.census.python_literals import stands_in
 
+pytestmark = pytest.mark.rail
+
 #: reported apart: nothing is invented (a reason, a state word, a label, nothing to show, a
 #: setting of the program's own)
 NOT_FALLBACKS = [

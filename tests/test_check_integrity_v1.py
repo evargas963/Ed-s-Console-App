@@ -14,6 +14,8 @@ import pytest
 from tests.shared_helpers import write
 from tools import check_integrity as ci
 
+pytestmark = pytest.mark.rail
+
 SURVIVES = "def test_x():\n    assert 1 == 1\n    assert 2 == 2\n"
 MARK_SKIP = "@pytest.mark.skip"
 SKIP_LINE = "pytest.skip('later')"

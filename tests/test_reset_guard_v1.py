@@ -11,8 +11,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import tools.operating_process_lock as OPL
 import tools.process_lock_guard as PLG
+
+pytestmark = pytest.mark.rail
 
 ROOT = Path(__file__).resolve().parent.parent
 

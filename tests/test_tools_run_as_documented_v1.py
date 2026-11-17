@@ -15,6 +15,10 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.rail
+
 REPO = Path(__file__).resolve().parent.parent
 #: a command that runs a tool as a script
 SCRIPT_RUN = re.compile(r"python(?:\.exe)?\s+tools/(\w+)\.py")

@@ -179,7 +179,8 @@ jobs:
           # beside Playwright starves Playwright's real-time timeouts. A test marked `alone` holds
           # a wall-clock limit, so it runs after the workers, with none beside it.
           set +e
-          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone" \
+            --cov --cov-context=test --cov-report=
           pytest_rc=$?
           python -m pytest --durations=1 -rs -m alone
           alone_rc=$?
@@ -188,6 +189,24 @@ jobs:
             exit "$pytest_rc"
           fi
           exit "$alone_rc"
+
+      - name: The product lines no test runs
+        if: success() || failure()
+        run: python -m coverage report --sort=cover --skip-covered --show-missing | tee coverage.txt
+
+      - name: Every test file serves the app (.claude/rules/tests.md)
+        run: python -m tools.check_tests_serve_app .coverage
+
+      - name: Upload which product lines each test runs
+        if: success() || failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage
+          path: |
+            .coverage
+            coverage.txt
+          include-hidden-files: true
+          retention-days: 14
 
   pytest-full:
     # The required check on Linux. A job a failed job is needed by is skipped, and GitHub reads a

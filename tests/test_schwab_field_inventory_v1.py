@@ -9,10 +9,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 import option_contract
 from tools import schwab_field_inventory as inventory
 from tools.check_one_reader import fields_read
 from tools.schwab_field_inventory import chain_paths
+
+pytestmark = pytest.mark.rail
 
 ANSWER = json.loads(
     (Path(__file__).parent / "fixtures" / "real_schwab_chain_tsla_2026_10_09.json").read_text(

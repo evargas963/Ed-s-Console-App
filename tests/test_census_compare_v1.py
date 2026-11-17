@@ -6,7 +6,11 @@ its checker ran; otherwise it is "-" and the totals say they are incomplete.
 
 from __future__ import annotations
 
+import pytest
+
 from tools.census.compare import compare
+
+pytestmark = pytest.mark.rail
 
 HEADER = "| Section | Category | Rule | Counted by | Count | Kind |\n|---|---|---|---|---|---|\n"
 BEFORE = (

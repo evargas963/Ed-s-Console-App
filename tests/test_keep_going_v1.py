@@ -19,6 +19,8 @@ import pytest
 
 from tools import keep_going
 
+pytestmark = pytest.mark.rail
+
 REPO = Path(__file__).resolve().parent.parent
 OPEN_ROW = "| SHAPE | IN PROGRESS | **One program, five parts** ... |\n"
 DONE_ROW = "| SHAPE | DONE | **One program, five parts** ... |\n"

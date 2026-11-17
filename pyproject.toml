@@ -72,8 +72,9 @@ ignore = [
 quote-style = "double"
 
 [tool.coverage.run]
-branch = true
-omit = ["tests/*", "*/node_modules/*"]
+relative_files = true
+source = ["."]
+omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
 
 # AGENTS.md rule 12 (SHAPE step 6): a value that crosses a module boundary is a typed record, held
 # by pyright's strict mode over the Calculators and State (the Push files join as their slice lands)
@@ -93,4 +94,5 @@ testpaths = ["tests"]
 norecursedirs = ["node_modules", ".venv"]
 markers = [
   "alone: a limit on the wall clock, which CI runs with no test workers beside it",
+  "rail: guards production or the credentials rather than an app value (tools/check_tests_serve_app.py)",
 ]
