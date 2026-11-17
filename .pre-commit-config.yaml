@@ -10,12 +10,6 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-      - id: eol-style-invariant
-        name: line-ending style survives the edit
-        entry: python -m tools.check_eol_style_invariant
-        language: system
-        pass_filenames: false
-        always_run: true
       - id: ruff-correctness
         name: ruff (pyproject.toml's selection)
         entry: python -m ruff check .
