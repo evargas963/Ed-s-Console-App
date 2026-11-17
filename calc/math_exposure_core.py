@@ -197,7 +197,7 @@ def _priced_d1(
         log=_each(math.log, priced),
         sqrt=np.sqrt,
     )
-    return priced, d1, vt
+    return priced & np.isfinite(d1), d1, vt
 
 
 def bs_vanna_array(
@@ -224,7 +224,7 @@ def bs_vanna_array(
         exp = _each(math.exp, priced)
         d2 = d1 - vt
         v = -exp(-dividend * t_years) * norm_pdf(d1, exp=exp) * d2 / sigma
-    return np.where(priced & np.isfinite(d1) & np.isfinite(v), v, np.nan)
+    return np.where(priced & np.isfinite(v), v, np.nan)
 
 
 def bs_charm_array(
@@ -257,7 +257,7 @@ def bs_charm_array(
             sign * dividend * cdf
             - norm_pdf(d1, exp=exp) * ((rate - dividend) / vt - d2 / (2.0 * t_years))
         )
-    return np.where(priced & np.isfinite(d1) & np.isfinite(c), c, np.nan)
+    return np.where(priced & np.isfinite(c), c, np.nan)
 
 
 def schwab_iv_to_sigma(iv: float | None) -> float | None:

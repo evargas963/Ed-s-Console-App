@@ -144,11 +144,7 @@ def merge_charm_maps(
         for strike, bucket in part.items():
             cur = out.get(strike)
             if cur is None:
-                out[strike] = {
-                    "call_charm": bucket["call_charm"],
-                    "put_charm": bucket["put_charm"],
-                    "net_charm": bucket["net_charm"],
-                }
+                out[strike] = bucket.copy()
                 continue
             for side in _CHARM_SIDES:
                 _add_charm(cur, side, bucket[side])

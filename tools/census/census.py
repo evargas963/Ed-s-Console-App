@@ -401,7 +401,7 @@ ANSWER = (
     "the same answer built by hand in more than one function: Python product "
     "(dict literals with the same 3+ keys; one producer, rule 3)"
 )
-add(S, FORMULA, "3", "ast: arithmetic of 11+ nodes, names set aside")
+add(S, FORMULA, "3", "ast: arithmetic of 9+ expressions, names set aside")
 add(S, ANSWER, "3", "ast: dict literal key sets")
 formulas = collections.defaultdict(set)
 answers = collections.defaultdict(set)
@@ -411,12 +411,13 @@ for f in PRODUCT_PY:
             continue
         where = f"{f}:{fn.lineno} {fn.name}"
         for n in _own_nodes(fn):
-            # 11 nodes: below it, a time difference or a slice reads alike in unrelated code;
-            # `|` is a type union or a set or dict merge, not a formula
+            # 9 expressions (names, numbers, calls, operations; not the parser's load and
+            # operator markers): below it, a sum of two items or of two calls reads alike in
+            # unrelated code; `|` is a type union or a set or dict merge, not a formula
             if (
                 isinstance(n, ast.BinOp)
                 and not isinstance(n.op, ast.BitOr)
-                and sum(1 for _ in ast.walk(n)) >= 11
+                and sum(isinstance(e, ast.expr) for e in ast.walk(n)) >= 9
             ):
                 shape = ast.dump(_Unnamed().visit(copy.deepcopy(n)), annotate_fields=False)
                 formulas[shape].add(where)
