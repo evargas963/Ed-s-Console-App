@@ -65,7 +65,8 @@
     },
     "depth_pressure": {
       "ask": [],
-      "bid": []
+      "bid": [],
+      "max_volume": null
     },
     "flow": {
       "classification": {
@@ -211,7 +212,8 @@
     },
     "depth_pressure": {
       "ask": [],
-      "bid": []
+      "bid": [],
+      "max_volume": null
     },
     "flow": {
       "classification": {

@@ -48862,7 +48862,8 @@
       "volume_text": "40",
       "cum": 245.0
      }
-    ]
+    ],
+    "max_volume": 125.0
    },
    "wall_candidates": [
     {
@@ -51773,7 +51774,8 @@
       "volume_text": "40",
       "cum": 1960.0
      }
-    ]
+    ],
+    "max_volume": 1160.0
    },
    "wall_candidates": [
     {

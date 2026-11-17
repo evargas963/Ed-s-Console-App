@@ -136,7 +136,8 @@
         "volume": 40.0,
         "volume_text": "40"
       }
-    ]
+    ],
+    "max_volume": 1560.0
   },
   "mark": 760.18,
   "mark_text": "760.18",

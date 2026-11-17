@@ -256,6 +256,8 @@ def test_unsorted_book_is_canonicalized_before_topn():
     assert [round(x["cum"], 1) for x in m["depth_pressure"]["bid"]] == [1000.0, 1040.0, 1240.0]
     # ask cumulative best-first: 712.49(960),712.51(710),712.53(320)
     assert [round(x["cum"], 1) for x in m["depth_pressure"]["ask"]] == [960.0, 1670.0, 1990.0]
+    # the ladder's served scale: the largest size of the levels drawn, either side
+    assert m["depth_pressure"]["max_volume"] == 1000.0
 
 
 def test_invalid_sizes_are_rejected():
