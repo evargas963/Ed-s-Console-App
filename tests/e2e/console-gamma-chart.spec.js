@@ -18,17 +18,9 @@
  * established convention, while still passing null when the filter itself is null (Chart has no
  * per-mark expiry to invent in that case either).
  *
- * A FOURTH independent review (2026-09-13) challenged this file's own proof: it used
- * dispatchEvent (bypassing real pointer hit-testing after noting real clicks could miss the
- * ~2-real-pixel-tall profile bars) and a CHAIN fixture with no native `symbol` field, so it
- * proved the click HANDLER's logic, not the full operator workflow through to a real native
- * contract identity. Both are fixed at the root, not worked around: ed-gamma-chart.js now draws
- * an invisible, generously-sized hit target alongside every visible mark (a real click-target
- * usability fix, not a test-only shim -- a real pointer had the identical difficulty a
- * coordinate-based Playwright click did), so this file uses genuine `.click()` throughout; the
- * CHAIN fixture carries real native OSI-style symbols so the full path -- Chart click -> expiry
- * carried through -> Strike Detail's chain panel -> Strike Detail showing that strike's call
- * and put -- is actually exercised end to end.
+ * Every click is a real pointer `.click()` on the hit target ed-gamma-chart.js draws beside each
+ * mark, and the CHAIN fixture carries native OSI-style symbols, so the whole path runs: Chart
+ * click -> expiry carried through -> Strike Detail's chain panel -> that strike's call and put.
  */
 const { test, expect } = require("@playwright/test");
 const { pushExpiries } = require("./fixtures/expiries");

@@ -174,10 +174,8 @@
     });
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:view", load);
-    document.addEventListener("ed:ticker", load);
-    // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
-    // (that file's init() comment)
-  }
+  document.addEventListener("ed:view", load);
+  document.addEventListener("ed:ticker", load);
+  // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
+  // (that file's init() comment)
 })();
