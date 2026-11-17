@@ -55,6 +55,24 @@
     }
     return price >= strikes[0] ? half : n * rowPx - half;
   }
+  // where `price` falls among drawn rows `points` ([{price, y}], highest price first): in
+  // proportion between the two that hold it; a single row only at its own price; null outside
+  function priceY(price, points) {
+    if (points.length === 1 && points[0].price === price) return points[0].y;
+    for (var i = 0; i < points.length - 1; i++) {
+      var a = points[i],
+        b = points[i + 1];
+      if (price <= a.price && price >= b.price) {
+        var span = a.price - b.price;
+        return a.y + (span === 0 ? 0 : (a.price - price) / span) * (b.y - a.y);
+      }
+    }
+    return null;
+  }
+  // the middle of a drawn box `rect`, measured from the top of `within`
+  function middleY(rect, within) {
+    return rect.top - within.top + rect.height / 2;
+  }
   // labels at anchors `ys`, in order, set at least `gap` apart and within `margin` of a column
   // `height` tall: each pushed down past the one above, the last held at the bottom and those
   // above pushed up from it, none above the top
@@ -192,6 +210,8 @@
     fitCount: fitCount,
     apart: apart,
     rowAnchorY: rowAnchorY,
+    priceY: priceY,
+    middleY: middleY,
     stackLabels: stackLabels,
     sparkline: sparkline,
   };

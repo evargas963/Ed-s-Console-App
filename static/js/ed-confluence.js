@@ -323,23 +323,14 @@
       line.style.display = "none";
       return;
     }
-    var points = [];
-    var i;
-    for (i = 0; i < trs.length; i++) {
-      var rect = trs[i].getBoundingClientRect();
-      var wrapRect = wrap.getBoundingClientRect();
-      points.push({ price: lastRows[i].strike, y: rect.top - wrapRect.top + rect.height / 2 });
-    }
-    var top = null;
-    if (points.length === 1 && points[0].price === lastSpot) top = points[0].y;
-    for (i = 0; i < points.length - 1; i++) {
-      if (lastSpot <= points[i].price && lastSpot >= points[i + 1].price) {
-        var span = points[i].price - points[i + 1].price;
-        var frac = span === 0 ? 0 : (points[i].price - lastSpot) / span;
-        top = points[i].y + frac * (points[i + 1].y - points[i].y);
-        break;
-      }
-    }
+    var wrapRect = wrap.getBoundingClientRect();
+    var points = Array.prototype.map.call(trs, function (tr, i) {
+      return {
+        price: lastRows[i].strike,
+        y: window.EdDraw.middleY(tr.getBoundingClientRect(), wrapRect),
+      };
+    });
+    var top = window.EdDraw.priceY(lastSpot, points);
     if (top == null) {
       line.style.display = "none";
       return;
