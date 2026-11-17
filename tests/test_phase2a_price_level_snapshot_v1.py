@@ -129,7 +129,7 @@ def test_snapshot_carries_value_scope_provenance_and_as_of():
     for lid, value in snap.levels.items():
         assert lid in PHASE2A_LEVEL_IDS, f"{lid} is not a declared Phase 2A id"
         assert value.semantic_scope == PHASE2A_LEVEL_IDS[lid][1]
-        assert value.producer.startswith("liquidity_value_engine.")
+        assert value.producer.startswith("calc.liquidity_value_engine.")
         assert value.as_of_ts_utc is not None
     assert snap.price("PDH") == 105 and snap.price("PDL") == 95, (
         "prior_day must be the SINGLE most recent prior RTH session, never the union"
