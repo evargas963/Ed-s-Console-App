@@ -190,12 +190,18 @@ jobs:
           fi
           exit "$alone_rc"
 
+      - name: The product lines no test runs
+        if: success() || failure()
+        run: python -m coverage report --sort=cover --skip-covered --show-missing | tee coverage.txt
+
       - name: Upload which product lines each test runs
         if: success() || failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage
-          path: .coverage
+          path: |
+            .coverage
+            coverage.txt
           include-hidden-files: true
           retention-days: 14
 
