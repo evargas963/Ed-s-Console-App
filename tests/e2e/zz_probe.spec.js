@@ -11,6 +11,7 @@ const {
 
 test("probe: the Desk settled, and the fonts it has", async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 950 });
+  const seen = [];
   const bodies = { READOUT_LIVE, READOUT_AUCTION, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_EVERY_LINE };
   for (const [name, body] of Object.entries(bodies)) {
     await intercept(page);
@@ -38,6 +39,7 @@ test("probe: the Desk settled, and the fonts it has", async ({ page }) => {
         .join(" ");
       return r.scrollHeight + "/" + r.clientHeight + " kids " + kids + " | " + fonts;
     });
-    console.log("PROBE " + name + " first " + first + " settled " + settled);
+    seen.push("PROBE " + name + " first " + first + " settled " + settled);
   }
+  throw new Error(seen.join("\n"));
 });
