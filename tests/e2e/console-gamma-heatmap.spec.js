@@ -299,7 +299,9 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     // the program's side: SPY's surface not sent until the test says; AAPL's at once on its
     // subscribe. SPY's, sent after the switch, is a frame of a ticker the page has left.
     let sendSpy = null;
+    let program = null;
     await page.routeWebSocket(/\/ws$/, (ws) => {
+      program = ws;
       ws.onMessage((m) => {
         const req = JSON.parse(String(m));
         if (req.op !== "subscribe") return;
@@ -317,7 +319,10 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     const cell = page.locator(CELL);
     await expect(cell).toHaveText("$9.00K", { timeout: 3000 });
     sendSpy(); // SPY's, late
-    await page.waitForTimeout(200);
+    // then a row of AAPL's price, drawn after it: once the row is on screen, SPY's late frame
+    // was read, and the cell still holds AAPL's
+    program.send(JSON.stringify({ type: "quotes", rows: [priceRow("AAPL", 271.34)] }));
+    await expect(page.locator("#hPx")).toContainText("271.34");
     await expect(cell).toHaveText("$9.00K");
   });
 
