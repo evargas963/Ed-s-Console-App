@@ -66,7 +66,7 @@ def _today_card(
     when_text: str,
     gap_text: str = "-",
     gap_up: bool | None = None,
-    results: list[dict[str, Any]] | None = None,
+    results: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any]:
     """Return today's card; with no gap, `when_text` says why."""
     return {
@@ -74,7 +74,7 @@ def _today_card(
         "gap_text": gap_text,
         "gap_up": gap_up,
         "when_text": when_text,
-        "results": results or [],
+        "results": list(results),
     }
 
 
@@ -113,7 +113,7 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
         "vs. prior close · Schwab's 5-minute bars",
         _moved_text(o.gap),
         o.gap > 0,
-        [
+        (
             {
                 "label": f"Today {bar_start:%H:%M}–{bar_end:%H:%M} ET",
                 "five_text": _moved_text(o.first_five),
@@ -124,8 +124,8 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
                     if o.called
                     else f"✗ the gap pointed {'up' if o.gap > 0 else 'down'}, the open went {went}"
                 ),
-            }
-        ],
+            },
+        ),
     )
 
 
