@@ -63,60 +63,71 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       ]) {
         await openDesk(page, body);
         await expect(card(page).locator(".liq-body > *").first()).toBeVisible();
-        const cut = await page.evaluate((whole) => {
-          const out = [];
-          const root = document.getElementById("tdmRoot");
-          if (whole && root.scrollHeight > root.clientHeight)
-            out.push("the Desk scrolls: " + root.scrollHeight + " > " + root.clientHeight);
-          // no part of the Desk is squeezed below its content: the map, the cards, the strip, the footer
-          [...root.children, document.querySelector("#tdmRoot .tdm-map")].forEach((p) => {
-            if (p.offsetHeight && p.scrollHeight > p.clientHeight + 1)
-              out.push(
-                (p.id || p.className) + " is squeezed: " + p.scrollHeight + " > " + p.clientHeight,
-              );
-          });
-          const map = document.querySelector("#tdmRoot .tdm-main");
-          if (map && map.getBoundingClientRect().height < 380)
-            out.push("the market map is under 380 px: " + map.getBoundingClientRect().height);
-          document.querySelectorAll("#tdmCards > .tdm-card").forEach((c) => {
-            // the card hides what passes its edge (overflow: hidden)
-            const box = c.getBoundingClientRect(),
-              bottom = box.bottom + 0.5,
-              right = box.right + 0.5;
-            c.querySelectorAll("*").forEach((e) => {
-              const r = e.getBoundingClientRect();
-              if (!r.width || !r.height) return;
-              if (r.bottom > bottom || r.right > right)
+        // the served readout drawn, not the card's "Loading…" before it arrives
+        await expect(card(page).locator(".liq-body")).not.toContainText("Loading…");
+        // the whole Desk at the operator's window is measured with his fonts: Bahnschrift, the
+        // Desk's face, is Windows' own, and no other system draws it at its widths
+        const cut = await page.evaluate(
+          (whole) => {
+            const out = [];
+            const root = document.getElementById("tdmRoot");
+            if (whole && root.scrollHeight > root.clientHeight)
+              out.push("the Desk scrolls: " + root.scrollHeight + " > " + root.clientHeight);
+            // no part of the Desk is squeezed below its content: the map, the cards, the strip, the footer
+            [...root.children, document.querySelector("#tdmRoot .tdm-map")].forEach((p) => {
+              if (p.offsetHeight && p.scrollHeight > p.clientHeight + 1)
                 out.push(
-                  c.id +
-                    ": " +
-                    e.tagName +
-                    ' "' +
-                    e.textContent.slice(0, 40) +
-                    '" runs past the card by ' +
-                    Math.round(Math.max(r.bottom - bottom, r.right - right)) +
-                    "px",
+                  (p.id || p.className) +
+                    " is squeezed: " +
+                    p.scrollHeight +
+                    " > " +
+                    p.clientHeight,
                 );
-              const s = getComputedStyle(e);
-              if (
-                /hidden|clip/.test(s.overflowX + s.overflowY) &&
-                (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
-              ) {
-                out.push(
-                  c.id +
-                    ": " +
-                    e.tagName +
-                    "." +
-                    e.className +
-                    ' "' +
-                    e.textContent.slice(0, 40) +
-                    '" is clipped',
-                );
-              }
             });
-          });
-          return out;
-        }, width === 1920);
+            const map = document.querySelector("#tdmRoot .tdm-main");
+            if (map && map.getBoundingClientRect().height < 380)
+              out.push("the market map is under 380 px: " + map.getBoundingClientRect().height);
+            document.querySelectorAll("#tdmCards > .tdm-card").forEach((c) => {
+              // the card hides what passes its edge (overflow: hidden)
+              const box = c.getBoundingClientRect(),
+                bottom = box.bottom + 0.5,
+                right = box.right + 0.5;
+              c.querySelectorAll("*").forEach((e) => {
+                const r = e.getBoundingClientRect();
+                if (!r.width || !r.height) return;
+                if (r.bottom > bottom || r.right > right)
+                  out.push(
+                    c.id +
+                      ": " +
+                      e.tagName +
+                      ' "' +
+                      e.textContent.slice(0, 40) +
+                      '" runs past the card by ' +
+                      Math.round(Math.max(r.bottom - bottom, r.right - right)) +
+                      "px",
+                  );
+                const s = getComputedStyle(e);
+                if (
+                  /hidden|clip/.test(s.overflowX + s.overflowY) &&
+                  (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
+                ) {
+                  out.push(
+                    c.id +
+                      ": " +
+                      e.tagName +
+                      "." +
+                      e.className +
+                      ' "' +
+                      e.textContent.slice(0, 40) +
+                      '" is clipped',
+                  );
+                }
+              });
+            });
+            return out;
+          },
+          width === 1920 && process.platform === "win32",
+        );
         expect(cut, width + "×" + height + " " + JSON.stringify(cut)).toEqual([]);
       }
     }
