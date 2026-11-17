@@ -61,21 +61,9 @@ def _prior_session(day: str) -> Session | None:
     return before[-1] if before else None
 
 
-def _today_card(
-    label: str,
-    when_text: str,
-    gap_text: str = "-",
-    gap_up: bool | None = None,
-    results: tuple[dict[str, Any], ...] = (),
-) -> dict[str, Any]:
-    """Return today's card; with no gap, `when_text` says why."""
-    return {
-        "label": label,
-        "gap_text": gap_text,
-        "gap_up": gap_up,
-        "when_text": when_text,
-        "results": list(results),
-    }
+def _today_waiting(label: str, why: str) -> dict[str, Any]:
+    """Today's card while it has no gap to show, saying why."""
+    return {"label": label, "gap_text": "-", "gap_up": None, "when_text": why, "results": []}
 
 
 def _today_served(tk: str, now: float) -> dict[str, Any]:
@@ -86,34 +74,35 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
     day = datetime.fromtimestamp(now, ET).date().isoformat()
     held = sessions()
     if day not in held or not held[day].regular:
-        return _today_card("Today", "no regular session today in Schwab's market hours")
+        return _today_waiting("Today", "no regular session today in Schwab's market hours")
     today = held[day]
     if now < today.regular[0][0].timestamp():
         row = price_row(tk, now)
         live = row["chg_pct"]
         if live is None:
-            return _today_card("Today's gap · before the open", "no trade from Schwab yet")
-        return _today_card(
-            "Today's gap · before the open",
-            f"vs. prior close · Schwab, live · {row['trade_time_ct']}",
-            _moved_text(live / 100),
-            live > 0,
-        )
+            return _today_waiting("Today's gap · before the open", "no trade from Schwab yet")
+        return {
+            "label": "Today's gap · before the open",
+            "gap_text": _moved_text(live / 100),
+            "gap_up": live > 0,
+            "when_text": f"vs. prior close · Schwab, live · {row['trade_time_ct']}",
+            "results": [],
+        }
     prior = _prior_session(day)
     candles = bar_store.series(tk, "5m")
     opened = [today_open(candles, today, p, now) for p in [prior] if p is not None]
     if not opened or opened[0] is None:
-        return _today_card("Today's gap · at the open", "waiting for Schwab's open bar to close")
+        return _today_waiting("Today's gap · at the open", "waiting for Schwab's open bar to close")
     o = opened[0]
     went = "up" if o.first_five > 0 else "down"
     bar_start = today.regular[0][0]
     bar_end = datetime.fromtimestamp(bar_start.timestamp() + BAR_SECONDS, ET)
-    return _today_card(
-        "Today's gap · at the open",
-        "vs. prior close · Schwab's 5-minute bars",
-        _moved_text(o.gap),
-        o.gap > 0,
-        (
+    return {
+        "label": "Today's gap · at the open",
+        "gap_text": _moved_text(o.gap),
+        "gap_up": o.gap > 0,
+        "when_text": "vs. prior close · Schwab's 5-minute bars",
+        "results": [
             {
                 "label": f"Today {bar_start:%H:%M}–{bar_end:%H:%M} ET",
                 "five_text": _moved_text(o.first_five),
@@ -124,9 +113,9 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
                     if o.called
                     else f"✗ the gap pointed {'up' if o.gap > 0 else 'down'}, the open went {went}"
                 ),
-            },
-        ),
-    )
+            }
+        ],
+    }
 
 
 def experimental(tk: str, now: float) -> dict[str, Any]:
