@@ -129,6 +129,17 @@ def test_an_expect_taken_from_a_surviving_spec_test_is_refused(repo):
     assert _found(repo) == ["a page: assertion lost: expect(b).toBe(2);"]
 
 
+def test_a_spec_in_prettier_s_layout_keeps_its_expects(repo):
+    """Prettier's double quotes, line breaks and trailing commas lose no assertion."""
+    write(
+        repo,
+        "tests/e2e/page.spec.js",
+        'test("a page", async () => {\n'
+        "  expect(\n    a,\n  ).toBe(1);\n  expect(b).toBe(2);\n});\n",
+    )
+    assert _found(repo) == []
+
+
 def test_a_test_moved_to_another_file_with_its_assertions_passes(repo):
     (repo / "tests/test_a.py").unlink()
     write(repo, "tests/test_b.py", SURVIVES)

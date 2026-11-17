@@ -20,7 +20,7 @@ function served(d) {
     for (let i = 0; i < Math.max(g.call.length, g.put.length); i++) {
       ladder.push({ strike: k, strike_text: strikeText(k), first: i === 0,
         spot: i === 0 && k === d.spot_strike,
-        call: g.call[i] || null, put: g.put[i] || null,
+        call: i < g.call.length ? g.call[i] : null, put: i < g.put.length ? g.put[i] : null,
         call_itm: spot == null ? null : k < spot, put_itm: spot == null ? null : k > spot });
     }
   }

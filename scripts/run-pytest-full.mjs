@@ -104,7 +104,8 @@ export function runWithFileSink(
   if (result.status === null && result.signal) {
     console.error(`[${label}] terminated by signal ${result.signal}`);
   }
-  const code = result.error ? 1 : result.status ?? 1;
+  // a run that could not start, or ended by a signal, has no exit status of its own: it failed
+  const code = result.error || result.status === null ? 1 : result.status;
   console.log(`[${label}] exit code ${code} (full output: ${logPath})`);
   return code;
 }

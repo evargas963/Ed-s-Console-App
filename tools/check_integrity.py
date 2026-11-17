@@ -41,6 +41,7 @@ MARKERS = re.compile(
 NAMED = re.compile(r"""(\w+)\(|['"](\w+)['"]|\.(\w+)\b(?!\s*\()""")
 JS_TEST = re.compile(r"""\btest(?:\.\w+)?\(\s*(['"`])(.*?)(?<!\\)\1""", re.S)
 JS_EXPECT = re.compile(r"\bexpect(?:\.\w+)?\([^;]*;")
+TRAILING_COMMA = re.compile(r",([)\]}])")
 #: the head's own attributes and drivers do not decide what the diff shows
 DIFF = ("diff", "-U0", "--text", "--no-ext-diff", "--no-textconv")
 
@@ -98,15 +99,23 @@ def python_assertions(source: str) -> dict[str, set[str]]:
     return found
 
 
+def _js_layout_aside(statement: str) -> str:
+    """Return an expect statement as Prettier's choices leave its meaning.
+
+    Spacing, the quote character and a trailing comma are layout, not what is asserted.
+    """
+    return TRAILING_COMMA.sub(r"\1", "".join(statement.split()).replace("'", '"'))
+
+
 def js_assertions(source: str) -> dict[str, set[str]]:
-    """{test title: its expect statements, spacing aside}. Best effort: a test runs to the next."""
+    """{test title: its expect statements, layout aside}. Best effort: a test runs to the next."""
     tests = list(JS_TEST.finditer(source))
     found: dict[str, set[str]] = {}
     for i, test in enumerate(tests):
         end = tests[i + 1].start() if i + 1 < len(tests) else len(source)
         held = found.setdefault(test.group(2), set())
         held.update(
-            " ".join(m.group().split()) for m in JS_EXPECT.finditer(source, test.end(), end)
+            _js_layout_aside(m.group()) for m in JS_EXPECT.finditer(source, test.end(), end)
         )
     return found
 
