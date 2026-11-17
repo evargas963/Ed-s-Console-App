@@ -398,9 +398,6 @@ app.mount("/static", _RevalidateStaticFiles(directory=str(static_dir)), name="st
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
 
-_MARKET_CONTEXT_META = '<meta name="ed-market-context" content="">'
-_SCOPES_META = '<meta name="ed-scopes" content="">'
-_STREAM_WORDS_META = '<meta name="ed-stream-words" content="">'
 #: the scope control's words, one per calc.terrain_engine.SCOPES
 SCOPE_LABELS = {"auto": "Auto", "wider": "Wider", "all": "All available"}
 
@@ -414,23 +411,21 @@ def _with_page_settings(html: str) -> str:
 
     The market-context symbols it always shows are live_push.MARKET_CONTEXT, each with its
     display name; the scopes its strike windows take are calc.terrain_engine.SCOPES, each with its
-    word; and the words for each streaming state are STREAM_WORDS.
+    word; and the words for each streaming state are STREAM_WORDS. A page without a setting's
+    empty meta is refused, never served without it.
     """
-    context = json.dumps([{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT])
-    scopes = json.dumps([{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES])
-    return (
-        html.replace(
-            _MARKET_CONTEXT_META,
-            f'<meta name="ed-market-context" content="{html_escape(context)}">',
-            1,
+    for name, value in (
+        ("ed-market-context", [{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT]),
+        ("ed-scopes", [{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES]),
+        ("ed-stream-words", STREAM_WORDS),
+    ):
+        empty = f'<meta name="{name}" content="" />'
+        if empty not in html:
+            raise ValueError(f"the page has no {empty}")
+        html = html.replace(
+            empty, f'<meta name="{name}" content="{html_escape(json.dumps(value))}" />', 1
         )
-        .replace(_SCOPES_META, f'<meta name="ed-scopes" content="{html_escape(scopes)}">', 1)
-        .replace(
-            _STREAM_WORDS_META,
-            f'<meta name="ed-stream-words" content="{html_escape(json.dumps(STREAM_WORDS))}">',
-            1,
-        )
-    )
+    return html
 
 
 @app.get("/", response_class=HTMLResponse)

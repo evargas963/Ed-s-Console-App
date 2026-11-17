@@ -3,6 +3,8 @@ name: flaky-test-fix
 description: Use when a test both passes and fails on the same commit. Finds every such test under load, then takes one at a time, each its own small pull request: forces its failure on demand, fixes it at its cause, and reports the four checks with their output.
 ---
 
+# Flaky test fix
+
 1. Find them all. Run the full suite repeatedly under load on one commit and list every test that both
    passed and failed: `npx playwright test` and
    `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -n 8 --dist loadfile --junitxml=<run>.xml`,

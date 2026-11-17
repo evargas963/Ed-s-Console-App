@@ -27,11 +27,11 @@ type = "protected"
 protected_modules = ["feed"]
 as_packages = false
 allowed_importers = [
-    "head.feed.**",
-    "head.app.market_data.schwab.streaming.capture",
-    "head.reauth_schwab",
-    "head.tools.schwab_field_inventory",
-    "head.tests.**",
+  "head.feed.**",
+  "head.app.market_data.schwab.streaming.capture",
+  "head.reauth_schwab",
+  "head.tools.schwab_field_inventory",
+  "head.tests.**",
 ]
 
 [[tool.importlinter.contracts]]
@@ -50,15 +50,15 @@ name = "The Calculators read no State, Push, Feed, database or network"
 type = "forbidden"
 source_modules = ["head.calc"]
 forbidden_modules = [
-    "state",
-    "push",
-    "feed",
-    "server",
-    "db",
-    "live_market_plane",
-    "live_price_rows",
-    "sqlite3",
-    "socket",
-    "http",
-    "urllib",
+  "state",
+  "push",
+  "feed",
+  "server",
+  "db",
+  "live_market_plane",
+  "live_price_rows",
+  "sqlite3",
+  "socket",
+  "http",
+  "urllib",
 ]

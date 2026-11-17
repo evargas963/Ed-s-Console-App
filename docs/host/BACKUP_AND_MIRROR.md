@@ -5,12 +5,12 @@ Git holds the source, tests and docs (the market's sessions are Schwab's /market
 
 ## Never in Git (`.gitignore`)
 
-| Category | Paths | Backup |
-|----------|-------|--------|
-| Secrets | `.env`, `schwab_token.json`, `*.key`, `*.pem` | Secure store only |
-| Database | `data/ed.db` | None: no database backups are kept (operator 2026-10-10) |
-| Runtime output | `data/*`, `*.log`, `logs/`, `.runtime/`, `reports/` | None |
-| Local agent state | `.claude/settings.local.json`, `.claude/scheduled_tasks.lock` | Machine-specific |
+| Category          | Paths                                                         | Backup                                                   |
+| ----------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| Secrets           | `.env`, `schwab_token.json`, `*.key`, `*.pem`                 | Secure store only                                        |
+| Database          | `data/ed.db`                                                  | None: no database backups are kept (operator 2026-10-10) |
+| Runtime output    | `data/*`, `*.log`, `logs/`, `.runtime/`, `reports/`           | None                                                     |
+| Local agent state | `.claude/settings.local.json`, `.claude/scheduled_tasks.lock` | Machine-specific                                         |
 
 ## After clone on a new machine
 

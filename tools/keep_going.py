@@ -53,7 +53,7 @@ REPO = Path(__file__).resolve().parent.parent
 WORK_LIST = REPO / "ACTIVE_PROGRAM.md"
 WAITING = "WAITING ON OPERATOR:"
 #: the SHAPE row while any of its steps is left
-OPEN = re.compile(r"^\| SHAPE \| IN PROGRESS \|", re.M)
+OPEN = re.compile(r"^\|\s*SHAPE\s*\|\s*IN PROGRESS\s*\|", re.M)
 
 
 #: how much of the transcript's end is read first (a long session's transcript runs past 100 MB)

@@ -137,13 +137,7 @@
       return cols
         .map(function (f, j) {
           return (
-            '<td class="' +
-            klass +
-            '"' +
-            (j === 0 ? selAttr(c) : "") +
-            ">" +
-            cell(c, f) +
-            "</td>"
+            '<td class="' + klass + '"' + (j === 0 ? selAttr(c) : "") + ">" + cell(c, f) + "</td>"
           );
         })
         .join("");

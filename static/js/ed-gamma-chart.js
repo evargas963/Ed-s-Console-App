@@ -241,7 +241,9 @@
       orDash(spotText) +
       (tradeTime ? " · last trade " + esc(tradeTime) : "") +
       "</span>" +
-      (top ? "<span>largest |" + n + "| " + esc(top.strike_text) + " · " + esc(shown) + "</span>" : "") +
+      (top
+        ? "<span>largest |" + n + "| " + esc(top.strike_text) + " · " + esc(shown) + "</span>"
+        : "") +
       "</div>";
   }
 

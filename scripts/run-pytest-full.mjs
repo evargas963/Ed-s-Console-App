@@ -51,7 +51,8 @@ export function boundedTail(text, budget = TAIL_BYTES) {
   const tail = [];
   let bytes = 0;
   for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].length > TAIL_LINE_MAX ? lines[i].slice(0, TAIL_LINE_MAX - 1) + "…" : lines[i];
+    const line =
+      lines[i].length > TAIL_LINE_MAX ? lines[i].slice(0, TAIL_LINE_MAX - 1) + "…" : lines[i];
     const size = Buffer.byteLength(line, "utf8") + 1;
     if (bytes + size > budget) break;
     tail.unshift(line);
@@ -80,7 +81,9 @@ function printTail(label, logPath, budget) {
  * `tailBytes` of the log. The child's output is never streamed through this process.
  */
 export function runWithFileSink(
-  label, cmd, args,
+  label,
+  cmd,
+  args,
   { logPath, cwd = root, env = process.env, shell = false, tailBytes = TAIL_BYTES },
 ) {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
@@ -117,8 +120,16 @@ if (invokedDirectly) {
   // One worker per processor the machine has, as CI pins it (.github/workflows/pytest.yml):
   // xdist's `-n auto` reads fewer.
   const workers = String(os.availableParallelism());
-  const args = ["-m", "pytest", "-n", workers, "--dist", "loadfile", "--durations=20",
-    ...process.argv.slice(2)];
+  const args = [
+    "-m",
+    "pytest",
+    "-n",
+    workers,
+    "--dist",
+    "loadfile",
+    "--durations=20",
+    ...process.argv.slice(2),
+  ];
   const code = runWithFileSink("pytest", projectPython(root), args, {
     logPath: path.join(logDir(), "test_pytest_last.log"),
   });

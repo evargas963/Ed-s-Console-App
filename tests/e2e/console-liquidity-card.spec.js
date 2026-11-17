@@ -3,262 +3,429 @@
  * the page's socket) for SPY's real 2026-11-02 books; it computes nothing. Any page error fails the test.
  * Its own spec file: Playwright runs spec files side by side and a file's tests in order.
  */
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require("@playwright/test");
 const {
-  READOUT_LIVE, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_AUCTION, READOUT_EVERY_LINE, LIVE_COMP, intercept, watchErrors, deskPanels,
-} = require('./fixtures/trade_desk');
+  READOUT_LIVE,
+  READOUT_OFFLINE,
+  READOUT_NO_BOOK,
+  READOUT_AUCTION,
+  READOUT_EVERY_LINE,
+  LIVE_COMP,
+  intercept,
+  watchErrors,
+  deskPanels,
+} = require("./fixtures/trade_desk");
 
-test.describe('Desk: the Liquidity card draws the served order-imbalance readout', () => {
+test.describe("Desk: the Liquidity card draws the served order-imbalance readout", () => {
   // the desk opened with `body` as the book panel; returns the page's socket
   async function openDesk(page, body, keep) {
     const sock = await intercept(page);
     deskPanels().book = body;
-    await page.addInitScript((k) => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'desk'); localStorage.setItem('ed_book_venue', 'NYSE_BOOK');
-      if (!k) { localStorage.removeItem('ed.desk.liqvenue'); localStorage.removeItem('ed.desk.liqview'); } }, keep);
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.addInitScript((k) => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+      localStorage.setItem("ed_book_venue", "NYSE_BOOK");
+      if (!k) {
+        localStorage.removeItem("ed.desk.liqvenue");
+        localStorage.removeItem("ed.desk.liqview");
+      }
+    }, keep);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
     return sock;
   }
   // every venue the page asked a book of, on any of its subscribes
-  const bookVenues = (sock) => sock.subscribes.flatMap((s) => Object.keys(s.panels)
-    .filter((n) => n.split(':')[0] === 'book').map((n) => s.panels[n].venue));
-  const card = (page) => page.locator('#tdmCardLiq');
-  const left = (pct) => (50 + pct * 0.45) + '%';
+  const bookVenues = (sock) =>
+    sock.subscribes.flatMap((s) =>
+      Object.keys(s.panels)
+        .filter((n) => n.split(":")[0] === "book")
+        .map((n) => s.panels[n].venue),
+    );
+  const card = (page) => page.locator("#tdmCardLiq");
+  const left = (pct) => 50 + pct * 0.45 + "%";
 
-  test('on the operator\'s 1920×950 window every card shows whole, the Desk does not scroll, and the sentence is high contrast', async ({ page }) => {
+  test("on the operator's 1920×950 window every card shows whole, the Desk does not scroll, and the sentence is high contrast", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     // the operator's window (Edge maximized on 1920×1080), then a smaller laptop window, where the Desk may scroll
-    for (const [width, height] of [[1920, 950], [1366, 650]]) {
+    for (const [width, height] of [
+      [1920, 950],
+      [1366, 650],
+    ]) {
       await page.setViewportSize({ width, height });
-      for (const body of [READOUT_LIVE, READOUT_AUCTION, READOUT_OFFLINE, READOUT_NO_BOOK, READOUT_EVERY_LINE]) {
+      for (const body of [
+        READOUT_LIVE,
+        READOUT_AUCTION,
+        READOUT_OFFLINE,
+        READOUT_NO_BOOK,
+        READOUT_EVERY_LINE,
+      ]) {
         await openDesk(page, body);
-        await expect(card(page).locator('.liq-body > *').first()).toBeVisible();
+        await expect(card(page).locator(".liq-body > *").first()).toBeVisible();
         const cut = await page.evaluate((whole) => {
           const out = [];
-          const root = document.getElementById('tdmRoot');
-          if (whole && root.scrollHeight > root.clientHeight) out.push('the Desk scrolls: ' + root.scrollHeight + ' > ' + root.clientHeight);
+          const root = document.getElementById("tdmRoot");
+          if (whole && root.scrollHeight > root.clientHeight)
+            out.push("the Desk scrolls: " + root.scrollHeight + " > " + root.clientHeight);
           // no part of the Desk is squeezed below its content: the map, the cards, the strip, the footer
-          [...root.children, document.querySelector('#tdmRoot .tdm-map')].forEach((p) => {
-            if (p.offsetHeight && p.scrollHeight > p.clientHeight + 1) out.push((p.id || p.className) + ' is squeezed: ' + p.scrollHeight + ' > ' + p.clientHeight);
+          [...root.children, document.querySelector("#tdmRoot .tdm-map")].forEach((p) => {
+            if (p.offsetHeight && p.scrollHeight > p.clientHeight + 1)
+              out.push(
+                (p.id || p.className) + " is squeezed: " + p.scrollHeight + " > " + p.clientHeight,
+              );
           });
-          const map = document.querySelector('#tdmRoot .tdm-main');
-          if (map && map.getBoundingClientRect().height < 380) out.push('the market map is under 380 px: ' + map.getBoundingClientRect().height);
-          document.querySelectorAll('#tdmCards > .tdm-card').forEach((c) => {
+          const map = document.querySelector("#tdmRoot .tdm-main");
+          if (map && map.getBoundingClientRect().height < 380)
+            out.push("the market map is under 380 px: " + map.getBoundingClientRect().height);
+          document.querySelectorAll("#tdmCards > .tdm-card").forEach((c) => {
             // the card hides what passes its edge (overflow: hidden)
-            const box = c.getBoundingClientRect(), bottom = box.bottom + 0.5, right = box.right + 0.5;
-            c.querySelectorAll('*').forEach((e) => {
+            const box = c.getBoundingClientRect(),
+              bottom = box.bottom + 0.5,
+              right = box.right + 0.5;
+            c.querySelectorAll("*").forEach((e) => {
               const r = e.getBoundingClientRect();
               if (!r.width || !r.height) return;
-              if (r.bottom > bottom || r.right > right) out.push(c.id + ': ' + e.tagName + ' "' + e.textContent.slice(0, 40) + '" runs past the card by ' + Math.round(Math.max(r.bottom - bottom, r.right - right)) + 'px');
+              if (r.bottom > bottom || r.right > right)
+                out.push(
+                  c.id +
+                    ": " +
+                    e.tagName +
+                    ' "' +
+                    e.textContent.slice(0, 40) +
+                    '" runs past the card by ' +
+                    Math.round(Math.max(r.bottom - bottom, r.right - right)) +
+                    "px",
+                );
               const s = getComputedStyle(e);
-              if (/hidden|clip/.test(s.overflowX + s.overflowY) &&
-                  (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)) {
-                out.push(c.id + ': ' + e.tagName + '.' + e.className + ' "' + e.textContent.slice(0, 40) + '" is clipped');
+              if (
+                /hidden|clip/.test(s.overflowX + s.overflowY) &&
+                (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
+              ) {
+                out.push(
+                  c.id +
+                    ": " +
+                    e.tagName +
+                    "." +
+                    e.className +
+                    ' "' +
+                    e.textContent.slice(0, 40) +
+                    '" is clipped',
+                );
               }
             });
           });
           return out;
         }, width === 1920);
-        expect(cut, width + '×' + height + ' ' + JSON.stringify(cut)).toEqual([]);
+        expect(cut, width + "×" + height + " " + JSON.stringify(cut)).toEqual([]);
       }
     }
     // the crossed and not-live pills, the auction line, the dedup note and the book's time, at once, show on it
     await page.setViewportSize({ width: 1920, height: 950 });
     await openDesk(page, READOUT_EVERY_LINE);
-    const all = READOUT_EVERY_LINE.readout, every = all.venues.COMPOSITE;
-    for (const t of ['BOOK CROSSED', 'BOOK ' + every.feed_label, all.auction_text, every.dedup_partial_text, 'Book ' + every.book_time_ct]) {
-      await expect(card(page).locator('.liq-body')).toContainText(t);
+    const all = READOUT_EVERY_LINE.readout,
+      every = all.venues.COMPOSITE;
+    for (const t of [
+      "BOOK CROSSED",
+      "BOOK " + every.feed_label,
+      all.auction_text,
+      every.dedup_partial_text,
+      "Book " + every.book_time_ct,
+    ]) {
+      await expect(card(page).locator(".liq-body")).toContainText(t);
     }
     await openDesk(page, READOUT_LIVE);
-    await expect(card(page).locator('.liq-sent')).toHaveText(LIVE_COMP.views.weighted.sentence);   // the readout is drawn
+    await expect(card(page).locator(".liq-sent")).toHaveText(LIVE_COMP.views.weighted.sentence); // the readout is drawn
     // found and read in one task of the page: a repaint replaces the card's body, and a node it
     // took out has no computed style
     const look = await page.evaluate(() => {
-      const e = document.querySelector('#tdmCardLiq .liq-sent');
-      const s = getComputedStyle(e), probe = document.createElement('i');
-      probe.style.color = 'var(--ed-ink)';   // the brightest ink the console has
+      const e = document.querySelector("#tdmCardLiq .liq-sent");
+      const s = getComputedStyle(e),
+        probe = document.createElement("i");
+      probe.style.color = "var(--ed-ink)"; // the brightest ink the console has
       document.body.appendChild(probe);
       const ink = getComputedStyle(probe).color;
       probe.remove();
       return { color: s.color, weight: s.fontWeight, ink };
     });
     expect(look.color).toBe(look.ink);
-    expect(look.weight).toBe('700');
+    expect(look.weight).toBe("700");
     expect(errs).toEqual([]);
   });
 
-  test('the default view is the composite, weighted: every element in order, from the served values', async ({ page }) => {
+  test("the default view is the composite, weighted: every element in order, from the served values", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
     const w = LIVE_COMP.views.weighted;
     await expect(card(page).locator('[data-liqvenue="COMPOSITE"]')).toHaveClass(/on/);
     await expect(card(page).locator('[data-liqview="weighted"]')).toHaveClass(/on/);
-    await expect(card(page).locator('.liq-depth')).toContainText('price levels per side, not timeframes');
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange');
+    await expect(card(page).locator(".liq-depth")).toContainText(
+      "price levels per side, not timeframes",
+    );
+    await expect(card(page).locator(".tdm-src")).toHaveText(
+      "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange",
+    );
     // the whole source line shows, wrapped, never cut off
-    expect(await card(page).locator('.tdm-src').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-    const text = await card(page).locator('.liq-body').innerText();
-    const span = (k, side) => READOUT_LIVE.readout.venues[k].views.weighted['span_' + side + '_text'];
-    const order = ['price levels per side, not timeframes', 'WEIGHTED TOP-5 HEADLINE', w.side_word, w.pct_text,
-      'Bids', w.bid_text, 'Asks', w.ask_text,
-      w.sentence, 'Difference: ' + w.difference_text + ' shares · Total depth: ' + w.total_text + ' shares',
-      'VENUES', 'AT THE TOUCH', LIVE_COMP.touch_text,
-      'LEAN', w.held_text, w.flips_2m + ' flips in 2 min',
-      'Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue',
-      'Top-5 spans, bid / ask: NYSE ' + span('NYSE_BOOK', 'bid') + ' / ' + span('NYSE_BOOK', 'ask') +
-        ' · Nasdaq ' + span('NASDAQ_BOOK', 'bid') + ' / ' + span('NASDAQ_BOOK', 'ask'),
-      'NYSE + Nasdaq only — not the whole market · Book ' + LIVE_COMP.book_time_ct];
+    expect(
+      await card(page)
+        .locator(".tdm-src")
+        .evaluate((el) => el.scrollWidth <= el.clientWidth),
+    ).toBe(true);
+    const text = await card(page).locator(".liq-body").innerText();
+    const span = (k, side) =>
+      READOUT_LIVE.readout.venues[k].views.weighted["span_" + side + "_text"];
+    const order = [
+      "price levels per side, not timeframes",
+      "WEIGHTED TOP-5 HEADLINE",
+      w.side_word,
+      w.pct_text,
+      "Bids",
+      w.bid_text,
+      "Asks",
+      w.ask_text,
+      w.sentence,
+      "Difference: " + w.difference_text + " shares · Total depth: " + w.total_text + " shares",
+      "VENUES",
+      "AT THE TOUCH",
+      LIVE_COMP.touch_text,
+      "LEAN",
+      w.held_text,
+      w.flips_2m + " flips in 2 min",
+      "Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue",
+      "Top-5 spans, bid / ask: NYSE " +
+        span("NYSE_BOOK", "bid") +
+        " / " +
+        span("NYSE_BOOK", "ask") +
+        " · Nasdaq " +
+        span("NASDAQ_BOOK", "bid") +
+        " / " +
+        span("NASDAQ_BOOK", "ask"),
+      "NYSE + Nasdaq only — not the whole market · Book " + LIVE_COMP.book_time_ct,
+    ];
     let at = -1;
-    for (const s of order) { const i = text.indexOf(s, at + 1); expect(i, s).toBeGreaterThan(at); at = i; }
-    await expect(card(page).locator('.liq-live')).toHaveCount(0);
+    for (const s of order) {
+      const i = text.indexOf(s, at + 1);
+      expect(i, s).toBeGreaterThan(at);
+      at = i;
+    }
+    await expect(card(page).locator(".liq-live")).toHaveCount(0);
     // the served flag: NYSE and Nasdaq lean opposite ways at this depth
     expect(READOUT_LIVE.readout.disagree.weighted).toBe(true);
-    await expect(card(page).locator('.liq-body')).toContainText('VENUES DISAGREE');
+    await expect(card(page).locator(".liq-body")).toContainText("VENUES DISAGREE");
     // no predicted price move, no balance scale, no demo or not-live control
     await expect(card(page)).not.toContainText(/ticks|price goes/i);
-    await expect(card(page).locator('button')).toHaveCount(8);
+    await expect(card(page).locator("button")).toHaveCount(8);
     expect(errs).toEqual([]);
   });
 
-  test('the venue dots and the touch marker sit at 50% + pct × 0.45, the selected venue ringed', async ({ page }) => {
+  test("the venue dots and the touch marker sit at 50% + pct × 0.45, the selected venue ringed", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
-    for (const k of ['NYSE_BOOK', 'NASDAQ_BOOK', 'COMPOSITE']) {
-      const dot = card(page).locator('.liq-dot.' + k);
-      await expect(dot).toHaveAttribute('style', 'left:' + left(READOUT_LIVE.readout.venues[k].views.weighted.pct));
+    for (const k of ["NYSE_BOOK", "NASDAQ_BOOK", "COMPOSITE"]) {
+      const dot = card(page).locator(".liq-dot." + k);
+      await expect(dot).toHaveAttribute(
+        "style",
+        "left:" + left(READOUT_LIVE.readout.venues[k].views.weighted.pct),
+      );
     }
-    await expect(card(page).locator('.liq-dot.sel')).toHaveCount(1);
-    await expect(card(page).locator('.liq-dot.COMPOSITE')).toHaveClass(/sel/);
-    await expect(card(page).locator('.liq-gauge i')).toHaveAttribute('style', 'left:' + left(LIVE_COMP.touch_pct));
+    await expect(card(page).locator(".liq-dot.sel")).toHaveCount(1);
+    await expect(card(page).locator(".liq-dot.COMPOSITE")).toHaveClass(/sel/);
+    await expect(card(page).locator(".liq-gauge i")).toHaveAttribute(
+      "style",
+      "left:" + left(LIVE_COMP.touch_pct),
+    );
     expect(errs).toEqual([]);
   });
 
-  test('a depth switch redraws headline, bars, sentence and dots from that depth; a venue switch from that venue', async ({ page }) => {
+  test("a depth switch redraws headline, bars, sentence and dots from that depth; a venue switch from that venue", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
     await expect(card(page).locator('[data-liqview="3"]')).toBeVisible();
     await card(page).locator('[data-liqview="3"]').click();
-    const v3 = LIVE_COMP.views['3'];
-    await expect(card(page).locator('.liq-body')).toContainText('TOP 3 HEADLINE');
-    await expect(card(page).locator('.liq-pct')).toHaveText(v3.pct_text);
-    await expect(card(page).locator('.liq-sent')).toHaveText(v3.sentence);
-    await expect(card(page).locator('.liq-body')).toContainText('Difference: ' + v3.difference_text + ' shares');
-    await expect(card(page).locator('.liq-dot.NASDAQ_BOOK')).toHaveAttribute('style', 'left:' + left(READOUT_LIVE.readout.venues.NASDAQ_BOOK.views['3'].pct));
-    await expect(card(page).locator('.liq-body')).toContainText(READOUT_LIVE.readout.disagree['3'] ? 'VENUES DISAGREE' : 'VENUES');
+    const v3 = LIVE_COMP.views["3"];
+    await expect(card(page).locator(".liq-body")).toContainText("TOP 3 HEADLINE");
+    await expect(card(page).locator(".liq-pct")).toHaveText(v3.pct_text);
+    await expect(card(page).locator(".liq-sent")).toHaveText(v3.sentence);
+    await expect(card(page).locator(".liq-body")).toContainText(
+      "Difference: " + v3.difference_text + " shares",
+    );
+    await expect(card(page).locator(".liq-dot.NASDAQ_BOOK")).toHaveAttribute(
+      "style",
+      "left:" + left(READOUT_LIVE.readout.venues.NASDAQ_BOOK.views["3"].pct),
+    );
+    await expect(card(page).locator(".liq-body")).toContainText(
+      READOUT_LIVE.readout.disagree["3"] ? "VENUES DISAGREE" : "VENUES",
+    );
     // the touch stays the venue's top 1 whatever the depth
-    await expect(card(page).locator('.liq-gauge i')).toHaveAttribute('style', 'left:' + left(LIVE_COMP.touch_pct));
+    await expect(card(page).locator(".liq-gauge i")).toHaveAttribute(
+      "style",
+      "left:" + left(LIVE_COMP.touch_pct),
+    );
     await card(page).locator('.bookvenue [data-venue="NYSE_BOOK"]').click();
     const n = READOUT_LIVE.readout.venues.NYSE_BOOK;
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK · live book');
-    await expect(card(page).locator('.liq-pct')).toHaveText(n.views['3'].pct_text);
-    await expect(card(page).locator('.liq-dot.NYSE_BOOK')).toHaveClass(/sel/);
-    await expect(card(page).locator('.liq-lbl b').first()).toHaveText(n.touch_text);
+    await expect(card(page).locator(".tdm-src")).toHaveText("Schwab NYSE_BOOK · live book");
+    await expect(card(page).locator(".liq-pct")).toHaveText(n.views["3"].pct_text);
+    await expect(card(page).locator(".liq-dot.NYSE_BOOK")).toHaveClass(/sel/);
+    await expect(card(page).locator(".liq-lbl b").first()).toHaveText(n.touch_text);
     expect(errs).toEqual([]);
   });
 
-  test('the composite is one book panel of one venue: no second venue is asked', async ({ page }) => {
+  test("the composite is one book panel of one venue: no second venue is asked", async ({
+    page,
+  }) => {
     const sock = await openDesk(page, READOUT_LIVE);
-    await expect(card(page).locator('.liq-pct')).toHaveText(LIVE_COMP.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(LIVE_COMP.views.weighted.pct_text);
     // the composite is drawn; the desk's one book panel is asked once, of the one venue
     const last = sock.subscribes[sock.subscribes.length - 1];
-    expect(Object.keys(last.panels).filter((n) => n === 'book:deskmap').length).toBe(1);
-    expect([...new Set(bookVenues(sock))]).toEqual(['NYSE_BOOK']);
+    expect(Object.keys(last.panels).filter((n) => n === "book:deskmap").length).toBe(1);
+    expect([...new Set(bookVenues(sock))]).toEqual(["NYSE_BOOK"]);
   });
 
-  test('a book that stopped keeps its last numbers greyed, with its time, its age and not live on the source line', async ({ page }) => {
+  test("a book that stopped keeps its last numbers greyed, with its time, its age and not live on the source line", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_OFFLINE);
     const c = READOUT_OFFLINE.readout.venues.COMPOSITE;
-    await expect(card(page).locator('.liq-body')).toHaveClass(/stale/);
-    await expect(card(page).locator('.liq-body')).toContainText('BOOK OFFLINE');
-    await expect(card(page).locator('.liq-body')).toContainText('NYSE + Nasdaq only — not the whole market · Book ' + c.book_time_ct);
-    await expect(card(page).locator('.tdm-src')).toHaveText('Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · book ' + c.book_time_ct + ' · ' + c.book_age_text + ' old · not live');
-    await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-body")).toHaveClass(/stale/);
+    await expect(card(page).locator(".liq-body")).toContainText("BOOK OFFLINE");
+    await expect(card(page).locator(".liq-body")).toContainText(
+      "NYSE + Nasdaq only — not the whole market · Book " + c.book_time_ct,
+    );
+    await expect(card(page).locator(".tdm-src")).toHaveText(
+      "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · book " +
+        c.book_time_ct +
+        " · " +
+        c.book_age_text +
+        " old · not live",
+    );
+    await expect(card(page).locator(".liq-pct")).toHaveText(c.views.weighted.pct_text);
     expect(errs).toEqual([]);
   });
 
-  test('no book: NO BOOK in plain words, no number, the cause on the source line', async ({ page }) => {
+  test("no book: NO BOOK in plain words, no number, the cause on the source line", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_NO_BOOK);
-    await expect(card(page).locator('.liq-body')).toContainText('NO BOOK');
-    await expect(card(page).locator('.liq-body')).toContainText('No book for this symbol right now');
-    await expect(card(page).locator('.tdm-src')).toContainText('no book for this symbol right now');
-    await expect(card(page).locator('.liq-body')).not.toContainText('%');
+    await expect(card(page).locator(".liq-body")).toContainText("NO BOOK");
+    await expect(card(page).locator(".liq-body")).toContainText(
+      "No book for this symbol right now",
+    );
+    await expect(card(page).locator(".tdm-src")).toContainText("no book for this symbol right now");
+    await expect(card(page).locator(".liq-body")).not.toContainText("%");
     expect(errs).toEqual([]);
   });
 
-  test('a failed read says so on the source line, naming no book the server did not name', async ({ page }) => {
+  test("a failed read says so on the source line, naming no book the server did not name", async ({
+    page,
+  }) => {
     await intercept(page);
-    deskPanels().book = { failed: 'the program could not produce this panel: OSError: book read failed' };
-    await page.addInitScript(() => { localStorage.setItem('ed_ticker', 'SPY'); localStorage.setItem('ed_ws', 'trade-desk');
-      localStorage.setItem('ed_sub', 'desk'); });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await expect(card(page).locator('.liq-body')).toContainText('UNAVAILABLE');
-    await expect(card(page).locator('.tdm-src')).toHaveText('the program could not produce the book');
+    deskPanels().book = {
+      failed: "the program could not produce this panel: OSError: book read failed",
+    };
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(card(page).locator(".liq-body")).toContainText("UNAVAILABLE");
+    await expect(card(page).locator(".tdm-src")).toHaveText(
+      "the program could not produce the book",
+    );
   });
 
-  test('inside the closing auction the number stands and the auction line is added', async ({ page }) => {
+  test("inside the closing auction the number stands and the auction line is added", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_AUCTION);
     const c = READOUT_AUCTION.readout.venues.COMPOSITE;
-    await expect(card(page).locator('.liq-body')).toContainText(READOUT_AUCTION.readout.auction_text);
-    await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-body")).toContainText(
+      READOUT_AUCTION.readout.auction_text,
+    );
+    await expect(card(page).locator(".liq-pct")).toHaveText(c.views.weighted.pct_text);
     // the line sits after the sentence box, before the venues
-    const text = await card(page).locator('.liq-body').innerText();
-    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeGreaterThan(text.indexOf(await card(page).locator('.liq-sent').innerText()));
-    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeLessThan(text.indexOf('VENUES'));
+    const text = await card(page).locator(".liq-body").innerText();
+    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeGreaterThan(
+      text.indexOf(await card(page).locator(".liq-sent").innerText()),
+    );
+    expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeLessThan(text.indexOf("VENUES"));
     expect(errs).toEqual([]);
   });
 
-  test('a crossed book flags it, keeps its number and totals, and withholds the sentence', async ({ page }) => {
+  test("a crossed book flags it, keeps its number and totals, and withholds the sentence", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_AUCTION);
     const c = READOUT_AUCTION.readout.venues.COMPOSITE;
-    expect(c.touch_flag).toBe('BOOK CROSSED');
-    await expect(card(page).locator('.liq-body')).toContainText('BOOK CROSSED');
-    await expect(card(page).locator('.liq-pct')).toHaveText(c.views.weighted.pct_text);
-    await expect(card(page).locator('.liq-body')).toContainText(c.views.weighted.ask_text);
-    await expect(card(page).locator('.liq-sent')).toHaveText('Book crossed — the best bid is above the best offer.');
+    expect(c.touch_flag).toBe("BOOK CROSSED");
+    await expect(card(page).locator(".liq-body")).toContainText("BOOK CROSSED");
+    await expect(card(page).locator(".liq-pct")).toHaveText(c.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-body")).toContainText(c.views.weighted.ask_text);
+    await expect(card(page).locator(".liq-sent")).toHaveText(
+      "Book crossed — the best bid is above the best offer.",
+    );
     expect(errs).toEqual([]);
   });
 
-  test('the headline opens the detail panel with the served words; Close shuts it', async ({ page }) => {
+  test("the headline opens the detail panel with the served words; Close shuts it", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
     const d = READOUT_LIVE.readout.detail;
-    await expect(card(page).locator('.liq-detail')).toHaveCount(0);
-    await expect(card(page).locator('.liq-hl')).toBeVisible();
-    await card(page).locator('.liq-hl').click();
-    const panel = card(page).locator('.liq-detail');
+    await expect(card(page).locator(".liq-detail")).toHaveCount(0);
+    await expect(card(page).locator(".liq-hl")).toBeVisible();
+    await card(page).locator(".liq-hl").click();
+    const panel = card(page).locator(".liq-detail");
     for (const t of [d.weights, d.zones, d.construction, d.spans, d.books]) {
       await expect(panel).toContainText(t);
     }
-    await panel.locator('[data-liqclose]').click();
-    await expect(card(page).locator('.liq-detail')).toHaveCount(0);
+    await panel.locator("[data-liqclose]").click();
+    await expect(card(page).locator(".liq-detail")).toHaveCount(0);
     expect(errs).toEqual([]);
   });
 
-  test('the card paints at most once a second, takes the book each time it is sent, and asks for it once', async ({ page }) => {
+  test("the card paints at most once a second, takes the book each time it is sent, and asks for it once", async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
-    await page.addInitScript(() => { window.__books = 0;
-      document.addEventListener('ed:panel', (e) => { if (e.detail.type === 'book:deskmap') window.__books++; }); });
-    await page.clock.install();   // the page's held second runs on the test's time
+    await page.addInitScript(() => {
+      window.__books = 0;
+      document.addEventListener("ed:panel", (e) => {
+        if (e.detail.type === "book:deskmap") window.__books++;
+      });
+    });
+    await page.clock.install(); // the page's held second runs on the test's time
     const sock = await openDesk(page, READOUT_LIVE);
-    await expect(card(page).locator('.liq-pct')).toHaveText(LIVE_COMP.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(LIVE_COMP.views.weighted.pct_text);
     // the page's time stops here; the load's held second ends, and nothing runs until it moves
-    await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1200);
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1200);
     const before = await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints);
     const n0 = await page.evaluate(() => window.__books);
-    for (let i = 0; i < 5; i++) sock.changed('book');
+    for (let i = 0; i < 5; i++) sock.changed("book");
     // the five books have landed, all inside one second of page time
     await expect.poll(() => page.evaluate(() => window.__books)).toBe(n0 + 5);
     // five books inside a second: one paint now, at most one more when the second is up
-    expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(before + 1);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(
+      before + 1,
+    );
     await page.clock.runFor(1000);
-    expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(before + 2);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints)).toBeLessThanOrEqual(
+      before + 2,
+    );
     const n1 = sock.subscribes.length;
     await page.clock.runFor(2500);
-    expect(sock.subscribes.length).toBe(n1);   // nothing sent, nothing asked again
+    expect(sock.subscribes.length).toBe(n1); // nothing sent, nothing asked again
     expect(await page.evaluate(() => window.__books)).toBe(n0 + 5);
     expect(errs).toEqual([]);
   });

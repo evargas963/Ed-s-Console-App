@@ -52,20 +52,25 @@ function ensurePlaywrightReady() {
     fail(
       "npx playwright --version failed.\n" +
         (r.stderr || r.stdout || "") +
-        "\nFix: npm install in repo root."
+        "\nFix: npm install in repo root.",
     );
   }
   // a browser download prints unbounded progress; it goes to the log too
-  const installCode = runWithFileSink("playwright-install", "npx", ["playwright", "install", "chromium"], {
-    logPath: path.join(logDir(), "test_e2e_install_last.log"),
-    cwd: root,
-    shell: true,
-    tailBytes: 0,
-  });
+  const installCode = runWithFileSink(
+    "playwright-install",
+    "npx",
+    ["playwright", "install", "chromium"],
+    {
+      logPath: path.join(logDir(), "test_e2e_install_last.log"),
+      cwd: root,
+      shell: true,
+      tailBytes: 0,
+    },
+  );
   if (installCode !== 0) {
     fail(
       "playwright install chromium failed (browser binaries required).\n" +
-        "Fix: check network; on Linux try: npx playwright install-deps chromium"
+        "Fix: check network; on Linux try: npx playwright install-deps chromium",
     );
   }
 }
@@ -92,12 +97,17 @@ function main() {
   const logPath = path.join(logDir(), "test_e2e_last.log");
   let exitCode;
   try {
-    exitCode = runWithFileSink("test:e2e", process.execPath, [PLAYWRIGHT_CLI, "test", ...forwardedArgs], {
-      logPath,
-      cwd: root,
-      env: e2eEnv,
-      tailBytes: 700,
-    });
+    exitCode = runWithFileSink(
+      "test:e2e",
+      process.execPath,
+      [PLAYWRIGHT_CLI, "test", ...forwardedArgs],
+      {
+        logPath,
+        cwd: root,
+        env: e2eEnv,
+        tailBytes: 700,
+      },
+    );
   } finally {
     fs.rmSync(e2eRuntime, { recursive: true, force: true });
     console.log(`[test:e2e] removed isolated runtime: ${e2eRuntime}`);
@@ -123,7 +133,9 @@ export function printFailureReports(logPath) {
     return;
   }
   const report = lines.slice(first).filter((line) => !line.includes("[WebServer]"));
-  console.log(`[test:e2e] failure reports (${Math.min(report.length, FAILURE_LINES)} of ${report.length} lines):`);
+  console.log(
+    `[test:e2e] failure reports (${Math.min(report.length, FAILURE_LINES)} of ${report.length} lines):`,
+  );
   for (const line of report.slice(0, FAILURE_LINES)) console.log(line);
 }
 

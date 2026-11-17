@@ -143,9 +143,7 @@
       ],
       [
         "Tape pressure 30s",
-        orDash(flow.tape_pressure_30s_text) +
-          " · unsigned " +
-          orDash(flow.tape_unsigned_30s_text),
+        orDash(flow.tape_pressure_30s_text) + " · unsigned " + orDash(flow.tape_unsigned_30s_text),
         "flow.tape_pressure_30s",
         fk("tape_pressure_30s"),
       ],

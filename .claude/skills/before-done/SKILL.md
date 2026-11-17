@@ -3,6 +3,8 @@ name: before-done
 description: Run before offering a pull request or reporting work done. Runs the checks the required CI jobs run, on the branch's final commit, and shows each one's output.
 ---
 
+# Before done
+
 Run each step from the worktree root on the branch's final commit (`git log --oneline -1` first), with
 `ED_CI_OFFLINE=1`, `SCHWAB_API_KEY=ci-not-live-placeholder`, `SCHWAB_APP_SECRET=ci-not-live-placeholder`.
 Show each command's last lines in the reply. A step that fails stops the list: fix the cause (AGENTS.md

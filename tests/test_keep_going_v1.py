@@ -347,3 +347,8 @@ def test_a_subagents_message_is_not_the_agents_final_message(tmp_path):
     waiting = _said("WAITING ON OPERATOR: his yes to a change of a request rate.")
     side = {**_said("Verdict: FAIL."), "isSidechain": True}
     assert keep_going.last_message(_entries(tmp_path, waiting, side)).startswith("WAITING")
+
+
+def test_the_shape_row_is_read_open_with_its_cells_padded_as_prettier_aligns_them():
+    assert keep_going.OPEN.search("| SHAPE            | IN PROGRESS | **One program** |\n")
+    assert not keep_going.OPEN.search("| SHAPE            | DONE        | **One program** |\n")
