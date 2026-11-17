@@ -1498,11 +1498,6 @@
       zero: _hex(cs.getPropertyValue("--ed-heat-zero")),
     };
   }
-  // the text colour that reads on a heat cell's colour: light on dark, dark on light
-  function heatInk(c) {
-    return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? "#f4f7fb" : "#0a0e17";
-  }
-
   // the one HTML escape of every view module
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
@@ -1583,6 +1578,5 @@
     },
     setSubview: setSubview,
     heatColors: heatColors,
-    heatInk: heatInk,
   };
 })();

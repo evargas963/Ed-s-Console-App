@@ -717,20 +717,11 @@
   function liqTone(zone) {
     return !zone ? "" : zone === "BALANCED" ? "bal" : /BID/.test(zone) ? "bid" : "ask";
   }
-  // left = 50% + pct × 0.45 on a strip whose centre is 0
   function liqLeft(pct) {
-    return 50 + Number(pct) * 0.45 + "%";
+    return window.EdDraw.centredLeft(pct) + "%";
   }
   function liqSpark(w) {
-    var d = ""; // one served value every `step` seconds across the window; an unknown one breaks the line
-    w.values.forEach(function (v, i) {
-      if (v == null) return;
-      d +=
-        (d && w.values[i - 1] != null ? "L" : "M") +
-        (((i * w.step) / w.seconds) * 96).toFixed(1) +
-        " " +
-        (14 - (v / 100) * 14).toFixed(1);
-    });
+    var d = window.EdDraw.centredPath(w.values, w.step, w.seconds, 96, 14);
     // each served lean's colour; null (no value known in the window) is the neutral one
     var col = { BID_HEAVY: "#3fb950", OFFER_HEAVY: "#f85149", MIXED: "#c9a227", null: "#8fa1c4" }[
       w.lean

@@ -20,7 +20,7 @@
     if (v === 0) return { bg: _rgb(colors.zero), fg: "var(--ed-ink-3)", empty: false };
     var mixed = window.EdDraw.heatFill(v, maxAbs, colors); // the served scale is at least every |value| drawn
     if (mixed == null) return { bg: "transparent", fg: "var(--ed-ink-3)", empty: false };
-    return { bg: _rgb(mixed), fg: window.EdShell.heatInk(mixed), empty: false };
+    return { bg: _rgb(mixed), fg: window.EdDraw.heatInk(mixed), empty: false };
   }
   // the selected measure's value per column: GEX/DEX a value, OI/volume the server's total
   function _measureRow(row, measure) {
