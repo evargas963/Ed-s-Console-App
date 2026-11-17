@@ -73,6 +73,7 @@ quote-style = "double"
 
 [tool.coverage.run]
 branch = true
+relative_files = true
 omit = ["tests/*", "*/node_modules/*"]
 
 # AGENTS.md rule 12 (SHAPE step 6): a value that crosses a module boundary is a typed record, held

@@ -2,6 +2,8 @@
 # numpy is pinned for CI reproducibility (a floating resolution segfaulted the runner).
 pytest>=8.0
 pytest-xdist>=3.6.0
+pytest-cov==6.2.1
+coverage==7.10.6
 ruff==0.17.3
 pyright==1.1.414
 import-linter==2.15
