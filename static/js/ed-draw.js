@@ -38,6 +38,40 @@
   function apart(a, b) {
     return Math.abs(a - b) > 0.1;
   }
+  // where `price` falls down a column of rows `rowPx` tall, highest strike first: between the
+  // middles of the two rows whose strikes hold it, in proportion; past either end, at that end's
+  // middle; 0 with no rows
+  function rowAnchorY(price, strikes, rowPx) {
+    var n = strikes.length,
+      half = rowPx / 2;
+    if (!n) return 0;
+    for (var i = 0; i < n - 1; i++) {
+      var hi = strikes[i],
+        lo = strikes[i + 1];
+      if (price <= hi && price >= lo) {
+        var span = hi - lo;
+        return half + i * rowPx + (span === 0 ? 0 : (hi - price) / span) * rowPx;
+      }
+    }
+    return price >= strikes[0] ? half : n * rowPx - half;
+  }
+  // labels at anchors `ys`, in order, set at least `gap` apart and within `margin` of a column
+  // `height` tall: each pushed down past the one above, the last held at the bottom and those
+  // above pushed up from it, none above the top
+  function stackLabels(ys, height, gap, margin) {
+    var pos = ys.map(function (y) {
+      return Math.min(height - margin, Math.max(margin, y));
+    });
+    var i;
+    for (i = 1; i < pos.length; i++) pos[i] = Math.max(pos[i], pos[i - 1] + gap);
+    if (pos.length && pos[pos.length - 1] > height - margin) {
+      pos[pos.length - 1] = height - margin;
+      for (i = pos.length - 2; i >= 0; i--) pos[i] = Math.min(pos[i], pos[i + 1] - gap);
+    }
+    return pos.map(function (y) {
+      return Math.max(margin, y);
+    });
+  }
   // a card's small chart, as the reference draws it (line, area or bars), of served series in a
   // W x H box: sets [{ys, xs (served x values; else evenly spaced), color, kind: 'line'|'area'|
   // 'bars', colors (bars: one per y)}]; a null y is a gap. The SVG's inner markup, or null when no
@@ -157,6 +191,8 @@
     stepWithin: stepWithin,
     fitCount: fitCount,
     apart: apart,
+    rowAnchorY: rowAnchorY,
+    stackLabels: stackLabels,
     sparkline: sparkline,
   };
 })();
