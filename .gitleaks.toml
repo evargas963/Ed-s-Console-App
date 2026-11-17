@@ -1,0 +1,18 @@
+# gitleaks: its own rules for secrets, and the operator's home folder in any spelling.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "windows-user-home"
+description = "An operator-home path (Windows)"
+regex = '''(?i)[a-z]:[\\/]+users[\\/]+[a-z0-9_.-]+'''
+
+[[rules]]
+id = "posix-user-home"
+description = "An operator-home path (posix)"
+regex = '''(?:^|[^\w<])/(?:home|Users)/[A-Za-z0-9_.-]+[\\/]'''
+
+[[rules]]
+id = "git-bash-user-home"
+description = "An operator-home path (Git Bash)"
+regex = '''(?i)(?:^|[^\w<])/[a-z]/users/[a-z0-9_.-]+[\\/]'''
