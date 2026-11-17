@@ -28,5 +28,9 @@ def test_a_rail_is_not_named():
 
 
 def test_a_test_file_that_ran_no_app_line_at_all_is_named():
-    by_file = {"tests/test_levels.py": SETUP | {("calc/math_levels.py", 40)}, "tests/x.py": set()}
+    by_file = {
+        "tests/test_levels.py": SETUP | {("calc/math_levels.py", 40)},
+        "tests/test_flow.py": SETUP | {("calc/order_flow.py", 12)},
+        "tests/x.py": set(),
+    }
     assert serving_nothing(by_file, set()) == ["tests/x.py"]
