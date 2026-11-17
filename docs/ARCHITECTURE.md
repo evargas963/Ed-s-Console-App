@@ -1,9 +1,9 @@
 # Ed Console — Architecture
 
-Where the code lives. The target is one program in five parts, each part a folder (`AGENTS.md`
-"The shape", operator 2026-10-29). §1 is the target, none of whose folders exists yet; §2 is
-today's files and the part each goes to; §3 is the order, the steps of `ACTIVE_PROGRAM.md` SHAPE.
-This document is updated in the same change as every move.
+Where the code lives. The target is one program in five parts, each part a folder (`AGENTS.md` "The
+shape", operator 2026-10-29). §1 is the target, none of whose folders exists yet; §2 is today's
+files and the part each goes to; §3 is the order, the steps of `ACTIVE_PROGRAM.md` SHAPE. This
+document is updated in the same change as every move.
 
 ## 1. The target structure
 
@@ -25,13 +25,12 @@ EdWebConsole/
 └── start_ed_console.bat (runs launch.py, which starts the one program)
 ```
 
-Imports flow one way, to be enforced by import-linter's layers from SHAPE step 1e, as these
-folders land: push → state → calc; feed → state; recorder ←
-state; every part may use shared. Until then `locks.imports.toml` holds Feed alone: its contracts
-read the checkout as one package, because grimp takes no top-level module, so an import of a root
-module is an outside name and no layer can be drawn across them. Outside the repository: the
-runtime folder (the one database,
-the token, logs) and worktrees.
+Imports flow one way, to be enforced by import-linter's layers from SHAPE step 1e, as these folders
+land: push → state → calc; feed → state; recorder ← state; every part may use shared. Until then
+`locks.imports.toml` holds Feed alone: its contracts read the checkout as one package, because grimp
+takes no top-level module, so an import of a root module is an outside name and no layer can be
+drawn across them. Outside the repository: the runtime folder (the one database, the token, logs)
+and worktrees.
 
 ## 2. Where each file goes
 
@@ -54,22 +53,21 @@ the token, logs) and worktrees.
 ## 3. The order
 
 The steps of `ACTIVE_PROGRAM.md` SHAPE, one small PR each. A step brings its check's one-way count
-(`AGENTS.md` Locks) to 0 with no exception list and deletes what it replaces. Files
-move into their folders as the step that owns them lands; nothing is copied.
+(`AGENTS.md` Locks) to 0 with no exception list and deletes what it replaces. Files move into their
+folders as the step that owns them lands; nothing is copied.
 
 ## 4. Failure domains
 
-The app and each capability fail separately. If Schwab (or its stream) is unavailable, the app
-still starts and serves; the Schwab-dependent panels draw "-" (operator 2026-10-12 and
-2026-10-16), and nothing
-is filled in from elsewhere. The app refuses to start only when it cannot run at all (a broken
-Python environment, core code that will not load).
+The app and each capability fail separately. If Schwab (or its stream) is unavailable, the app still
+starts and serves; the Schwab-dependent panels draw "-" (operator 2026-10-12 and 2026-10-16), and
+nothing is filled in from elsewhere. The app refuses to start only when it cannot run at all (a
+broken Python environment, core code that will not load).
 
 ## 5. Runtime state is not source
 
 The database, the Schwab token, logs and diagnostics are runtime state, not source.
 `runtime_layout.py` is the one owner of where they live: `ED_RUNTIME_ROOT` moves them; unset, a
-standalone checkout uses itself and a linked worktree uses the primary checkout's runtime (it
-reads, and never starts a live program on it). Runtime state lives in the runtime root's `data/`,
-`logs/` and `schwab_token.json`, each ignored by git, so source changes never touch it; in a
-standalone checkout they sit inside the checkout.
+standalone checkout uses itself and a linked worktree uses the primary checkout's runtime (it reads,
+and never starts a live program on it). Runtime state lives in the runtime root's `data/`, `logs/`
+and `schwab_token.json`, each ignored by git, so source changes never touch it; in a standalone
+checkout they sit inside the checkout.

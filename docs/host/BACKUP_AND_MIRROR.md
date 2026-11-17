@@ -17,5 +17,5 @@ Git holds the source, tests and docs (the market's sessions are Schwab's /market
 1. `git clone`, then the `.venv` from `requirements.txt`.
 2. `copy .env.example .env` and fill values.
 3. `python reauth_schwab.py` creates `schwab_token.json`.
-4. The database starts empty: the program creates it, and the history builds from the first
-   session on (the stream's tables keep five sessions).
+4. The database starts empty: the program creates it, and the history builds from the first session
+   on (the stream's tables keep five sessions).

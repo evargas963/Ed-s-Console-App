@@ -5,17 +5,16 @@ description: Use when a test both passes and fails on the same commit. Finds eve
 
 # Flaky test fix
 
-1. Find them all. Run the full suite repeatedly under load on one commit and list every test that both
-   passed and failed: `npx playwright test` and
+1. Find them all. Run the full suite repeatedly under load on one commit and list every test that
+   both passed and failed: `npx playwright test` and
    `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -n 8 --dist loadfile --junitxml=<run>.xml`,
    10 runs, with 4 CPU-bound processes beside each
-   (`.venv/Scripts/python.exe -m tools.cpu_load 4 <seconds>`). Show the per-test pass/fail
-   counts, and beside each
-   test the operator's ruling on it in `ACTIVE_PROGRAM.md`, if one is recorded.
-2. Show Ed the list, then take one test at a time (CLAUDE.md item 3, read as one small pull
-   request at a time): a short plan for it, then Ed's
-   yes (none for a test found during SIMPLIFY: `ACTIVE_PROGRAM.md` SIMPLIFY, operator
-   2026-10-27). For that test, report four things, each with its command and output:
+   (`.venv/Scripts/python.exe -m tools.cpu_load 4 <seconds>`). Show the per-test pass/fail counts,
+   and beside each test the operator's ruling on it in `ACTIVE_PROGRAM.md`, if one is recorded.
+2. Show Ed the list, then take one test at a time (CLAUDE.md item 3, read as one small pull request
+   at a time): a short plan for it, then Ed's yes (none for a test found during SIMPLIFY:
+   `ACTIVE_PROGRAM.md` SIMPLIFY, operator 2026-10-27). For that test, report four things, each with
+   its command and output:
    1. The failure forced on demand before the fix: a command anyone can re-run that makes the timing
       happen every time (a pytest plugin passed with `-p`, a held port, Playwright's `page.clock`).
    2. The cause, as a sequence of events, down to the line of code or data (AGENTS.md First gate 4).
