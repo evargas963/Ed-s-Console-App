@@ -17,9 +17,9 @@ const REAL = require('./fixtures/vanna_charm_panels_crwd.json');
 
 // a contract as the server serves it: Schwab's fields and its counts and IV as the screen shows
 // them (numeric_contract.count_text, iv_text)
-function ct(side, strike, sym, oi, vol, iv, delta, expDate) {
+function ct(side, strike, sym, oi, vol, iv, delta, expDate = '2026-09-11') {
   const c = { putCall: side, strikePrice: strike, symbol: sym, openInterest: oi, totalVolume: vol,
-    volatility: iv, delta: delta, gamma: 0.01, expirationDate: expDate || '2026-09-11' };
+    volatility: iv, delta: delta, gamma: 0.01, expirationDate: expDate };
   return Object.assign(c, { oi_text: oi.toLocaleString('en-US'),
     volume_text: vol.toLocaleString('en-US'), iv_text: iv.toFixed(2) });
 }
