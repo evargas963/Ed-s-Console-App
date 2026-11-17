@@ -22,6 +22,26 @@
       return Math.round(a[i] + (b[i] - a[i]) * t);
     });
   }
+  // where a served percentage (-100 to 100) sits on a strip whose centre is 0 and whose ends hold
+  // 5% of margin: a percent of the strip's width from its left
+  function centredLeft(pct) {
+    return 50 + Number(pct) * 0.45;
+  }
+  // an SVG path of served percentages (-100 to 100), one every `step` seconds across a window of
+  // `seconds`, on a W wide box whose centre line is at `mid` (0 at the centre, 100 at the top);
+  // an unknown value breaks the line
+  function centredPath(values, step, seconds, W, mid) {
+    var d = "";
+    values.forEach(function (v, i) {
+      if (v == null) return;
+      d +=
+        (d && values[i - 1] != null ? "L" : "M") +
+        (((i * step) / seconds) * W).toFixed(1) +
+        " " +
+        (mid - (v / 100) * mid).toFixed(1);
+    });
+    return d;
+  }
   // the text colour that reads on a heat cell's colour: light on dark, dark on light
   function heatInk(c) {
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? "#f4f7fb" : "#0a0e17";
@@ -210,6 +230,8 @@
     strength: strength,
     heatFill: heatFill,
     heatInk: heatInk,
+    centredLeft: centredLeft,
+    centredPath: centredPath,
     rowsMoved: rowsMoved,
     stepWithin: stepWithin,
     fitCount: fitCount,
