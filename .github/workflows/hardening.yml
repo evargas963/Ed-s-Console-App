@@ -54,7 +54,8 @@ jobs:
           ./gitleaks dir . --config .gitleaks.toml --redact --no-banner -v
           files_rc=$?
           ./gitleaks git . --config .gitleaks.toml --redact --no-banner -v
-          [ "$files_rc" -eq 0 ] && [ "$?" -eq 0 ]
+          history_rc=$?
+          [ "$files_rc" -eq 0 ] && [ "$history_rc" -eq 0 ]
       - name: one module reads each Schwab field (AGENTS.md rule 3, ENF-23)
         if: github.event_name == 'pull_request'
         env:
