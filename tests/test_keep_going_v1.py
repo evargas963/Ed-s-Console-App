@@ -141,21 +141,22 @@ def test_a_stop_is_refused_while_production_does_not_run_main(at_main, listening
 def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_row(tmp_path):
     """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form.
 
-    With every message answered and production running main, it lets the stop end.
+    With every message answered and production running main, it lets the stop end; with nothing
+    listening on the console's port, it refuses with the reason.
     """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     (command,) = [h["command"] for e in settings["hooks"]["Stop"] for h in e["hooks"]]
     assert command.endswith("tools/keep_going.py")
-    run = _run(
-        {
-            "session_id": "s",
-            "stop_hook_active": False,
-            "transcript_path": str(_transcript(tmp_path, "Here is where it stands.")),
-        },
-        tmp_path,
-    )
+    payload = {
+        "session_id": "s",
+        "stop_hook_active": False,
+        "transcript_path": str(_transcript(tmp_path, "Here is where it stands.")),
+    }
+    run = _run(payload, tmp_path)
     assert run.returncode == 0
     assert run.stdout == ""
+    answer = json.loads(_run(payload, tmp_path, listening=False).stdout)
+    assert answer["decision"] == "block" and "Production" in answer["reason"]
 
 
 def _entries(tmp_path: Path, *entries) -> Path:
@@ -206,6 +207,9 @@ def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason(tmp_path):
     for payload in ("null", {"session_id": "s"}):
         run = _run(payload, tmp_path)
         assert run.returncode == 2 and "cannot judge the stop" in run.stderr, payload
+    # one it can read, with every order answered and production running main, ends
+    run = _run({"session_id": "s", "last_assistant_message": "Merged #1128."}, tmp_path)
+    assert (run.returncode, run.stdout) == (0, "")
 
 
 def test_every_message_is_read_and_every_order_answered_before_the_turn_ends(tmp_path):
