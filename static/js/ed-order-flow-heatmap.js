@@ -75,7 +75,7 @@
   document.addEventListener("click", function (e) {
     var btn = e.target.closest && e.target.closest("[data-ofh-minutes]");
     if (!btn) return;
-    _minutes = Number(btn.getAttribute("data-ofh-minutes")) || 60;
+    _minutes = Number(btn.getAttribute("data-ofh-minutes"));
     document.querySelectorAll("[data-ofh-minutes]").forEach(function (b) {
       b.classList.toggle("on", b === btn);
     });
