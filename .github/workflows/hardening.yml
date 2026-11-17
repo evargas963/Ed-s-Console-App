@@ -43,6 +43,7 @@ jobs:
           python -m pip install "$(grep '^pip-audit==' requirements-dev.txt)"
           python -m pip_audit -r requirements.txt -r requirements-dev.txt
       - name: no secret or operator-home path, in the files and in every commit (gitleaks)
+        if: success() || failure()
         run: |
           curl -sSfL -o gitleaks.tar.gz \
             https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
