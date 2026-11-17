@@ -134,3 +134,28 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
     ] == LAST_10
     assert rec["last_title"] == "Last 10 opens · the gap called 5 of 10"
     assert spy["records"] == [] and spy["ticker"] == "SPY"  # each ticker its own
+
+
+def test_today_s_card_after_the_open_waits_for_the_bar_then_serves_its_result():
+    """2026-10-07, after 09:30 ET: Schwab's 5-minute bars as the console's `5m` series holds them.
+
+    Until the 09:30 bar has closed the card says it waits; after, it serves the gap and the first
+    five minutes the record holds for that day: a -0.58% gap, a +0.35% first five minutes.
+    """
+    candles = [
+        Candle(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
+        for c in TSLA["extended"]
+    ]
+    try:
+        bar_store.put_series("TSLA", "5m", candles)
+        waiting = push_experimental.experimental("TSLA", _et("2026-10-07 09:33"))
+        closed = push_experimental.experimental("TSLA", _et("2026-10-07 09:40"))
+    finally:
+        bar_store._series.pop(("TSLA", "5m"), None)
+    assert waiting["today"]["when_text"] == "waiting for Schwab's open bar to close"
+    today = closed["today"]
+    assert (today["gap_text"], today["gap_up"]) == ("▼ -0.58%", False)
+    (result,) = today["results"]
+    assert result["label"] == "Today 09:30–09:35 ET"
+    assert (result["five_text"], result["called"]) == ("▲ +0.35%", False)
+    assert result["called_text"] == "✗ the gap pointed down, the open went up"

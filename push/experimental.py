@@ -89,11 +89,9 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
             "results": [],
         }
     prior = _prior_session(day)
-    candles = bar_store.series(tk, "5m")
-    opened = [today_open(candles, today, p, now) for p in [prior] if p is not None]
-    if not opened or opened[0] is None:
+    o = None if prior is None else today_open(bar_store.series(tk, "5m"), today, prior, now)
+    if o is None:
         return _today_waiting("Today's gap · at the open", "waiting for Schwab's open bar to close")
-    o = opened[0]
     went = "up" if o.first_five > 0 else "down"
     bar_start = today.regular[0][0]
     bar_end = datetime.fromtimestamp(bar_start.timestamp() + BAR_SECONDS, ET)
