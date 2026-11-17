@@ -253,7 +253,7 @@ def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) 
 
 
 def _chain_status(verdict: LevelsVerdict, fetched: float, now: float) -> str:
-    """The matrix's status line: the levels' word, the chain's time and age, and why."""
+    """Return the matrix's status line: the levels' word, the chain's time and age, and why."""
     parts = [
         verdict["levels_state"],
         f"chain as of {ct_label(fetched)}, {age_text(now - fetched)} old",

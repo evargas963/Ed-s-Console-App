@@ -91,12 +91,12 @@ def test_a_stop_asked_twice_stops_the_program_once(tmp_path, caplog):
 
 
 def test_a_stop_is_taken_while_every_shared_worker_thread_is_busy(tmp_path):
-    """The program's shared worker threads all busy, as the panels and the chain sweep keep them
-    in market hours: a stop asked is still taken at once.
+    """A stop is taken at once while the program's shared worker threads are all busy.
 
-    Induced: the loop's default pool (the one asyncio.to_thread and the page's panels use) is
-    two threads, both held by work that does not end until the test lets it; the stop is asked
-    and must end the waiter well within launch.py stop's wait. On 2026-11-16 a stop asked at
+    The panels and the chain sweep keep them busy in market hours. Induced: the loop's default
+    pool (the one asyncio.to_thread and the page's panels use) is two threads, both held by work
+    that does not end until the test lets it; the stop is asked and must end the waiter well
+    within launch.py stop's wait. On 2026-11-16 a stop asked at
     12:16 in market hours was not taken for over 30 s, and launch.py stop said "still running".
     """
     db = tmp_path / "stream_capture.db"

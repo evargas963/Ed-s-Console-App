@@ -722,8 +722,7 @@ SPILL_CHUNK = 5000
 #: the tables the daily keep (CaptureWriter.prune) removes old rows from, each by its receipt time:
 #: what Schwab sends again on request (price history), every chain round's answers, and the
 #: daemon's own operational record. Schwab's quotes, books, option quotes, bars, news, market
-#: hours and the watchlist are kept (operator 2026-11-15: "yes stop the delete"; the keep table
-#: in ACTIVE_PROGRAM.md STORE-ENOUGH)
+#: hours and the watchlist are kept (the keep table in ACTIVE_PROGRAM.md STORE-ENOUGH)
 KEPT_BY_TIME = (
     ("stream_pricehistory_raw", "ts_recv"),
     ("rest_chains_raw", "ts_recv"),
@@ -735,7 +734,7 @@ KEPT_BY_TIME = (
 #: rows removed in one transaction, so a live write never waits behind a long delete
 PRUNE_ROWS = 20000
 #: how long after Schwab's regular open, and before its regular close, the order books are kept
-#: (operator 2026-11-15: "Yes, windows + compress"; ACTIVE_PROGRAM.md STORE-ENOUGH)
+#: (the operator's setting, ACTIVE_PROGRAM.md STORE-ENOUGH)
 BOOK_OPEN_WINDOW = timedelta(minutes=30)
 BOOK_CLOSE_WINDOW = timedelta(minutes=30)
 

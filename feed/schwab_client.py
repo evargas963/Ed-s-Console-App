@@ -75,9 +75,7 @@ TOKEN_LOCK_WAIT_SEC = 10
 #: how long the sign-in waits for the browser to return to the local callback (schwab-py's
 #: callback_timeout)
 OAUTH_CALLBACK_TIMEOUT_SEC = 900.0
-#: a chain round's requests sent together, its /chains and its /quotes (the operator's setting,
-#: raised in steps while Schwab's refusals are read from the log: 2026-11-12 "lets go up in step",
-#: two; 2026-11-15 "Yes, 4 at a time")
+#: a chain round's requests sent together, its /chains and its /quotes (the operator's setting)
 REQUESTS_AT_ONCE = 4
 #: the session's connections, as many as the requests sent together, each kept through a pause
 #: (httpx closes an idle one after 5 s): only Schwab or the network ends one, and then the next

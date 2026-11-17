@@ -177,8 +177,11 @@ def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
 
 
 def test_every_option_level_and_ratio_of_the_terrain_is_served():
-    """SPY's and AMZN's terrain: each option level, each on the 0DTE basis, the put/call ratios
-    (two decimals) and the one-day move (its points two decimals, its days whole)."""
+    """SPY's and AMZN's terrain levels, ratios and one-day move are served as text.
+
+    Each option level, each on the 0DTE basis, the put/call ratios (two decimals) and the
+    one-day move (its points two decimals, its days whole).
+    """
     for name in ("spy", "amzn"):
         t = _panels(name)["terrain"]
         for level, _label in OPTION_LEVELS:
@@ -200,8 +203,11 @@ def test_every_option_level_and_ratio_of_the_terrain_is_served():
 
 
 def test_the_charts_bars_and_the_books_prices_are_served_with_two_decimals():
-    """SPY's and AMZN's bars at each timeframe, and each venue's top of book, mark, spread, levels
-    and walls; each depth's imbalance three decimals."""
+    """SPY's and AMZN's bars and book prices are served with two decimals.
+
+    The bars at each timeframe, and each venue's top of book, mark, spread, levels and walls;
+    each depth's imbalance three decimals.
+    """
     for name in ("spy", "amzn"):
         p = _panels(name)
         for tf, bars in p["bars"].items():
@@ -255,8 +261,10 @@ def test_the_strikes_and_their_moves_are_served_as_listed():
 
 
 def test_the_heatmaps_strikes_are_served_as_listed():
-    """SPY's heatmap (2026-10-22): each row's strike to the cent with no trailing zeros, and the
-    window's centre the same."""
+    """SPY's heatmap (2026-10-22) serves each strike as listed.
+
+    Each row's strike to the cent with no trailing zeros, and the window's centre the same.
+    """
     surface = json.loads(
         (FX / "real_spy_gamma_surface_at_a_stopped_price_2026_10_22.json").read_text(
             encoding="utf-8"

@@ -1,7 +1,6 @@
-"""The open-gap record (EXPERIMENTAL): how the overnight gap's direction has matched the first
-five minutes' direction, for one ticker (operator 2026-11-15: "build something experimental and
-continue to monitor it on a daily basis as we gather more data"; the mock-up he approved:
-"approved, build it"; ACTIVE_PROGRAM.md OPEN-5MIN).
+"""The open-gap record (EXPERIMENTAL, ACTIVE_PROGRAM.md OPEN-5MIN).
+
+How the overnight gap's direction has matched the first five minutes' direction, for one ticker.
 
 From two of Schwab's 5-minute /pricehistory answers, as sent: the regular session's bars alone
 (series 5m365r) and the bars with extended hours (5m365). Schwab's regular bars mark each day's
@@ -21,18 +20,16 @@ Registered in docs/derived_register.md. A calculator: no clock, no database.
 
 from __future__ import annotations
 
-import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
+from calc.liquidity_value_engine import wilson_interval
 from calc.micro_structure import Candle
 from time_et import ET, Session
 
-#: the 95% interval's z
-Z95 = 1.959964
 #: the opens the track record shows, newest first
 LAST_OPENS = 10
 
@@ -72,20 +69,11 @@ class OpenGapRecord:
     down: Followed | None
 
 
-def wilson(matched: int, opens: int, z: float = Z95) -> tuple[float, float]:
-    """The Wilson score interval of the share matched / opens (opens > 0)."""
-    p = matched / opens
-    d = 1 + z * z / opens
-    centre = (p + z * z / (2 * opens)) / d
-    half = z * math.sqrt(p * (1 - p) / opens + z * z / (4 * opens * opens)) / d
-    return centre - half, centre + half
-
-
 def _followed(opens: Sequence[Open]) -> Followed | None:
     if not opens:
         return None
     matched = sum(o.called for o in opens)
-    low, high = wilson(matched, len(opens))
+    low, high = wilson_interval(matched, len(opens))
     return Followed(len(opens), matched, low, high)
 
 
@@ -99,7 +87,7 @@ def _by_day(candles: Iterable[SchwabCandle]) -> dict[date, list[SchwabCandle]]:
 def open_gap_record(
     regular: Iterable[SchwabCandle], extended: Iterable[SchwabCandle]
 ) -> OpenGapRecord | None:
-    """The record over Schwab's regular-session and extended-hours 5-minute candles.
+    """Return the record over Schwab's regular-session and extended-hours 5-minute candles.
 
     A candle's datetime is Schwab's epoch milliseconds; its open and close as sent. None when no
     open counts. An open whose gap is 0 or whose first five minutes did not move has no direction

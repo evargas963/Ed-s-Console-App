@@ -305,7 +305,7 @@ def _group_named(body: str) -> bool:
 
 
 def _pr_body(args: list[str]) -> str | None:
-    """The description a `gh pr create` gives (its --body or --body-file); None when none."""
+    """Return the description a `gh pr create` gives (its --body or --body-file); None when none."""
     for flag, value in zip(args, args[1:], strict=False):
         if flag in ("--body", "-b"):
             return value

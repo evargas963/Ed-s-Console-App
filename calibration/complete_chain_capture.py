@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
 # `chain_json` is the chain as the levels took it (each contract's Greeks and quote from the
 # stream or /quotes, the one producer of each); `chains_answer` is Schwab's /chains answer for the
 # expiry, the body exactly as received (json_blob_codec.encode_text_blob), absent in captures
-# written before 2026-11-15.
+# written before the column was added.
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:

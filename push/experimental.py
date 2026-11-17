@@ -19,7 +19,7 @@ from time_et import ET, Session, sessions
 
 
 def _moved_text(fraction: float) -> str:
-    """A gap or a move as the tab shows it: its arrow and its signed percent."""
+    """Return a gap or a move as the tab shows it: its arrow and its signed percent."""
     return f"{'▲' if fraction > 0 else '▼'} {fraction:+.2%}"
 
 
@@ -55,7 +55,7 @@ def _open_served(o: Open) -> dict[str, Any]:
 
 
 def _prior_session(day: str) -> Session | None:
-    """The newest regular session before `day` (YYYY-MM-DD) Schwab's /markets answered."""
+    """Return the newest regular session before `day` (YYYY-MM-DD) Schwab's /markets answered."""
     held = sessions()
     before = [held[d] for d in sorted(held) if d < day and held[d].regular]
     return before[-1] if before else None
@@ -119,7 +119,7 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
 
 
 def experimental(tk: str, now: float) -> dict[str, Any]:
-    """The Trade Desk's Experimental tab for the selected ticker, as the approved mock-up shows it.
+    """Return the Trade Desk's Experimental tab for the selected ticker, as its mock-up shows it.
 
     Today's gap; how gaps in today's direction (up, before any today) were followed, with the
     other direction for reference; today's result once Schwab's open bar has closed; the last 10
@@ -141,7 +141,7 @@ def experimental(tk: str, now: float) -> dict[str, Any]:
 
 
 def _record_served(record: OpenGapRecord, *, down_first: bool) -> dict[str, Any]:
-    """The record as the tab shows it: today's direction first (up before any today)."""
+    """Return the record as the tab shows it: today's direction first (up before any today)."""
     sides = [("down", record.down), ("up", record.up)]
     if not down_first:
         sides.reverse()

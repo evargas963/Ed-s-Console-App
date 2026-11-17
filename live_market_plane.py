@@ -122,7 +122,7 @@ def record_from_level_one_equity(
         return snapshot[name][0] if name in snapshot else None
 
     def number(name: str) -> float | None:
-        """A number field's value (a price, a count, a clock); None when not held."""
+        """Return a number field's value (a price, a count, a clock); None when not held."""
         v = val(name)
         return None if isinstance(v, str) else v
 

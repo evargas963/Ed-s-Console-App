@@ -1147,7 +1147,7 @@ def hold_counts(
 def _closed_sessions(
     bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]
 ) -> dict[date, tuple[tuple[datetime, datetime], list[Bar]]]:
-    """The newest HOLD_WINDOW_SESSIONS sessions closed at `now`: their hours and regular bars."""
+    """Return the newest HOLD_WINDOW_SESSIONS sessions closed at `now`: hours and regular bars."""
     rth_by_day: dict[date, list[Bar]] = {}
     for b in sorted(bars_norm, key=lambda b: b["_dt"]):
         if _in_rth(sessions, b["_dt"]):
@@ -1157,7 +1157,7 @@ def _closed_sessions(
 
 
 def wilson_interval(holds: int, touches: int) -> tuple[float, float]:
-    """The Wilson score 95% interval of holds / touches (Brown, Cai & DasGupta 2001)."""
+    """Return the Wilson score 95% interval of holds / touches (Brown, Cai & DasGupta 2001)."""
     p = holds / touches
     z2 = _WILSON_Z * _WILSON_Z
     centre = (p + z2 / (2 * touches)) / (1 + z2 / touches)

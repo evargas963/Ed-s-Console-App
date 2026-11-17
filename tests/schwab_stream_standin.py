@@ -71,8 +71,9 @@ class _Outbox:
         self.queue: asyncio.Queue = asyncio.Queue()
 
     def send(self, frame: dict | str | None) -> None:
-        """Queue a frame (text: sent as it is); None closes the socket once every frame before it
-        is sent.
+        """Queue a frame (text: sent as it is).
+
+        None closes the socket once every frame before it is sent.
         """
         self.queue.put_nowait((time_et.elapsed() + self.lag, frame))
 

@@ -24,11 +24,14 @@ if TYPE_CHECKING:
 
 
 class Bucket(TypedDict):
-    """One strike's exposure book: each leg's sums, the counts of what was not reported, the
-    net fields (_finish_bucket) and the `dollarized` flag. None is not known: a sum a contract's
+    """One strike's exposure book.
+
+    Each leg's sums, the counts of what was not reported, the net fields (_finish_bucket) and
+    the `dollarized` flag. None is not known: a sum a contract's
     unreported value enters (open interest, volume), or a dollar field or vanna built without
     spot. A gamma, delta or open-interest-times-multiplier sum is always a number (a term not
-    known adds nothing and is counted unreported)."""
+    known adds nothing and is counted unreported).
+    """
 
     oi_unreported: int
     volume_unreported: int

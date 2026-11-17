@@ -79,10 +79,10 @@ class WallCandidate(TypedDict):
 
 @dataclass(frozen=True)
 class Book:
-    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK), read once by State
-    (app.options.order_flow.state.read_book).
+    """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK).
 
-    Holds its service, BOOK_TIME, and each side's levels in the order Schwab sent them.
+    Read once by State (app.options.order_flow.state.read_book). Holds its service, BOOK_TIME,
+    and each side's levels in the order Schwab sent them.
     """
 
     service: str
@@ -914,7 +914,7 @@ def _compute_tape_pressure(data: dict[str, Any], window_sec: float, now: float) 
 
 
 def _compute_unsigned(data: dict[str, Any], window_sec: float | None, now: float) -> float | None:
-    """The unsigned share of the size of a window (every print when None): l1_trade_observation."""
+    """Return a window's unsigned share of size (every print when None): l1_trade_observation."""
     cutoff = None if window_sec is None else now * 1000.0 - int(window_sec * 1000)
     return unsigned_share(canonical_tape_prints(data["content"]), cutoff)
 
