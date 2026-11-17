@@ -16,3 +16,11 @@ regex = '''(?:^|[^\w<])/(?:home|Users)/[A-Za-z0-9_.-]+[\\/]'''
 id = "git-bash-user-home"
 description = "An operator-home path (Git Bash)"
 regex = '''(?i)(?:^|[^\w<])/[a-z]/users/[a-z0-9_.-]+[\\/]'''
+
+[[allowlists]]
+description = "Python's compiled files and the scanner itself, which git does not track"
+paths = ['''__pycache__''', '''^gitleaks(\.tar\.gz)?$''']
+
+[[allowlists]]
+description = "RFC 6455 section 1.3's sample WebSocket key, which a test sends"
+regexes = ['''dGhlIHNhbXBsZSBub25jZQ==''']
