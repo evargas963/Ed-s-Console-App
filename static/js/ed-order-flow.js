@@ -69,8 +69,7 @@
       if (l.volume > maxVol) maxVol = l.volume;
     });
     function row(l, side) {
-      var s = window.EdDraw.strength(l.volume, maxVol),
-        w = s == null ? 0 : s * 100;
+      var w = window.EdDraw.barWidth(l.volume, maxVol);
       var isWall = wallSet[side + "@" + l.price];
       return (
         '<div class="dom-row ' +
