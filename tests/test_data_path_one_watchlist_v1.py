@@ -628,11 +628,18 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
 
     The daemon streams it whatever the watchlist holds.
     """
-    html = server._with_page_settings(server._MARKET_CONTEXT_META)
+    page = Path(server.__file__).parent / "static" / "index.html"
+    html = server._with_page_settings(page.read_text(encoding="utf-8"))
     assert (
         '[{"key": "$SPX", "display": "SPX"}, {"key": "$NDX", "display": "NDX"}, '
         '{"key": "$VIX", "display": "VIX"}]' in html.replace("&quot;", '"')
     )
+
+
+def test_a_page_without_a_settings_meta_is_refused_not_served_empty():
+    """A layout change that loses a setting's empty meta fails at once, not as a blank page."""
+    with pytest.raises(ValueError, match="ed-market-context"):
+        server._with_page_settings('<meta name="ed-market-context" content="">')
 
 
 def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
