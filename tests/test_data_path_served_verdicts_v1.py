@@ -24,6 +24,7 @@ import live_price_rows
 import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
+from push import contract as push_contract
 from push import terrain as push_terrain
 from state import level_store
 from tests.capture_store import store_capture
@@ -269,7 +270,7 @@ def test_the_flow_panel_judges_a_contract_by_the_option_market_of_the_chain_that
     """A contract of TSLA's or SPY's published chain is served by its ticker's option market.
 
     The contract is held on LEVELONE_OPTIONS and OPTIONS_BOOK, the feed up: the route
-    (server.options_microstructure) finds its ticker by the chain that lists it and serves it
+    (push.contract.options_microstructure) finds its ticker by the chain that lists it and serves it
     live by that ticker's own option market.
     """
     chain = {"TSLA": TSLA, "SPY": SPY_0DTE}[tk]
@@ -282,7 +283,7 @@ def test_the_flow_panel_judges_a_contract_by_the_option_market_of_the_chain_that
             held={"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": [sym]},
         )
     )
-    body = server.options_microstructure(sym, at.timestamp())
+    body = push_contract.options_microstructure(sym, at.timestamp())
     assert (body["top_feed_label"], body["top_outage"]) == (state, why)
     assert body["streaming_plane"]["feed_health"]["l1"]["state"] == state
 

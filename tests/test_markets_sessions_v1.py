@@ -28,6 +28,7 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import markets_message
+from push import verdict as push_verdict
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status, mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
@@ -278,7 +279,7 @@ def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
         lmp.record_feed_heartbeat(
             daemon_status(now, schwab_socket_open=True, chain_round_sec=137.0)
         )
-        v = server.terrain_staleness(chain, "SPY", now=now, levels_ts_utc=chain)
+        v = push_verdict.terrain_staleness(chain, "SPY", now=now, levels_ts_utc=chain)
         return v["levels_state"], v["levels_stale_reason"], v["levels_age_text"]
 
     assert verdict("09:24", before_break) == ("LIVE", "", "60s")

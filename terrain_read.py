@@ -67,7 +67,7 @@ def from_spot_text(distance: float | None, side: str | None) -> str | None:
     The side is level_side's, as the screen words it: "at spot", "1.30 above spot", "1.30 below
     spot". None when unknown.
     """
-    if side is None:
+    if side is None or distance is None:
         return None
     if side == LEVEL_AT:
         return "at spot"

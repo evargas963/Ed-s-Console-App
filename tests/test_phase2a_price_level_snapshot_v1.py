@@ -20,6 +20,7 @@ from liquidity_value_engine import (
 )
 from micro_structure import Candle
 from push import levels as push_levels
+from push import liquidity as push_liquidity
 from server import _schwab_bar
 from state import bar_store, price_level_store
 from state.price_level_store import materialize_price_level_snapshot
@@ -263,7 +264,7 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
         levels = {
             lv["id"]: lv["price"] for lv in push_levels.levels_payload("ZZP2B", "1", noon)["levels"]
         }
-        liq = srv.liquidity_snapshot("ZZP2B", noon)
+        liq = push_liquidity.liquidity_snapshot("ZZP2B", noon)
     finally:
         bar_store._bars.pop("ZZP2B", None)
         bar_store._series.pop(("ZZP2B", "1d"), None)
