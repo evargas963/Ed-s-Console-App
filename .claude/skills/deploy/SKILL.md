@@ -3,6 +3,8 @@ name: deploy
 description: Use to start, stop, restart or deploy the production capture daemon and console (the EdWebConsole checkout). Runs each step and shows its output; a merged PR is deployed only after these steps.
 ---
 
+# Deploy
+
 Production is the `EdWebConsole` checkout: `start_ed_console.bat` runs `launch.py`, which brings the
 checkout to `origin/main` and starts Ed Console, one program, in its own window: the capture daemon,
 which serves the console's pages on port 8000 itself. Python 3.13, the project `.venv`; live

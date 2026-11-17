@@ -585,8 +585,7 @@
     });
     var rows = ladder
       .map(function (r) {
-        var k = r.strike,
-          rep = r.call || r.put; // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
+        var rep = r.call || r.put; // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
         var lastDay = d.last_trading_day_et[rep.symbol]; // served: its date in ET
         var flags = [
           _flag("NON-STD", rep.nonStandard === true),
