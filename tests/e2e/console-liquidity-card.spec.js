@@ -63,6 +63,8 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       ]) {
         await openDesk(page, body);
         await expect(card(page).locator(".liq-body > *").first()).toBeVisible();
+        // the served readout drawn, not the card's "Loading…" before it arrives
+        await expect(card(page).locator(".liq-body")).not.toContainText("Loading…");
         const cut = await page.evaluate((whole) => {
           const out = [];
           const root = document.getElementById("tdmRoot");
