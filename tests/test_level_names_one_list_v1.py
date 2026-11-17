@@ -83,7 +83,8 @@ def test_the_key_levels_card_names_each_row_by_the_level_it_prints():
     rows = dict(
         (cell, name)
         for name, cell in re.findall(
-            r'<span class="k">([^<]+)</span><span class="v" id="(kl\w+)">', pages["index.html"]
+            r'<span class="k">([^<]+)</span\s*>\s*<span class="v" id="(kl\w+)">',
+            pages["index.html"],
         )
     )
     card = {printed[cell]: rows[cell] for cell in printed if printed[cell] in NAMES}
