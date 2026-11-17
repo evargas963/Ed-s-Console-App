@@ -1,4 +1,10 @@
-"""Each trade is signed by Lee and Ready against the bid and ask Schwab sent with it.
+"""Each trade is a print, signed by Lee and Ready against the bid and ask Schwab sent with it.
+
+Schwab's LEVELONE stream sends only the fields that changed (Streamer API §1.5, Change), so a trade
+at the last trade's price arrives with a new TRADE_TIME_MILLIS and LAST_SIZE and no LAST_PRICE. The
+daemon's bus merges each message into the symbol's current record (stream_spine.MessageBus), and
+the console takes that record (streaming._ingest_pushed); the tape (state.push_level_one) keeps
+each new (time, price, size) as a print, stamped with the receive time of the message that made it.
 
 Schwab sends no buyer or seller side (docs/schwab/schwab_support_emails_2026_10_12.txt). The tape
 signs each print by Lee and Ready (1991): above the midpoint of the bid and ask its record holds,
@@ -7,9 +13,10 @@ with no bid and ask, or at the midpoint before any price change, is unsigned, an
 size is served beside each value.
 
 Real data: SPY's LEVELONE_EQUITIES messages of 2026-11-13 10:00:00-10:02:00 ET as the daemon
-recorded them (tests/fixtures/real_spy_levelone_2026_11_13_1000et.json), through the daemon's bus
-and the console's intake (streaming._ingest_pushed) as production takes them. The expected signs
-are worked out here by merging the messages' fields in order.
+recorded them (tests/fixtures/real_spy_levelone_2026_11_13_1000et.json), 113 messages, 4 of them
+trades at an unchanged price, through the daemon's bus and the console's intake
+(streaming._ingest_pushed) as production takes them. The expected prints and signs are worked out
+here by merging the messages' fields in order.
 """
 
 from __future__ import annotations
@@ -61,6 +68,21 @@ def _expected() -> list[tuple[float, float | None]]:
     return out
 
 
+def _expected_prints() -> list[tuple[float, float, float | None, int]]:
+    """(receive time, price, size, trade time) of each new print, merging fields as sent."""
+    held: dict[str, object] = {}
+    out, last = [], None
+    for m in _MSGS:
+        held.update({f: m["item"][f] for f in _FIELDS if f in m["item"]})
+        if "LAST_PRICE" not in held:
+            continue
+        triple = (held["TRADE_TIME_MILLIS"], held["LAST_PRICE"], held.get("LAST_SIZE"))
+        if triple != last:
+            out.append((m["ts_recv"], triple[1], triple[2], triple[0]))
+            last = triple
+    return out
+
+
 def _tape() -> list:
     """SPY's captured messages through the bus and the console's intake: the tape it keeps."""
     state.clear_all_live_state()
@@ -77,6 +99,21 @@ def _tape() -> list:
         return state.get_content_for_symbol("SPY")
     finally:
         state.clear_all_live_state()
+
+
+def test_every_trade_is_a_print_received_when_its_message_was():
+    prints = l1.canonical_tape_prints(_tape())
+    want = _expected_prints()
+    got = [(p["server_received_ts"], p["price"], p["size"], p["time_millis"]) for p in prints]
+    assert got == want[-state.MAX_TAPE_PRINTS :]
+    unchanged = [
+        m["ts_recv"]
+        for m in _MSGS
+        if "TRADE_TIME_MILLIS" in m["item"] and "LAST_PRICE" not in m["item"]
+    ]
+    assert len(unchanged) == 4
+    # each trade at an unchanged price is a print, stamped with its own message's receive time
+    assert set(unchanged) <= {ts for ts, _p, _s, _t in got}
 
 
 def test_each_print_is_signed_against_the_quote_its_record_held():
