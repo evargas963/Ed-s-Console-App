@@ -39,19 +39,9 @@ def _expiry_order(item: tuple[str, float | None]) -> tuple[int, float, str]:
     return (1, 0.0, item[0])
 
 
-def _confluence_expiries(
-    books: dict[ExpiryKey, Book], expiry_dte: dict[str, float | None]
-) -> list[dict[str, Any]]:
-    found: dict[str, float | None] = {}
-    for key in books:
-        if not key[0]:
-            continue
-        exp = str(key[0])[:10]
-        dte = expiry_dte.get(exp)
-        if dte is None:
-            dte = key[1]
-        if exp not in found or (found[exp] is None and dte is not None):
-            found[exp] = dte
+def _confluence_expiries(books: dict[ExpiryKey, Book]) -> list[dict[str, Any]]:
+    """Each expiry of the chain with Schwab's daysToExpiration, the key of its book."""
+    found = {str(exp)[:10]: dte for exp, dte in books if exp}
     listed: list[dict[str, Any]] = []
     for exp, dte in sorted(found.items(), key=_expiry_order):
         label = exp
@@ -104,18 +94,15 @@ def _confluence_markers(
     if snap is not None:
         for value in snap.levels.values():
             row = value.to_contract_dict()
-            price = row.get("price")
-            if price is not None:
-                short = row.get("short")
-                markers.append(
-                    {
-                        "label": row["label"],
-                        "short": short if isinstance(short, str) and short else row["label"],
-                        "title": row["label"],
-                        "lane": "session",
-                        "price": price,
-                    }
-                )
+            markers.append(
+                {
+                    "label": row["label"],
+                    "short": row["short"],
+                    "title": row["label"],
+                    "lane": "session",
+                    "price": row["price"],
+                }
+            )
     served = live.to_dict()
     for gid, label in OPTION_LEVELS:
         price = served[gid]
@@ -270,7 +257,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
         return unavailable(tk, "no priced chain is held for this ticker", **_rail([], []))
     live, priced_at = published.snap, published.snap.spot
     today = now.strftime("%Y-%m-%d")
-    listed = [e for e in _confluence_expiries(live.books, live.expiry_dte) if e["expiry"] >= today]
+    listed = [e for e in _confluence_expiries(live.books) if e["expiry"] >= today]
     if not listed:
         return unavailable(tk, "no expiry on this chain is still open", **_rail([], []))
     chosen = expiry
