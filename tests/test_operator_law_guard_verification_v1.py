@@ -58,7 +58,7 @@ def test_git_push_dry_run_not_lock_disable():
         "git commit -n -m x",
         "git push --no-verify",
         "SKIP=ruff-correctness git commit -m x",
-        "$env:SKIP='eol-style-invariant'; git commit -m x",
+        "$env:SKIP='secrets-and-paths'; git commit -m x",
         "pre-commit uninstall",
         "git -c core.hooksPath=/dev/null commit -m x",
     ):

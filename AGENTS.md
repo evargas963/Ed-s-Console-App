@@ -199,9 +199,8 @@ then the rule binds with no machine check.
   and a new one refused (in force); `tools/check_credential_leak.py`, every tracked file, no path or
   line skipped (`tests/test_credential_leak_v1.py`, in force); the production-checkout rail, every
   file of that checkout (`tools/process_lock_guard.py`, `tests/test_hook_chain_v1.py`, in force).
-  `check_eol_style_invariant` and `check_integrity` judge a change itself (a file's line endings
-  kept, a test's assertions kept), not what files
-  hold, and read every file of any kind a change touches. Each tool SHAPE adds (import-linter,
+  `check_integrity` judges a change itself (a test's assertions kept), not what files hold, and
+  reads every file of any kind a change touches. Each tool SHAPE adds (import-linter,
   ESLint, pyright) runs over the whole repository the same way (steps 1d to 6). The operator's
   decisions of 2026-11-04 on what that rule found:
   - Tests stay independent ("test should remain independent"): a test runs real captured Schwab
@@ -275,8 +274,7 @@ then the rule binds with no machine check.
   it (operator 2026-11-05: "we can wire the way it needs to be and then create the tests").
   Enforced by: the builder's audit (rule 14), no machine check.
 - Edit source by hand, one edit at a time, never through a script; the exceptions are ENF-14's (a
-  standard tool's own fix, `ruff format` and ruff's safe fixes; `unix2dos`/`dos2unix` for line
-  endings). Enforced by: `tools/operator_law_guard.py` for
+  standard tool's own fix, `ruff format` and ruff's safe fixes). Enforced by: `tools/operator_law_guard.py` for
   sed (`tests/test_sed_edit_guard_v1.py`); the other in-place editors — ENF-14.
 
 ## Before saying done
@@ -397,8 +395,9 @@ then the rule binds with no machine check.
   `tests/test_operator_law_guard_action_bans_v1.py`, `tests/test_protected_paths_v1.py` and
   `tests/test_guards_read_statements_v1.py` check; the forms ENF-13 lists as known open, a script
   file's contents among them — no machine check, ENF-13.
-- A file keeps its line endings. Enforced by: `tools/check_eol_style_invariant.py` at commit and in
-  `hardening` (`tests/test_eol_style_invariant_v1.py`).
+- Every text file is stored with LF line endings, a batch file is checked out with CRLF, and
+  captured Schwab data (`tests/fixtures/`) is kept byte for byte. Enforced by: git itself, as it
+  saves each file (`.gitattributes`).
 - No credential or operator-home path is committed. Enforced by: `tools/check_credential_leak.py`
   at commit and in `hardening` (`tests/test_credential_leak_v1.py`).
 - Shell steps that depend on each other are joined with `&&`. Enforced by: no machine check — ENF-12.
