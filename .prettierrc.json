@@ -1,1 +1,1 @@
-{ "printWidth": 100, "endOfLine": "auto" }
+{ "printWidth": 100, "proseWrap": "always", "endOfLine": "auto" }

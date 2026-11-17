@@ -1,27 +1,28 @@
 ---
 name: deploy
-description: Use to start, stop, restart or deploy the production capture daemon and console (the EdWebConsole checkout). Runs each step and shows its output; a merged PR is deployed only after these steps.
+description:
+  Use to start, stop, restart or deploy the production capture daemon and console (the EdWebConsole
+  checkout). Runs each step and shows its output; a merged PR is deployed only after these steps.
 ---
 
 # Deploy
 
 Production is the `EdWebConsole` checkout: `start_ed_console.bat` runs `launch.py`, which brings the
 checkout to `origin/main` and starts Ed Console, one program, in its own window: the capture daemon,
-which serves the console's pages on port 8000 itself. Python 3.13, the project `.venv`; live
-needs `schwab_token.json` (`python reauth_schwab.py`). Probe
-`127.0.0.1`, never `localhost` (Windows tries IPv6 first, about 2 s per probe). `ed.db` is
-delete-protected: `evarg:(DENY)(DE)` on it, `(DENY)(DC)` on its folder (a folder's
-Full control overrides the file's deny); the agent never lifts it
-(`tools/operator_law_guard.py` refuses it
-on a file; on `data/` itself, ENF-13). To move one aside, both stopped, Ed runs
-`icacls <file> /remove:d evarg`, moves it with its `-wal` and `-shm`, then `icacls <file> /deny "evarg:(DE)"`
-on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)"`.
+which serves the console's pages on port 8000 itself. Python 3.13, the project `.venv`; live needs
+`schwab_token.json` (`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost` (Windows tries
+IPv6 first, about 2 s per probe). `ed.db` is delete-protected: `evarg:(DENY)(DE)` on it,
+`(DENY)(DC)` on its folder (a folder's Full control overrides the file's deny); the agent never
+lifts it (`tools/operator_law_guard.py` refuses it on a file; on `data/` itself, ENF-13). To move
+one aside, both stopped, Ed runs `icacls <file> /remove:d evarg`, moves it with its `-wal` and
+`-shm`, then `icacls <file> /deny "evarg:(DE)"` on the moved file and its replacement and
+`icacls <new folder> /deny "evarg:(DC)"`.
 
-1. Post a notice in chat that production restarts now; no yes is needed at any hour (CLAUDE.md
-   item 5, operator 2026-11-03).
+1. Post a notice in chat that production restarts now; no yes is needed at any hour (CLAUDE.md item
+   5, operator 2026-11-03).
 2. Before: `git -C <production> log --oneline -1` and
-   `git -C <production> fetch -q && git -C <production> log --oneline -1 origin/main` — what
-   will deploy.
+   `git -C <production> fetch -q && git -C <production> log --oneline -1 origin/main` — what will
+   deploy.
 3. Stop it: `.venv/Scripts/python.exe launch.py stop` in the production checkout; show its output.
 4. Start it from outside this session, so an app restart cannot end it:
    `explorer.exe start_ed_console.bat` in the production checkout.
@@ -29,7 +30,8 @@ on the moved file and its replacement and `icacls <new folder> /deny "evarg:(DC)
    `capture_main` in the command line: the venv's launcher and its interpreter child), the ports it
    holds (`program_lock.program_ports()`), `curl -s http://127.0.0.1:8000/api/health` (its
    `capabilities` say `"schwab":"AVAILABLE"`), and `curl -s http://127.0.0.1:8000/api/build`: its
-   `running_commit`, the code the running program loaded, equals `git -C <production> rev-parse
-origin/main`, and its `checkout_commit` equals it too (`differ` is false). Show each output.
-6. Deployed means step 5 passed and the screen was checked during market hours. Until then report the
-   change as on disk, not deployed.
+   `running_commit`, the code the running program loaded, equals
+   `git -C <production> rev-parse origin/main`, and its `checkout_commit` equals it too (`differ` is
+   false). Show each output.
+6. Deployed means step 5 passed and the screen was checked during market hours. Until then report
+   the change as on disk, not deployed.
