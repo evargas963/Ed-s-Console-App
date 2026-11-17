@@ -11,6 +11,10 @@ paths and are not checked.
 import re
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.rail
+
 ROOT = Path(__file__).resolve().parent.parent
 #: the agents' rules for one area, the skills and the reviewers (loaded on demand)
 AGENT_FILES = tuple(

@@ -12,6 +12,8 @@ import pytest
 
 from tools import operator_law_guard as G
 
+pytestmark = pytest.mark.rail
+
 REPO = Path(__file__).resolve().parent.parent
 
 #: The protected tree and the backups folder, as the commands below name them.

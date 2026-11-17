@@ -12,7 +12,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tests.playwright_ready import ensure_playwright_ready
+
+pytestmark = pytest.mark.rail
 
 
 def test_ensure_playwright_ready_passes_when_configured():

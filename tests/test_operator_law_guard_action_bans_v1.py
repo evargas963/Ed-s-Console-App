@@ -15,6 +15,8 @@ import pytest
 
 from tools.operator_law_guard import bash_violations
 
+pytestmark = pytest.mark.rail
+
 LOCK = "disables a mechanical lock"
 
 

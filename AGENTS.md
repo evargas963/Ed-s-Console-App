@@ -1,5 +1,10 @@
 # Ed Console — rules for every change
 
+**The goal (operator 2026-11-17: "i want a simple, dependable, accurate app and everything we do
+serves that goal"; "all our tests need to serve the CEO").** Schwab's data on Ed's screen, live,
+through one correct producer, with every record kept. Every file, test, check and tool serves that
+goal or is deleted. Enforced by: the test hierarchy in `.claude/rules/tests.md`.
+
 **The order of every decision (operator 2026-11-16: "best practices always this is an order. this
 is the number one order, two is simple coding"; the rest "perfect i agree with those orders and
 the order in which they are listed").** When two pull against each other, the higher wins:

@@ -6,6 +6,8 @@ import pytest
 
 from tools.check_credential_leak import DiffUnreadable, find_credential_leaks, tree_leaks
 
+pytestmark = pytest.mark.rail
+
 #: the payloads are put together when the test runs: the scanner reads this file too, with no path
 #: or line skipped, so no secret-shaped text is written in it
 BEARER = "Bear" + "er"

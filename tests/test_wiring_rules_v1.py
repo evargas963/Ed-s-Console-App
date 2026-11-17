@@ -11,6 +11,10 @@ import sys
 import uuid
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.rail
+
 REPO = Path(__file__).resolve().parent.parent
 
 

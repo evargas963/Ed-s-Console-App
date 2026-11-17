@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.rail
+
 ROOT = Path(__file__).resolve().parent.parent
 _ENV = {**os.environ, "PYTHONIOENCODING": "utf-8"}
 

@@ -1,6 +1,10 @@
 """Seam: bootstrap creates a worktree-local .venv (venv-only, no pip)."""
 
+import pytest
+
 from tools.bootstrap_worktree_venv import ensure_venv, venv_python
+
+pytestmark = pytest.mark.rail
 
 
 def test_ensure_venv_creates_interpreter(tmp_path):

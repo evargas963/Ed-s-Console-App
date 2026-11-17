@@ -11,7 +11,11 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tools import check_one_reader as cor
+
+pytestmark = pytest.mark.rail
 
 FIELDS = (Path(__file__).resolve().parent.parent / "docs" / "schwab_fields.csv").read_text(
     encoding="utf-8"

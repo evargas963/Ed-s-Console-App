@@ -18,7 +18,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tools.hook_chain import _argv_members, run_chain
+
+pytestmark = pytest.mark.rail
 
 ROOT = Path(__file__).resolve().parent.parent
 
