@@ -356,19 +356,17 @@
     params.expiry = window.EdShell.getExpiry(); // null, none selected: every column
     window.EdShell.showPanel("surface", params);
   }
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:panel", function (e) {
-      var host = document.getElementById("heatBody");
-      if (e.detail.type !== "surface" || !host || !heatOn()) return;
-      try {
-        renderSurface(host, e.detail);
-      } catch (err) {
-        // said, then reported
-        window.EdShell.placeholder(host, "the page could not draw the surface the program sent");
-        throw err;
-      }
-    });
-  }
+  document.addEventListener("ed:panel", function (e) {
+    var host = document.getElementById("heatBody");
+    if (e.detail.type !== "surface" || !host || !heatOn()) return;
+    try {
+      renderSurface(host, e.detail);
+    } catch (err) {
+      // said, then reported
+      window.EdShell.placeholder(host, "the page could not draw the surface the program sent");
+      throw err;
+    }
+  });
   function rerender() {
     // a presentation change on the window on screen: no read needed
     var h = document.getElementById("heatBody");
@@ -377,16 +375,14 @@
     if (_lastSurface) renderSurface(h, _lastSurface);
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:ticker", load);
-    document.addEventListener("ed:view", load);
-    document.addEventListener("ed:strike", function () {
-      applyStrikeHighlight();
-    });
-    document.addEventListener("ed:theme", rerender);
-    document.addEventListener("ed:measure", rerender);
-    document.addEventListener("ed:expiry", load); // a new window: the server picks it
-    document.addEventListener("ed:scope", load);
-    document.addEventListener("ed:resize", load); // the columns it fits change with the width
-  }
+  document.addEventListener("ed:ticker", load);
+  document.addEventListener("ed:view", load);
+  document.addEventListener("ed:strike", function () {
+    applyStrikeHighlight();
+  });
+  document.addEventListener("ed:theme", rerender);
+  document.addEventListener("ed:measure", rerender);
+  document.addEventListener("ed:expiry", load); // a new window: the server picks it
+  document.addEventListener("ed:scope", load);
+  document.addEventListener("ed:resize", load); // the columns it fits change with the width
 })();

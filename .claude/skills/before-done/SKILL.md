@@ -23,7 +23,7 @@ report what was tried, and take a different approach (CLAUDE.md item 6).
    by `gh pr checks <pr>` on the final commit (operator 2026-10-30: "Yes, CI proves it"). The suites
    run here only while a test is written or a failure is chased: `npm run test:all`, one at a time.
 4. `.venv/Scripts/python.exe -m tools.check_one_reader --base origin/main` — exit 0; then
-   `.venv/Scripts/python.exe -m tools.check_credential_leak --base origin/main` — exit 0.
+   `gitleaks git . --config .gitleaks.toml --redact --log-opts="origin/main..HEAD"` — exit 0.
 5. `.venv/Scripts/python.exe -m tools.check_end_to_end --base origin/main` — exit 0; then
    `.venv/Scripts/python.exe tools/check_locks.py --base origin/main` — exit 0; `locks` also runs
    both of them and `tools/check_integrity.py` from the base.

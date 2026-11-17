@@ -5,6 +5,7 @@ pytest-xdist>=3.6.0
 pytest-cov==6.2.1
 coverage==7.10.6
 ruff==0.17.3
+pip-audit==2.10.1
 pyright==1.1.414
 import-linter==2.15
 grimp==3.18

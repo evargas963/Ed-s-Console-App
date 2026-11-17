@@ -5,8 +5,8 @@ repos:
   - repo: local
     hooks:
       - id: secrets-and-paths
-        name: secrets and operator-home paths
-        entry: python -m tools.check_credential_leak
+        name: secrets and operator-home paths (gitleaks, on what the commit adds)
+        entry: gitleaks git --pre-commit --staged --config .gitleaks.toml --redact --no-banner -v .
         language: system
         pass_filenames: false
         always_run: true

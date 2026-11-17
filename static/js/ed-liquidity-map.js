@@ -178,17 +178,15 @@
     );
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:view", load);
-    document.addEventListener("ed:ticker", load);
-    document.addEventListener("ed:panel", function (e) {
-      var key = PANELS[e.detail.type],
-        h = host();
-      if (!key) return;
-      _panels[key] = e.detail;
-      if (h && isMap()) render(h, ticker());
-    });
-  }
+  document.addEventListener("ed:view", load);
+  document.addEventListener("ed:ticker", load);
+  document.addEventListener("ed:panel", function (e) {
+    var key = PANELS[e.detail.type],
+      h = host();
+    if (!key) return;
+    _panels[key] = e.detail;
+    if (h && isMap()) render(h, ticker());
+  });
   // read-only view for tests (e2e) -- never a control surface
   window.EdLiquidityMap = {
     state: function () {

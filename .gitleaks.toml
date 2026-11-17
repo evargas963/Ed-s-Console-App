@@ -1,0 +1,46 @@
+# gitleaks: its own rules for secrets, and the operator's home folder in any spelling.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "windows-user-home"
+description = "An operator-home path (Windows)"
+regex = '''(?i)[a-z]:[\\/]+users[\\/]+[a-z0-9_.-]+'''
+
+[[rules]]
+id = "posix-user-home"
+description = "An operator-home path (posix)"
+regex = '''(?:^|[^\w<])/(?:home|Users)/[A-Za-z0-9_.-]+[\\/]'''
+
+[[rules]]
+id = "git-bash-user-home"
+description = "An operator-home path (Git Bash)"
+regex = '''(?i)(?:^|[^\w<])/[a-z]/users/[a-z0-9_.-]+[\\/]'''
+
+[[rules]]
+id = "bearer-token"
+description = "A bearer token of 16 or more characters, whatever its entropy"
+regex = '''(?i)\bbearer\s+[A-Za-z0-9\-._~+/]{16,}=*'''
+
+[[rules]]
+id = "aws-access-key-id"
+description = "An AWS access key id"
+regex = '''\bAKIA[0-9A-Z]{16}\b'''
+
+[[rules]]
+id = "private-key-header"
+description = "A private key's first line, with or without its body"
+regex = '''-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'''
+
+[[rules]]
+id = "key-or-secret-assigned"
+description = "A key, secret or token assigned a quoted value of 12 or more characters"
+regex = '''(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret)\b\s*[:=]\s*['"][^'"]{12,}['"]'''
+
+[[allowlists]]
+description = "Python's compiled files and the scanner itself, which git does not track"
+paths = ['''__pycache__''', '''^gitleaks(\.tar\.gz)?$''']
+
+[[allowlists]]
+description = "RFC 6455 section 1.3's sample WebSocket key, which a test sends"
+regexes = ['''dGhlIHNhbXBsZSBub25jZQ==''']

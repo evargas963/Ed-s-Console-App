@@ -279,18 +279,16 @@
     return h + "</div>";
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:view", load); // fires on subview change too
-    document.addEventListener("ed:contract", load); // an explicit Chain selection
-    // a ticker or expiry change clears the selection; a fresh Chain click observes again
-    // a page that selected nothing releases nothing (another tab's selection stands)
-    function clearSelected() {
-      if (_selected) setSelected(null);
-      else load();
-    }
-    document.addEventListener("ed:ticker", clearSelected);
-    document.addEventListener("ed:expiry", clearSelected);
-    // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
-    // (that file's init() comment)
+  document.addEventListener("ed:view", load); // fires on subview change too
+  document.addEventListener("ed:contract", load); // an explicit Chain selection
+  // a ticker or expiry change clears the selection; a fresh Chain click observes again
+  // a page that selected nothing releases nothing (another tab's selection stands)
+  function clearSelected() {
+    if (_selected) setSelected(null);
+    else load();
   }
+  document.addEventListener("ed:ticker", clearSelected);
+  document.addEventListener("ed:expiry", clearSelected);
+  // initial hydration comes only from ed-core.js's deferred ed:ticker/ed:view dispatch
+  // (that file's init() comment)
 })();
