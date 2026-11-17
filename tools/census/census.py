@@ -803,6 +803,7 @@ IMPORT_NAME = {
 CLI = {
     "import-linter": "lint-imports",
     "pytest-xdist": " -n ",
+    "pytest-cov": "--cov",
     "ruff": "ruff",
     "pytest": "pytest",
     "uvicorn": "uvicorn",
