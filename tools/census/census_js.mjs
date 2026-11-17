@@ -26,6 +26,8 @@ function isString(n) {
   if (n.type === "TemplateLiteral") return true;
   if (n.type === "BinaryExpression" && n.operator === "+")
     return isString(n.left) || isString(n.right);
+  // a choice between texts is text: `cond ? " · " + shown : ""`
+  if (n.type === "ConditionalExpression") return isString(n.consequent) || isString(n.alternate);
   if (
     n.type === "CallExpression" &&
     n.callee.type === "MemberExpression" &&
