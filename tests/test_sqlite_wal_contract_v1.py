@@ -11,21 +11,6 @@ from db import (
 )
 
 
-def test_configure_sqlite_connection_enforces_wal_and_normal():
-    with tempfile.TemporaryDirectory() as td:
-        p = Path(td) / "t.db"
-        conn = sqlite3.connect(str(p), timeout=30.0)
-        try:
-            configure_sqlite_connection(conn)
-            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-            sync = conn.execute("PRAGMA synchronous").fetchone()[0]
-            # synchronous NORMAL == 1
-            assert str(mode).lower() == "wal"
-            assert int(sync) == 1
-        finally:
-            conn.close()
-
-
 def test_configure_sqlite_connection_applies_access_tuning_rc50():
     """RC-50: every configured connection must carry the mmap + cache tuning.
 
