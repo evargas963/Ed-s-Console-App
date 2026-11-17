@@ -214,9 +214,7 @@
     window.EdFlow.select(symbol);
   }
 
-  if (typeof document !== "undefined") {
-    document.addEventListener("ed:view", load); // fires on subview change too
-    document.addEventListener("ed:ticker", load);
-    document.addEventListener("ed:expiry", load);
-  }
+  document.addEventListener("ed:view", load); // fires on subview change too
+  document.addEventListener("ed:ticker", load);
+  document.addEventListener("ed:expiry", load);
 })();

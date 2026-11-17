@@ -541,20 +541,18 @@
   // ctrl/cmd+wheel over `wheelEl` steps the scope (Auto -> Wider -> All). `reload` re-reads the
   // panel with the pan state as it now is.
   var _axisDrag = null;
-  if (typeof document !== "undefined") {
-    document.addEventListener("mousemove", function (e) {
-      var d = _axisDrag;
-      if (!d) return;
-      var rows = window.EdDraw.rowsMoved(e.clientY - d.startY, d.rowPx);
-      if (rows === d.pan.shift && d.pan.centre === d.base) return;
-      d.pan.centre = d.base;
-      d.pan.shift = rows;
-      d.reload();
-    });
-    document.addEventListener("mouseup", function () {
-      _axisDrag = null;
-    });
-  }
+  document.addEventListener("mousemove", function (e) {
+    var d = _axisDrag;
+    if (!d) return;
+    var rows = window.EdDraw.rowsMoved(e.clientY - d.startY, d.rowPx);
+    if (rows === d.pan.shift && d.pan.centre === d.base) return;
+    d.pan.centre = d.base;
+    d.pan.shift = rows;
+    d.reload();
+  });
+  document.addEventListener("mouseup", function () {
+    _axisDrag = null;
+  });
   // A read's view arrived: its centre is the window on screen (the next drag starts from it). The
   // pan the operator asked for (`centre`, `shift`) is kept as asked, so a read still held behind a
   // drag asks for where the drag ended.
@@ -1149,7 +1147,6 @@
     el.className = w ? "v " + w.cls : "v";
   }
   function openPriceSocket() {
-    if (typeof WebSocket === "undefined") return;
     var ws;
     try {
       ws = new WebSocket(priceSocketUrl());
