@@ -9,7 +9,7 @@
  */
 const { test, expect } = require("@playwright/test");
 const { routeWatchlist } = require("./fixtures/watchlist");
-const { mockPriceSocket } = require("./fixtures/price_socket");
+const { mockPriceSocket, priceRow } = require("./fixtures/price_socket");
 const { watchRequests } = require("./fixtures/settled");
 
 // the strikes panel per scope, the levels and the heatmap as the server sends them on CRWD's real
@@ -153,12 +153,15 @@ test.describe("the Gamma presentation scope", () => {
     // a slow answer: a panned window's panel is sent 400 ms after it is asked, for the window
     // the page then shows
     let late = false;
+    let unsent = 0; // slow answers asked and not yet sent
     panels.strikes = (key, params) => {
       if (params.centre == null || late) return strikesFor(params.scope);
+      unsent += 1;
       setTimeout(() => {
         late = true;
         sock.changed("strikes");
         late = false;
+        unsent -= 1;
       }, 400);
       return undefined;
     };
@@ -184,7 +187,10 @@ test.describe("the Gamma presentation scope", () => {
     const centre = REAL.strikes.views.all.centre;
     await expect.poll(() => asks().pop(), { timeout: 5000 }).toEqual({ centre: centre, shift: 3 });
     await requests.settled(); // every held read has run
-    await page.waitForTimeout(600); // and the slow panels have been sent
+    await expect.poll(() => unsent).toBe(0); // and the slow panels have been sent
+    // then a price row, drawn after them: once it is on screen, the page has read them
+    sock.frame("quotes", "SPY", { rows: [priceRow("SPY", 601.11)] });
+    await expect(page.locator("#hPx")).toContainText("601.11");
     expect(asks().pop()).toEqual({ centre: centre, shift: 3 });
   });
 
