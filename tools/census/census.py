@@ -1657,7 +1657,7 @@ for cat, rule, tool in (
     ("hand-built check tools (replaced by standard tools in SHAPE step 7)", "1", "ls"),
 ):
     add(S, cat, rule, tool)
-WORK_ROW = re.compile(r"^\| ([A-Z][A-Z0-9-]+) \| ([A-Z][A-Z ,0-9:-]*?) \|", re.M)
+WORK_ROW = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|\s*([A-Z][A-Z ,0-9:-]*?)\s*\|", re.M)
 add(
     S,
     "open work rows, every status, by status below (reported)",
