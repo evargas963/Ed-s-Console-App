@@ -402,6 +402,11 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
         "depth_pressure": {
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
             "ask": _book_pressure_curve(ask_levels, OF_BOOK_DEPTH_DEEP),
+            # the ladder's scale: the largest size of the levels it draws; None with none
+            "max_volume": max(
+                (v for _p, v in bid_levels[:OF_BOOK_DEPTH_DEEP] + ask_levels[:OF_BOOK_DEPTH_DEEP]),
+                default=None,
+            ),
         },
         "wall_candidates": (
             _book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)

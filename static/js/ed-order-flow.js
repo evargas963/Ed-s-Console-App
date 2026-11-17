@@ -62,12 +62,9 @@
   }
 
   // Per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-first,
-  // up to OF_BOOK_DEPTH_DEEP (5) levels of the displayed book, as served.
-  function ladderHtml(bidLevels, askLevels, wallSet) {
-    var maxVol = 0;
-    bidLevels.concat(askLevels).forEach(function (l) {
-      if (l.volume > maxVol) maxVol = l.volume;
-    });
+  // up to OF_BOOK_DEPTH_DEEP (5) levels of the displayed book, as served, each bar against the
+  // served largest size (depth_pressure.max_volume).
+  function ladderHtml(bidLevels, askLevels, maxVol, wallSet) {
     function row(l, side) {
       var w = window.EdDraw.barWidth(l.volume, maxVol);
       var isWall = wallSet[side + "@" + l.price];
@@ -211,7 +208,7 @@
       "</span></div></div>" +
       '<div class="dom-wrap">' +
       '<div class="dom-ladder">' +
-      ladderHtml(bidLevels, askLevels, wallSet) +
+      ladderHtml(bidLevels, askLevels, d.depth_pressure.max_volume, wallSet) +
       midHtml +
       "</div>" +
       '<div class="dom-stats">' +
