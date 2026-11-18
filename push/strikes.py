@@ -24,7 +24,7 @@ from calc.terrain_engine import (
 from numeric_contract import dollars_text, strike_text
 from push.answers import unavailable
 from push.spot import resolve_spot
-from push.strike_rows import max_abs_served, served, window_asked, windowed
+from push.strike_rows import BarRow, max_abs_served, served, window_asked, windowed
 from push.verdict import terrain_cache_get
 
 
@@ -85,7 +85,7 @@ def _side_sums(rows: list[StrikeRow], spot: float | None) -> dict[str, Any] | No
 
 
 def _scale_with_prior(
-    window: tuple[Sequence[StrikeRow], dict[str, Any]], migration: PositioningMigration
+    window: tuple[Sequence[BarRow], dict[str, Any]], migration: PositioningMigration
 ) -> float | None:
     """The largest |value| the migration panel draws: today's and the prior day's, on screen.
 
