@@ -225,16 +225,14 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
         _recorded(bus)
         await _until(lambda: writer.status()["rows_written"] == 8)
         keep = asyncio.create_task(capture.keep_sessions(writer, daemon.clock, stop))
-        try:
-            await _until(  # the keep's every part done: removed and archived
-                lambda: (
-                    _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 1
-                    and _rows(db, "SELECT COUNT(*) FROM stream_archive")[0][0] == 2
-                ),
-                wait,
-            )
-        except AssertionError:
-            pass  # nothing was removed
+        # the keep runs until its every part is done (removed and archived) or `wait` is out; a
+        # keep that removes nothing runs out the wait, and the caller reads what is left
+        deadline = asyncio.get_running_loop().time() + wait
+        while asyncio.get_running_loop().time() < deadline and not (
+            _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 1
+            and _rows(db, "SELECT COUNT(*) FROM stream_archive")[0][0] == 2
+        ):
+            await asyncio.sleep(0.02)
         stop.set()
         await asyncio.gather(task, keep)
 

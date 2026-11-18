@@ -717,11 +717,10 @@ class PriceLevelValue:
 
 
 class PriceLevelSnapshot:
-    """The ONE materialized result for (ticker, session scope) and its input.
+    """The ONE materialized result for (ticker, session scope).
 
-    `input_fingerprint` is set by state.price_level_store.materialize_price_level_snapshot, which
-    builds again only
-    when it changes.
+    state.price_level_store holds it with its input's fingerprint and builds again only when that
+    changes.
     """
 
     __slots__ = (
@@ -734,7 +733,6 @@ class PriceLevelSnapshot:
         "vwap_series",
         "families_absent",
         "degraded",
-        "input_fingerprint",
         "bars_used",
         "session_rth_positive_volume_bars",
         "volume_profile",

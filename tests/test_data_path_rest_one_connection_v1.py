@@ -274,6 +274,7 @@ def test_the_one_connection_stands_through_a_pause(tmp_path):
         time.sleep(6)
         client.session.get(url)
     finally:
+        client.session.close()
         schwab.close()
     assert len(schwab.requests) == 2
     assert len({r[4] for r in schwab.requests}) == 1
