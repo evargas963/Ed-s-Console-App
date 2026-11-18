@@ -69,6 +69,34 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
         (c for c in crosses if c["ts_utc"] >= start),
         key=lambda c: c["ts_utc"],
     )
+    items = [
+        *_cross_items(in_window),
+        *_terrain_items(tk, now),
+        *_book_wall_items(tk, venue, now),
+    ]
+    # newest first; an event with no time of its own after every timed one
+    items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
+        it for it in items if it["ts"] is None
+    ]
+    for it in items:  # each event's own time as the screen shows it
+        it["time_ct"] = None if it["ts"] is None else ct_label(it["ts"])
+    return {
+        "ticker": tk,
+        "tf": tf,
+        "window_start_ts_utc": start,
+        "window_label": DESK_LOOKBACK[tf][1],
+        "items": items,
+        "cross_counts": {
+            d: sum(1 for c in in_window if c["direction"] == d) for d in ("up", "down")
+        },
+    }
+
+
+def _cross_items(in_window: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The window's level crosses, numbered oldest first (cross_store's records, oldest first).
+
+    The newest cross at each level, for the newest DESK_MARKERS levels, is flagged for the chart.
+    """
     items: list[dict[str, Any]] = []
     for i, c in enumerate(in_window):
         names = " + ".join(c["level_names"])
@@ -91,6 +119,12 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     newest_at = {it["price"]: it for it in items}
     for it in sorted(newest_at.values(), key=lambda it: it["ts"])[-DESK_MARKERS:]:
         it["marker"] = True
+    return items
+
+
+def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
+    """A wall the live price is through, and stale levels: the terrain panel's own words."""
+    items: list[dict[str, Any]] = []
     t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
     tts = t.get("levels_ts_utc")
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
@@ -120,8 +154,15 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
                 "src": "gamma levels",
             }
         )
-    # the book's size walls, stamped with the book's own time (BOOK_TIME); a book that is not live
-    # is a past observation and says so
+    return items
+
+
+def _book_wall_items(tk: str, venue: str, now: datetime) -> list[dict[str, Any]]:
+    """The book's size walls, stamped with the book's own time (BOOK_TIME).
+
+    A book that is not live is a past observation and says so.
+    """
+    items: list[dict[str, Any]] = []
     micro = order_flow_microstructure(tk, venue, now.timestamp())
     book_ms = micro["provenance"]["book_time_ms"]
     live_book = micro["ages"]["book_stale"] is False
@@ -140,19 +181,4 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
                 "src": "equity book",
             }
         )
-    # newest first; an event with no time of its own after every timed one
-    items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
-        it for it in items if it["ts"] is None
-    ]
-    for it in items:  # each event's own time as the screen shows it
-        it["time_ct"] = None if it["ts"] is None else ct_label(it["ts"])
-    return {
-        "ticker": tk,
-        "tf": tf,
-        "window_start_ts_utc": start,
-        "window_label": DESK_LOOKBACK[tf][1],
-        "items": items,
-        "cross_counts": {
-            d: sum(1 for c in in_window if c["direction"] == d) for d in ("up", "down")
-        },
-    }
+    return items
