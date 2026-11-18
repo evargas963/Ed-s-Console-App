@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from fractions import Fraction
 
 from calc.liquidity_models import (
     MAX_BINS_PER_BAR,
@@ -25,6 +26,7 @@ from calc.liquidity_value_engine import (
     get_overnight_levels,
 )
 from calc.micro_structure import Candle
+from tests.feed_live_helper import daemon_bars
 from time_et import ET, sessions
 
 
@@ -134,6 +136,20 @@ def test_volume_profile_poc_is_the_price_most_bars_traded_through():
         "fixture does not discriminate — the typical-price dump agrees here"
     )
     assert val <= poc <= vah
+
+
+def test_every_price_of_a_real_profile_is_its_exact_cent_with_no_digit_rounded_away():
+    """SPY's real minute bars (2026-10-01/02): each bin, the POC and the value area's edges.
+
+    Each is the nearest float to its exact price in cents (Fraction(cents, 100)), as the bars'
+    prices are; none comes from rounding to digits (AGENTS.md rule 5: rounding only on screen).
+    """
+    p = volume_profile(daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY"))
+    assert p is not None
+    prices = [price for price, _volume in p.bins] + [p.poc, p.vah, p.val]
+    assert len(p.bins) > 100
+    assert [x for x in prices if x != float(Fraction(round(x * 100), 100))] == []
+    assert p.val <= p.poc <= p.vah
 
 
 def test_volume_profile_rejects_nan_and_nonpositive_volume():
