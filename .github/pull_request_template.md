@@ -22,7 +22,8 @@ Deleted:
 
 End-to-end test:
 
-<!-- the test that failed on the old code (AGENTS.md "Before writing code": every change carries one) -->
+<!-- the test that failed on the old code
+(AGENTS.md "Before writing code": every change carries one) -->
 
 ## Failure modes
 
