@@ -571,7 +571,7 @@ def test_a_ticker_on_screen_reprices_on_its_ticks_its_options_included_and_a_bur
     finally:
         gate.set()
         _drain()
-    assert waiting == {TK: (server.REPRICE, None, None, None)}
+    assert waiting == {TK: (server.REPRICE, None, None, (None, None))}
 
 
 def test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain():
