@@ -513,11 +513,16 @@ required job too.
   once a standard tool refuses what it refuses (STANDARD-CHECKS). A wait on CI is not a stop: every
   pull request has auto-merge and Auto-fix on, so it merges by itself or the app wakes the session
   on a failure, and the next work starts meanwhile (operator 2026-11-07: "i want to be able to walk
-  away while you work"; the agent never polls CI itself). Two failed attempts at the same thing send
-  the agent to the cause, down to the line of code or data with evidence (First gate 4), and a
-  different approach (CLAUDE.md item 6, operator 2026-10-30: "go to bedrock or try some other
-  solution based on our python guidelines ... instead of just churning"). Enforced by: no machine
-  check — ENF-12.
+  away while you work"; the agent never polls CI itself). Work stops only for what the operator
+  must decide, and a report, a finished order or a wait is not a stop (operator 2026-11-18: "i've
+  alrady asked you ten times to not stop but you continue. fix it so y ou won't stop"). Two failed
+  attempts at the same thing send the agent to the cause, down to the line of code or data with
+  evidence (First gate 4), and a different approach (CLAUDE.md item 6, operator 2026-10-30: "go to
+  bedrock or try some other solution based on our python guidelines ... instead of just
+  churning"). Enforced by: the Stop hook `tools/keep_going.py` refuses every stop whose final
+  message does not begin `WAITING ON OPERATOR:` with what he must decide
+  (`tests/test_keep_going_v1.py`); that the wait is real — the builder's audit (rule 14), no
+  machine check; the rest — ENF-12.
 - Once the operator tells the agent to do something, it does it; it does not choose whether, when or
   what instead (operator 2026-11-07: "once i tell you do something, you must do it. you do not get
   to choose", "this is non negotiable", "you must enforce this rule"). It pushes back only when the
