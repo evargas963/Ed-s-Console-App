@@ -164,8 +164,12 @@ class LocalSchwab:
     query, started, answered, the client's port, its Authorization).
     """
 
+    #: every stand-in not yet closed; tests/conftest.py closes them after each test
+    open_now: list[LocalSchwab] = []
+
     def __init__(self, stream_url: str | None = None):
         self.stream_url = stream_url
+        self.clients: list = []  # each client handed out, closed with the stand-in
         self.requests: list = []
         self.token = "refreshes"
         self.expired: set[str] = set()
@@ -275,6 +279,7 @@ class LocalSchwab:
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        LocalSchwab.open_now.append(self)
 
     def answer(self, path: str, query: dict) -> tuple[int, dict | bytes]:
         """Schwab's answer to a request for `path` with `query` (/quotes: any other path)."""
@@ -363,9 +368,11 @@ class LocalSchwab:
 
     def client(self, tmp_path, expires_in_sec: float = 3600):
         """Return the daemon's client, its requests delivered here, from token_file's file."""
-        return self.delivering_here(
+        client = self.delivering_here(
             sc.client_from_token_file_atomic(self.token_file(tmp_path, expires_in_sec), "k", "s")
         )
+        self.clients.append(client)
+        return client
 
     def delivering_here(self, client):
         """`client`, every request it sends delivered here instead of Schwab's host.
@@ -403,7 +410,17 @@ class LocalSchwab:
         return str(tok)
 
     def close(self) -> None:
+        """Stop serving, close the listening socket and every client handed out.
+
+        shutdown() only ends serve_forever; server_close() closes the socket (socketserver).
+        Closing again does nothing more.
+        """
         self.server.shutdown()
+        self.server.server_close()
+        for client in self.clients:
+            client.session.close()
+        if self in LocalSchwab.open_now:
+            LocalSchwab.open_now.remove(self)
 
 
 def delivered(published: list, ticker: str) -> dict[str, dict]:

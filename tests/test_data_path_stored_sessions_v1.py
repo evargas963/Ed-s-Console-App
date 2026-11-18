@@ -12,6 +12,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def _record_answers(path: Path) -> int:
     rows = [(n + 1.0, d, a["status"], a["body"]) for n, (d, a) in enumerate(ANSWERS.items())]
     day = json.loads(ANSWERS[EXPIRY]["body"])
     rows.append((0.0, EXPIRY, 200, json.dumps({**day, "option": {}})))
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.executescript(STREAM_SCHEMA_SQL)
         conn.executemany(
             "INSERT INTO stream_markets_raw(ts_recv,date,status,native_json) VALUES(?,?,?,?)",

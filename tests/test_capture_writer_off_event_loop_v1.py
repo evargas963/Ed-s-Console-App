@@ -13,6 +13,7 @@ import asyncio
 import json
 import sqlite3
 import threading
+from contextlib import closing
 from pathlib import Path
 
 import time_et
@@ -35,7 +36,7 @@ _BURST = [
 
 
 def _rows(path, table: str) -> int:
-    with sqlite3.connect(str(path)) as conn:
+    with closing(sqlite3.connect(str(path))) as conn, conn:
         return conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
 
 
