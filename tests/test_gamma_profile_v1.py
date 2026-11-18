@@ -13,6 +13,8 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+import pytest
+
 import time_et
 from calc.math_levels import (
     GAMMA_FLIP_UNAVAILABLE,
@@ -26,7 +28,7 @@ from calc.math_levels import (
 )
 from calc.terrain_engine import compute_terrain
 from option_contract import OptionContract, read_chain, read_contract
-from tests.real_chains import CRWD, SPY_0DTE, spy_0dte_book
+from tests.real_chains import CRWD, SPY_0DTE, gamma_flip_worked_out, spy_0dte_book
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
 #: own capture time (a live 0DTE, ~3.7 h to SPY's 16:15 option close)
@@ -105,6 +107,8 @@ def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
     assert snap.grc is not None and snap.grc > CRWD.spot * 1.15
     assert round(snap.grc, 2) == 337.68
     assert round(snap.gamma_flip, 1) == 238.1
+    # the flip worked out from the raw chain outside the program (Black-Scholes-Merton gamma)
+    assert snap.gamma_flip == pytest.approx(gamma_flip_worked_out(CRWD), rel=5e-5)
 
 
 def test_profile_uses_dealer_sign_convention() -> None:
