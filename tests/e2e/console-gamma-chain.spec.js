@@ -62,6 +62,21 @@ const CHAIN = {
   ],
 };
 
+// an 80-strike chain, every call's volume `vol`: long enough to scroll the ladder
+function bigChain(vol) {
+  return {
+    ticker: "SPY",
+    spot: 100,
+    spot_strike: 100,
+    expiry: "2026-09-11",
+    status: "ok",
+    scope: { kind: "complete_single_expiry" },
+    contracts: Array.from({ length: 80 }, (_, i) =>
+      ct("CALL", 50 + i, "SPY   260911C00" + (50 + i) + "000", 10, vol, 10, 0.1),
+    ),
+  };
+}
+
 //: each contract the page names to the console for the Flow panel (POST /api/flow-contract)
 const flowPosts = [];
 
@@ -187,18 +202,7 @@ test.describe("D — Gamma Chain subview", () => {
     page,
   }) => {
     let vol = 10;
-    const BIG = () => ({
-      ticker: "SPY",
-      spot: 100,
-      spot_strike: 100,
-      expiry: "2026-09-11",
-      status: "ok",
-      scope: { kind: "complete_single_expiry" },
-      contracts: Array.from({ length: 80 }, (_, i) =>
-        ct("CALL", 50 + i, "SPY   260911C00" + (50 + i) + "000", 10, vol, 10, 0.1),
-      ),
-    });
-    panels.chain = () => served(BIG());
+    panels.chain = () => served(bigChain(vol));
     await page.setViewportSize({ width: 900, height: 640 }); // a representative, not maximal, size
     await toChain(page);
     await expect(page.locator("#chainBody tbody tr")).toHaveCount(80);
@@ -275,18 +279,7 @@ test.describe("D — Gamma Chain subview", () => {
     page,
   }) => {
     let vol = 10;
-    const BIG = () => ({
-      ticker: "SPY",
-      spot: 100,
-      spot_strike: 100,
-      expiry: "2026-09-11",
-      status: "ok",
-      scope: { kind: "complete_single_expiry" },
-      contracts: Array.from({ length: 80 }, (_, i) =>
-        ct("CALL", 50 + i, "SPY   260911C00" + (50 + i) + "000", 10, vol, 10, 0.1),
-      ),
-    });
-    panels.chain = () => served(BIG());
+    panels.chain = () => served(bigChain(vol));
     await toChain(page);
     await expect(page.locator("#chainBody tbody tr")).toHaveCount(80);
     await expect(page.locator("#chainBody tbody tr").first().locator("td").nth(1)).toHaveText("10");
