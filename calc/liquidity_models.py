@@ -96,7 +96,6 @@ def volume_profile(
     bars: list[dict[str, Any]],
     value_area_pct: float = 0.70,
     tick_size: float = 0.01,
-    ndigits: int = 4,
 ) -> VolumeProfile | None:
     """Return the volume profile built by DISTRIBUTING each bar across [low, high].
 
@@ -105,10 +104,13 @@ def volume_profile(
 
     Bins are addressed by INTEGER index (round(price / tick_size)) so that binning is exact:
     accumulating float bin prices as dict keys lets 724.9999999 and 725.0 become two bins for
-    one price, which silently fragments the profile and can move the POC.
+    one price, which silently fragments the profile and can move the POC. A bin's price is its
+    index over the ticks in a dollar (a tick is a whole fraction of one: a cent for US stocks,
+    SEC Rule 612), the nearest float to the exact price, so no digit is rounded away.
     """
     if not bars or tick_size <= 0:
         return None
+    per_dollar = round(1 / tick_size)
 
     vol_by_idx: dict[int, float] = defaultdict(float)
     no_volume = 0
@@ -135,10 +137,10 @@ def volume_profile(
     )
     return VolumeProfile(
         tick_size=tick_size,
-        bins=tuple((round(i * tick_size, ndigits), vol_by_idx[i]) for i in idx_sorted),
-        poc=round(poc_idx * tick_size, ndigits),
-        vah=round(idx_sorted[hi_pos] * tick_size, ndigits),
-        val=round(idx_sorted[lo_pos] * tick_size, ndigits),
+        bins=tuple((i / per_dollar, vol_by_idx[i]) for i in idx_sorted),
+        poc=poc_idx / per_dollar,
+        vah=idx_sorted[hi_pos] / per_dollar,
+        val=idx_sorted[lo_pos] / per_dollar,
         bars=len(bars),
         bars_without_volume=no_volume,
     )
