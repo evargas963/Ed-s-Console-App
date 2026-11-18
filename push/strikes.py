@@ -6,12 +6,14 @@ with their own window. Read from State: the published levels and the live price.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict
 from typing import Any
 
 from calc.terrain_engine import (
     LevelMove,
     MigrationRow,
+    PositioningMigration,
     StrikeRow,
     level_moves,
     nearest_strike,
@@ -82,6 +84,42 @@ def _side_sums(rows: list[StrikeRow], spot: float | None) -> dict[str, Any] | No
     }
 
 
+def _scale_with_prior(
+    window: tuple[Sequence[StrikeRow], dict[str, Any]], migration: PositioningMigration
+) -> float | None:
+    """The largest |value| the migration panel draws: today's and the prior day's, on screen.
+
+    Of the strikes in today's window; None when none of them has a value on either day.
+    """
+    drawn = {r.strike for r in window[0]}
+    both = [
+        abs(v)
+        for r in migration["rows"]
+        if r.strike in drawn
+        for v in (r.value, r.prior)
+        if v is not None
+    ]
+    drawn_max = window[1]["max_abs"]
+    if drawn_max is not None:
+        both.append(drawn_max)
+    return max(both) if both else None
+
+
+def _served_migrations(m: PositioningMigration) -> dict[str, Any]:
+    """One scope's migration as the screen shows it.
+
+    Each row with its change's text (_served_migration), and the strikes that grew, shrank and
+    traded most, each list as the screen shows it.
+    """
+    return {
+        **m,
+        "rows": [_served_migration(r) for r in m["rows"]],
+        "grew_text": "/".join(map(strike_text, m["grew"])),
+        "shrank_text": "/".join(map(strike_text, m["shrank"])),
+        "busiest_text": "–".join(map(strike_text, m["busiest"])),
+    }
+
+
 def strikes(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return the per-strike rows at `now` in the window `params` ask for (the `strikes` panel).
 
@@ -128,19 +166,8 @@ def terrain_strikes_payload(
         )
         for name, rows in lists.items()
     }
-    for sc in ("all", "near", "far"):  # the migration panel scales today's and the prior day's bars
-        drawn = {r.strike for r in windows[sc][0]}
-        both = [
-            abs(v)
-            for r in migration[sc]["rows"]
-            if r.strike in drawn
-            for v in (r.value, r.prior)
-            if v is not None
-        ]
-        drawn_max = windows[sc][1]["max_abs"]
-        if drawn_max is not None:
-            both.append(drawn_max)
-        windows[sc][1]["max_abs_with_prior"] = max(both) if both else None
+    for sc in ("all", "near", "far"):
+        windows[sc][1]["max_abs_with_prior"] = _scale_with_prior(windows[sc], migration[sc])
     return {
         "ticker": tk,
         # each strike's net GEX $ and volume, by name, with their texts (served)
@@ -163,16 +190,7 @@ def terrain_strikes_payload(
         "max_abs_row": max_abs_served(today["all"], "gex"),
         # each row with its change as the screen shows it (_served_migration), and the strikes
         # that grew, shrank and traded most, each list as the screen shows it
-        "migration": {
-            sc: {
-                **m,
-                "rows": [_served_migration(r) for r in m["rows"]],
-                "grew_text": "/".join(map(strike_text, m["grew"])),
-                "shrank_text": "/".join(map(strike_text, m["shrank"])),
-                "busiest_text": "–".join(map(strike_text, m["busiest"])),
-            }
-            for sc, m in migration.items()
-        },
+        "migration": {sc: _served_migrations(m) for sc, m in migration.items()},
         # the call wall, put wall and gamma flip today against the prior day's own, each with its
         # texts as the screen shows them
         "level_moves": [served_level_move(v) for v in level_moves(snap, prior_day)],
