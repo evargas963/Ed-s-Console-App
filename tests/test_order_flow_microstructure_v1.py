@@ -508,7 +508,9 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
         "ask_size": 57,
         "mark": 0.575,
         "quote_time_ms": tsla_l1[3]["QUOTE_TIME_MILLIS"],
+        "money_intrinsic": tsla_l1[3]["MONEY_INTRINSIC_VALUE"],
     }
+    assert tsla_l1[3]["MONEY_INTRINSIC_VALUE"] == -1.65
 
     st.push_option_top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0))
     assert st.option_top(tsla["symbol"])["bid_size"] == 0
