@@ -393,9 +393,13 @@ def _dominant(bid: float | None, ask: float | None) -> str:
 
     The one Schwab sent, or the larger of the two.
     """
-    if bid is not None and ask is not None:
-        return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
-    return "BID" if ask is None else "ASK"
+    match bid, ask:
+        case _, None:
+            return "BID"
+        case None, _:
+            return "ASK"
+        case _:
+            return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
 
 
 def _heatmap_cells(
