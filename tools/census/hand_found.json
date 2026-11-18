@@ -23,7 +23,7 @@
     },
     {
       "category": "register",
-      "item": "derived register has 25 rows; about 89 served derived values are not in it; no test holds it"
+      "item": "derived register has 66 rows (2026-11-18); the served keys are not yet checked against it one by one (wall states and leans, regime words, confidence); census.py checks only functions named compute_, bs_ or pick_"
     },
     {
       "category": "tests not trusted",
@@ -69,10 +69,6 @@
     {
       "category": "contradiction: doc vs doc",
       "item": "AGENTS.md:163 no exception list vs AGENTS.md:130 and pyproject.toml:35 a per-file ignore of TID251 for time_et.py"
-    },
-    {
-      "category": "contradiction: rule vs state",
-      "item": "AGENTS.md:32 every derived value is in the register vs docs/derived_register.md:3-5 the older values are not (walls, flip, max pain, GEX, ATR, VWAP)"
     },
     {
       "category": "contradiction: rule vs tests",
