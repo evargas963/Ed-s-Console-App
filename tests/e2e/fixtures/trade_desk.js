@@ -80,6 +80,21 @@ function levelsAt(body) {
     Object.assign({}, typeof body === "function" ? body(key, params) : body, { tf: params.tf });
 }
 
+// Open the page on SPY at workspace `ws`, subview `sub` and, when given, view `view`: the settings
+// a viewer's last visit left in localStorage
+async function openView(page, ws, sub, view) {
+  await page.addInitScript(
+    ([w, s, v]) => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", w);
+      localStorage.setItem("ed_sub", s);
+      if (v) localStorage.setItem("ed_view", v);
+    },
+    [ws, sub, view],
+  );
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+}
+
 function watchErrors(page) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
@@ -109,6 +124,7 @@ module.exports = {
   BARS,
   HEAT,
   intercept,
+  openView,
   watchErrors,
   deskPanels,
   deskSocket,
