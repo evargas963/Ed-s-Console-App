@@ -133,7 +133,7 @@ def _cached() -> level_store.PublishedLevels:
 def _drain():
     """Wait until the pricing thread has priced everything waiting."""
     while True:
-        server._chain_pricing.submit(lambda: None).result(timeout=60)
+        server.chain_pricing.submit(lambda: None).result(timeout=60)
         with server._chains_waiting_lock:
             if not server._chains_waiting:
                 return
@@ -142,7 +142,7 @@ def _drain():
 def _busy():
     """Hold the pricing thread until the returned event is set."""
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 10)
+    server.chain_pricing.submit(gate.wait, 10)
     return gate
 
 

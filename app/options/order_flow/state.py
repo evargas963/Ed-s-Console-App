@@ -132,7 +132,7 @@ class OrderFlowState:
         It comes from `service`: NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK. The book as read once
         (read_book) is returned; None when the message carries no book.
         """
-        if not content_item or not isinstance(content_item, dict):
+        if not content_item:
             return None
         book = read_book(content_item, service)
         sym = ticker_storage_key(symbol)
@@ -156,7 +156,7 @@ class OrderFlowState:
         A current record merged from several messages (the daemon's bus) carries each field's own
         receive time in `field_received`; each value is stamped with it.
         """
-        if not content_item or not isinstance(content_item, dict):
+        if not content_item:
             return
         sym = ticker_storage_key(symbol)
         if not sym:

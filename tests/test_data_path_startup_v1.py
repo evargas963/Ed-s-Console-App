@@ -926,7 +926,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
         server._on_chain(
             tk, read_chain(contracts), CRWD.now.timestamp(), None, (CRWD.spot, CRWD.now.timestamp())
         )
-        server._chain_pricing.submit(lambda: None).result(timeout=60)
+        server.chain_pricing.submit(lambda: None).result(timeout=60)
         done: set[str] = set()
 
         def load_while_ticking():
@@ -982,14 +982,14 @@ def test_the_stop_drops_what_waits_to_be_priced_so_the_exit_waits_on_no_pricing(
     with server._chains_waiting_lock:
         server._chains_delivered.difference_update(names)
     running = threading.Event()
-    held = server._chain_pricing.submit(running.wait, 60)
+    held = server.chain_pricing.submit(running.wait, 60)
     try:
         assert server._load_stored_levels(list(names)) == 2  # both wait behind the running one
         server.stop_terrain_loop()
     finally:
         running.set()
         held.result(timeout=60)
-        server._chain_pricing.submit(lambda: None).result(timeout=60)  # what was queued has run
+        server.chain_pricing.submit(lambda: None).result(timeout=60)  # what was queued has run
         with level_store._lock:
             priced = {name for name in names if level_store._levels.pop(name, None) is not None}
         with sqlite3.connect(server.get_db().db_path) as conn:  # later tests read the newest
