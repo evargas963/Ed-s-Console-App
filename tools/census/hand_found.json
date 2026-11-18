@@ -15,11 +15,11 @@
     },
     {
       "category": "register",
-      "item": "derived register has 66 rows (2026-11-18); the served keys are not yet checked against it one by one (wall states and leans, regime words, confidence); census.py checks only functions named compute_, bs_ or pick_"
+      "item": "every panel's served keys were checked against the derived register by hand on 2026-11-18 (12 rows added, the flip's confidence spans waiting on the operator); no machine check holds it: census.py checks only functions named compute_, bs_ or pick_, so a new served key with no row is not caught"
     },
     {
       "category": "tests not trusted",
-      "item": "prior-day test passed while checking our close, not Schwab's: every test's expected value needs a source check"
+      "item": "the prior-day test that passed on our close now checks Schwab's official daily close (tests/test_liquidity_value_engine_p1d_prev_trading_day.py); the other tests' expected values are not yet each checked against a source document"
     },
     {
       "category": "slow screen",
@@ -28,11 +28,6 @@
     {
       "category": "Schwab sends it twice",
       "item": "/chains still sends a streamed contract's open interest, volume and quote fields, which the stream already pushes (STREAM-ONE, rule 3)"
-    },
-    { "category": "flaky test", "item": "Liquidity-card browser test" },
-    {
-      "category": "flaky test",
-      "item": "tests/e2e/console-gamma-asof.spec.js:123 on Windows (REVIEW row)"
     },
     {
       "category": "needs market",
