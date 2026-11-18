@@ -772,6 +772,10 @@ ARCHIVED: dict[str, Callable[[float], bool]] = {
 #: rows taken into one archive block, in one transaction (a book block is about 13 MB before
 #: compression, a fraction of a second's work between rounds of live writes)
 ARCHIVE_ROWS = 5000
+#: the next rows the keep moves from a table: those received before its time, oldest first, read
+#: through the table's receipt-time index (RECEIPT_TIME_INDEXES), so a part reads only the rows it
+#: takes, never the whole table
+ARCHIVE_TAKE = "SELECT rowid, * FROM {table} WHERE {column} < ? ORDER BY {column}, rowid LIMIT ?"
 
 
 def archive_block(rows: list[tuple[Any, ...]]) -> bytes:
@@ -1745,8 +1749,7 @@ class CaptureWriter:
         taken leaves the table, in the caller's transaction. Returns how many were taken.
         """
         cur = conn.execute(
-            f"SELECT rowid, * FROM {table} WHERE {column} < ? ORDER BY rowid LIMIT ?",
-            (self._prune_before, ARCHIVE_ROWS),
+            ARCHIVE_TAKE.format(table=table, column=column), (self._prune_before, ARCHIVE_ROWS)
         )
         names = [d[0] for d in cur.description][1:]
         taken = cur.fetchall()
