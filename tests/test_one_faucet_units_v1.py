@@ -48,7 +48,7 @@ def test_vanna_is_per_vol_point_in_every_bucket_and_in_the_aggregate():
     per = _book()
     shares = sum(b["call_vanna"] - b["put_vanna"] for b in per.values())
     nets = sum(b["net_vanna"] for b in per.values())
-    assert nets == pytest.approx(shares, abs=0.01)
+    assert nets == shares  # each bucket's net is its call less its put, summed in the same order
 
 
 def test_a_contract_with_no_expiry_is_not_counted_as_same_day():

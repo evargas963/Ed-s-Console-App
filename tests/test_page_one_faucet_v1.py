@@ -156,8 +156,8 @@ def test_strike_side_sums_split_at_the_live_spot(held):
     body = push_strikes.strikes(TK, time_et.now(), AUTO)
     sums = body["today_side_sums"]
     assert server.resolve_spot(TK, now=time_et.now())[0] == LIVE
-    assert sums["gex_below"] == pytest.approx(sum(r[1] for r in below), abs=0.1)
-    assert sums["gex_above"] == pytest.approx(sum(r[1] for r in above), abs=0.1)
+    assert sums["gex_below"] == sum(r[1] for r in below)
+    assert sums["gex_above"] == sum(r[1] for r in above)
 
 
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
