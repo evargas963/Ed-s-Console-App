@@ -202,7 +202,7 @@
         });
       },
     };
-    primitive(self, renderer, z || "normal");
+    primitive(self, renderer, z);
     this.autoscaleInfo = function () {
       if (!fit || !self.rows.length) return null;
       var ps = self.rows.map(function (r) {
@@ -718,7 +718,7 @@
       return chart;
     }, P);
     candles.attachPrimitive(callouts);
-    var profile = new ProfilePrimitive("right", 0.32, true);
+    var profile = new ProfilePrimitive("right", 0.32, true, "normal");
     candles.attachPrimitive(profile);
     // the session volume profile on the left edge, as the reference draws it (the candles set
     // the price range; the profile does not widen it)
