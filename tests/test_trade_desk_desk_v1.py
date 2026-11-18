@@ -56,8 +56,7 @@ def test_every_shipped_page_script_parses():
     from loading, and no Python test noticed. Every script the console serves must parse.
     """
     node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is not installed")
+    assert node is not None, "Node parses the page's scripts; it is installed wherever tests run"
     for js in sorted((ROOT / "static" / "js").glob("*.js")):
         r = subprocess.run([node, "--check", str(js)], capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, f"{js.name}: {r.stderr[:400]}"
