@@ -39,12 +39,17 @@ def _tape(sym: str, *rows, state=None) -> list:
     return st.get_content_for_symbol(sym)
 
 
+def _cvd(content: list) -> float | None:
+    """The cumulative delta of `content`'s tape, as the engine computes it."""
+    return l1.compute_cum_delta_proxy(l1.canonical_tape_prints(content))
+
+
 def test_distinct_same_ms_price_change_retained():
     content = _tape("L1A", (500.0, 10, 1000), (500.1, 10, 1000))
     out = l1.canonical_tape_prints(content)
     assert len(out) == 2
     assert [p["price"] for p in out] == [500.0, 500.1]
-    assert ofe._compute_cum_delta_proxy({"content": content}) == 10
+    assert _cvd(content) == 10
 
 
 def test_distinct_same_ms_size_change_retained():
@@ -57,7 +62,7 @@ def test_distinct_same_ms_size_change_retained():
 def test_adjacent_identical_restatement_suppressed():
     content = _tape("L1C", (500.0, 10, 1000), (500.1, 10, 2000), (500.1, 10, 2000))
     assert len(l1.canonical_tape_prints(content)) == 2
-    assert ofe._compute_cum_delta_proxy({"content": content}) == 10
+    assert _cvd(content) == 10
 
 
 def test_non_adjacent_identical_triple_retained():
@@ -70,7 +75,7 @@ def test_out_of_order_vendor_timestamps_preserve_receive_order():
     content = _tape("L1E", (500.0, 10, 2000), (500.2, 5, 1000))
     prints = l1.canonical_tape_prints(content)
     assert [p["time_millis"] for p in prints] == [2000, 1000]
-    assert ofe._compute_cum_delta_proxy({"content": content}) == 5
+    assert _cvd(content) == 5
 
 
 def test_tick_rule_bullish_bearish_sign_mutation():
@@ -97,8 +102,8 @@ def test_a_zero_tick_is_signed_by_the_last_price_change():
     assert [c for _t, c in l1.iter_signed_cum_points(prints)] == [0.0, 4.0, 10.0, 8.0, 5.0]
     # the first print is unsigned (no change seen): pressure is over the signed size, and the
     # unsigned share is served beside it
-    assert ofe._compute_tape_pressure({"content": content}, window_sec=60.0, now=5.0) == 5 / 15
-    assert ofe._compute_unsigned({"content": content}, 60.0, 5.0) == 10 / 25
+    assert l1.compute_tape_pressure(prints, window_sec=60.0, now_ms=5000.0) == 5 / 15
+    assert l1.unsigned_share(prints, 5000.0 - 60000) == 10 / 25
 
 
 def test_missing_size_remains_unavailable():
@@ -129,10 +134,8 @@ def test_reconnect_clear_resets_restatement_identity():
 
 def test_live_state_equals_replay_of_same_receive_order_observations():
     rows = [(1.0, 1, 30), (1.1, 2, 10)]
-    live_cvd = ofe._compute_cum_delta_proxy({"content": _tape("REPLAY1", *rows)})
-    replay_cvd = ofe._compute_cum_delta_proxy(
-        {"content": _tape("REPLAY1", *rows, state=OrderFlowState())}
-    )
+    live_cvd = _cvd(_tape("REPLAY1", *rows))
+    replay_cvd = _cvd(_tape("REPLAY1", *rows, state=OrderFlowState()))
     assert live_cvd == replay_cvd == 2
 
 
@@ -149,15 +152,15 @@ def test_mutation_first_per_ms_fails_current_keep():
         old.append(p)
     assert len(current) == 2
     assert len(old) == 1
-    assert ofe._compute_cum_delta_proxy({"content": content}) == 4
+    assert _cvd(content) == 4
     assert l1.compute_cum_delta_proxy(old) is None  # its one print is unsigned: no value
 
 
 def test_mutation_vendor_time_sort_fails_receive_order():
     rows = [(500.0, 10, 2000), (500.2, 5, 1000)]
-    receive_cvd = ofe._compute_cum_delta_proxy({"content": _tape("L1G", *rows)})
+    receive_cvd = _cvd(_tape("L1G", *rows))
     vendor_sorted = sorted(rows, key=lambda r: r[2])
-    sorted_cvd = ofe._compute_cum_delta_proxy({"content": _tape("L1H", *vendor_sorted)})
+    sorted_cvd = _cvd(_tape("L1H", *vendor_sorted))
     assert receive_cvd == 5
     assert sorted_cvd != receive_cvd
 
@@ -168,7 +171,7 @@ def test_slope_uses_same_signed_size_walk():
     points = l1.iter_signed_cum_points(prints)
     assert points[-1][1] == l1.compute_cum_delta_proxy(prints) == 4 - 6
     assert [(round(t, 6), c) for t, c in points] == [(1.0, 0.0), (2.0, 4.0), (3.0, -2.0)]
-    slope = ofe._compute_cum_delta_slope({"content": content}, now=3.0, window_sec=60.0)
+    slope = ofe._compute_cum_delta_slope(prints, now=3.0, window_sec=60.0)
     assert slope is not None
     assert math.isclose(slope, -1.0, rel_tol=0.0, abs_tol=1e-9)
 
@@ -181,6 +184,6 @@ def test_a_window_keeps_only_the_prints_traded_at_or_after_its_start():
         (2.0, 4.0),
         (3.0, -2.0),
     ]
-    slope = ofe._compute_cum_delta_slope({"content": content}, now=3.0, window_sec=1.5)
+    slope = ofe._compute_cum_delta_slope(prints, now=3.0, window_sec=1.5)
     assert slope is not None
     assert math.isclose(slope, -6.0, rel_tol=0.0, abs_tol=1e-9)

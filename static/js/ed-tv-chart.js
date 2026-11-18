@@ -1234,8 +1234,35 @@
         true,
       );
     })();
-    chart.subscribeClick(function (p) {
-      if (!p.point || S.tool !== "cursor" || S.justDrew) return;
+    // A click pins the readout, read from the pointer as the drawing tools are: the library's own
+    // click is not reported for a second click at another spot inside its double-click window
+    (function installPinPointer() {
+      var down = null;
+      plot.addEventListener(
+        "pointerdown",
+        function (e) {
+          var onPlot = e.button === 0 && e.target.tagName === "CANVAS";
+          down = onPlot ? { x: e.clientX, y: e.clientY } : null;
+        },
+        true,
+      );
+      plot.addEventListener(
+        "pointerup",
+        function (e) {
+          if (!down) return;
+          var moved = Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y);
+          down = null;
+          if (moved > 6) return; // a drag pans the chart
+          var r = plot.getBoundingClientRect(),
+            point = { x: e.clientX - r.left, y: e.clientY - r.top };
+          if (point.x > chart.timeScale().width()) return; // on the price axis
+          pinAt({ point: point, time: chart.timeScale().coordinateToTime(point.x) });
+        },
+        true,
+      );
+    })();
+    function pinAt(p) {
+      if (S.tool !== "cursor" || S.justDrew) return;
       // a click on a profile row selects it (the row's own gesture, e.g. a strike for every panel)
       var row = opts.onProfileClick
         ? profile.rowAt(p.point.x, p.point.y, chart.timeScale().width())
@@ -1254,7 +1281,7 @@
       S.pinned = { time: p.time, price: price };
       paintPin();
       paintLegend();
-    });
+    }
     chart.subscribeCrosshairMove(function (p) {
       if (S.tool === "trend" && draw.preview && p.point) {
         var price = candles.coordinateToPrice(p.point.y),

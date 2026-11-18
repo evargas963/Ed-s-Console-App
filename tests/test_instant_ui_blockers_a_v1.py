@@ -242,3 +242,45 @@ def test_a_tickers_ticks_queue_one_reprice_a_second_and_the_last_tick_is_not_los
     assert (first, inside, later, after_the_page) == (True, False, True, False)
     assert queued[1] - started >= srv.REPRICE_EVERY_SEC, "the second reprice waits out the second"
     assert queued[1] - started < 2 * srv.REPRICE_EVERY_SEC, "and is not left for a later tick"
+
+
+def test_a_timer_woken_before_its_second_waits_out_the_rest():
+    """Windows counts a timed wait in clock ticks, so the reprice timer can wake early.
+
+    Seen on the Windows runner 2026-11-18: the second reprice 0.99945 s after the first. The
+    early wake is forced here: the timer's handler runs at once, half a second into the second.
+    It queues nothing and re-arms for the rest; once the second is out, the reprice is queued.
+    """
+    served = Pages()
+    page = served.open("ZZEARLY")
+    gate = threading.Event()
+    srv.chain_pricing.submit(gate.wait, 30)  # the pricing thread held: the queue is read here
+    try:
+        srv._on_stream_tick("ZZEARLY")  # the first reprice, queued at once
+        with srv._chains_waiting_lock:
+            assert "ZZEARLY" in srv._chains_waiting
+            del srv._chains_waiting["ZZEARLY"]
+        with srv._reprice_lock:
+            # the first reprice moved half a second back: the second is half out
+            srv._repriced_at["ZZEARLY"] -= srv.REPRICE_EVERY_SEC / 2
+            first_at = srv._repriced_at["ZZEARLY"]
+            srv._arm_reprice("ZZEARLY", 30.0)  # stands for the timer a tick sets
+            stand_in = srv._reprice_timers["ZZEARLY"]
+        stand_in.cancel()
+        srv._reprice_due("ZZEARLY")  # the timer woken half a second early
+        with srv._chains_waiting_lock:
+            assert "ZZEARLY" not in srv._chains_waiting, "an early wake queues nothing"
+        with srv._reprice_lock:
+            rearmed = srv._reprice_timers["ZZEARLY"]
+        assert rearmed is not stand_in, "it waits out the rest on a timer of its own"
+        rearmed.join(timeout=5)
+        with srv._chains_waiting_lock:
+            assert "ZZEARLY" in srv._chains_waiting, "once the second is out, it is queued"
+        with srv._reprice_lock:
+            assert "ZZEARLY" not in srv._reprice_timers
+            assert srv._repriced_at["ZZEARLY"] - first_at >= srv.REPRICE_EVERY_SEC
+    finally:
+        gate.set()
+        srv.chain_pricing.submit(lambda: None).result(timeout=10)
+        served.close(page)
+        served.stop()

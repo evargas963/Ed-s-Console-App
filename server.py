@@ -1098,21 +1098,37 @@ def _reprice_from_tick(tk: str) -> None:
         wait = _repriced_at[tk] + REPRICE_EVERY_SEC - now if tk in _repriced_at else 0.0
         if wait > 0:
             if tk not in _reprice_timers:
-                timer = threading.Timer(wait, _reprice_due, (tk,))
-                timer.daemon = True
-                _reprice_timers[tk] = timer
-                timer.start()
+                _arm_reprice(tk, wait)
             return
         _repriced_at[tk] = now
     _wait_to_price(tk, REPRICE)
 
 
+def _arm_reprice(tk: str, wait: float) -> None:
+    """Start `tk`'s one timer for `wait` seconds (the caller holds _reprice_lock)."""
+    timer = threading.Timer(wait, _reprice_due, (tk,))
+    timer.daemon = True
+    _reprice_timers[tk] = timer
+    timer.start()
+
+
 def _reprice_due(tk: str) -> None:
-    """Queue the reprice a tick of `tk` waited for (its timer), while a page still shows it."""
+    """Queue the reprice a tick of `tk` waited for (its timer), while a page still shows it.
+
+    Windows counts a timed wait in clock ticks, so the timer can wake a fraction of a millisecond
+    before its second by time_et.elapsed (Microsoft, Sleep: "the wait can be anywhere between one
+    and two ticks"); woken before it, the timer waits out the rest.
+    """
     with _reprice_lock:
-        if _reprice_timers.pop(tk, None) is None:  # dropped by the stop
+        if tk not in _reprice_timers:  # dropped by the stop
             return
-        _repriced_at[tk] = time_et.elapsed()
+        now = time_et.elapsed()
+        left = _repriced_at[tk] + REPRICE_EVERY_SEC - now
+        if left > 0:
+            _arm_reprice(tk, left)
+            return
+        del _reprice_timers[tk]
+        _repriced_at[tk] = now
     if _gamma_surface_wanted(tk):
         _wait_to_price(tk, REPRICE)
 
