@@ -80,7 +80,7 @@ store_capture(
 with TestClient(server.app):
     server._load_stored_levels([chain["ticker"]])
     while True:
-        server._chain_pricing.submit(lambda: None).result(timeout=60)
+        server.chain_pricing.submit(lambda: None).result(timeout=60)
         with server._chains_waiting_lock:
             if not server._chains_waiting:
                 break

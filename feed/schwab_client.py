@@ -751,8 +751,6 @@ def flatten_chain_contracts(c_json: dict[str, Any]) -> list[dict[str, Any]]:
     each contract carries as sent; no derivation.
     """
     out: list[dict[str, Any]] = []
-    if not isinstance(c_json, dict):
-        return out
     # the chain sends its interest rate and dividend yield once, at the top; each contract
     # carries them as sent, so a stored contract can be priced on its own
     chain_fields = {k: c_json[k] for k in ("interestRate", "dividendYield") if k in c_json}

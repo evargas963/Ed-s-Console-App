@@ -416,7 +416,7 @@ class Daemon:
         if price is not None:
             chain = self._chains.pop(ticker)
             ranked = await asyncio.get_running_loop().run_in_executor(
-                server._chain_pricing, shown_first, chain, price, now
+                server.chain_pricing, shown_first, chain, price, now
             )
             if ticker in self.watchlist:
                 self._ranked[ticker] = ranked
@@ -452,7 +452,7 @@ class Daemon:
         """Order a watchlist ticker's newest whole chain on the bus (its parts) at its live price.
 
         The chain is the sweep's one read of it (complete_chain_capture.chain_messages); its
-        ladders are laid out on the program's pricing thread (server._chain_pricing), never on the
+        ladders are laid out on the program's pricing thread (server.chain_pricing), never on the
         event loop, whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1); a ticker
         removed meanwhile takes nothing. A failed fetch carries no contracts and changes nothing.
         """
@@ -460,7 +460,7 @@ class Daemon:
             now = self.clock()
             chain: list[OptionContract] = [ct for part in record for ct in part["contracts"]]
             ladders = await asyncio.get_running_loop().run_in_executor(
-                server._chain_pricing, strike_ladders, chain
+                server.chain_pricing, strike_ladders, chain
             )
             if ticker in self.watchlist:
                 self._chains[ticker], self._ladders[ticker] = chain, ladders
