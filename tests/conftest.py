@@ -91,6 +91,20 @@ def _markets_answers_held():
 
 
 @pytest.fixture(autouse=True)
+def _local_schwab_closed():
+    """Every local Schwab a test starts is closed after it, its socket and clients with it.
+
+    A test that closes its own leaves nothing for this; one that does not would leave the
+    listening socket and each client's connections open for the rest of the run.
+    """
+    yield
+    standin = sys.modules.get("tests.schwab_rest_standin")
+    if standin is not None:
+        for schwab in list(standin.LocalSchwab.open_now):
+            schwab.close()
+
+
+@pytest.fixture(autouse=True)
 def _live_feed_starts_down():
     """live_market_plane's feed state (the daemon heartbeat) is process-global.
 

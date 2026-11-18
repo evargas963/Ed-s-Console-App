@@ -5,6 +5,10 @@
 function strikeText(k) {
   return k.toFixed(2).replace(/\.?0+$/, "");
 }
+// Schwab's in-the-money: its money intrinsic value positive; none sent, no flag
+function itm(c) {
+  return c == null || c.moneyIntrinsicValue == null ? null : c.moneyIntrinsicValue > 0;
+}
 function served(d) {
   const byK = new Map();
   for (const c of d.contracts) {
@@ -25,8 +29,8 @@ function served(d) {
         spot: i === 0 && k === d.spot_strike,
         call: i < g.call.length ? g.call[i] : null,
         put: i < g.put.length ? g.put[i] : null,
-        call_itm: spot == null ? null : k < spot,
-        put_itm: spot == null ? null : k > spot,
+        call_itm: itm(g.call[i]),
+        put_itm: itm(g.put[i]),
       });
     }
   }

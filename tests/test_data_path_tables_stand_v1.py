@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from db import EdDB
@@ -70,7 +71,7 @@ CREATE INDEX idx_news_impact_ts ON news_events(impact_level, timestamp);
 
 def _schema(db: Path) -> dict:
     """Every schema object in the database: name -> (type, its SQL)."""
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         return {
             name: (kind, sql)
             for kind, name, sql in conn.execute("SELECT type, name, sql FROM sqlite_master")
@@ -79,7 +80,7 @@ def _schema(db: Path) -> dict:
 
 def _rows(db: Path, schema: dict) -> dict:
     """Every row of every table in `schema`."""
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         return {
             name: conn.execute(f'SELECT * FROM "{name}"').fetchall()
             for name, (kind, _sql) in schema.items()
@@ -90,7 +91,7 @@ def _rows(db: Path, schema: dict) -> dict:
 def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path):
     db = tmp_path / "ed_console.db"
     item = _NEWS["content"]
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.executescript(_OLD_SCHEMA)
         conn.execute(
             "INSERT INTO news_events (timestamp, source, ticker, headline, raw_json) "

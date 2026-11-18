@@ -23,6 +23,7 @@ import logging
 import sqlite3
 import threading
 import time
+from contextlib import closing
 from dataclasses import replace
 from datetime import datetime
 
@@ -248,7 +249,8 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         for f in GREEKS
     ), "a Greek Schwab did not send is absent"
 
-    with sqlite3.connect(tmp_path / "ed_console.db") as conn:  # 10:15 ET: the 10:00 window
+    # 10:15 ET: the 10:00 window
+    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as conn, conn:
         rows = conn.execute(
             "SELECT ticker, expiry, spot, chain_json FROM complete_chain_captures ORDER BY ticker"
         ).fetchall()

@@ -19,6 +19,7 @@ import asyncio
 import json
 import shutil
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -60,7 +61,7 @@ async def _until(ok, seconds: float = 30.0) -> None:
 
 
 def _rows(db, sql: str) -> list:
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         return conn.execute(sql).fetchall()
 
 
@@ -434,7 +435,7 @@ def test_a_keep_asked_again_while_one_runs_is_not_ended_by_the_older_one(tmp_pat
     assert older is not None
     every = list(older.tables)
     writer.prune(2.0)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         while older.tables:
             writer._prune_part(conn, older)
     assert set(older.removed) == {table for table, _column in every}
@@ -453,7 +454,7 @@ def test_each_part_of_the_keep_reads_the_large_tables_through_their_receipt_time
     """
     db = tmp_path / "stream_capture.db"
     CaptureWriter(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         plans = {
             table: [
                 row[3]
@@ -546,7 +547,7 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
         "status": 200,
         "body": json.dumps({symbol: entry}),
     }
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         writer.insert("quotesanswer", old, conn=conn)
         conn.execute(
             "CREATE TRIGGER keep_refused BEFORE DELETE ON rest_quotes_raw "
@@ -748,7 +749,7 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
         await task
 
     asyncio.run(go())
-    with sqlite3.connect(db) as read:
+    with closing(sqlite3.connect(db)) as read, read:
         archived = {t: archived_rows(read, t) for t in ARCHIVED}
     unknown_day_ends, close = et_ts("2026-09-30 00:00"), et_ts("2026-09-30 15:30")
     assert archived["stream_book_raw"] == [

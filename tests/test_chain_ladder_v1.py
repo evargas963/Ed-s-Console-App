@@ -1,19 +1,25 @@
 """The chain panel serves the ladder the Chain view draws (terrain_engine.chain_ladder).
 
-Strikes high to low, one row per listed contract, in-the-money flags against the live spot. Real
-CRWD chain.
+Strikes high to low, one row per listed contract, in-the-money flags as Schwab sends them (its
+money intrinsic value, positive in the money). Real CRWD chain; real SPY 2026-11-20 chain with its
+/quotes answers; a real LEVELONE_OPTIONS record.
 """
 
 import json
 from pathlib import Path
 
+from calc.math_exposure_core import overlay_streamed_contract_fields
 from calc.terrain_engine import chain_ladder as _chain_ladder
-from option_contract import chain_row, read_chain
+from option_contract import chain_row, read_chain, streamed_top
 
-FX = json.loads(
-    (
-        Path(__file__).resolve().parent / "fixtures" / "real_crwd_complete_chain_quarter.json"
-    ).read_text(encoding="utf-8")
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FX = json.loads((FIXTURES / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
+SPY = json.loads(
+    (FIXTURES / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8")
+)
+SPY_QUOTES = {s: e["quote"] for q in SPY["quotes"] for s, e in q["reply"].items()}
+STREAM = json.loads(
+    (FIXTURES / "real_options_stream_history_samples.json").read_text(encoding="utf-8")
 )
 
 
@@ -37,18 +43,67 @@ def test_every_contract_on_one_row_strikes_high_to_low():
     assert len({r["strike"] for r in rows}) == FX["n_strikes"]
 
 
-def test_in_the_money_against_the_spot_and_one_spot_row():
-    spot = FX["spot"]  # 205.4
-    rows, _ = chain_ladder(FX["chain"], spot)
-    for r in rows:
-        assert r["call_itm"] is (r["strike"] < spot) and r["put_itm"] is (r["strike"] > spot)
+def test_in_the_money_is_schwabs_and_one_spot_row():
+    """Each contract's flag is its /quotes moneyIntrinsicValue positive.
+
+    Checked against the quote's own underlyingPrice (762.63) for every one of the 442 SPY
+    contracts: a call below it and a put above it. Schwab's /chains inTheMoney was answered at
+    another price (766.31) and differs on the strikes between the two, so the flag is the one
+    answer's, never a mix.
+    """
+    raw = [dict(c, quote=SPY_QUOTES[c["symbol"]]) for c in SPY["chain"]]
+    spot = SPY["spot"]
+    rows, unplaced = chain_ladder(raw, spot)
+    assert unplaced == 0
+    flags = {
+        r[s]["symbol"]: r[f"{s}_itm"] for r in rows for s in ("call", "put") if r[s] is not None
+    }
+    assert len(flags) == 442
+    underlying = {c["symbol"]: SPY_QUOTES[c["symbol"]]["underlyingPrice"] for c in SPY["chain"]}
+    assert set(underlying.values()) == {762.63}
+    assert flags == {
+        c["symbol"]: c["strikePrice"] < 762.63
+        if c["putCall"] == "CALL"
+        else c["strikePrice"] > 762.63
+        for c in SPY["chain"]
+    }
+    assert flags == {
+        c["symbol"]: SPY_QUOTES[c["symbol"]]["moneyIntrinsicValue"] > 0 for c in SPY["chain"]
+    }
     (s,) = [r for r in rows if r["spot"]]
     assert s["strike"] == min({r["strike"] for r in rows}, key=lambda k: abs(k - spot))
 
 
-def test_without_a_spot_nothing_is_marked():
+def test_without_a_value_from_schwab_nothing_is_marked():
+    """The CRWD chain was captured with no quote: no money intrinsic value, so no flag.
+
+    Without a spot, no row is marked as spot.
+    """
     rows, _ = chain_ladder(FX["chain"], None)
     assert all(r["call_itm"] is None and r["put_itm"] is None and not r["spot"] for r in rows)
+    rows, _ = chain_ladder(FX["chain"], FX["spot"])
+    assert all(r["call_itm"] is None and r["put_itm"] is None for r in rows)
+
+
+def test_a_streamed_contract_takes_the_streams_money_intrinsic_value():
+    """The pushed MONEY_INTRINSIC_VALUE is a streamed contract's flag (AGENTS.md rule 3).
+
+    Real TSLA 367.5 call record: underlying 365.855, intrinsic -1.645, out of the money. Stand-in:
+    it is laid over a SPY contract of the capture, whose own quote says in the money.
+    """
+    content = STREAM["contracts"][0]["events"][0]["content"]
+    assert content["MONEY_INTRINSIC_VALUE"] == -1.645
+    raw = dict(SPY["chain"][0], quote=SPY_QUOTES[SPY["chain"][0]["symbol"]])
+    (contract,) = read_chain([raw])
+    assert contract.money_intrinsic == 462.63
+    sym = contract.symbol
+    (streamed,), held = overlay_streamed_contract_fields(
+        [contract], {sym: streamed_top(content)}, {sym}, {}
+    )
+    assert held == 1 and streamed.money_intrinsic == -1.645
+    rows, _ = _chain_ladder([streamed], SPY["spot"], [chain_row(streamed)])
+    assert rows[0]["call_itm"] is False
+    assert rows[0]["call"]["moneyIntrinsicValue"] == -1.645
 
 
 def test_a_second_contract_at_one_strike_and_side_gets_its_own_row():

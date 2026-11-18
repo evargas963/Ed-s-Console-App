@@ -131,7 +131,7 @@
     var CALL = ["oi_text", "volume_text", "iv_text", "delta", "gamma", "bid_text", "ask_text"];
     var PUT = ["bid_text", "ask_text", "gamma", "delta", "iv_text", "volume_text", "oi_text"];
     function side(c, cls, itm, cols) {
-      // itm: served per row (strike vs the live spot)
+      // itm: served per row, Schwab's (its money intrinsic value positive)
       var klass =
         cls + (c && sym(c) === desired ? " chn-selc" : "") + (itm === true ? " chn-itm" : "");
       return cols

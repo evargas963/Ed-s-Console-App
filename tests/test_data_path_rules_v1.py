@@ -15,6 +15,7 @@ import sqlite3
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -932,7 +933,7 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
             break
     assert not sweep.step(lambda: client, stop)
     asked = [r[1]["fromDate"] for r in schwab.requests if r[0] == chains]
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         stored = sorted(
             {
                 ts
