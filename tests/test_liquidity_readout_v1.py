@@ -607,22 +607,22 @@ _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text
 
 
 @pytest.mark.parametrize(
-    ("case", "line", "zone"),
+    ("case", "line", "pct", "zone"),
     [
-        ("under 10", 10.0, "BALANCED"),
-        ("under -10", -10.0, "BALANCED"),
+        ("under 10", 10.0, 9.996, "BALANCED"),
+        ("under -10", -10.0, -9.989, "BALANCED"),
     ],
 )
-def test_the_zones_on_the_books_nearest_the_line(case, line, zone):
+def test_the_zones_on_the_books_nearest_the_line(case, line, pct, zone):
     """The two books held, over SPY's whole 2026-11-02 session, nearest the 10% line.
 
-    When a venue and view read nearest inside it (9.996%, -9.989%), held ten seconds: just
-    inside the line is not past it.
+    When a venue and view read nearest inside it (9.996%, -9.989%, to three decimals as the other
+    zone tests state them), held ten seconds: just inside the line is not past it.
     """
     c = _LINES[case]
     readout = _readout({svc: content for _ts, svc, content in c["books"]})
     w = _steady(readout, c["venue"], c["view"])
-    assert w["pct"] == pytest.approx(line, abs=0.02)
+    assert w["pct"] == pytest.approx(pct, abs=5e-4)
     assert abs(w["pct"]) < abs(line)
     assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
 

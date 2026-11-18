@@ -150,6 +150,7 @@ def test_the_wilson_interval():
     assert lo == pytest.approx(0.0, abs=1e-12) and 0 < hi < 0.04
     lo, hi = wilson_interval(72, 120)
     assert lo < 72 / 120 < hi
+    # the interval to the four decimals it is stated in, worked out outside this code
     assert (lo, hi) == pytest.approx((0.5106, 0.6832), abs=1e-4)
 
 
