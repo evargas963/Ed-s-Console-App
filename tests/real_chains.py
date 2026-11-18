@@ -19,13 +19,16 @@ SPY_CLOSE: SPY's 2026-10-22 expiry from the close capture begun 2026-10-22 16:17
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
 from calc.math_exposure_core import compute_exposures_by_strike
 from option_contract import OptionContract, read_chain
-from time_et import ET, sessions
+from time_et import ET, option_close_product, sessions, time_to_expiry_years
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -36,6 +39,82 @@ class RealChain:
     chain: list
     spot: float
     now: datetime
+
+
+_erf = np.vectorize(math.erf)
+
+
+def _bsm_delta(s, k, t, sigma, sign, r, q):
+    """Hull ch. 19, worked out here: e^(-qT) N(d1) for a call, e^(-qT) (N(d1) - 1) for a put."""
+    d1 = (np.log(s / k) + (r - q + 0.5 * sigma * sigma) * t) / (sigma * np.sqrt(t))
+    n = 0.5 * (1.0 + _erf(d1 / math.sqrt(2.0)))
+    return np.exp(-q * t) * np.where(sign > 0, n, n - 1.0)
+
+
+def _schwab_inputs(book: RealChain):
+    """Each contract Schwab sent with open interest: K, T, sigma, sign, r, q, OI x multiplier.
+
+    Read here from Schwab's own fields, the rate and yield the chain's interestRate and
+    dividendYield (percents), T the program's one time to expiry (tested on its own).
+    """
+    product = option_close_product(book.ticker)
+    held = sessions()
+    rows = []
+    for c in book.chain:
+        oi, k, iv, mult = (
+            c.get(f) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
+        )
+        r, q = c.get("interestRate"), c.get("dividendYield")
+        if not oi or None in (k, iv, mult, r, q) or iv <= 0:
+            continue
+        t = time_to_expiry_years(
+            c["expirationDate"],
+            book.now,
+            sessions=held,
+            settlement_type=c.get("settlementType"),
+            product=product,
+        )
+        if not t:
+            continue
+        sign = 1.0 if c["putCall"] == "CALL" else -1.0
+        rows.append((k, t, iv / 100.0, sign, r / 100.0, q / 100.0, oi * mult))
+    return np.array(rows, float).T
+
+
+def delta_derivatives(book: RealChain):
+    """Return (inputs, dDelta/dt as T shrinks, dDelta/dSigma) per contract, outside the program.
+
+    Central differences of the textbook Black-Scholes-Merton delta (_bsm_delta) at Schwab's
+    volatility, rate and yield: each contract's charm and vanna, worked out apart from the code
+    under test.
+    """
+    k, t, sigma, sign, r, q, size = _schwab_inputs(book)
+    h, e = t * 1e-4, sigma * 1e-4
+    charm_fd = (
+        _bsm_delta(book.spot, k, t - h, sigma, sign, r, q)
+        - _bsm_delta(book.spot, k, t + h, sigma, sign, r, q)
+    ) / (2.0 * h)
+    vanna_fd = (
+        _bsm_delta(book.spot, k, t, sigma + e, sign, r, q)
+        - _bsm_delta(book.spot, k, t, sigma - e, sign, r, q)
+    ) / (2.0 * e)
+    return (k, t, sigma, sign, r, q, size), charm_fd, vanna_fd
+
+
+def charm_walls(book: RealChain) -> tuple[float, float]:
+    """Return (call charm wall, put charm wall) of a one-expiry book, outside the program.
+
+    Per strike and side, the contracts' charm (delta_derivatives) x open interest x multiplier
+    summed; each wall the strike of the largest absolute sum on its side.
+    """
+    (k, _t, _sigma, sign, _r, _q, size), charm_fd, _vanna_fd = delta_derivatives(book)
+    walls = []
+    for side in (1.0, -1.0):
+        by_strike: dict[float, float] = {}
+        for strike, value in zip(k[sign == side], (charm_fd * size)[sign == side], strict=True):
+            by_strike[float(strike)] = by_strike.get(float(strike), 0) + float(value)
+        walls.append(max(by_strike, key=lambda s: abs(by_strike[s])))
+    return walls[0], walls[1]
 
 
 def _load(name: str) -> RealChain:
