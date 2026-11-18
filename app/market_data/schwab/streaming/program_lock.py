@@ -188,10 +188,11 @@ else:
         """The program's stop request, which launch.py stop sets (ask_to_stop).
 
         SIGTERM to the process holding the lock, the platform's own ask to stop, taken by this
-        request's handler; close restores the handler it replaced.
+        request's handler; close restores the handler it replaced. It names no event, so it
+        takes the lock's database path only as Windows' does.
         """
 
-        def __init__(self, db_path: str | Path | None = None) -> None:
+        def __init__(self, _db_path: str | Path | None = None) -> None:
             self._closed = False
             self._asked = threading.Event()
             self._sigterm = signal.signal(signal.SIGTERM, lambda _sig, _frame: self._asked.set())
