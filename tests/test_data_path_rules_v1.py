@@ -1410,8 +1410,10 @@ def test_every_schwab_error_is_logged_as_sent_without_tokens(tmp_path, caplog):
                 client.session.get(f"{base}/marketdata/v1/chains?symbol=SPY")
             client.session.get(f"{base}/trader/v1/accounts/HASH123/orders")
             client.session.get(f"{base}/v1/oauth/token")
+        client.session.close()
     finally:
         srv.shutdown()
+        srv.server_close()  # shutdown ends serving; this closes the listening socket
     lines = [r.getMessage() for r in caplog.records]
     asked = "REQUEST GET /marketdata/v1/chains SPY -> 403 (sent "
     chain = [m for m in lines if m.startswith(asked)]
