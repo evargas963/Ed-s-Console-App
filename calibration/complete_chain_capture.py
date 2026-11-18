@@ -55,6 +55,11 @@ CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
 # expiry, the body exactly as received (json_blob_codec.encode_text_blob), absent in captures
 # written before the column was added.
 
+#: columns added after the table first existed: CREATE IF NOT EXISTS does not add them to an
+#: existing `ed.db` (#1064 removed ALTER migrations; #1065 added `chains_answer` to CREATE/INSERT
+#: only — a #1064-shaped table then failed every history write)
+ADDED_COLUMNS = (("chains_answer", "BLOB"),)
+
 
 INSERT_SQL = (
     "INSERT INTO complete_chain_captures "
@@ -65,6 +70,10 @@ INSERT_SQL = (
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(TABLE_SQL)
+    have = {row[1] for row in conn.execute("PRAGMA table_info(complete_chain_captures)")}
+    for name, kind in ADDED_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE complete_chain_captures ADD COLUMN {name} {kind}")
 
 
 @contextmanager
