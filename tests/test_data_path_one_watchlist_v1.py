@@ -710,6 +710,33 @@ def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_no
     assert daemon.watchlist == ["SPY"]
 
 
+def test_an_add_asked_before_the_schwab_connection_starts_is_answered_not_checked():
+    """A ticker added before the daemon runs (no Schwab client yet) is not added.
+
+    The console is told it was not checked, and why, and no request is made.
+    """
+    bus = MessageBus()
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    async def go():
+        answers = bus.subscribe("watchlist", policy=LOG)
+        await daemon.watchlist_request(
+            {"op": "watchlist", "action": "add", "ticker": "tsla", "id": "r1"}
+        )
+        return [answers.queue.get_nowait()[1] for _ in range(answers.queue.qsize())]
+
+    got = asyncio.run(go())
+    assert [(m["request_id"], m["op"], m["ticker"], m["answer"]) for m in got] == [
+        (
+            "r1",
+            capture.NOT_CHECKED,
+            "TSLA",
+            "ConnectionError: the Schwab connection has not started",
+        )
+    ]
+    assert daemon.watchlist == ["SPY"]
+
+
 def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
     """Two adds of TSLA in flight together (a request sent twice): the list holds TSLA once.
 
