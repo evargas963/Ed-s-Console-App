@@ -17,6 +17,15 @@ concurrency:
     ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Every suite runs offline. The placeholders satisfy config startup in CI and are not live Schwab
+# credentials; ED_CI_OFFLINE with config.is_schwab_ci_offline_mode() blocks live API calls.
+env:
+  CI: "true"
+  ED_CI_OFFLINE: "1"
+  ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+  SCHWAB_API_KEY: "ci-not-live-placeholder"
+  SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+
 jobs:
   linux-browser:
     # ubuntu-latest is 26.04. Playwright 1.59.1 refuses that image
@@ -32,29 +41,14 @@ jobs:
           fetch-depth: 0
           filter: blob:none # every commit; a file's old versions only when one is read
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.13"
+      - name: Set up the tools
+        uses: ./.github/actions/set-up-tools
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
-        with:
-          enable-cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install Python dependencies
+      - name: Install Python and Node dependencies
         shell: bash
         run: |
           uv pip install --system -r requirements-dev.txt -r requirements.txt
-
-      - name: Install Node dependencies
-        run: npm ci
+          npm ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -107,14 +101,6 @@ jobs:
           fi
 
       - name: Run the browser tests
-        env:
-          CI: "true"
-          ED_CI_OFFLINE: "1"
-          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
-          # Placeholders satisfy config startup in CI — not live Schwab credentials.
-          # ED_CI_OFFLINE + config.is_schwab_ci_offline_mode() block live API calls.
-          SCHWAB_API_KEY: "ci-not-live-placeholder"
-          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: npm run test:e2e
 
       - name: Upload Playwright failure traces and the E2E log
@@ -141,37 +127,16 @@ jobs:
           fetch-depth: 0
           filter: blob:none # every commit; a file's old versions only when one is read
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.13"
+      - name: Set up the tools
+        uses: ./.github/actions/set-up-tools
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
-        with:
-          enable-cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install Python dependencies
+      - name: Install Python and Node dependencies
         shell: bash
         run: |
           uv pip install --system -r requirements-dev.txt -r requirements.txt
-
-      - name: Install Node dependencies
-        run: npm ci
+          npm ci
 
       - name: Run the full pytest suite
-        env:
-          CI: "true"
-          ED_CI_OFFLINE: "1"
-          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
-          SCHWAB_API_KEY: "ci-not-live-placeholder"
-          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: |
           # xdist's `-n auto` reads os.process_cpu_count(), which reports fewer cores than the
           # runner has; the worker count is pinned to nproc.
@@ -241,39 +206,18 @@ jobs:
           fetch-depth: 0
           filter: blob:none # every commit; a file's old versions only when one is read
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.13"
+      - name: Set up the tools
+        uses: ./.github/actions/set-up-tools
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
-        with:
-          enable-cache: true
-
-      - name: Install Python dependencies
+      - name: Install Python and Node dependencies and Chromium
         shell: bash
-        run: uv pip install --system -r requirements-dev.txt -r requirements.txt
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install Node dependencies and Chromium
         run: |
+          uv pip install --system -r requirements-dev.txt -r requirements.txt
           npm ci
           npx playwright install chromium
 
       - name: Run the browser tests on Windows
         shell: bash
-        env:
-          CI: "true"
-          ED_CI_OFFLINE: "1"
-          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
-          SCHWAB_API_KEY: "ci-not-live-placeholder"
-          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
         run: npm run test:e2e
 
       - name: Upload Playwright failure traces and the E2E log
@@ -300,39 +244,21 @@ jobs:
           fetch-depth: 0
           filter: blob:none # every commit; a file's old versions only when one is read
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.13"
+      - name: Set up the tools
+        uses: ./.github/actions/set-up-tools
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
-        with:
-          enable-cache: true
-
-      - name: Install Python dependencies
+      - name: Install Python and Node dependencies
         shell: bash
-        run: uv pip install --system -r requirements-dev.txt -r requirements.txt
-
-      - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "22"
-          cache: npm
-
-      - name: Install Node dependencies
-        run: npm ci
+        run: |
+          uv pip install --system -r requirements-dev.txt -r requirements.txt
+          npm ci
 
       - name: Run the full pytest suite on Windows
         shell: bash
         env:
-          CI: "true"
-          ED_CI_OFFLINE: "1"
-          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
-          SCHWAB_API_KEY: "ci-not-live-placeholder"
-          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
           # the tests' files on the runner's local disk (D:), as production's databases are on
-          # its machine's own disk; the default temp is on C:, the runner's network disk
+          # its machine's own disk; the default temp is on C:, the runner's network disk (the
+          # runner context is a step's, not a job's)
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         # pinned to nproc as in linux-pytest: `-n auto` started 2 workers on this 4-core runner
@@ -342,11 +268,6 @@ jobs:
         if: success() || failure()
         shell: bash
         env:
-          CI: "true"
-          ED_CI_OFFLINE: "1"
-          ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
-          SCHWAB_API_KEY: "ci-not-live-placeholder"
-          SCHWAB_APP_SECRET: "ci-not-live-placeholder"
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: python -m pytest --durations=1 -rs -m alone
