@@ -204,7 +204,7 @@ def write_e2e_panels() -> None:
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             time_et.record_markets(json.loads(a["body"]))
-    E2E_PANELS.write_text(json.dumps(build_e2e_panels(), indent=1), encoding="utf-8")
+    E2E_PANELS.write_text(json.dumps(build_e2e_panels(), indent=2) + "\n", encoding="utf-8")
 
 
 def test_the_browser_tests_panels_are_the_producers_own():
