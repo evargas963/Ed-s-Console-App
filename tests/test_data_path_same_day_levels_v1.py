@@ -129,12 +129,14 @@ def test_gamma_rebuilt_to_todays_close_is_not_refused_at_the_listed_expiry(book,
     """A front expiry later than today: gamma rebuilt to today's close is largest at the price.
 
     It is above any gamma the contract can have at its listed expiry. The strike there stays a
-    level.
+    level. The expected strike is worked out from the raw chain outside the program
+    (_front_walls with _at_todays_close: Black-Scholes-Merton gamma to today's close).
     """
     same = compute_terrain(
         book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
     ).same_day
-    assert same["absolute_gamma_strike"] == pin
+    worked_out = _front_walls(book, _at_todays_close)["absolute_gamma_strike"]
+    assert same["absolute_gamma_strike"] == worked_out == pin
 
 
 def _as_sent(contract: dict, _book) -> tuple[float, float]:
