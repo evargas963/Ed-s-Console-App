@@ -1028,6 +1028,6 @@ def test_a_stop_before_the_daemon_says_the_watchlist_ends_the_levels_loop_quietl
     The levels loop's wait ends with the stop, and the loop ends there, loading and publishing
     nothing for a watchlist it does not have.
     """
-    assert not server._terrain_loop_running and lmp.watchlist() is None
+    assert not server.SERVICES.levels_running and lmp.watchlist() is None
     server._terrain_loop()
     assert lmp.watchlist() is None
