@@ -125,7 +125,7 @@ def test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the
     finally:
         gate.set()
         server._chain_pricing.submit(lambda: None).result(timeout=30)
-    job = {"SPY": (server.REPRICE, None, None, None)}
+    job = {"SPY": (server.REPRICE, None, None, (None, None))}
     assert seen == [job, job, {}]
 
 

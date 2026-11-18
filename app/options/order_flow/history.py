@@ -98,6 +98,11 @@ class TapeRow(Printed):
     strike: float | None
     oi: Any
     premium: float | None
+    strike_text: str | None
+    bid_text: str | None
+    ask_text: str | None
+    trade_text: str | None
+    delta_text: str | None
     premium_text: str | None
     bid_size_text: str | None
     ask_size_text: str | None
