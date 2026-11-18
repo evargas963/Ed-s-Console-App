@@ -462,7 +462,7 @@ class MessageBus:
         """
         self.current.pop(key, None)
 
-    def _newest(self, key: str, topic: str, msg: Any) -> bool:
+    def _newest(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's time.
 
         Returns whether the record changed.
