@@ -1059,8 +1059,12 @@ def _on_stream_tick(sym: str) -> None:
         spot, _source, _ts = resolve_spot(tk, now=now)
         before, _last_tick_spot[tk] = _last_tick_spot.get(tk), spot
         published = published_levels(tk)
-        crosses = _level_crosses_at(published.snap, before, spot) if published is not None else None
-        if crosses:
+        # a cross needs the price before and now (terrain_read.crossed)
+        if (
+            published is not None
+            and spot is not None
+            and (crosses := _level_crosses_at(published.snap, before, spot))
+        ):
             _chain_pricing.submit(
                 _log_level_crosses,
                 tk,
@@ -1132,7 +1136,7 @@ DELIVERED, STORED, REPRICE = "delivered", "stored", "reprice"
 #: priced in the order they were fetched.
 _chains_waiting: dict[
     str,
-    tuple[str, list[OptionContract] | None, float | None, tuple[float | None, float | None] | None],
+    tuple[str, list[OptionContract] | None, float | None, tuple[float | None, float | None]],
 ] = {}
 _chains_waiting_lock = threading.Lock()
 #: the tickers the daemon has delivered a chain for since the console started: their stored
@@ -1155,7 +1159,8 @@ def _on_chain(
     newer chain came.
     """
     tk = ticker_storage_key(ticker)
-    if contracts is None:
+    # a whole chain carries its spot (assemble_chain_part); one not delivered carries neither
+    if contracts is None or spot is None:
         level_store.chain_failed(tk, f"chain fetch failed ({reason})")
         return
     _wait_to_price(tk, DELIVERED, contracts, ts, spot)
@@ -1166,7 +1171,7 @@ def _wait_to_price(
     what: str,
     contracts: list[OptionContract] | None = None,
     ts: float | None = None,
-    spot: tuple[float | None, float | None] | None = None,
+    spot: tuple[float | None, float | None] = (None, None),
 ) -> bool:
     """Queue a ticker's pricing (DELIVERED, STORED or REPRICE) for the pricing thread.
 
@@ -1208,7 +1213,7 @@ def _price_chain(
     what: str,
     contracts: list[OptionContract] | None,
     fetched_ts: float | None,
-    spot: tuple[float | None, float | None] | None,
+    spot: tuple[float | None, float | None],
     now: datetime,
 ) -> None:
     """Price a ticker's levels through THE producer of them (_publish_levels), at `now`.
