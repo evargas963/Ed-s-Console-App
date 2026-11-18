@@ -603,13 +603,13 @@ def no_levels():
     """
     _forget_levels()
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 60)
+    server.chain_pricing.submit(gate.wait, 60)
     yield
     with server._chains_waiting_lock:
         for tk in (A, B):
             server._chains_waiting.pop(tk, None)
     gate.set()
-    server._chain_pricing.submit(lambda: None).result(timeout=60)
+    server.chain_pricing.submit(lambda: None).result(timeout=60)
     _forget_levels()
 
 

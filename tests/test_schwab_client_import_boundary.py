@@ -94,7 +94,7 @@ with TestClient(server.app) as client:
     for topic, msg in chain_messages("SPY", fx["chain"], fx["capture_ts_utc"], """
     """fx["spot"], fx["capture_ts_utc"]):
         ofs._ingest_pushed(topic, msg)
-    server._chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
+    server.chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:
         if "GET" in (getattr(route, "methods", None) or ()) and "{" not in route.path:
             client.get(route.path)
