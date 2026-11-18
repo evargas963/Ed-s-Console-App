@@ -180,12 +180,13 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
 def test_the_levels_are_due_by_two_of_the_daemons_rounds_and_nothing_of_ours(
     published, round_sec, began, after, state, why
 ):
-    """Operator 2026-11-15: "yes remove the floor"; 2026-11-17: during any open session the
-    levels are live once Schwab sends the chain, after hours the last balance stands.
+    """A chain is due by two of the daemon's rounds; before its first, from the chain's arrival.
 
-    A chain is overdue past two of the daemon's reported rounds, however short. Before the daemon
-    has reported a round, a chain fetched since its first round began (`began`, seconds from the
-    delivery) is LIVE, and an older one is NOT LIVE. STAND-IN: the round.
+    Operator 2026-11-15: "yes remove the floor"; 2026-11-17: during any open session the levels
+    are live once Schwab sends the chain, after hours the last balance stands. A chain is overdue
+    past two of the daemon's reported rounds, however short. Before the daemon has reported a
+    round, a chain fetched since its first round began (`began`, seconds from the delivery) is
+    LIVE, and an older one is NOT LIVE. STAND-IN: the round.
     """
     delivered = _et(13, 0)
     published("TSLA", TSLA, delivered)

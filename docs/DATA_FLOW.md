@@ -503,7 +503,8 @@ both, and the window restarts the program.
   it replaced held levels LIVE past two rounds once a round was shorter than 90 s); before the
   daemon has reported a round, LIVE from a chain fetched since its first round began, the moment
   Schwab sends it (operator 2026-11-17: "why are we waiting at all"), and NOT LIVE, "this ticker's
-  first chain since the daemon started has not arrived", from one fetched before it; NOT LIVE when Schwab's /markets answer for today is not held), never a zero or a value from
+  first chain since the daemon started has not arrived", from a chain it fetched before that start;
+  NOT LIVE when Schwab's /markets answer for today is not held), never a zero or a value from
   elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and staleness tests).
   Each ticker's chain is asked for as Schwab documents it: its expiration chain (`/expirationchain`)
   once per ET date, then `/chains` once per listed expiry (fromDate = toDate = the expiry,
