@@ -366,6 +366,7 @@ class ChainSweep:
         self.clock = clock  # when a request begins, and when a chain is delivered
         self.failures = failures  # the daemon's writer: keeps a failed history write
         self.streamed = streamed  # option symbol -> its stream record on the bus, or None
+        self.began: float | None = None  # this run's first rotation began: a chain since is ours
         self.round_sec: float | None = None
         self.waiting: str | None = None  # why no chain is asked for (waits), else None
         self._expiries: dict[str, tuple[date, list[date]]] = {}  # ticker -> (ET date, expiries)
@@ -547,6 +548,8 @@ class ChainSweep:
         the round, and a round of a few tickers is shorter than the watchlist's.
         """
         started = self.clock()
+        if self.began is None:
+            self.began = started
         self._delivered = set()
         last = None
         for ticker in tickers:

@@ -130,6 +130,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 ):
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
+    assert sweep.began is None, "no round has begun"
     try:
         with caplog.at_level(logging.INFO, logger="chain_history"):
             assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
@@ -138,6 +139,8 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         second = schwab.requests[len(first) :]
     finally:
         schwab.close()
+    # the console judges a chain fetched since then live before a round is reported
+    assert sweep.began == et_ts("2026-10-01 10:15"), "the first round's start, kept"
 
     asked = [
         (

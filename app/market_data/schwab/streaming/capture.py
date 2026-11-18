@@ -600,6 +600,7 @@ class Daemon:
             "schwab_down": None if socket_open else self.connection.schwab_down,
             "watchlist": list(self.watchlist),
             "chain_round_sec": self.chains.round_sec if self.chains is not None else None,
+            "chains_began": self.chains.began if self.chains is not None else None,
             "chains_waiting": self.chains.waiting if self.chains is not None else None,
             "held": {k: sorted(v) for k, v in self.connection.held.items()},
             "health": self.health.report(now),
