@@ -29,7 +29,7 @@ from calc.math_exposure_core import (
 from calc.math_levels import compute_charm_by_strike
 from option_contract import read_chain
 from tests.one_contract_greeks import charm, vanna
-from tests.real_chains import MRVL, SPY_0DTE, SPY_FULL, RealChain
+from tests.real_chains import MRVL, SPY_0DTE, SPY_FULL, delta_derivatives
 from tests.shared_helpers import norm_cdf
 from time_et import ET, option_close_product, sessions, time_to_expiry_years
 
@@ -89,60 +89,6 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
 # ── at Schwab's own rate and dividend yield, on real chains (operator 2026-11-12: "yes, but
 # make sure the calculations are correct") ──
 
-_erf = np.vectorize(math.erf)
-
-
-def _bsm_delta(s, k, t, sigma, sign, r, q):
-    """Hull ch. 19, worked out here: e^(-qT) N(d1) for a call, e^(-qT) (N(d1) - 1) for a put."""
-    d1 = (np.log(s / k) + (r - q + 0.5 * sigma * sigma) * t) / (sigma * np.sqrt(t))
-    n = 0.5 * (1.0 + _erf(d1 / math.sqrt(2.0)))
-    return np.exp(-q * t) * np.where(sign > 0, n, n - 1.0)
-
-
-def _schwab_inputs(book: RealChain):
-    """Each contract Schwab sent with open interest: K, T, sigma, sign, r, q, OI x multiplier.
-
-    Read here from Schwab's own fields, the rate and yield the chain's interestRate and
-    dividendYield (percents), T the program's one time to expiry (tested on its own).
-    """
-    product = option_close_product(book.ticker)
-    held = sessions()
-    rows = []
-    for c in book.chain:
-        oi, k, iv, mult = (
-            c.get(f) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
-        )
-        r, q = c.get("interestRate"), c.get("dividendYield")
-        if not oi or None in (k, iv, mult, r, q) or iv <= 0:
-            continue
-        t = time_to_expiry_years(
-            c["expirationDate"],
-            book.now,
-            sessions=held,
-            settlement_type=c.get("settlementType"),
-            product=product,
-        )
-        if not t:
-            continue
-        sign = 1.0 if c["putCall"] == "CALL" else -1.0
-        rows.append((k, t, iv / 100.0, sign, r / 100.0, q / 100.0, oi * mult))
-    return np.array(rows, float).T
-
-
-def _finite_differences(book: RealChain):
-    """Return (inputs, dDelta/dt as T shrinks, dDelta/dSigma): _bsm_delta's central differences."""
-    k, t, sigma, sign, r, q, size = _schwab_inputs(book)
-    h, e = t * 1e-4, sigma * 1e-4
-    charm_fd = (
-        _bsm_delta(book.spot, k, t - h, sigma, sign, r, q)
-        - _bsm_delta(book.spot, k, t + h, sigma, sign, r, q)
-    ) / (2.0 * h)
-    vanna_fd = (
-        _bsm_delta(book.spot, k, t, sigma + e, sign, r, q)
-        - _bsm_delta(book.spot, k, t, sigma - e, sign, r, q)
-    ) / (2.0 * e)
-    return (k, t, sigma, sign, r, q, size), charm_fd, vanna_fd
-
 
 @pytest.mark.parametrize("book", [SPY_FULL, MRVL, SPY_0DTE], ids=lambda b: b.ticker)
 def test_charm_and_vanna_are_the_bsm_deltas_derivatives_at_schwabs_rate_and_yield(book):
@@ -152,7 +98,7 @@ def test_charm_and_vanna_are_the_bsm_deltas_derivatives_at_schwabs_rate_and_yiel
     Black-Scholes-Merton delta in time and in volatility, at Schwab's rate and yield; and a
     call's charm is not its put's, as a yield above 0 requires.
     """
-    (k, t, sigma, sign, r, q, _size), charm_fd, vanna_fd = _finite_differences(book)
+    (k, t, sigma, sign, r, q, _size), charm_fd, vanna_fd = delta_derivatives(book)
     got_charm = bs_charm_array(book.spot, k, t, sigma, sign, r, q)
     got_vanna = bs_vanna_array(book.spot, k, t, sigma, r, q)
     assert len(k) > 30 and (q > 0).all() and (r > 0).all()
@@ -168,7 +114,7 @@ def test_the_per_strike_charm_and_vanna_are_those_derivatives_summed_on_spys_who
     Each strike's call charm (delta-shares a day) and call vanna (per vol point) are the
     finite-difference derivatives of every call there, times open interest and multiplier.
     """
-    (k, _t, _sigma, sign, _r, _q, size), charm_fd, vanna_fd = _finite_differences(SPY_FULL)
+    (k, _t, _sigma, sign, _r, _q, size), charm_fd, vanna_fd = delta_derivatives(SPY_FULL)
     contracts = read_chain(SPY_FULL.chain)
     product = option_close_product(SPY_FULL.ticker)
     held = sessions()
