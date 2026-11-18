@@ -19,8 +19,7 @@
   var ticker = window.EdShell.ticker,
     classOf = window.EdShell.classOf,
     served = window.EdShell.served,
-    notLive = window.EdShell.notLive,
-    tag = window.EdShell.classTag;
+    notLive = window.EdShell.notLive;
   function isRightNow() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "right-now";
@@ -65,17 +64,7 @@
       "</span>" +
       (heroUnit ? '<span class="unit">' + esc(heroUnit) + "</span>" : "") +
       "</div>";
-    rows.forEach(function (r) {
-      h +=
-        '<div class="fl-row"><span class="k">' +
-        esc(r[0]) +
-        '</span><span class="v">' +
-        esc(r[1]) +
-        "</span>" +
-        tag(r[2]) +
-        "</div>";
-    });
-    return h + "</div>";
+    return h + window.EdShell.rowsHtml(rows) + "</div>";
   }
 
   function detectStage(d) {
