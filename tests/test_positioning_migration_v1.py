@@ -64,9 +64,7 @@ def test_the_migration_matches_the_two_days_rows(two_days):
 
     # the walls and the flip, each day's own, and the move between them: no drift word
     assert "drift" not in m
-    moves = {
-        v["level"]: (v["prior"], v["today"], v["change"]) for v in level_moves(snap, prior_snap)
-    }
+    moves = {v.level: (v.prior, v.today, v.change) for v in level_moves(snap, prior_snap)}
     assert snap.call_wall is not None and prior_snap.call_wall is not None
     assert moves == {
         name: (
@@ -87,7 +85,7 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     assert m["busiest"] == sorted(sorted(vols, key=lambda k: -vols[k])[:2])
     assert m["volume_total"] == sum(r.volume for r in today["all"] if r.volume is not None)
     # no prior day: nothing is compared, and no level's move is known
-    assert not m["compared"] and [v["change"] for v in level_moves(snap, None)] == [None] * 3
+    assert not m["compared"] and [v.change for v in level_moves(snap, None)] == [None] * 3
 
 
 def _prior_gex(body: dict) -> dict:

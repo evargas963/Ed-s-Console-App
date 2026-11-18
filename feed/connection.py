@@ -388,8 +388,10 @@ class Connection:
         self.held = {k: frozenset() for k in SERVICES}
         self.limit = dict.fromkeys(SERVICES)
         if s is not None:
+            logged_out = False
             try:
                 await asyncio.wait_for(s.logout(), timeout=5)
+                logged_out = True
             except Exception as e:  # the session is dropped either way
                 log.info(
                     "schwab: logout of the old session failed (%s: %s)",
@@ -397,6 +399,7 @@ class Connection:
                     e,
                     exc_info=True,
                 )
+            await s.close(logged_out=logged_out)  # logged out or not, the socket is closed
 
     async def read(self, stream: TimedStream) -> None:
         """Handle every frame Schwab sends, as it comes, until the socket is gone.

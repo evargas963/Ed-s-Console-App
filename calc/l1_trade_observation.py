@@ -17,6 +17,7 @@ are not native trade identity.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from numeric_contract import schwab_count, schwab_number
@@ -78,8 +79,17 @@ def last_print(item: dict[str, Any]) -> dict[str, Any]:
     return {name: read(item[name]) for name, read in _PRINT_READERS.items() if name in item}
 
 
-def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
-    """Return a LEVELONE message's last print as a trade: {price, size, time_millis}.
+@dataclass(frozen=True)
+class TradePrint:
+    """A LEVELONE message's last print: its price, and its size and time (epoch ms) if sent."""
+
+    price: float
+    size: float | None
+    time_millis: int | None
+
+
+def extract_vendor_print(item: dict[str, Any]) -> TradePrint | None:
+    """Return a LEVELONE message's last print as a trade.
 
     A message with no LAST_PRICE is not a trade observation (None).
     """
@@ -87,11 +97,9 @@ def extract_vendor_print(item: dict[str, Any]) -> dict[str, Any] | None:
     price = sent.get(VENDOR_LAST_PRICE)
     if price is None:
         return None
-    return {
-        "price": price,
-        "size": sent.get(VENDOR_LAST_SIZE),
-        "time_millis": sent.get(VENDOR_TRADE_TIME),
-    }
+    return TradePrint(
+        price=price, size=sent.get(VENDOR_LAST_SIZE), time_millis=sent.get(VENDOR_TRADE_TIME)
+    )
 
 
 def canonical_tape_prints(content_items: Sequence[Any]) -> list[dict[str, Any]]:

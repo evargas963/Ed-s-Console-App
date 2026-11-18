@@ -368,11 +368,9 @@ class LocalSchwab:
 
     def client(self, tmp_path, expires_in_sec: float = 3600):
         """Return the daemon's client, its requests delivered here, from token_file's file."""
-        client = self.delivering_here(
+        return self.delivering_here(
             sc.client_from_token_file_atomic(self.token_file(tmp_path, expires_in_sec), "k", "s")
         )
-        self.clients.append(client)
-        return client
 
     def delivering_here(self, client):
         """`client`, every request it sends delivered here instead of Schwab's host.
@@ -385,6 +383,7 @@ class LocalSchwab:
             request.url = request.url.copy_with(scheme="http", host="127.0.0.1", port=port)
 
         client.session.event_hooks["request"].append(deliver)
+        self.clients.append(client)  # closed with the stand-in
         return client
 
     def token_file(self, tmp_path, expires_in_sec: float = 3600) -> str:

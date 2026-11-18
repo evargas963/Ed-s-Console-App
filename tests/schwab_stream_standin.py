@@ -105,6 +105,9 @@ class LocalStreamer:
     Schwab's stream. Its heartbeat is sent every `beat` seconds.
     """
 
+    #: every streamer not yet closed; tests/conftest.py closes them after each test
+    open_now: list[LocalStreamer] = []
+
     def __init__(
         self,
         limits: dict[str, int],
@@ -117,6 +120,9 @@ class LocalStreamer:
         self.lag = lag
         self.beat = beat
         self.keeps_what_fits = keeps_what_fits
+        #: induced condition: a LOGOUT gets no answer and the socket stays open, as on a
+        #: connection that has gone silent
+        self.silent_on_logout = False
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
         self.data = dict(data)
         self.requests: list = []
@@ -138,6 +144,7 @@ class LocalStreamer:
         )
         self.thread.start()
         ready.wait(10)
+        LocalStreamer.open_now.append(self)
 
     async def _client(self, ws) -> None:
         self.held.clear()
@@ -146,6 +153,9 @@ class LocalStreamer:
         try:
             async for raw in ws:
                 for req in json.loads(raw)["requests"]:
+                    if req["command"] == "LOGOUT" and self.silent_on_logout:
+                        self.requests.append(req)
+                        continue
                     if not self._take(req, out):  # "Streamer will close the connection" (§1)
                         await asyncio.wait([tasks[0]])
                         return
@@ -229,5 +239,10 @@ class LocalStreamer:
         ]
 
     def close(self) -> None:
+        """Stop serving and close the event loop it ran on; closing again does nothing more."""
+        if self.loop.is_closed():
+            return
         self.loop.call_soon_threadsafe(self.stop.set)
         self.thread.join(10)
+        self.loop.close()
+        LocalStreamer.open_now.remove(self)
