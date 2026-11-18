@@ -298,9 +298,11 @@ def test_a_refresh_due_while_a_sign_in_is_being_saved_takes_it_and_never_writes_
     token = tmp_path / "schwab_token.json"
     try:
         client = schwab.client(tmp_path, 100)  # the old sign-in, in its refresh window
-        saver = _saving(token)
-        client.get_option_expiration_chain("SPY")
-        assert saver.wait(30) == 0, "the token file was written while a sign-in being saved held it"
+        with _saving(token) as saver:  # leaving it closes the saver's pipe
+            client.get_option_expiration_chain("SPY")
+            assert saver.wait(30) == 0, (
+                "the token file was written while a sign-in being saved held it"
+            )
     finally:
         schwab.close()
     assert json.loads(token.read_text())["token"]["access_token"] == "fresh"
@@ -317,10 +319,10 @@ def test_a_client_built_while_a_sign_in_is_being_saved_holds_that_sign_in(tmp_pa
     token = tmp_path / "schwab_token.json"
     try:
         schwab.client(tmp_path)  # the old sign-in, saved before
-        saver = _saving(token)
-        client = schwab.delivering_here(sc.client_from_token_file_atomic(str(token), "k", "s"))
-        held = client.token_metadata.token["access_token"]
-        assert saver.wait(30) == 0
+        with _saving(token) as saver:  # leaving it closes the saver's pipe
+            client = schwab.delivering_here(sc.client_from_token_file_atomic(str(token), "k", "s"))
+            held = client.token_metadata.token["access_token"]
+            assert saver.wait(30) == 0
         client.get_option_expiration_chain("SPY")
     finally:
         schwab.close()
@@ -505,20 +507,19 @@ def test_a_build_that_fails_is_logged_once_by_the_sweep_with_its_cause(tmp_path,
     schwab_client = capture.one_schwab_client(
         lambda: sc.build_client_from_token(str(token), "LiveLookingKey", "LiveLookingSecret")
     )
-    holder = subprocess.Popen(
+    with subprocess.Popen(  # leaving it waits for the holder and closes its pipe
         [sys.executable, "-c", _HOLDER, str(Path(__file__).resolve().parent.parent), str(token)],
         stdout=subprocess.PIPE,
         text=True,
-    )
-    try:
-        assert holder.stdout.readline().strip() == "held"
-        sweep = _sweep(tmp_path)
-        with caplog.at_level(logging.WARNING, logger=cch.log.name):
-            sweep.waits(schwab_client)
-            sweep.waits(schwab_client)
-    finally:
-        holder.kill()
-        holder.wait()
+    ) as holder:
+        try:
+            assert holder.stdout.readline().strip() == "held"
+            sweep = _sweep(tmp_path)
+            with caplog.at_level(logging.WARNING, logger=cch.log.name):
+                sweep.waits(schwab_client)
+                sweep.waits(schwab_client)
+        finally:
+            holder.kill()
     warned = [r for r in caplog.records if r.getMessage().startswith("chain sweep waits")]
     assert len(warned) == 1, [r.getMessage() for r in warned]
     error = warned[0].exc_info[1] if warned[0].exc_info else None
