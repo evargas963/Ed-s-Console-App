@@ -369,20 +369,27 @@ def _per_strike_rows(exposures: dict[float, Bucket]) -> list[StrikeRow]:
 LEVELS_COMPARED = ("call_wall", "put_wall", "gamma_flip")
 
 
-def level_moves(
-    today: TerrainSnapshot | None, prior: TerrainSnapshot | None
-) -> list[dict[str, str | float | None]]:
+@dataclass(frozen=True)
+class LevelMove:
+    """One level today against the prior day's: change = today - prior, None without both."""
+
+    level: str
+    prior: float | None
+    today: float | None
+    change: float | None
+
+
+def level_moves(today: TerrainSnapshot | None, prior: TerrainSnapshot | None) -> list[LevelMove]:
     """Return the call wall, put wall and gamma flip today against the prior day's own.
 
-    Each as {level, prior, today, change}: change = today - prior, None (unknown) without both.
     Both days' levels are the one producer's (compute_terrain); none is held without that day.
     """
-    moves: list[dict[str, str | float | None]] = []
+    moves: list[LevelMove] = []
     for name in LEVELS_COMPARED:
         was = None if prior is None else getattr(prior, name)
         now = None if today is None else getattr(today, name)
         change = None if was is None or now is None else now - was
-        moves.append({"level": name, "prior": was, "today": now, "change": change})
+        moves.append(LevelMove(level=name, prior=was, today=now, change=change))
     return moves
 
 

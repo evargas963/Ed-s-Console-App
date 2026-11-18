@@ -92,16 +92,21 @@ def _markets_answers_held():
 
 @pytest.fixture(autouse=True)
 def _local_schwab_closed():
-    """Every local Schwab a test starts is closed after it, its socket and clients with it.
+    """Every local Schwab and streamer a test starts is closed after it, with what it opened.
 
     A test that closes its own leaves nothing for this; one that does not would leave the
-    listening socket and each client's connections open for the rest of the run.
+    listening sockets, each client's connections and the streamer's event loop open for the rest
+    of the run.
     """
     yield
-    standin = sys.modules.get("tests.schwab_rest_standin")
-    if standin is not None:
-        for schwab in list(standin.LocalSchwab.open_now):
+    rest = sys.modules.get("tests.schwab_rest_standin")
+    if rest is not None:
+        for schwab in list(rest.LocalSchwab.open_now):
             schwab.close()
+    stream = sys.modules.get("tests.schwab_stream_standin")
+    if stream is not None:
+        for streamer in list(stream.LocalStreamer.open_now):
+            streamer.close()
 
 
 @pytest.fixture(autouse=True)

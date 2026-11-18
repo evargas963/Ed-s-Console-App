@@ -27,7 +27,7 @@ def test_a_print_keeps_the_size_schwab_sent():
     state, its top first as the console takes it).
     """
     printed = l1.extract_vendor_print(_MSGS[2]["item"])
-    assert printed["size"] == 92
+    assert printed is not None and printed.size == 92
     state = OrderFlowState()
     for m in _MSGS[:3]:
         state.push_option_top("SPY", m["item"])
