@@ -319,7 +319,7 @@ def bucket_metric(bucket: Bucket, key: BucketField) -> float | None:
     """
     if key not in bucket:
         return None
-    if any(bucket.get(u) for u in _GREEK_FIELD_UNREPORTED[key]):
+    if any(bucket[u] for u in _GREEK_FIELD_UNREPORTED[key]):
         return None
     return float_finite_or_none(bucket[key])
 
