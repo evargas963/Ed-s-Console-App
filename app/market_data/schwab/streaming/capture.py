@@ -834,16 +834,24 @@ async def serve_console(daemon: Daemon, stop: asyncio.Event, sock: socket.socket
     """Serve the console's pages and routes (server.app) and the page's socket until `stop`.
 
     The page's socket is on `sock`. They read the daemon's one bus (console_feed.bind_daemon):
-    one program, one copy of every value.
+    one program, one copy of every value. The program's services beside the pages start before
+    them and stop after them (server.start_services, stop_services): this, the program's one
+    start, owns them, not the web app's lifespan, which every test client of server.app runs.
     """
     console_feed.bind_daemon(daemon)
-    web = _PagesServer(uvicorn.Config(server.app, **PAGES))
-    host, port = sock.getsockname()[:2]
-    log.info("console: serving the pages on http://%s:%s", host, port)
-    serving = asyncio.create_task(web.serve(sockets=[sock]), name="console web server")
-    await asyncio.wait({serving, asyncio.ensure_future(stop.wait())}, return_when="FIRST_COMPLETED")
-    web.should_exit = True
-    await serving
+    server.start_services()  # the recorded sessions, the levels loop and the bar writer
+    try:
+        web = _PagesServer(uvicorn.Config(server.app, **PAGES))
+        host, port = sock.getsockname()[:2]
+        log.info("console: serving the pages on http://%s:%s", host, port)
+        serving = asyncio.create_task(web.serve(sockets=[sock]), name="console web server")
+        await asyncio.wait(
+            {serving, asyncio.ensure_future(stop.wait())}, return_when="FIRST_COMPLETED"
+        )
+        web.should_exit = True
+        await serving
+    finally:
+        server.stop_services()
 
 
 #: the daemon's window alone (_start_log), never its log file
