@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import threading
+from contextlib import closing
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
@@ -185,7 +186,7 @@ class EdDB:
 
     def _init_schema(self) -> None:
         """Create all tables if they don't exist. Safe to call on every startup."""
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             conn.executescript("""
 
             -- ── Level cross events ────────────────────────────────────────────
@@ -225,7 +226,8 @@ class EdDB:
             " RETURNING cross_id"
         )
         logged: list[dict[str, Any]] = []
-        with self._connect() as conn:
+        # the connection is the transaction (commit, or roll back on an error) and is closed
+        with closing(self._connect()) as conn, conn:
             for event in events:
                 d = asdict(event)
                 (cross_id,) = conn.execute(sql, [d[c] for c in cols]).fetchone()
@@ -235,7 +237,7 @@ class EdDB:
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list[dict[str, Any]]:
         """Return the most recent level crosses, each the row record_level_crosses returns."""
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
-        with self._connect() as conn:
+        with closing(self._connect()) as conn, conn:
             rows = conn.execute(
                 f"""
                 SELECT {cols} FROM level_crosses

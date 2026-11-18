@@ -508,16 +508,25 @@ def chain_ladder(
     low; per strike one row per listed
     contract index (a second contract at one strike and side gets its own row), each contract as
     `shown` (option_contract.chain_row, in the order of `contracts`); `call_itm` / `put_itm`
-    against `spot` (None without one); `spot` marks the first row of the strike nearest spot.
+    Schwab's own: its money intrinsic value positive (Schwab Streamer API, LEVELONE_OPTIONS field
+    11), None when Schwab sent none; `spot` marks the first row of the strike nearest spot.
     """
-    by_k: dict[float, dict[str, list[dict[str, Any]]]] = {}
+    by_k: dict[float, dict[str, list[tuple[OptionContract, dict[str, Any]]]]] = {}
     unplaced = 0
     for c, row in zip(contracts, shown, strict=True):
         if c.strike is None or c.side is None:
             unplaced += 1
             continue
-        by_k.setdefault(c.strike, {"call": [], "put": []})[c.side.lower()].append(row)
+        by_k.setdefault(c.strike, {"call": [], "put": []})[c.side.lower()].append((c, row))
     spot_k = nearest_strike(by_k, spot)
+
+    def leg(legs: list[tuple[OptionContract, dict[str, Any]]], i: int) -> dict[str, Any] | None:
+        return legs[i][1] if i < len(legs) else None
+
+    def itm(legs: list[tuple[OptionContract, dict[str, Any]]], i: int) -> bool | None:
+        value = legs[i][0].money_intrinsic if i < len(legs) else None
+        return None if value is None else value > 0
+
     rows: list[LadderRow] = []
     for k in sorted(by_k, reverse=True):
         g = by_k[k]
@@ -526,10 +535,10 @@ def chain_ladder(
                 "strike": k,
                 "first": i == 0,
                 "spot": i == 0 and k == spot_k,
-                "call": g["call"][i] if i < len(g["call"]) else None,
-                "put": g["put"][i] if i < len(g["put"]) else None,
-                "call_itm": None if spot is None else k < spot,
-                "put_itm": None if spot is None else k > spot,
+                "call": leg(g["call"], i),
+                "put": leg(g["put"], i),
+                "call_itm": itm(g["call"], i),
+                "put_itm": itm(g["put"], i),
             }
             for i in range(max(len(g["call"]), len(g["put"])))
         )

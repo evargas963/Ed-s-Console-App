@@ -22,6 +22,7 @@ import threading
 import time
 import uuid
 import venv
+from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
 
@@ -952,9 +953,8 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
                 level_store._levels.pop(name, None)
         with server._chains_waiting_lock:
             server._chains_delivered.discard(tk)
-        with sqlite3.connect(
-            server.get_db().db_path
-        ) as conn:  # later tests read the newest capture
+        # later tests read the newest capture
+        with closing(sqlite3.connect(server.get_db().db_path)) as conn, conn:
             conn.executemany(
                 "DELETE FROM complete_chain_captures WHERE ticker=? AND ts_utc=?",
                 [(c.ticker, c.now.timestamp()) for c in stored],
@@ -992,7 +992,8 @@ def test_the_stop_drops_what_waits_to_be_priced_so_the_exit_waits_on_no_pricing(
         server.chain_pricing.submit(lambda: None).result(timeout=60)  # what was queued has run
         with level_store._lock:
             priced = {name for name in names if level_store._levels.pop(name, None) is not None}
-        with sqlite3.connect(server.get_db().db_path) as conn:  # later tests read the newest
+        # later tests read the newest
+        with closing(sqlite3.connect(server.get_db().db_path)) as conn, conn:
             conn.executemany(
                 "DELETE FROM complete_chain_captures WHERE ticker=? AND ts_utc=?",
                 [(c.ticker, c.now.timestamp()) for c in (MRVL, NFLX)],

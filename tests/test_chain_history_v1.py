@@ -16,6 +16,7 @@ import itertools
 import json
 import sqlite3
 import threading
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -204,10 +205,10 @@ def test_every_chains_and_quotes_answer_is_recorded_as_received(tmp_path, schwab
     writer = CaptureWriter(tmp_path / "stream_capture.db")
     for topic, msg in answers:
         writer.insert(topic, msg)
-    with sqlite3.connect(tmp_path / "stream_capture.db") as c:
+    with closing(sqlite3.connect(tmp_path / "stream_capture.db")) as c, c:
         chains = c.execute("SELECT symbol, expiry, status, body FROM rest_chains_raw").fetchall()
         quotes = c.execute("SELECT status, body FROM rest_quotes_raw").fetchall()
-    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
         (kept,) = c.execute("SELECT chains_answer FROM complete_chain_captures").fetchall()
     sent = {m["expiry"]: m["body"] for t, m in answers if t == "chainanswer.SPY"}
     assert [(s, e, st, decode_text_blob(b)) for s, e, st, b in chains] == [
@@ -223,7 +224,7 @@ def test_every_chains_and_quotes_answer_is_recorded_as_received(tmp_path, schwab
 
 
 def _stored_chain(tmp_path) -> bytes:
-    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
         return c.execute("SELECT chain_json FROM complete_chain_captures").fetchone()[0]
 
 
@@ -238,7 +239,7 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
     ):  # after the close capture's window
         clock["now"] = et_ts(at)
         assert _rotate(sweep, client) == {"SPY"}
-    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
         rows = c.execute(
             "SELECT ts_utc, expiry, spot, chain_json FROM complete_chain_captures ORDER BY ts_utc"
         ).fetchall()
@@ -293,7 +294,7 @@ def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_ever
     assert len(first) == 442 and set(first) == set(again) == set(later)
     assert all(first[s].open_interest == again[s].open_interest for s in first)
     assert all(again[s].gamma == q["gamma"] for s, q in _QUOTED.items())
-    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
         written = c.execute(
             "SELECT DISTINCT ts_utc FROM complete_chain_captures ORDER BY ts_utc"
         ).fetchall()
@@ -357,7 +358,7 @@ def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_pat
         itertools.repeat(et_ts("2026-09-30 16:15:10")),
     )
     _rotate(sweep, client)  # begun 16:14:30, delivered 16:15:10
-    with sqlite3.connect(tmp_path / "ed_console.db") as c:
+    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
         assert [
             _et(r[0]) for r in c.execute("SELECT DISTINCT ts_utc FROM complete_chain_captures")
         ] == ["2026-09-30 16:00"]
@@ -371,7 +372,7 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
     writer does not fill); once it takes writes, the same window's next chain is written.
     """
     db = tmp_path / "ed_console.db"
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute(
             "CREATE TABLE complete_chain_captures (ticker TEXT NOT NULL, expiry TEXT NOT NULL, "
             "ts_utc REAL NOT NULL, spot REAL, n_contracts INTEGER NOT NULL, "
@@ -384,11 +385,11 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
     assert all("failed" not in m for _t, m in published)
     ((tk, contracts, _t, reason, _spot),) = _assembled(published)
     assert contracts is not None and reason is None
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("DROP TABLE complete_chain_captures")
     clock["now"] += 120  # the same window's next chain
     _rotate(sweep, client)
-    with sqlite3.connect(db) as c:
+    with closing(sqlite3.connect(db)) as c, c:
         assert (
             c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0]
             == 1

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from contextlib import closing
 
 import server
 import time_et
@@ -39,7 +40,7 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
 
     while not log.queue.empty():
         writer.insert(*log.queue.get_nowait())
-    with sqlite3.connect(db) as c:
+    with closing(sqlite3.connect(db)) as c, c:
         rows = c.execute(
             "SELECT ts, service, schwab_last_frame_ts, last_data_ts "
             "FROM stream_feed_status ORDER BY service"
