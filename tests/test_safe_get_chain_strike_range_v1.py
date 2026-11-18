@@ -3,77 +3,73 @@
 strike_range is a DIFFERENT vendor selection dimension than strike_count (MEASURED live:
 strike_count=250 alone missed 69 real SPY strikes strike_range="ALL" correctly returned,
 see tests/fixtures/real_spy_strike_count_vs_strike_range_all_evidence.json). This file
-proves the exact kwarg-passing contract the completeness fix depends on: when strike_range
-is given, strike_count is OMITTED entirely — never sent alongside it, since that combination
-was never the one measured live.
+proves the exact request the completeness fix depends on, as Schwab receives it from the
+daemon's own schwab-py client (tests/schwab_rest_standin.LocalSchwab): when strike_range is
+given, strike_count is OMITTED entirely — never sent alongside it, since that combination was
+never the one measured live.
 """
 
 from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from feed.schwab_client import safe_get_chain
+from tests.schwab_rest_standin import CHAIN, LocalSchwab
 
 
-class _FakeClient:
-    """STAND-IN for a schwab-py client: records each chain request's arguments."""
+@pytest.fixture
+def asked(tmp_path):
+    """Send safe_get_chain's requests to the local Schwab; return each /chains query it took."""
+    schwab = LocalSchwab("ws://127.0.0.1:1")  # REST only: no stream connection is opened
+    client = schwab.client(tmp_path)
+    try:
+        yield lambda *a, **k: (safe_get_chain(client, *a, **k), schwab.asked(CHAIN)[-1])[1]
+    finally:
+        schwab.close()
 
-    def __init__(self):
-        self.calls = []
 
-    def get_option_chain(self, symbol, **kwargs):
-        self.calls.append((symbol, kwargs))
-        return object()
-
-
-def test_default_call_shape_is_unchanged():
+def test_default_call_shape_is_unchanged(asked):
     """Every EXISTING caller passes strike_count with no strike_range.
 
     That shape must be byte-for-byte unchanged by this addition.
     """
-    client = _FakeClient()
-    safe_get_chain(client, "SPY", strike_count=20)
-    symbol, kwargs = client.calls[0]
-    assert symbol == "SPY"
-    assert kwargs["strike_count"] == 20
-    assert "strike_range" not in kwargs
+    q = asked("SPY", strike_count=20)
+    assert q["symbol"] == "SPY"
+    assert q["strikeCount"] == "20"
+    assert "range" not in q
 
 
-def test_strike_range_omits_strike_count_entirely():
+def test_strike_range_omits_strike_count_entirely(asked):
     """The exact combination proven live: strike_range='ALL' alone.
 
     strike_count is never sent alongside it.
     """
-    client = _FakeClient()
-    d = date(2026, 8, 31)
-    safe_get_chain(client, "TSLA", strike_range="ALL", from_date=d, to_date=d)
-    symbol, kwargs = client.calls[0]
-    assert symbol == "TSLA"
-    assert kwargs["strike_range"] == "ALL"
-    assert "strike_count" not in kwargs
-    assert kwargs["from_date"] == d
-    assert kwargs["to_date"] == d
+    d = date(2026, 10, 9)
+    q = asked("TSLA", strike_range="ALL", from_date=d, to_date=d)
+    assert q["symbol"] == "TSLA"
+    assert q["range"] == "ALL"
+    assert "strikeCount" not in q
+    assert q["fromDate"] == "2026-10-09"
+    assert q["toDate"] == "2026-10-09"
 
 
-def test_the_stock_quote_the_stream_pushes_is_not_asked_of_chains():
+def test_the_stock_quote_the_stream_pushes_is_not_asked_of_chains(asked):
     """A chain request does not ask for the underlying's quote: LEVELONE_EQUITIES pushes it.
 
-    Every chain request the program sends, in both shapes, leaves `include_underlying_quote` out.
+    Every chain request the program sends, in both shapes, leaves `includeUnderlyingQuote` out.
     """
-    client = _FakeClient()
-    d = date(2026, 8, 31)
-    safe_get_chain(client, "SPY", strike_count=20)
-    safe_get_chain(client, "TSLA", strike_range="ALL", from_date=d, to_date=d)
-    assert [k.get("include_underlying_quote") for _s, k in client.calls] == [None, None]
+    d = date(2026, 10, 9)
+    shapes = [asked("SPY", strike_count=20), asked("TSLA", strike_range="ALL", from_date=d)]
+    assert ["includeUnderlyingQuote" in q for q in shapes] == [False, False]
 
 
-def test_strike_range_takes_precedence_if_both_somehow_given():
+def test_strike_range_takes_precedence_if_both_somehow_given(asked):
     """Defensive: if a caller passes both, the vendor-proven shape (range only) wins.
 
     No current call site passes both. Never an untested combined request.
     """
-    client = _FakeClient()
-    safe_get_chain(client, "SPY", strike_count=20, strike_range="ALL")
-    _symbol, kwargs = client.calls[0]
-    assert kwargs["strike_range"] == "ALL"
-    assert "strike_count" not in kwargs
+    q = asked("SPY", strike_count=20, strike_range="ALL")
+    assert q["range"] == "ALL"
+    assert "strikeCount" not in q
