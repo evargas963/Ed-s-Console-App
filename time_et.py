@@ -179,9 +179,22 @@ class Session:
         return next((w for p, w in self.options if p == product), ())
 
 
-_sessions: dict[
-    str, Session
-] = {}  # ET date (YYYY-MM-DD) -> Schwab's answer for it; replaced, never mutated
+@dataclass
+class Held:
+    """What Schwab answered and streamed that the market's sessions are read from.
+
+    `sessions`: ET date (YYYY-MM-DD) -> Schwab's /markets answer for it (record_markets);
+    `first_trade`: ET date -> the earliest stock trade Schwab streamed that was made that day
+    (record_trade). Each dict is replaced, never mutated: a reader on another thread keeps the one
+    it began with, so a calculator handed it reads one consistent set.
+    """
+
+    sessions: dict[str, Session]
+    first_trade: dict[str, datetime]
+
+
+#: the program's one Held (record_markets and record_trade own it)
+HELD = Held({}, {})
 
 
 def _windows(hours: dict[str, Any], name: str) -> Windows:
@@ -226,9 +239,7 @@ def record_markets(answer: dict[str, Any]) -> Session:
             for window in _windows(_hours(entry), name)
         ),
     )
-    global _sessions
-    # a new dict, never an insert: a reader on another thread keeps iterating the one it began with
-    _sessions = {**_sessions, s.day: s}
+    HELD.sessions = {**HELD.sessions, s.day: s}  # a new dict, never an insert (Held)
     return s
 
 
@@ -238,17 +249,12 @@ def sessions() -> Mapping[str, Session]:
     The held dict itself: it is replaced on each answer, never mutated, so a calculator handed
     it reads one consistent set.
     """
-    return _sessions
+    return HELD.sessions
 
 
 def session(day: str) -> Session | None:
     """`day`'s (YYYY-MM-DD) sessions as Schwab answered them; None: no answer, unknown."""
-    return _sessions.get(day)
-
-
-_first_trade: dict[
-    str, datetime
-] = {}  # ET date (YYYY-MM-DD) -> the earliest stock trade Schwab streamed that was made that day
+    return HELD.sessions.get(day)
 
 
 def record_trade(at: datetime) -> None:
@@ -257,10 +263,8 @@ def record_trade(at: datetime) -> None:
     The earliest one of its ET date is when that date's trading began (session_label).
     """
     day = at.astimezone(ET).date().isoformat()
-    global _first_trade
-    if day not in _first_trade or at < _first_trade[day]:
-        # a new dict, never an insert, as _sessions is
-        _first_trade = {**_first_trade, day: at}
+    if day not in HELD.first_trade or at < HELD.first_trade[day]:
+        HELD.first_trade = {**HELD.first_trade, day: at}  # a new dict, never an insert (Held)
 
 
 def session_label(now: datetime) -> str:
@@ -280,7 +284,8 @@ def session_label(now: datetime) -> str:
         if any(start <= now < end for start, end in windows):
             return state
     starts = [start for start, _end in (*s.pre, *s.regular)]
-    if s.day in _first_trade and starts and _first_trade[s.day] <= now < min(starts):
+    first = HELD.first_trade
+    if s.day in first and starts and first[s.day] <= now < min(starts):
         return PRE_MARKET
     return CLOSED
 
@@ -373,7 +378,7 @@ def options_closed_at(now: datetime, product: str | None = None) -> datetime | N
     """
     ended = [
         end
-        for s in _sessions.values()
+        for s in HELD.sessions.values()
         for p, windows in s.options
         if product in (None, p)
         for _start, end in windows
@@ -412,7 +417,7 @@ def closed_since(now: datetime) -> datetime | None:
         return None
     ended = [
         end
-        for s in _sessions.values()
+        for s in HELD.sessions.values()
         for _start, end in (*s.pre, *s.regular, *s.post)
         if end <= now
     ]
@@ -434,7 +439,7 @@ def last_open(now: datetime) -> datetime | None:
 
     None: none held.
     """
-    begun = [start for s in _sessions.values() for start, _end in s.regular if start <= now]
+    begun = [start for s in HELD.sessions.values() for start, _end in s.regular if start <= now]
     return max(begun) if begun else None
 
 
@@ -447,7 +452,7 @@ def sessions_since(now: datetime, n: int) -> datetime | None:
     """
     begun = sorted(
         s.day
-        for s in _sessions.values()
+        for s in HELD.sessions.values()
         if s.is_open and any(start <= now for start, _end in s.regular)
     )
     if len(begun) < n:
