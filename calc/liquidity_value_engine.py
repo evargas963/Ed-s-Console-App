@@ -152,7 +152,7 @@ def get_previous_day_levels(
     prev_bars = [
         b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(sessions, b["_dt"])
     ]
-    p = volume_profile(prev_bars, config.value_area_percent, config.tick_size, ndigits=4)
+    p = volume_profile(prev_bars, config.value_area_percent, config.tick_size)
     return {
         "prior_date": prior_date,
         "rth_bars": len(prev_bars),
@@ -314,7 +314,6 @@ def compute_volume_profile_levels(
         _filter_rth_bars(bars_norm, session_date, sessions),
         config.value_area_percent,
         config.tick_size,
-        ndigits=4,
     )
 
 
