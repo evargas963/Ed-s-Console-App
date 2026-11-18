@@ -79,7 +79,9 @@ test("the heatmap paints the served cells, and a click pins a readout, without a
     .sort((a, b) => Math.abs(a.price - mid) - Math.abs(b.price - mid))[0];
   const h = await plot.locator(".tvc-plot").evaluate((p) => p.clientHeight);
   const y = ((st.priceTop - cell.price) / (st.priceTop - st.priceBottom)) * Math.max(1, h - 30);
-  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5); // a click un-pins
+  // two clicks at once at two spots, inside a double-click's time: each pins where it lands (the
+  // chart library reports no click for the second; TradingView pins both)
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   await page.mouse.click(box.x + box.width * 0.5, box.y + y);
   await expect(plot.locator(".tvc-pin .tvc-pin-h span")).toHaveText(HEAT.bucket_ct[t]);
   await expect(plot.locator(".tvc-pin")).toContainText("Bid size" + cell.bid);
