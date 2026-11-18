@@ -187,6 +187,7 @@ def test_the_per_strike_charm_and_vanna_are_those_derivatives_summed_on_spys_who
         got_charm, got_vanna = charm_by[strike]["call_charm"], vanna_by[strike]["call_vanna"]
         if got_charm is None or got_vanna is None:  # a call there the program could not price
             continue
+        # against a finite difference of Black-Scholes delta: its step's error sets the tolerance
         assert got_charm == pytest.approx(want_charm, rel=1e-4, abs=1e-3), strike
         assert got_vanna == pytest.approx(want_vanna, rel=1e-4, abs=1e-3), strike
         checked += 1
