@@ -121,7 +121,7 @@ def _live_feed_starts_down():
     queued a reprice (server._repriced_at, once a second): every test starts with none, and
     with no timer of an earlier test's.
     """
-    time_et._first_trade = {}
+    time_et.HELD.first_trade = {}
     server = sys.modules.get("server")
     if server is not None:
         with server._reprice_lock:
