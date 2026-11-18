@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sqlite3
 import threading
 import time
@@ -23,7 +22,6 @@ from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
 import live_market_plane as lmp
-import runtime_layout
 import time_et
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
@@ -302,8 +300,6 @@ _bar_writer_thread: threading.Thread | None = None
 
 def start_bar_writer() -> None:
     global _bar_writer_thread
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        return
     _bar_writer_thread = threading.Thread(target=_bar_writer, name="bar-writer", daemon=True)
     _bar_writer_thread.start()
 
@@ -322,48 +318,37 @@ def stop_bar_writer(thread: threading.Thread | None = None) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@asynccontextmanager
-async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Startup and shutdown.
+def start_services() -> None:
+    """Start the program's services beside its pages (capture.serve_console, the one start).
 
-    The live-binding check, the signal handlers, the recorded market sessions, the levels loop,
-    the bar writer, the daemon's feed and the page push.
+    The recorded market sessions first, so everything priced from here on has them (the daemon's
+    answers then replace them); then the levels loop (the stored levels at startup, then the
+    status line and the price levels; the chains arrive from the daemon, _on_chain) and the bar
+    writer, its own always-on service, never a side effect of rendering.
     """
-    # ── Startup ─────────────────────────────────────────────────────────────
-    # FIRST, before any worker, client or database is touched: a checkout whose runtime is
-    # ANOTHER checkout (a worktree converging on production) does not start a live console
-    # (runtime_layout.live_binding_error). Refusing here stops uvicorn before it serves anything.
-    _binding = runtime_layout.live_binding_error()
-    if _binding is not None:
-        log.critical("LIVE CONSOLE REFUSED: %s", _binding)
-        raise RuntimeError(f"live console refused: {_binding}")
-    # Before the loops and the feed: everything priced from here on has the recorded sessions, and
-    # the daemon's answers then replace them.
     _load_stored_sessions(canonical_db_path())
-
-    # The levels loop: the stored levels at startup, then the status line and the price levels
-    # (the chains arrive from the daemon, _on_chain).
     start_terrain_loop()
-    # bar collection is its own always-on service, never a side-effect of rendering
     start_bar_writer()
 
-    # The live feed from the capture daemon (the only Schwab client): every streamed equity
-    # quote and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed
-    # ticker; every chain the daemon fetched -> _on_chain, which prices it.
-    start_order_flow_stream(**FEED_CALLBACKS)
 
-    yield
-
-    # ── Shutdown ───────────────────────────────────────────────────────────
-    # The program's one stop (capture.run) ends the pages with everything else; stop_bar_writer
-    # waits up to 10 s for the bar writer.
-    try:
-        stop_order_flow_stream()
-    except Exception as e:  # the other loops still stop
-        log.warning("Order flow streaming shutdown: %s", e, exc_info=True)
-
+def stop_services() -> None:
+    """Stop the levels loop and the bar writer (it waits up to 10 s for the bars queued)."""
     stop_terrain_loop()
     stop_bar_writer()
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """The daemon's feed while the pages are served.
+
+    The live feed from the capture daemon (the only Schwab client): every streamed equity quote
+    and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed ticker; every
+    chain the daemon fetched -> _on_chain, which prices it.
+    """
+    start_order_flow_stream(**FEED_CALLBACKS)
+    yield
+    # the program's one stop (capture.run) ends the pages with everything else
+    stop_order_flow_stream()
 
 
 app = FastAPI(title="Ed Console API", version="1.0", lifespan=_app_lifespan)
@@ -1455,14 +1440,8 @@ def _load_stored_levels(watchlist: list[str]) -> int:
 
 
 def start_terrain_loop() -> None:
-    """Start the levels thread.
-
-    Refuses to start under pytest: tests call _terrain_loop's parts directly.
-    """
+    """Start the levels thread (start_services)."""
     global _terrain_loop_running, _terrain_loop_thread
-    if os.environ.get("PYTEST_CURRENT_TEST"):
-        log.debug("terrain loop not started: running under pytest")
-        return
     if _terrain_loop_running:
         return
     _terrain_loop_running = True

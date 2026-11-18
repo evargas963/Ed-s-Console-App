@@ -59,8 +59,6 @@ import json
 import sys
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 import server
 import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
@@ -78,7 +76,8 @@ store_capture(
     completeness_basis=CAPTURE_BASIS,
     ts_utc=chain["ts_utc"],
 )
-with TestClient(server.app):
+server.start_services()  # as the program starts (capture.serve_console)
+try:
     server._load_stored_levels([chain["ticker"]])
     while True:
         server.chain_pricing.submit(lambda: None).result(timeout=60)
@@ -87,6 +86,8 @@ with TestClient(server.app):
                 break
     tk = server.ticker_storage_key(chain["ticker"])
     served = push_terrain.terrain(tk, time_et.now())
+finally:
+    server.stop_services()
 print(json.dumps([served["call_charm_wall"], served["put_charm_wall"]]))
 """
 

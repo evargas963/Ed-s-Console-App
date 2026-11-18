@@ -47,7 +47,7 @@ def program_env(tmp_path: Path) -> dict:
     the program binds it can be taken in between, by any other program's outgoing connection
     among them.
     """
-    env = {k: v for k, v in os.environ.items() if k != "PYTEST_CURRENT_TEST"}  # its loops start
+    env = dict(os.environ)
     env.update(
         ED_RUNTIME_ROOT=str(tmp_path),
         ED_CONSOLE_PORT="0",
