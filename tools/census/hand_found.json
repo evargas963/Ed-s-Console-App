@@ -67,20 +67,12 @@
       "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
     },
     {
-      "category": "contradiction: doc vs doc",
-      "item": "AGENTS.md:163 no exception list vs AGENTS.md:130 and pyproject.toml:35 a per-file ignore of TID251 for time_et.py"
-    },
-    {
       "category": "contradiction: rule vs tests",
       "item": ".claude/rules/tests.md:8 a test never reads source text vs tests/test_markets_sessions_v1.py:182-183 parses product source"
     },
     {
       "category": "contradiction: rule vs doc",
       "item": "AGENTS.md:54,128 no fake data, no stand-ins vs ACTIVE_PROGRAM.md:95 STAND-INS records operator-allowed made-up values"
-    },
-    {
-      "category": "contradiction: doc vs code",
-      "item": "process_lock_guard.py:11-12,198-199 a push to main is operator_yes_guard's vs operator_yes_guard.py:16 judges no push: no guard handles it"
     }
   ]
 }

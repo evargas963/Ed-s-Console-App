@@ -573,11 +573,10 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     rows = window_rows(matrix, _around(sorted(matrix["ranked"]), price))
     assert price > max(matrix["strikes"])
     assert under_strike(price, matrix["strikes"]) is None
-    assert at_price(rows, matrix["strikes"], price) == {
-        "spot": price,
-        "spot_text": price_text(price),
-    }
-    assert rows and not any(r["spot_line"] for r in rows)
+    shown = at_price(rows, matrix["strikes"], price)
+    assert (shown["spot"], shown["spot_text"]) == (price, price_text(price))
+    assert shown["rows"] and not any(r["spot_line"] for r in shown["rows"])
+    assert all("spot_line" not in r for r in rows), "the rows given are not changed"
 
 
 #: Sunday 2026-10-11, after MRVL's front expiry (2026-10-09) passed
