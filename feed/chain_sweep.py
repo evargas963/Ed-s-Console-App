@@ -921,10 +921,15 @@ class ChainSweep:
         expiry's answer, at the time the chain began, every row in one transaction. Stored when
         at least one of its expiries' rows was written.
         """
-        ticker = chain.ticker
         slot = capture_slot(chain.started)
-        if slot is None:
-            return False
+        return slot is not None and self._write_window(chain, slot)
+
+    def _write_window(self, chain: _Chain, slot: float) -> bool:
+        """Store the chain as window `slot`'s capture if it is the window's first for its ticker.
+
+        Whether it was stored (_write_history).
+        """
+        ticker = chain.ticker
         if ticker not in self._written:
             self._written[ticker] = newest_capture_ts(self.db_path, ticker)
         before = self._written[ticker]
