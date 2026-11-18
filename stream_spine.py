@@ -1199,7 +1199,7 @@ class CaptureWriter:
         self._admitting: list[Item] = []  # the messages _admit or the stop's spill is holding now
         self._admitted = 0  # how many of them are held (in memory, on disk or lost)
         #: log line kind -> [minute last logged, count since]
-        self._logged: dict[tuple[str, str], list[int | None]] = {}
+        self._logged: dict[tuple[str, str], tuple[int, int]] = {}  # kind -> (minute, more since)
         self.state = WRITER_NOT_STARTED
         self.rows_written = 0
         self.failures = 0
@@ -1297,11 +1297,11 @@ class CaptureWriter:
         """One log line per kind a minute, with how many came since the last line."""
         minute = int(self.clock() // 60)
         with self._lock:
-            seen = self._logged.setdefault(key, [None, 0])
-            if seen[0] == minute:
-                seen[1] += 1
+            last, since = self._logged.get(key, (None, 0))
+            if last == minute:
+                self._logged[key] = (minute, since + 1)
                 return
-            since, seen[0], seen[1] = seen[1], minute, 0
+            self._logged[key] = (minute, 0)
         log.warning(fmt + " (%d more since the last line)", *args, since)
 
     def keep_failure(self, topic: str, msg: Any, error: BaseException, now: float) -> None:

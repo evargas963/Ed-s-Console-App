@@ -189,8 +189,8 @@ def test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows():
         srv._chain_pricing.submit(lambda: None).result(timeout=10)
         served.stop()
     assert waiting == {
-        "ZZVIEW": (srv.REPRICE, None, None, None),
-        "ZZOTHERPAGE": (srv.REPRICE, None, None, None),
+        "ZZVIEW": (srv.REPRICE, None, None, (None, None)),
+        "ZZOTHERPAGE": (srv.REPRICE, None, None, (None, None)),
     }
 
 

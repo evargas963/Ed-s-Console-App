@@ -190,7 +190,7 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
     symbol to stream (rule 2).
     """
     listed = [
-        c
+        (c.expires_at, c.strike, c.side, c.symbol, c.gamma)
         for c in contracts
         if c.symbol
         and c.strike is not None
@@ -198,18 +198,18 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
         and c.side is not None
         and c.expires_at > now
     ]
-    expirations = sorted({c.expires_at for c in listed})
-    strikes = sorted({c.strike for c in listed})
+    expirations = sorted({expires for expires, *_ in listed})
+    strikes = sorted({strike for _e, strike, *_ in listed})
     centre = nearest_position(strikes, price) if strikes else 0
     rows = []
-    for c in listed:
+    for expires, strike, side, symbol, gamma in listed:
         distance = max(
-            bisect.bisect_left(expirations, c.expires_at),
-            2 * abs(bisect.bisect_left(strikes, c.strike) - centre),
+            bisect.bisect_left(expirations, expires),
+            2 * abs(bisect.bisect_left(strikes, strike) - centre),
         )
-        row = (c.expires_at, abs(c.strike - price), c.strike, c.side, c.symbol)
-        if c.gamma is not None:
-            rows.append((distance, 0, -c.gamma, *row))
+        row = (expires, abs(strike - price), strike, side, symbol)
+        if gamma is not None:
+            rows.append((distance, 0, -gamma, *row))
         else:  # no gamma: after every contract as near that has one
             rows.append((distance, 1, *row))
     return tuple(r[-1] for r in sorted(rows))
