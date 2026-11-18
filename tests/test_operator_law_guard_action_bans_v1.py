@@ -67,6 +67,7 @@ def test_the_locks_settings_are_the_operators():
         "gh pr merge 5 --adm*",
         f"gh api ?X DELETE {repo}/branches/main/protection",
         f"cmd /c gh api ^-X DELETE {repo}/branches/main/protection",
+        "gh run watch 5",  # the agent never polls CI itself (AGENTS.md)
     ):
         assert any(refused in b for b in bash_violations(cmd)), cmd
     for cmd in (

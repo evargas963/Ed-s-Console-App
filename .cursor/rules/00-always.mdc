@@ -1,8 +1,8 @@
 ---
-description: EdWebConsole — AGENTS.md is the single governing law
+description: EdWebConsole — CLAUDE.md and AGENTS.md are the governing law
 alwaysApply: true
 ---
 
 # Always
 
-Read and follow /AGENTS.md before repository work.
+Read and follow /CLAUDE.md and /AGENTS.md before repository work.

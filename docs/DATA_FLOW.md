@@ -983,10 +983,8 @@ no fix and nothing to fix), and `ruff format` (the one Python formatter, ruff pi
 home-path scan at commit and in CI (every tracked file, and each commit of a pull request, merge
 resolutions included); the line-ending check at commit and in CI (the pull request's change); for
 agents, the hooks that block destructive git. A passing check proves only what its tests exercise;
-every rule beyond them stays NOT_PROVEN.
-
-A gap gets a check only when a failure it would have caught has happened; the check is a test of
-behavior (AGENTS.md).
+every rule beyond them stays NOT_PROVEN. Every requirement names what enforces it, or the work item
+that builds its check (AGENTS.md).
 
 ## 6. Operator decisions (enforced)
 
