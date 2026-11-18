@@ -72,6 +72,29 @@
     CALLOUT_R = 11;
 
   // ---- series primitives (drawn inside the pane, under/over the candles) ----
+  // The hooks every layer here shares (lightweight-charts' series primitive): one pane view that
+  // draws `renderer` at `zOrder`, and the series and its redraw request while attached.
+  function primitive(self, renderer, zOrder) {
+    var view = {
+      renderer: function () {
+        return renderer;
+      },
+      zOrder: function () {
+        return zOrder;
+      },
+    };
+    self.attached = function (p) {
+      self._series = p.series;
+      self._req = p.requestUpdate;
+    };
+    self.detached = function () {
+      self._series = null;
+    };
+    self.updateAllViews = function () {};
+    self.paneViews = function () {
+      return [view];
+    };
+  }
   // A horizontal band between two prices across the whole pane (value area).
   function BandPrimitive() {
     var self = this;
@@ -94,25 +117,7 @@
         });
       },
     };
-    var view = {
-      renderer: function () {
-        return renderer;
-      },
-      zOrder: function () {
-        return "bottom";
-      },
-    };
-    this.attached = function (p) {
-      self._series = p.series;
-      self._req = p.requestUpdate;
-    };
-    this.detached = function () {
-      self._series = null;
-    };
-    this.updateAllViews = function () {};
-    this.paneViews = function () {
-      return [view];
-    };
+    primitive(self, renderer, "bottom");
     this.set = function (lo, hi, fill) {
       self._lo = lo;
       self._hi = hi;
@@ -197,25 +202,7 @@
         });
       },
     };
-    var view = {
-      renderer: function () {
-        return renderer;
-      },
-      zOrder: function () {
-        return z || "normal";
-      },
-    };
-    this.attached = function (p) {
-      self._series = p.series;
-      self._req = p.requestUpdate;
-    };
-    this.detached = function () {
-      self._series = null;
-    };
-    this.updateAllViews = function () {};
-    this.paneViews = function () {
-      return [view];
-    };
+    primitive(self, renderer, z || "normal");
     this.autoscaleInfo = function () {
       if (!fit || !self.rows.length) return null;
       var ps = self.rows.map(function (r) {
@@ -294,25 +281,7 @@
         });
       },
     };
-    var view = {
-      renderer: function () {
-        return renderer;
-      },
-      zOrder: function () {
-        return "bottom";
-      },
-    };
-    this.attached = function (p) {
-      self._series = p.series;
-      self._req = p.requestUpdate;
-    };
-    this.detached = function () {
-      self._series = null;
-    };
-    this.updateAllViews = function () {};
-    this.paneViews = function () {
-      return [view];
-    };
+    primitive(self, renderer, "bottom");
     this.set = function (zones) {
       self.zones = zones.filter(function (z) {
         return isFinite(z.lo) && isFinite(z.hi);
@@ -461,25 +430,7 @@
         });
       },
     };
-    var view = {
-      renderer: function () {
-        return renderer;
-      },
-      zOrder: function () {
-        return "top";
-      },
-    };
-    this.attached = function (p) {
-      self._series = p.series;
-      self._req = p.requestUpdate;
-    };
-    this.detached = function () {
-      self._series = null;
-    };
-    this.updateAllViews = function () {};
-    this.paneViews = function () {
-      return [view];
-    };
+    primitive(self, renderer, "top");
     this.set = function (list, sel) {
       self.list = list;
       self.sel = sel;
@@ -535,25 +486,7 @@
         });
       },
     };
-    var view = {
-      renderer: function () {
-        return renderer;
-      },
-      zOrder: function () {
-        return "bottom";
-      },
-    };
-    this.attached = function (p) {
-      self._series = p.series;
-      self._req = p.requestUpdate;
-    };
-    this.detached = function () {
-      self._series = null;
-    };
-    this.updateAllViews = function () {};
-    this.paneViews = function () {
-      return [view];
-    };
+    primitive(self, renderer, "bottom");
     this.autoscaleInfo = function () {
       var h = self.h;
       if (!h || h.display_lo == null) return null;
@@ -647,25 +580,7 @@
         });
       },
     };
-    var view = {
-      renderer: function () {
-        return renderer;
-      },
-      zOrder: function () {
-        return "top";
-      },
-    };
-    this.attached = function (p) {
-      self._series = p.series;
-      self._req = p.requestUpdate;
-    };
-    this.detached = function () {
-      self._series = null;
-    };
-    this.updateAllViews = function () {};
-    this.paneViews = function () {
-      return [view];
-    };
+    primitive(self, renderer, "top");
     this.redraw = function () {
       if (self._req) self._req();
     };
