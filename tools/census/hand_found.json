@@ -23,7 +23,7 @@
     },
     {
       "category": "tests not trusted",
-      "item": "prior-day test passed while checking our close, not Schwab's: every test's expected value needs a source check"
+      "item": "the prior-day test that passed on our close now checks Schwab's official daily close (tests/test_liquidity_value_engine_p1d_prev_trading_day.py); the other tests' expected values are not yet each checked against a source document"
     },
     {
       "category": "slow screen",
