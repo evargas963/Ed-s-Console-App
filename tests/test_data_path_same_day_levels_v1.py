@@ -19,7 +19,7 @@ from calc import terrain_engine
 from calc.terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from option_contract import read_chain
 from push import levels as push_levels
-from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_FULL, TSLA
+from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_FULL, TSLA, charm_walls
 from time_et import (
     EQUITY_OPTIONS,
     ET,
@@ -99,6 +99,8 @@ def test_a_same_day_expiry_reads_the_charm_map_already_priced():
     finally:
         terrain_engine.compute_charm_by_strike = real
     assert calls["n"] == len(snap.charm_by_expiry)
+    # worked out from the raw chain outside the program: BSM delta's time derivative per contract
+    assert (snap.same_day["call_charm_wall"], snap.same_day["put_charm_wall"]) == charm_walls(held)
     assert snap.same_day["call_charm_wall"] == 780.0
     assert snap.same_day["put_charm_wall"] == 779.0
 
@@ -114,6 +116,8 @@ def test_a_later_front_expiry_keeps_its_charm_at_todays_close():
     )
     assert snap.same_day["call_charm_wall"] == 372.5
     assert snap.same_day["put_charm_wall"] == 380.0
+    # the book's own expiry, worked out from the raw chain outside the program
+    assert (snap.call_charm_wall, snap.put_charm_wall) == charm_walls(TSLA)
     assert snap.call_charm_wall == 390.0
     assert snap.put_charm_wall == 370.0
 
