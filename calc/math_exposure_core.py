@@ -430,19 +430,11 @@ def compute_exposures_by_strike(
 ) -> tuple[dict[float, Bucket], ExposureDiagnostics]:
     """Produce per-strike aggregates over every listed contract with a strike and a side.
 
-    The aggregates:
-      - call/put OI
-      - call/put delta exposure (scaled)
-      - call/put gamma exposure (scaled)
-      - net delta, net gamma: call minus put (_finish_bucket), the dealer's position under the
-        one assumption every net field makes (dealers long calls, short puts); a put keeps
-        Schwab's signed delta, so a short put adds positive delta
-
-    Scaling:
-      delta_exposure = delta * OI * multiplier
-      gamma_exposure = gamma * OI * multiplier
-
-    The dollar fields (DEX$, GEX$ per 1%) are computed when `spot` is provided.
+    Call/put OI, delta exposure (delta * OI * multiplier) and gamma exposure (gamma * OI *
+    multiplier); net delta and net gamma, call minus put (_finish_bucket): the dealer's position
+    under the one assumption every net field makes (dealers long calls, short puts), a put keeping
+    Schwab's signed delta, so a short put adds positive delta. The dollar fields (DEX$, GEX$ per
+    1%) are computed when `spot` is provided.
 
     Every contract's terms are computed at once as arrays (numpy, IEEE double as Python's floats)
     and added to its strike's leg in the chain's order, as one contract at a time adds them. A
