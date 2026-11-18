@@ -7,7 +7,7 @@ import logging
 import sqlite3
 import threading
 import time
-from collections.abc import AsyncIterator, Callable, Collection, Iterable, Mapping
+from collections.abc import AsyncGenerator, Callable, Collection, Iterable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
@@ -338,7 +338,7 @@ def stop_services() -> None:
 
 
 @asynccontextmanager
-async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def _app_lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """The daemon's feed while the pages are served.
 
     The live feed from the capture daemon (the only Schwab client): every streamed equity quote
