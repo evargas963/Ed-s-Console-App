@@ -53,7 +53,6 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
             "exchange_quote_ts": quote_ms / 1000.0 if quote_ms is not None else None,
         },
         now=now,
-        ticker=contract,
     )
     book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)
