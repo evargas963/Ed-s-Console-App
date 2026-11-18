@@ -291,18 +291,29 @@ def _bar_writer() -> None:
             return
 
 
-_bar_writer_thread: threading.Thread | None = None
+@dataclass
+class Services:
+    """The program's services beside its pages (start_services and stop_services own them).
+
+    The bar writer's thread, and whether the levels loop runs (its rounds read this).
+    """
+
+    bar_writer: threading.Thread | None = None
+    levels_running: bool = False
+
+
+#: the program's one Services
+SERVICES = Services()
 
 
 def start_bar_writer() -> None:
-    global _bar_writer_thread
-    _bar_writer_thread = threading.Thread(target=_bar_writer, name="bar-writer", daemon=True)
-    _bar_writer_thread.start()
+    SERVICES.bar_writer = threading.Thread(target=_bar_writer, name="bar-writer", daemon=True)
+    SERVICES.bar_writer.start()
 
 
 def stop_bar_writer(thread: threading.Thread | None = None) -> None:
     """Write every bar already queued, then end the bar writer (`thread`: the one started)."""
-    thread = thread or _bar_writer_thread
+    thread = thread or SERVICES.bar_writer
     if thread is None:
         return
     streamed_bars.put(None)
@@ -430,12 +441,7 @@ def favicon() -> Response:
     return Response(status_code=204)
 
 
-#: the stored cross direction in words; a direction not stored reads "through", never a side
-
-
 # ── THE LEVELS (from the chains the capture daemon fetches) ──────────────────
-_terrain_loop_running: bool = False
-_terrain_loop_thread: threading.Thread | None = None
 
 
 def _gamma_surface_wanted(tk: str) -> bool:
@@ -1345,7 +1351,7 @@ def _wait_for(what: str, ready: Callable[[], bool]) -> None:
     """
     started = time_et.elapsed()
     next_log = started
-    while _terrain_loop_running and not ready():
+    while SERVICES.levels_running and not ready():
         if time_et.elapsed() >= next_log:
             log.info("waiting for %s (%.0f s so far)", what, time_et.elapsed() - started)
             next_log += WAITING_LOG_EVERY_SEC
@@ -1400,7 +1406,7 @@ def _terrain_loop() -> None:
         session_label(started),
     )
     next_status = time_et.elapsed() + STATUS_EVERY_SEC
-    while _terrain_loop_running:
+    while SERVICES.levels_running:
         time.sleep(1.0)
         try:
             if time_et.elapsed() >= next_status:
@@ -1453,12 +1459,10 @@ def _load_stored_levels(watchlist: list[str]) -> int:
 
 def start_terrain_loop() -> None:
     """Start the levels thread (start_services)."""
-    global _terrain_loop_running, _terrain_loop_thread
-    if _terrain_loop_running:
+    if SERVICES.levels_running:
         return
-    _terrain_loop_running = True
-    _terrain_loop_thread = threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True)
-    _terrain_loop_thread.start()
+    SERVICES.levels_running = True
+    threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True).start()
 
 
 def stop_terrain_loop() -> None:
@@ -1468,8 +1472,7 @@ def stop_terrain_loop() -> None:
     program's exit waits for the pricing thread, so only the pricing already running finishes.
     The chains stay stored and are priced at the next start (_load_stored_levels).
     """
-    global _terrain_loop_running
-    _terrain_loop_running = False
+    SERVICES.levels_running = False
     with _reprice_lock:  # a timer that fires after this queues nothing (_reprice_due)
         for timer in _reprice_timers.values():
             timer.cancel()
