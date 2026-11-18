@@ -8,8 +8,8 @@
     repository shares it, so a git command that writes `refs/heads/main` is refused from ANY
     checkout (`update-ref`, `branch -f/-d/-D/-m/-M/-c/-C` naming main, a fetch refspec into
     main, a local `push . X:main`). main moves only by a PR merged on GitHub, then
-    `git pull --ff-only` in production. A push to GitHub's main is the operator's
-    (operator_yes_guard).
+    `git pull --ff-only` in production. A push to GitHub's main is refused by GitHub: main's
+    branch protection requires a pull request, administrators included.
   * TREE-DESTRUCTIVE GIT (`operating_process_lock.reset_guard_violations`, the ONE owner):
     `reset --hard`, `checkout -- <path>`, `clean -f`, `push --force` and every `stash` but
     `stash list` on any target, and the reset/restore class on product paths.
@@ -203,7 +203,7 @@ def _writes_main(words: tuple[str, ...]) -> bool:
         return any(a in _BRANCH_WRITE_FLAGS for a in args) and any(r in _MAIN_REFS for r in refs)
     if sub in ("fetch", "push"):
         if sub == "push" and refs[:1] != ["."]:
-            return False  # a push to a remote: operator_yes_guard's
+            return False  # a push to GitHub: its branch protection refuses one to main
         return any(r.split(":", 1)[1] in _MAIN_REFS for r in refs[1:] if ":" in r)
     return False
 
