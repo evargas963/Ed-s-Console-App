@@ -51,10 +51,11 @@ def test_linked_worktree_metadata_failure_refuses_local_runtime(tmp_path: Path) 
     (linked / ".git").write_text("not-a-gitdir", encoding="utf-8")
     assert "cannot resolve canonical runtime root" in default_root().stderr
 
+    # a marker naming a worktree folder git cannot use (no HEAD, no commondir): git refuses it
     gitdir = tmp_path / "primary" / ".git" / "worktrees" / "linked"
     gitdir.mkdir(parents=True)
     (linked / ".git").write_text(f"gitdir: {gitdir}", encoding="utf-8")
-    assert "commondir missing" in default_root().stderr
+    assert "git rev-parse --git-common-dir answered" in default_root().stderr
 
 
 def test_a_named_runtime_root_never_works_out_the_default(tmp_path):
