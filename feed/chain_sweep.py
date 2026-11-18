@@ -741,6 +741,7 @@ class ChainSweep:
                 ct["streamed"] = {
                     "bid": top.get("bid"),
                     "ask": top.get("ask"),
+                    "money_intrinsic": top.get("money_intrinsic"),
                     "volume": streamed_volume(entry[1]["content"]),
                 }
                 chain.pushed += 1

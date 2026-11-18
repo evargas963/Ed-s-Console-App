@@ -53,6 +53,10 @@ class OptionContract:
     #: the stream's BID_PRICE and ASK_PRICE for a contract it streams); never the chain's
     bid: float | None
     ask: float | None
+    #: its money intrinsic value from the same quote (/quotes' moneyIntrinsicValue, or the
+    #: stream's MONEY_INTRINSIC_VALUE): positive in the money, negative out of it (Schwab
+    #: Streamer API, LEVELONE_OPTIONS field 11)
+    money_intrinsic: float | None
     #: a contract size: None when not a number or negative
     multiplier: float | None
     #: Schwab's volatility, a percent
@@ -119,6 +123,7 @@ STREAMED_TOP = (
     ("ASK_SIZE", "ask_size", schwab_count),
     ("MARK", "mark", schwab_number),
     ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number),
+    ("MONEY_INTRINSIC_VALUE", "money_intrinsic", schwab_number),
 )
 
 
@@ -162,6 +167,7 @@ def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "bid": schwab_number(quote.get("bidPrice")),
         "ask": schwab_number(quote.get("askPrice")),
+        "money_intrinsic": schwab_number(quote.get("moneyIntrinsicValue")),
         "volume": schwab_count(quote.get("totalVolume")),
         "volatility": schwab_number(vol),
         **{g: _greek(quote, g, void) for g in GREEKS},
@@ -196,6 +202,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         volume=quoted["volume"] if quoted else schwab_count(raw.get("totalVolume")),
         bid=quoted.get("bid"),
         ask=quoted.get("ask"),
+        money_intrinsic=quoted.get("money_intrinsic"),
         multiplier=None if multiplier is None or multiplier < 0 else multiplier,
         # the stream's, as the sweep wrote them, or the quote's
         **{
@@ -249,6 +256,7 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
         "totalVolume": c.volume,
         "bid": c.bid,
         "ask": c.ask,
+        "moneyIntrinsicValue": c.money_intrinsic,
         "multiplier": c.multiplier,
         "volatility": c.volatility,
         "nonStandard": c.non_standard,

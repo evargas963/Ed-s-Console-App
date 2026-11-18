@@ -148,6 +148,7 @@ def _quoted_chain(answer: dict) -> list:
             ct,
             bid=answer[ct.symbol]["bidPrice"],
             ask=answer[ct.symbol]["askPrice"],
+            money_intrinsic=answer[ct.symbol]["moneyIntrinsicValue"],
             volume=answer[ct.symbol]["totalVolume"],
             **{g: answer[ct.symbol][g] for g in _GREEKS},
         )
