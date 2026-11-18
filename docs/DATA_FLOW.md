@@ -500,9 +500,10 @@ both, and the window restarts the program.
   not been fetched"; inside the option windows, after the day's first round, until its market
   closes, LIVE until two of the sweep's rounds pass without its chain, then STALE, by the round the
   daemon last reported and no number of ours (operator 2026-11-15: "yes remove the floor", the 180 s
-  it replaced held levels LIVE past two rounds once a round was shorter than 90 s); NOT LIVE, "the
-  daemon's first round of the watchlist is in progress", before the daemon has reported a round, and
-  NOT LIVE when Schwab's /markets answer for today is not held), never a zero or a value from
+  it replaced held levels LIVE past two rounds once a round was shorter than 90 s); before the
+  daemon has reported a round, LIVE from a chain fetched since its first round began, the moment
+  Schwab sends it (operator 2026-11-17: "why are we waiting at all"), and NOT LIVE, "this ticker's
+  first chain since the daemon started has not arrived", from one fetched before it; NOT LIVE when Schwab's /markets answer for today is not held), never a zero or a value from
   elsewhere. Enforced by: `tests/test_data_path_rules_v1.py` (the D5 sweep and staleness tests).
   Each ticker's chain is asked for as Schwab documents it: its expiration chain (`/expirationchain`)
   once per ET date, then `/chains` once per listed expiry (fromDate = toDate = the expiry,

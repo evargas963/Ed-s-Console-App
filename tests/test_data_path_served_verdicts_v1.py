@@ -147,31 +147,55 @@ def test_the_levels_are_judged_by_the_tickers_own_option_market(
 
 
 @pytest.mark.parametrize(
-    "round_sec, after, state, why",
+    "round_sec, began, after, state, why",
     [
-        (40.0, 80, "LIVE", ""),  # two rounds of 40 s: due by 80 s
+        (40.0, None, 80, "LIVE", ""),  # two rounds of 40 s: due by 80 s
         (
             40.0,
+            None,
             81,
             "STALE",
             "levels are 81s old; the daemon's chain sweep has not delivered this ticker in two "
             "of its rounds (40s each)",
         ),  # no number of ours holds it LIVE to 180 s
-        (None, 30, "NOT LIVE", "the daemon's first round of the watchlist is in progress"),
+        # the first round after a restart: a chain fetched since it began is live, however long
+        # the round runs; one from before this run stands, not live, until its own arrives
+        (None, -60, 300, "LIVE", ""),
+        (
+            None,
+            60,
+            30,
+            "NOT LIVE",
+            "this ticker's first chain since the daemon started has not arrived",
+        ),
+        (
+            None,
+            None,
+            30,
+            "NOT LIVE",
+            "this ticker's first chain since the daemon started has not arrived",
+        ),
     ],
 )
 def test_the_levels_are_due_by_two_of_the_daemons_rounds_and_nothing_of_ours(
-    published, round_sec, after, state, why
+    published, round_sec, began, after, state, why
 ):
-    """Operator 2026-11-15: "yes remove the floor".
+    """Operator 2026-11-15: "yes remove the floor"; 2026-11-17: during any open session the
+    levels are live once Schwab sends the chain, after hours the last balance stands.
 
-    A chain is overdue past two of the daemon's reported rounds, however short, and before the
-    daemon has reported a round the levels say its first is in progress. STAND-IN: the round.
+    A chain is overdue past two of the daemon's reported rounds, however short. Before the daemon
+    has reported a round, a chain fetched since its first round began (`began`, seconds from the
+    delivery) is LIVE, and an older one is NOT LIVE. STAND-IN: the round.
     """
     delivered = _et(13, 0)
     published("TSLA", TSLA, delivered)
     lmp.record_feed_heartbeat(
-        daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=round_sec)
+        daemon_status(
+            delivered.timestamp(),
+            schwab_socket_open=True,
+            chain_round_sec=round_sec,
+            chains_began=None if began is None else delivered.timestamp() + began,
+        )
     )
     body = push_terrain.terrain("TSLA", delivered.timestamp() + after)
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)

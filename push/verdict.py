@@ -60,16 +60,17 @@ def terrain_staleness(
 
     LIVE from the market day's start (time_et.options_open) until the ticker's own option market
     closes (time_et.option_close_product: stock options at 16:00 ET, index-close options at 16:15)
-    with its chain current; CLOSE once that market has closed, and through the day's first round,
-    with a chain fetched after its close, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY,
-    when the chain is overdue or the close values were never fetched; NOT LIVE when Schwab's
-    /markets answer for today is not held. The daemon's last answer for the ticker's chain (a
-    failed fetch, an incomplete delivery) outranks the age, and its refused sign-in
-    (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option market
-    is open the daemon fetches every watchlist ticker's chain without end, so age past two of its
-    delivered rounds is a gap, never a schedule. Served beside it: the time of the newest Schwab
-    option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and its
-    age.
+    with its chain current (in the daemon's first round, fetched since that round began); CLOSE
+    once that market has closed, and through the day's first round, with a chain fetched after its
+    close, however old (docs/DATA_FLOW.md §2 D5); STALE, with WHY, when the chain is overdue or the
+    close values were never fetched; NOT LIVE when Schwab's /markets answer for today is not held,
+    or in the daemon's first round with a chain from before it. The daemon's last answer for the
+    ticker's chain (a failed fetch, an incomplete delivery) outranks the age, and its refused
+    sign-in (`chains_waiting`) outranks both, on every verdict but LIVE and CLOSE. While its option
+    market is open the daemon fetches every watchlist ticker's chain without end, so age past two
+    of its delivered rounds is a gap, never a schedule. Served beside it: the time of the newest
+    Schwab option value the levels hold (`levels_ts_utc`: the chain, or a value pushed since) and
+    its age.
     """
     state, reason = _levels_state(computed_ts_utc, ticker, now, chain_failure(ticker))
     age = None if levels_ts_utc is None else now - float(levels_ts_utc)
@@ -150,7 +151,15 @@ def _levels_state(
             )
         return LEVELS_CLOSE, ""
     if stale_after is None:
-        return lmp.NOT_LIVE, "the daemon's first round of the watchlist is in progress" + sep
+        # the first round: a chain Schwab sent since it began is current (none newer can come
+        # before the round ends); one from before this run stands, not live, until its own
+        began = None if last is None else last["chains_began"]
+        if began is not None and float(computed_ts_utc) >= float(began):
+            return lmp.LIVE, ""
+        return (
+            lmp.NOT_LIVE,
+            "this ticker's first chain since the daemon started has not arrived" + sep,
+        )
     if age <= stale_after:
         return lmp.LIVE, ""
     if waiting:
