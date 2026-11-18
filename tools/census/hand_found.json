@@ -77,10 +77,6 @@
     {
       "category": "contradiction: rule vs doc",
       "item": "AGENTS.md:54,128 no fake data, no stand-ins vs ACTIVE_PROGRAM.md:95 STAND-INS records operator-allowed made-up values"
-    },
-    {
-      "category": "contradiction: doc vs code",
-      "item": "process_lock_guard.py:11-12,198-199 a push to main is operator_yes_guard's vs operator_yes_guard.py:16 judges no push: no guard handles it"
     }
   ]
 }
