@@ -3120,21 +3120,21 @@
                       <table class="of">
                         <thead>
                           <tr>
-                            <th>Time</th>
-                            <th>Symbol</th>
-                            <th>Exp</th>
-                            <th>Type</th>
-                            <th>Strike</th>
-                            <th>Bid×Size</th>
-                            <th>Ask×Size</th>
-                            <th>Trade</th>
-                            <th>Size</th>
-                            <th>Premium</th>
-                            <th>Vol</th>
-                            <th>OI</th>
-                            <th>IV%</th>
-                            <th>Δ</th>
-                            <th>vs Market</th>
+                            <th scope="col">Time</th>
+                            <th scope="col">Symbol</th>
+                            <th scope="col">Exp</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Strike</th>
+                            <th scope="col">Bid×Size</th>
+                            <th scope="col">Ask×Size</th>
+                            <th scope="col">Trade</th>
+                            <th scope="col">Size</th>
+                            <th scope="col">Premium</th>
+                            <th scope="col">Vol</th>
+                            <th scope="col">OI</th>
+                            <th scope="col">IV%</th>
+                            <th scope="col">Δ</th>
+                            <th scope="col">vs Market</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -3289,9 +3289,9 @@
                       <div class="tdm-chart-empty" id="tdmChartEmpty" hidden></div>
                     </div>
                   </section>
-                  <aside class="tdm-queue panel">
+                  <aside class="tdm-queue panel" aria-labelledby="tdmQueueTitle">
                     <div class="panel-h">
-                      <span class="t">Attention Queue</span
+                      <span class="t" id="tdmQueueTitle">Attention Queue</span
                       ><span class="tdm-count" id="tdmQueueCount"></span>
                       <div class="r"><span class="sub" id="tdmLookback"></span></div>
                     </div>
@@ -3610,7 +3610,7 @@
     </div>
 
     <!-- ===== AI ANALYST DRAWER (access architecture; backend NOT_PROVEN) ===== -->
-    <aside id="aidrawer" aria-label="AI Analyst" aria-hidden="true">
+    <aside id="aidrawer" aria-label="AI Analyst" inert>
       <div class="aid-h">
         <svg
           width="18"
