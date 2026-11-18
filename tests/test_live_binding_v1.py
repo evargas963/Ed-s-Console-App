@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+import launch
 import runtime_layout
 from tests.test_data_path_stored_sessions_v1 import _record_answers
 
@@ -42,36 +43,18 @@ def test_another_checkouts_runtime_is_refused(tmp_path, git_kind):
     assert why is not None and str(other) in why and "ED_RUNTIME_ROOT" in why
 
 
-#: a console process starting its pages (server._app_lifespan), its log on stderr
-CONSOLE_START = """
-import asyncio
-import logging
-
-import server
-
-logging.basicConfig(level=logging.INFO)
-
-
-async def go():
-    async with server._app_lifespan(server.app):
-        pass
-
-
-asyncio.run(go())
-"""
-
-
 def test_the_console_refuses_before_starting_anything(tmp_path):
-    """A console whose runtime root is another checkout refuses at its start.
+    """The program whose runtime root is another checkout refuses at its start.
 
-    The root is another checkout (a `.git` folder in it) holding the daemon's recorded /markets
-    answers: it refuses at its start, and loads none of them (the
-    first thing it starts, logged as 'Recorded market answers held').
+    The program as launch.py starts it (the daemon and the console's pages, capture.main). The
+    root is another checkout (a `.git` folder in it) holding the daemon's recorded /markets
+    answers: it refuses at its start, and loads none of them (the first thing the console's
+    services start, server.start_services, logged as 'Recorded market answers held').
     """
     _record_answers(tmp_path / "data" / "stream_capture.db")
     (tmp_path / ".git").mkdir()
     run = subprocess.run(
-        [sys.executable, "-c", CONSOLE_START],
+        [sys.executable, *launch.DAEMON_START],
         capture_output=True,
         text=True,
         cwd=Path(__file__).resolve().parent.parent,
@@ -84,7 +67,7 @@ def test_the_console_refuses_before_starting_anything(tmp_path):
         timeout=120,
     )
     assert run.returncode != 0
-    assert "live console refused: this checkout" in run.stderr and str(tmp_path) in run.stderr
+    assert "CAPTURE DAEMON REFUSED: this checkout" in run.stderr and str(tmp_path) in run.stderr
     assert "Recorded market answers held" not in run.stderr, (
         "nothing may start before the binding check"
     )
