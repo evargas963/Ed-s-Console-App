@@ -131,7 +131,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
                 "key": f"wall{i}",
                 "ts": None if book_ms is None else book_ms / 1000.0,
                 "dom": "LIQUIDITY",
-                "dir": "up" if w.get("side") == "bid" else "down",
+                "dir": "up" if w["side"] == "bid" else "down",
                 "warn": not live_book,
                 "title": f"{venue} size wall · {w['side']} {w['price_text']}"
                 + ("" if live_book else " (not live)"),
@@ -153,6 +153,6 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
         "window_label": DESK_LOOKBACK[tf][1],
         "items": items,
         "cross_counts": {
-            d: sum(1 for c in in_window if c.get("direction") == d) for d in ("up", "down")
+            d: sum(1 for c in in_window if c["direction"] == d) for d in ("up", "down")
         },
     }
