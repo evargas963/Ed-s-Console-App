@@ -9,7 +9,7 @@ open is unknown.
 from datetime import datetime
 
 from calc.liquidity_models import PlaybookConfig
-from calc.liquidity_value_engine import compute_opening_range
+from calc.liquidity_value_engine import OpeningRange, compute_opening_range
 from time_et import ET, sessions
 
 
@@ -31,20 +31,18 @@ def test_the_range_is_the_bars_from_schwabs_open_for_the_configured_minutes():
         _bar(day, "09:45", 130, 70),  # the 16th minute: not the range
     ]
     day = datetime(2026, 10, 5).date()
-    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == {
-        "orb_high": 106,
-        "orb_low": 100,
-        "orb_mid": 103.0,
-    }
+    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == (
+        OpeningRange(high=106, low=100, mid=103.0)
+    )
 
 
 def test_a_closed_date_has_no_opening_range():
     bars = [_bar("2026-10-03", "09:35", 104, 101)]
     day = datetime(2026, 10, 3).date()
-    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == {}
+    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) is None
 
 
 def test_a_date_whose_open_is_not_known_has_no_opening_range():
     bars = [_bar("2025-06-02", "09:35", 104, 101)]
     day = datetime(2025, 6, 2).date()
-    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) == {}
+    assert compute_opening_range(bars, day, PlaybookConfig(), sessions=sessions()) is None
