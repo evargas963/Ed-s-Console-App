@@ -15,7 +15,6 @@ from pathlib import Path
 
 import app.options.order_flow.state as live_state
 import calc.l1_trade_observation as l1
-from calc import order_flow as ofe
 from tests.shared_helpers import sent
 
 _MIX = [
@@ -47,7 +46,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     assert tape[0]["time_millis"] == first["item"]["TRADE_TIME_MILLIS"]
     assert tape[0]["completeness"] == live_state.TAPE_COMPLETENESS
     assert tape[0]["receive_seq"] == 1
-    assert ofe._compute_cum_delta_proxy({"content": content}) is None
+    assert l1.compute_cum_delta_proxy(l1.canonical_tape_prints(content)) is None
 
 
 def test_live_state_present_last_size_reaches_order_flow_consumers():
@@ -76,4 +75,4 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
         40,
         49,
     ]
-    assert ofe._compute_cum_delta_proxy({"content": content}) is None
+    assert l1.compute_cum_delta_proxy(l1.canonical_tape_prints(content)) is None

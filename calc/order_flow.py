@@ -17,15 +17,11 @@ import numpy as np
 
 from calc.l1_trade_observation import (
     canonical_tape_prints,
+    compute_cum_delta_proxy,
+    compute_tape_pressure,
     cum_delta_window,
     iter_signed_cum_points,
     unsigned_share,
-)
-from calc.l1_trade_observation import (
-    compute_cum_delta_proxy as _canonical_cum_delta,
-)
-from calc.l1_trade_observation import (
-    compute_tape_pressure as _canonical_tape_pressure,
 )
 from numeric_contract import (
     count_text,
@@ -911,41 +907,16 @@ def readout_card(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _compute_tape_pressure(data: dict[str, Any], window_sec: float, now: float) -> float | None:
-    """PROXY L1 Lee and Ready pressure. ONE FAUCET: l1_trade_observation."""
-    return _canonical_tape_pressure(
-        canonical_tape_prints(data["content"]), window_sec, now * 1000.0
-    )
-
-
 def _window_start_ms(now: float, window_sec: float) -> float:
     """Return the first millisecond of the window of `window_sec` that ends at `now`."""
     return now * 1000.0 - int(window_sec * 1000)
 
 
-def _compute_unsigned(data: dict[str, Any], window_sec: float | None, now: float) -> float | None:
-    """Return a window's unsigned share of size (every print when None): l1_trade_observation."""
-    cutoff = None if window_sec is None else _window_start_ms(now, window_sec)
-    return unsigned_share(canonical_tape_prints(data["content"]), cutoff)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CUMULATIVE DELTA PROXY
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def _compute_cum_delta_proxy(data: dict[str, Any]) -> float | None:
-    """PROXY L1 Lee and Ready signed size sum. ONE FAUCET: l1_trade_observation."""
-    return _canonical_cum_delta(canonical_tape_prints(data["content"]))
-
-
 def _compute_cum_delta_slope(
-    data: dict[str, Any], now: float, window_sec: float = 60.0
+    prints: list[dict[str, Any]], now: float, window_sec: float = 60.0
 ) -> float | None:
-    """Slope of PROXY cum-delta in receive order. ONE signed-size walk: l1_trade_observation."""
-    points = iter_signed_cum_points(
-        canonical_tape_prints(data["content"]), _window_start_ms(now, window_sec)
-    )
+    """Slope of the estimated cumulative delta in receive order (l1_trade_observation's walk)."""
+    points = iter_signed_cum_points(prints, _window_start_ms(now, window_sec))
     if len(points) < 2:
         return None
     xs = np.array([p[0] for p in points])
@@ -971,21 +942,32 @@ class OrderFlowEngine:
         # the book, extracted once by its one producer; `ticker` lets the route serialize this
         # same computed state (carry, not recompute)
         book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
-        cum_first, cum_last = cum_delta_window(canonical_tape_prints(data["content"]))
+        prints = canonical_tape_prints(data["content"])  # the tape, read once
+        cum_first, cum_last = cum_delta_window(prints)
+        ms = now * 1000.0
         # each flow number and the decimals the screen shows it with: the pressures, each
         # value's unsigned share of the size it covers, the cumulative delta
         flow = {
             # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
             "top_book_pressure": (_compute_top_book_pressure(data), 3),
-            "tape_pressure_30s": (_compute_tape_pressure(data, OF_TAPE_WINDOW_30S_SEC, now), 3),
-            "tape_pressure_2m": (_compute_tape_pressure(data, OF_TAPE_WINDOW_2M_SEC, now), 3),
-            "tape_pressure_5m": (_compute_tape_pressure(data, OF_TAPE_WINDOW_5M_SEC, now), 3),
-            "tape_unsigned_30s": (_compute_unsigned(data, OF_TAPE_WINDOW_30S_SEC, now), 2),
-            "tape_unsigned_2m": (_compute_unsigned(data, OF_TAPE_WINDOW_2M_SEC, now), 2),
-            "tape_unsigned_5m": (_compute_unsigned(data, OF_TAPE_WINDOW_5M_SEC, now), 2),
-            "cum_delta_unsigned": (_compute_unsigned(data, None, now), 2),
-            "cum_delta_proxy": (_compute_cum_delta_proxy(data), 1),
-            "cum_delta_slope": (_compute_cum_delta_slope(data, now), 3),
+            "tape_pressure_30s": (compute_tape_pressure(prints, OF_TAPE_WINDOW_30S_SEC, ms), 3),
+            "tape_pressure_2m": (compute_tape_pressure(prints, OF_TAPE_WINDOW_2M_SEC, ms), 3),
+            "tape_pressure_5m": (compute_tape_pressure(prints, OF_TAPE_WINDOW_5M_SEC, ms), 3),
+            "tape_unsigned_30s": (
+                unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_30S_SEC)),
+                2,
+            ),
+            "tape_unsigned_2m": (
+                unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_2M_SEC)),
+                2,
+            ),
+            "tape_unsigned_5m": (
+                unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_5M_SEC)),
+                2,
+            ),
+            "cum_delta_unsigned": (unsigned_share(prints), 2),
+            "cum_delta_proxy": (compute_cum_delta_proxy(prints), 1),
+            "cum_delta_slope": (_compute_cum_delta_slope(prints, now), 3),
         }
 
         return {
