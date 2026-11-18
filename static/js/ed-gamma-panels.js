@@ -276,7 +276,7 @@
         var k = r.strike,
           v = r.value;
         var w = window.EdDraw.barWidth(v, maxAbs),
-          pos = v != null && v >= 0;
+          tone = window.EdDraw.bySign(v, "pos", "neg", "");
         bars +=
           '<div class="gbs-row' +
           (k === spotStrike ? " spot" : "") +
@@ -289,12 +289,12 @@
           r.strike_text +
           "</span>" +
           '<span class="gbs-track"><i class="gbs-bar ' +
-          (pos ? "pos" : "neg") +
+          tone +
           '" style="width:' +
           w.toFixed(1) +
           '%"></i></span>' +
           '<span class="gbs-v ' +
-          (v == null ? "" : pos ? "pos" : "neg") +
+          tone +
           '">' +
           esc(orDash(r.text)) +
           "</span>" +

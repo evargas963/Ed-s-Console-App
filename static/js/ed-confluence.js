@@ -210,7 +210,7 @@
       ");color:" +
       window.EdDraw.heatInk(c) +
       ";font-weight:" +
-      (t > 0.65 ? 750 : 550) +
+      window.EdDraw.heatWeight(t) +
       '"'
     );
   }
