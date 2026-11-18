@@ -236,12 +236,12 @@
     var scoreLine =
       row.score == null ? text(missing.join(", ")) : text(row.score_text) + " / " + text(ceiling);
     var facts = [
-      ["Net GEX", row.net_gex_text, row.net_reason, "$ per 1% move", "M"],
+      ["Net GEX", row.net_gex_text, row.net_reason, "$ per 1% move", ""],
       ["Open interest", row.oi_text, row.oi_reason, "contracts", ""],
       ["Options Volume", row.volume_text, row.volume_reason, "session contracts", ""],
       ["IV", row.iv_text, row.iv_reason, "implied volatility", "%"],
-      ["Flow", row.flow_text, row.flow_reason, "premium dollars", "M"],
-      ["Charm", row.charm_text, row.charm_reason, "delta-shares / day", "k"],
+      ["Flow", row.flow_text, row.flow_reason, "premium dollars", ""],
+      ["Charm", row.charm_text, row.charm_reason, "delta-shares / day", ""],
     ];
     var cards = facts
       .map(function (f) {

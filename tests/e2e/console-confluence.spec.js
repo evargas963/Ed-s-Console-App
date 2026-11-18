@@ -135,8 +135,9 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
   const first = row.contributions[0];
   await page.locator('#cmBody tbody tr[data-i="' + rows.indexOf(row) + '"]').click();
   await expect(page.locator("#cmDetail")).toContainText(first.label + " " + first.text);
-  await expect(page.locator("#cmDetail")).toContainText(row.net_gex_text + "M");
-  await expect(page.locator("#cmDetail")).toContainText(row.charm_text + "k");
+  // served texts already include K/M/B (#1077); detail must not append M/k again
+  await expect(page.locator("#cmDetail")).toContainText(row.net_gex_text);
+  await expect(page.locator("#cmDetail")).toContainText(row.charm_text);
   await expect(page.locator("#cmDetail")).toContainText("$ per 1% move");
   await expect(page.locator("#cmDetail")).toContainText("delta-shares / day");
 
