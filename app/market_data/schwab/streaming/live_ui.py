@@ -135,7 +135,7 @@ class Asked:
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "ticker", "shown", "panels", "wake")
+    __slots__ = ("ws", "symbols", "pending", "identity", "view", "panels", "wake")
 
     def __init__(self, ws: WebSocket) -> None:
         self.ws = ws
@@ -143,8 +143,9 @@ class _Client:
         self.pending: set[str] = set()  # symbols changed since the last send
         #: the last subscribe's answer, not yet sent
         self.identity: list[dict[str, str]] | None = None
-        self.ticker: str | None = None  # the page's selected ticker (its key); None: none
-        self.shown: dict[str, dict[str, Any]] = {}  # each panel the page shows: its parameters
+        #: the page's selected ticker (its key) and each panel it shows, with its parameters;
+        #: None: no ticker selected, so no panel
+        self.view: tuple[str, dict[str, dict[str, Any]]] | None = None
         self.panels: set[str] = set()  # the selected ticker's panels changed since the last send
         self.wake = asyncio.Event()
 
@@ -194,7 +195,9 @@ class LiveUiServer:
     def mark_changed(self, ticker: str, kind: str) -> None:
         """Mark each panel of `kind` changed for every browser showing it for its `ticker`."""
         for c in self.clients:
-            names = {n for n in c.shown if kind_of(n) == kind} if c.ticker == ticker else ()
+            if c.view is None or c.view[0] != ticker:
+                continue
+            names = {n for n in c.view[1] if kind_of(n) == kind}
             if names:
                 c.panels.update(names)
                 c.wake.set()
@@ -229,8 +232,11 @@ class LiveUiServer:
             if rows:  # the prices first: no panel's work holds a price
                 await self._send(c, {"type": "quotes", "rows": rows})
             kinds, c.panels = c.panels, set()
-            for name in sorted(kinds & c.shown.keys()):
-                asked = Asked(c.ticker, self.clock(), c.shown[name])
+            if c.view is None:  # no ticker selected: no panel to send
+                continue
+            ticker, shown = c.view
+            for name in sorted(kinds & shown.keys()):
+                asked = Asked(ticker, self.clock(), shown[name])
                 body = await self._produce(name, asked)
                 await self._send(c, {"type": name, "ticker": asked.ticker, **body})
 
@@ -277,19 +283,24 @@ class LiveUiServer:
             c.symbols = frozenset(keys)
             c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
-            selected, shown = req.get("ticker"), req.get("panels")
-            ticker_was, shown_was = c.ticker, c.shown
-            c.ticker = None
-            c.shown = {}
-            if isinstance(selected, str) and selected.strip():
-                c.ticker = ticker_storage_key(selected)
-                c.shown = self._shown(shown)
-            if c.ticker != ticker_was:
-                shown_was = {}
-                if c.ticker is not None:
-                    self.on_select(c.ticker)
-            # snapshot: the current body of each panel newly shown or asked with other parameters
-            c.panels |= {n for n, p in c.shown.items() if n not in shown_was or shown_was[n] != p}
+            selected, asked_panels = req.get("ticker"), req.get("panels")
+            was, c.view = (
+                c.view,
+                (ticker_storage_key(selected), self._shown(asked_panels))
+                if isinstance(selected, str) and selected.strip()
+                else None,
+            )
+            if c.view is not None:
+                ticker, shown = c.view
+                if was is not None and was[0] != ticker:
+                    was = None  # another ticker: every panel is new
+                if was is None:
+                    self.on_select(ticker)
+                # snapshot: the current body of each panel newly shown or asked with other
+                # parameters
+                c.panels |= {
+                    n for n, p in shown.items() if was is None or n not in was[1] or was[1][n] != p
+                }
             c.wake.set()
 
     def _shown(self, shown: Any) -> dict[str, dict[str, Any]]:
@@ -373,7 +384,7 @@ def selected(state: State) -> set[str]:
     prices = state.prices
     if prices is None:
         return set()
-    return {c.ticker for c in list(prices.clients) if c.ticker is not None}
+    return {c.view[0] for c in list(prices.clients) if c.view is not None}
 
 
 async def page_socket(ws: WebSocket) -> None:

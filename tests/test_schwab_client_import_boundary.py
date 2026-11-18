@@ -40,7 +40,7 @@ def test_build_client_from_token_fails_closed_without_token_file(tmp_path: Path)
 def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
     """With no Schwab credentials the configuration builds, and the one gate builds no client.
 
-    The one gate is `schwab_live_blocked_for`, which `build_client_from_token` refuses on: no live
+    The one gate is `schwab_credentials`, whose None `build_client_from_token` refuses on: no live
     Schwab without credentials (docs/ARCHITECTURE.md "Failure domains"). Run in a fresh
     interpreter whose environment has no Schwab credential.
     """
@@ -48,7 +48,7 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
         "import config\nfrom feed import schwab_client\n"
         "cfg = config.build_config()\n"
         "assert cfg.api_key is None and cfg.app_secret is None, cfg\n"
-        "assert config.schwab_live_blocked_for(cfg.api_key, cfg.app_secret) is True\n"
+        "assert config.schwab_credentials(cfg.api_key, cfg.app_secret) is None\n"
         "state = schwab_client.build_client_from_token("
         f"{str(tmp_path / 'token.json')!r}, cfg.api_key, cfg.app_secret)\n"
         "assert state.ok is False and state.client is None "

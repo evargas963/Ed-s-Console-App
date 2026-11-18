@@ -37,8 +37,7 @@ class Pages:
     def open(self, ticker: str, *panels: str) -> _Client:
         """Open a page with `ticker` (its key) selected, showing `panels`."""
         page = _Client(None)
-        page.ticker = ticker
-        page.shown = {name: {} for name in panels}
+        page.view = (ticker, {name: {} for name in panels})
         self.server.clients.add(page)
         return page
 

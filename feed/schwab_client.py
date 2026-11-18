@@ -29,7 +29,7 @@ from schwab.client import Client
 from schwab.debug import register_redactions
 
 import time_et
-from config import schwab_live_blocked_for
+from config import schwab_credentials
 from option_contract import listed_expiries
 from time_et import ct_clock
 
@@ -465,7 +465,8 @@ def build_client_from_token(
     token_path is normalized to absolute. A file that holds no usable sign-in is a state with
     its reason; a build that fails on one that does raises ConnectionError, its cause carried.
     """
-    if schwab_live_blocked_for(api_key, app_secret):
+    credentials = schwab_credentials(api_key, app_secret)
+    if credentials is None:
         return SchwabClientState(
             ok=False,
             message=(
@@ -483,8 +484,7 @@ def build_client_from_token(
     try:
         c = client_from_token_file_atomic(
             resolved,
-            api_key,
-            app_secret,
+            *credentials,
             enforce_enums=False,  # critical with your current schwab-py install
         )
         return SchwabClientState(ok=True, message="Client loaded from token file.", client=c)

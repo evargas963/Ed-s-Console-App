@@ -717,7 +717,7 @@ async def stop_on_request(stop: asyncio.Event, request: StopRequest) -> None:
 
 
 #: the window's interrupts: Ctrl+C, and Ctrl+Break where Windows has it
-INTERRUPTS = (signal.SIGINT, *([signal.SIGBREAK] if hasattr(signal, "SIGBREAK") else []))
+INTERRUPTS = (signal.SIGINT, signal.SIGBREAK) if sys.platform == "win32" else (signal.SIGINT,)
 
 
 def _start_log() -> None:
