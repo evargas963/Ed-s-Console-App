@@ -88,9 +88,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     # the venue's book: the same verdict on its own service (price_state), its word served
     book_label = price_state(t, now, venue)[0]
     data["book_live"] = book_label == lmp.LIVE
-    # ticker=t → serialize the canonical state carried per (ticker, BOOK_TIME); no independent
-    # recompute.
-    payload = compute_book_microstructure(data, now_ts=now, ticker=t)
+    payload = compute_book_microstructure(data, now_ts=now)
     payload["top_outage"], payload["top_feed_label"], payload["book_feed_label"] = (
         top_outage,
         top_label,
