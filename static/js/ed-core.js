@@ -1455,12 +1455,12 @@
     document.getElementById("aiOpen").addEventListener("click", function () {
       var d = document.getElementById("aidrawer");
       d.classList.add("open");
-      d.setAttribute("aria-hidden", "false");
+      d.inert = false; // open: its buttons take focus
     });
     document.getElementById("aiClose").addEventListener("click", function () {
       var d = document.getElementById("aidrawer");
       d.classList.remove("open");
-      d.setAttribute("aria-hidden", "true");
+      d.inert = true; // closed: out of the tab order and the accessibility tree
     });
     // initial ticker + header
     if (state.ticker) setTicker(state.ticker);
