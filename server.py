@@ -55,7 +55,7 @@ from calc.math_exposure_core import (
     strike_volume_legs,
 )
 from calc.math_forces import Forces, forces_absent
-from calc.math_levels import compute_charm_by_strike
+from calc.math_levels import CharmBucket, compute_charm_by_strike
 from calc.micro_structure import Candle
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -785,23 +785,23 @@ def _close_capture(tk: str, closed: datetime) -> list[dict[str, Any]] | None:
 
 def _priced_at(
     tk: str,
-    new_chain: bool,
     chain_spot: tuple[float | None, float | None],
-    previous: PublishedLevels | None,
+    kept: PublishedLevels | None,
     now: datetime,
 ) -> tuple[float | None, str, float | None]:
     """Return the price a publication of `tk`'s levels is computed at: (price, source, time).
 
     A chain's spot, a stored capture's or a delivered chain's: Schwab's LAST_PRICE when the
     chain was complete, with its trade time (SPOT_SOURCE_NONE when the daemon held no price,
-    as a capture stored without one reads); for a streamed tick, the live price, newer than any
-    the levels hold, or the last one published while Schwab has sent this program none.
+    as a capture stored without one reads); for a streamed tick (`kept`: the levels it
+    reprices), the live price, newer than any the levels hold, or the last one published while
+    Schwab has sent this program none.
     """
-    if new_chain:
+    if kept is None:
         source = SPOT_SOURCE_NONE if chain_spot[0] is None else SPOT_SOURCE_PLANE
         return chain_spot[0], source, chain_spot[1]
     live = resolve_spot(tk, now=now.timestamp())
-    return previous.priced_at if live[0] is None else live
+    return kept.priced_at if live[0] is None else live
 
 
 def _publish_levels(
@@ -855,14 +855,15 @@ def _publish_levels(
     if capture is not None:
         chain, fetched_ts = capture["contracts"], capture["ts_utc"]
         chain_spot = capture["spot"], capture["spot_ts"]
-    new_chain = chain is not None
-    if chain is None:
+    # the levels a tick reprices (no chain passed in); None when a chain is priced
+    kept = None
+    if chain is None or fetched_ts is None:
         if previous is None or not previous.chain:
             return None
-        chain, fetched_ts = previous.chain, previous.computed_ts_utc
+        kept, chain, fetched_ts = previous, previous.chain, previous.computed_ts_utc
     begun = datetime.fromtimestamp(fetched_ts, ET)
     valued_at = valuation_instant(begun if capture is not None else now, product)
-    priced_at = _priced_at(tk, new_chain, chain_spot, previous, now)
+    priced_at = _priced_at(tk, chain_spot, kept, now)
     if (
         capture is None
         and valued_at < now
@@ -878,7 +879,7 @@ def _publish_levels(
     else:
         spot, spot_source, spot_ts = priced_at
     # the ticker's contracts are the ones Schwab listed in its newest chain
-    listed = {c.symbol: c for c in chain if c.symbol} if new_chain else previous.contracts
+    listed = {c.symbol: c for c in chain if c.symbol} if kept is None else kept.contracts
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(now.timestamp())
     streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
@@ -905,9 +906,9 @@ def _publish_levels(
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
     captures_key = (
-        (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(float(fetched_ts)))
-        if new_chain
-        else previous.captures_key
+        (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
+        if kept is None
+        else kept.captures_key
     )
     if previous is not None and previous.captures_key == captures_key:
         forces, prior = previous.forces, previous.prior_day
@@ -954,7 +955,7 @@ def _publish_levels(
     )
     level_store.publish(tk, levels)
     _levels_changed(tk)
-    if new_chain:
+    if kept is None:
         live_ui.changed(app.state, tk, *CHAIN_PANELS)
     return snap
 
@@ -1024,9 +1025,9 @@ def _log_level_crosses(
 def _charm_rows(snap: TerrainSnapshot) -> list[StrikeValue]:
     """Each strike's net dealer charm from the published charm map (the charm walls' own)."""
     return sorted(
-        StrikeValue(float(k), float(b["net_charm"]))
+        StrikeValue(k, net)
         for k, b in snap.charm_by_strike.items()
-        if b.get("net_charm") is not None
+        if (net := b["net_charm"]) is not None
     )
 
 
@@ -1496,7 +1497,7 @@ def _prior_day(tk: str, captures: list[dict[str, Any]], chain_ts: float) -> Terr
 def _forces_from_captures(
     tk: str,
     captures: list[dict[str, Any]],
-    charm_by_strike: dict[float, Bucket] | None = None,
+    charm_by_strike: dict[float, CharmBucket] | None = None,
 ) -> Forces:
     """Build the forces rows from banked chains.
 
@@ -1508,7 +1509,7 @@ def _forces_from_captures(
     Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
     newest market days' captures (last_capture_per_day, newest first), read once for it.
     """
-    payload = forces_absent(tk)
+    payload: Forces = forces_absent(tk)
     try:
         rows = [
             (c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
@@ -1549,13 +1550,11 @@ def _forces_from_captures(
             # Dealer-signed net_charm = call_charm - put_charm per strike.
             charm_below = charm_above = None
             try:
-                if isinstance(charm_by_strike, dict):
-                    per_ch = charm_by_strike
-                else:
-                    per_ch = compute_charm_by_strike(
-                        c1, spot1, now=clock1, sessions=held, product=product
-                    )
-
+                per_ch = (
+                    compute_charm_by_strike(c1, spot1, now=clock1, sessions=held, product=product)
+                    if charm_by_strike is None
+                    else charm_by_strike
+                )
                 charm_below = side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
                 charm_above = side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
             except Exception as e:
