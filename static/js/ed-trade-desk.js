@@ -142,11 +142,29 @@
     if (sent === undefined)
       return stage(2, "td-accent-green", "Frame — liquidity levels", "-", "", null, [], null);
     if (sent.failed != null)
-      return stage(2, "td-accent-green", "Frame — liquidity levels", sent.failed, "", null, [], null);
+      return stage(
+        2,
+        "td-accent-green",
+        "Frame — liquidity levels",
+        sent.failed,
+        "",
+        null,
+        [],
+        null,
+      );
     var levelsD = sent;
     var levels = levelsD.levels; // always served (levels_payload)
     if (!levels.length)
-      return stage(2, "td-accent-green", "Frame — liquidity levels", "No levels", "", null, [], null);
+      return stage(
+        2,
+        "td-accent-green",
+        "Frame — liquidity levels",
+        "No levels",
+        "",
+        null,
+        [],
+        null,
+      );
     // served: levels ordered by distance to the live price (by_distance), each with its distance and side
     var byId = {};
     levels.forEach(function (r) {

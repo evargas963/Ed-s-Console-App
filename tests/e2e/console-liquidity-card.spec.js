@@ -298,7 +298,9 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     await openDesk(page, READOUT_LIVE);
     const seen = new Set();
     for (const view of ["weighted", "1", "3", "5"]) {
-      await card(page).locator('[data-liqview="' + view + '"]').click();
+      await card(page)
+        .locator('[data-liqview="' + view + '"]')
+        .click();
       const v = LIVE_COMP.views[view];
       seen.add(v.zone);
       await expect(card(page).locator(".liq-pct")).toHaveText(v.pct_text);
