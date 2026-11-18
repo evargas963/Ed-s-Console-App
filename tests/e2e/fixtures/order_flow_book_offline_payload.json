@@ -174,9 +174,7 @@
         "book_age_text": "28d",
         "book_time_ct": "Fri 09/25 09:30 AM CT",
         "book_time_ms": 1790346600097.0,
-        "books": [
-          "NYSE_BOOK"
-        ],
+        "books": ["NYSE_BOOK"],
         "dedup_partial": false,
         "dedup_partial_text": null,
         "feed_label": "OFFLINE",
