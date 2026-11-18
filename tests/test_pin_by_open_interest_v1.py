@@ -23,7 +23,16 @@ import pytest
 from calc.terrain_engine import compute_terrain, pin_by_open_interest
 from option_contract import read_chain
 from push import levels as push_levels
-from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, SPY_FULL, TSLA
+from tests.real_chains import (
+    CRWD,
+    MRVL,
+    NFLX,
+    SPY_0DTE,
+    SPY_CLOSE,
+    SPY_FULL,
+    TSLA,
+    book_ranks,
+)
 from time_et import option_close_product, sessions, time_to_expiry_years
 
 
@@ -85,6 +94,8 @@ def test_the_pin_is_not_the_largest_gamma_strike():
         "SPY", read_chain(SPY_FULL.chain), SPY_FULL.spot, now=SPY_FULL.now, sessions=sessions()
     )
     assert (snap.absolute_gamma_strike, snap.pin_candidate) == (605.0, 750.0)
+    worked_out = book_ranks(SPY_FULL.chain, SPY_FULL.spot)["absolute_gamma_strike"]
+    assert snap.absolute_gamma_strike == worked_out
 
 
 @pytest.mark.parametrize(
