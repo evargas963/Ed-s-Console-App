@@ -56,6 +56,10 @@
   function heatInk(c) {
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? "#f4f7fb" : "#0a0e17";
   }
+  // a heat cell's text weight by its strength (null: no strength): heavier on a strong cell
+  function heatWeight(t) {
+    return t != null && t > 0.65 ? 750 : 550;
+  }
   // the whole rows a drag of `dy` pixels moved, rows `rowPx` tall
   function rowsMoved(dy, rowPx) {
     return Math.round(dy / rowPx);
@@ -242,6 +246,7 @@
     bySign: bySign,
     heatFill: heatFill,
     heatInk: heatInk,
+    heatWeight: heatWeight,
     centredLeft: centredLeft,
     centredPath: centredPath,
     rowsMoved: rowsMoved,
