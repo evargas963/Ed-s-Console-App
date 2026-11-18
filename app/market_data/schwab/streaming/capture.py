@@ -543,10 +543,11 @@ class Daemon:
             if ticker in self.watchlist:
                 told(ON_LIST)
                 return
+            if (client := self.schwab_client) is None:  # asked before run: no client to check with
+                told(NOT_CHECKED, answer="the Schwab connection has not started")
+                return
             try:
-                quoted, status, answer = await asyncio.to_thread(
-                    check_ticker, self.schwab_client(), ticker
-                )
+                quoted, status, answer = await asyncio.to_thread(check_ticker, client(), ticker)
             except Exception as e:  # the check could not be made: not added, and why
                 log.warning(
                     "watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e, exc_info=True
