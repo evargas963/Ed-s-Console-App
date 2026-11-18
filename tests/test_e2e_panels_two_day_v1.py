@@ -274,7 +274,8 @@ def write_e2e_panels() -> None:
     for real in (AMZN, SPY):
         with tempfile.TemporaryDirectory() as folder:
             real.panels.write_text(
-                json.dumps(build_e2e_panels(real, Path(folder)), indent=1), encoding="utf-8"
+                json.dumps(build_e2e_panels(real, Path(folder)), indent=2) + "\n",  # as Prettier
+                encoding="utf-8",
             )
 
 

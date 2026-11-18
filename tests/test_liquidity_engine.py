@@ -19,6 +19,7 @@ from calc.liquidity_models import (
     volume_profile,
 )
 from calc.liquidity_value_engine import (
+    OvernightRange,
     bars_from_candles,
     build_premarket_snapshot,
     build_price_level_snapshot,
@@ -198,7 +199,7 @@ def _bar(
     )
 
 
-def _overnight(bars: list, session_date: date, prior: date | None) -> dict:
+def _overnight(bars: list, session_date: date, prior: date | None) -> OvernightRange | None:
     """Return the engine's overnight range as its producer gets it.
 
     Bars normalized once, from the close of the prior session `prior` (the date of Schwab's
@@ -221,11 +222,10 @@ def test_overnight_window_monday_reaches_back_to_friday():
         _bar(monday, 10, 0, 120.0, 90.0),  # Monday RTH — must NOT be in the overnight
     ]
     out = _overnight(bars, monday, friday)
-    assert out["overnight_high"] == 108.0, (
-        f"Friday's post-close high is missing from Monday's overnight: {out}"
-    )
-    assert out["overnight_low"] == 95.0, f"overnight low wrong: {out}"
-    assert out["overnight_high"] != 96.0, "overnight collapsed to Monday's pre-open only"
+    assert out is not None
+    assert out.high == 108.0, f"Friday's post-close high is missing from Monday's overnight: {out}"
+    assert out.low == 95.0, f"overnight low wrong: {out}"
+    assert out.high != 96.0, "overnight collapsed to Monday's pre-open only"
 
 
 def test_overnight_window_midweek_uses_the_immediately_prior_session():
@@ -238,7 +238,7 @@ def test_overnight_window_midweek_uses_the_immediately_prior_session():
         _bar(tuesday, 9, 30, 140.0, 60.0),  # Tuesday RTH open bar — must be EXCLUDED
     ]
     out = _overnight(bars, tuesday, monday)
-    assert out["overnight_high"] == 104.0 and out["overnight_low"] == 98.0, (
+    assert out == OvernightRange(high=104.0, low=98.0), (
         f"midweek overnight leaked an RTH bar: {out}"
     )
 
@@ -264,7 +264,7 @@ def test_overnight_window_spans_a_holiday_gap_without_inventing_a_session():
         _bar(fri, 10, 0, 200.0, 10.0),  # Friday RTH — excluded
     ]
     out = _overnight(bars, fri, wed)
-    assert out["overnight_high"] == 111.0 and out["overnight_low"] == 94.0, (
+    assert out == OvernightRange(high=111.0, low=94.0), (
         f"the holiday gap was skipped instead of spanned: {out}"
     )
 
@@ -274,8 +274,8 @@ def test_overnight_empty_is_empty_never_fabricated():
     tuesday = date(2026, 10, 6)
     only_rth = [_bar(date(2026, 10, 5), 11, 0, 100.0, 99.0), _bar(tuesday, 10, 0, 101.0, 98.0)]
     monday = date(2026, 10, 5)
-    assert _overnight(only_rth, tuesday, monday) == {}, "an overnight range was invented"
-    assert _overnight([], tuesday, monday) == {}
+    assert _overnight(only_rth, tuesday, monday) is None, "an overnight range was invented"
+    assert _overnight([], tuesday, monday) is None
 
 
 def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
@@ -290,7 +290,7 @@ def test_overnight_without_a_prior_session_uses_only_this_session_premarket():
         _bar(tuesday, 8, 0, 99.0, 98.0),
     ]
     out = _overnight(bars, tuesday, None)  # no daily candle held for a prior session
-    assert out == {"overnight_high": 99.0, "overnight_low": 98.0}, (
+    assert out == OvernightRange(high=99.0, low=98.0), (
         f"an unbounded window swept bars from a session that was never established: {out}"
     )
 
