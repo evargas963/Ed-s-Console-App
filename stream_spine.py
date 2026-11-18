@@ -23,7 +23,6 @@ import json
 import logging
 import os
 import queue
-import re
 import sqlite3
 import sys
 import threading
@@ -33,7 +32,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, Any, override
 
 import time_et
 from db_authority import canonical_db_path
@@ -344,6 +343,8 @@ def subscription_msg(
 #: older one at once, nothing old waits, and what a reader holds is bounded by the number of
 #: topics, never by how fast Schwab sends (D3).
 LOG, LATEST = "log", "latest"
+#: the end of a LOG reader's messages, put in its queue once the stop is set (_end_at): no topic
+LOG_END: tuple[str, Any] = ("", None)
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
 #: by the key of the Schwab item in the message: their current record merges field by field
 _FIELD_DELTA = {"quote": "native", "optquote": "content"}
@@ -372,8 +373,8 @@ class Subscription:
     prefix: str
     policy: str
     current: dict[str, tuple[str, Any]]  # the bus's current state
-    #: LOG: every message, then None at the stop (_end_at)
-    queue: asyncio.Queue[tuple[str, Any] | None] = field(default_factory=asyncio.Queue)
+    #: LOG: every message, then LOG_END at the stop (_end_at)
+    queue: asyncio.Queue[tuple[str, Any]] = field(default_factory=asyncio.Queue)
     changed: dict[str, None] = field(default_factory=dict)  # LATEST: keys, in order
     wake: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -403,12 +404,12 @@ class Subscription:
 
 
 async def _end_at(stop: asyncio.Event, sub: Subscription) -> None:
-    """Put the end of a LOG reader's messages (None) into its queue once `stop` is set.
+    """Put the end of a LOG reader's messages (LOG_END) into its queue once `stop` is set.
 
     It goes behind every message delivered before the stop, so the reader takes those first.
     """
     await stop.wait()
-    sub.queue.put_nowait(None)
+    sub.queue.put_nowait(LOG_END)
 
 
 class MessageBus:
@@ -709,9 +710,9 @@ _STATE_WORD = {
 }
 #: each table's name and columns, from its insert
 _TABLES = {
-    kind: (m.group(1), tuple(c.strip() for c in m.group(2).split(",")))
+    kind: (name, tuple(c.strip() for c in columns.split(",")))
     for kind, (sql, _row) in _INSERTS.items()
-    for m in [re.match(r"INSERT INTO (\w+)\(([^)]*)\)", sql)]
+    for name, _, columns in [sql.removeprefix("INSERT INTO ").partition(")")[0].partition("(")]
 }
 #: what the writer holds in memory while the database refuses writes, before newer messages go to
 #: a spill file (the operator's setting: about 2 GB of memory), each held message counted once at
@@ -931,7 +932,7 @@ def _object_bytes(obj: object, seen: set[int]) -> int:
         if type(o) is dict:
             stack.extend(o.keys())
             stack.extend(o.values())
-        elif type(o) in (list, tuple):
+        elif type(o) is list or type(o) is tuple:
             stack.extend(o)
     return total
 
@@ -1001,51 +1002,17 @@ def _spill_order(path: Path) -> tuple[int, ...]:
 class _Spill:
     """One append-only spill file: each record a 4-byte big-endian length and the record's JSON.
 
-    Appended in arrival order; written back from the start, `read_at` advancing at each commit.
+    Appended in arrival order (_NewSpill); written back from the start, `read_at` advancing at
+    each commit. One an earlier writer left (found) is read only.
     """
 
-    def __init__(self, path: Path, mode: str | None = "ab") -> None:
+    def __init__(self, path: Path) -> None:
         self.path = path
-        self.out: IO[bytes] | None = (
-            open(path, mode, buffering=0) if mode is not None else None
-        )  # None: read only (found)
         self.size = 0  # bytes of whole records written
         self.messages = 0
         self.read_at = 0  # bytes written back and committed
         self.written_back = 0
         self._in: IO[bytes] | None = None
-
-    @classmethod
-    def new(cls, db_path: Path, ms: int, n: int) -> _Spill:
-        """Create a new spill file beside the database, <stem>.<ms>.<n>.spill.
-
-        It is named for its place in arrival order: created, never opened over another file (a
-        name taken moves it to the next millisecond). Raises the disk's refusal.
-        """
-        while True:
-            try:
-                return cls(db_path.with_name(f"{db_path.stem}.{ms}.{n}.spill"), "xb")
-            except FileExistsError:
-                ms += 1
-
-    def append(self, record: bytes) -> OSError | None:
-        """Append one record.
-
-        The disk's refusal (OSError) is returned, the file cut back to its whole records.
-
-        The file is unbuffered, so a write may take part of the bytes; the rest is written next,
-        as Python's buffered writer does, and a disk that takes no more raises.
-        """
-        data = len(record).to_bytes(4, "big") + record
-        left = memoryview(data)
-        try:
-            while left:
-                left = left[self.out.write(left) :]
-        except OSError as e:
-            self.out.truncate(self.size)  # no partial record stays behind the whole ones
-            return e
-        self.size += len(data)  # its message is counted by the writer (_spilled)
-        return None
 
     def read(self, n: int, now: float) -> list[tuple[Item, int]]:
         """Up to `n` records from `read_at`: (message, end offset) each, read at `now`.
@@ -1113,7 +1080,7 @@ class _Spill:
         nothing is appended to it, so no new message lands behind bytes that frame nothing (new
         ones go to a new spill file).
         """
-        spill = cls(path, None)
+        spill = cls(path)
         disk, whole = path.stat().st_size, 0
         with open(path, "rb") as f:
             while whole + 4 <= disk:
@@ -1140,10 +1107,64 @@ class _Spill:
         }
 
     def close(self) -> None:
-        if self.out is not None:
-            self.out.close()
         if self._in is not None:
             self._in.close()
+
+
+class _NewSpill(_Spill):
+    """A spill file this writer created: new messages are appended to it, unbuffered."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.out = open(path, "xb", buffering=0)
+
+    @classmethod
+    def new(cls, db_path: Path, ms: int, n: int) -> _NewSpill:
+        """Create a new spill file beside the database, <stem>.<ms>.<n>.spill.
+
+        It is named for its place in arrival order: created, never opened over another file (a
+        name taken moves it to the next millisecond). Raises the disk's refusal.
+        """
+        while True:
+            try:
+                return cls(db_path.with_name(f"{db_path.stem}.{ms}.{n}.spill"))
+            except FileExistsError:
+                ms += 1
+
+    def append(self, record: bytes) -> None:
+        """Append one record; the disk's refusal (OSError) is raised.
+
+        A refused record is cut away first, so the file holds only whole records. The file is
+        unbuffered, so a write may take part of the bytes; the rest is written next,
+        as Python's buffered writer does, and a disk that takes no more raises.
+        """
+        data = len(record).to_bytes(4, "big") + record
+        left = memoryview(data)
+        try:
+            while left:
+                left = left[self.out.write(left) :]
+        except OSError:
+            self.out.truncate(self.size)  # no partial record stays behind the whole ones
+            raise
+        self.size += len(data)  # its message is counted by the writer (_spill)
+
+    @override
+    def close(self) -> None:
+        self.out.close()
+        super().close()
+
+
+@dataclass
+class _Keep:
+    """The daily keep in progress (CaptureWriter.prune).
+
+    Rows received before `before` leave each table still in `tables`, a part at a time;
+    `removed` counts them per table.
+    """
+
+    before: float
+    tables: list[tuple[str, str]]
+    removed: Counter[str] = field(default_factory=Counter[str])
 
 
 class CaptureWriter:
@@ -1216,11 +1237,7 @@ class CaptureWriter:
         #: which bus messages are recorded (topic, message) -> bool; the daemon sets its own
         #: (Daemon.saves: option quotes and option books of the contracts it keeps)
         self.saves: Callable[[str, Any], bool] = _every_message
-        #: the daily keep in progress (prune): rows received before `_prune_before` leave each
-        #: table still in `_prune`, a part at a time; `_pruned` counts them per table
-        self._prune: list[tuple[str, str]] = []
-        self._prune_before: float | None = None
-        self._pruned: Counter[str] = Counter()
+        self._keeping: _Keep | None = None  # the daily keep in progress (prune)
         conn = sqlite3.connect(str(p))
         try:
             conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
@@ -1405,7 +1422,7 @@ class CaptureWriter:
         """Hand every bus message to the writer thread until `stop`.
 
         Each message is awaited as it comes, with no timer of its own; the stop goes into the
-        same queue, behind every message delivered before it (None, _end_at), so everything
+        same queue, behind every message delivered before it (LOG_END, _end_at), so everything
         delivered before the stop is written and committed before this returns. Once the thread
         is dead, each message is counted unrecorded instead of queued for a thread that will not
         take it.
@@ -1418,7 +1435,7 @@ class CaptureWriter:
         thread.start()
         ending = asyncio.ensure_future(_end_at(stop, sub))
         try:
-            while (item := await sub.get()) is not None:
+            while (item := await sub.get()) is not LOG_END:
                 self._hand(item)
         finally:
             ending.cancel()
@@ -1502,9 +1519,9 @@ class CaptureWriter:
         (the database refuses writes) every queued one is taken, to be held with them.
         """
         most = None if self._waiting or self._spills else self.batch_rows
-        unread = (bool(self._spills) and self._spills[0].read_at < self._spills[0].size) or bool(
-            self._prune
-        )
+        unread = (
+            bool(self._spills) and self._spills[0].read_at < self._spills[0].size
+        ) or self._keeping is not None
         timeout = 0.001 if unread else max(self.batch_sec - (time_et.elapsed() - last_commit), 0.01)
         incoming: list[Item] = []
         block = True  # the first is waited for; after it, only what is already queued
@@ -1564,7 +1581,7 @@ class CaptureWriter:
                     if self._spills and not self._waiting:
                         self._write_back(conn)
                     if (
-                        self._prune
+                        (keep := self._keeping) is not None
                         and not stopping
                         and not self._spills
                         and not self._batch
@@ -1572,7 +1589,7 @@ class CaptureWriter:
                     ):
                         # one part between rounds, none while messages wait or once the stop
                         # is taken
-                        self._prune_part(conn)
+                        self._prune_part(conn, keep)
                 except DATABASE_REFUSALS as e:
                     if conn is not None:
                         conn.close()  # its open transaction is rolled back
@@ -1643,24 +1660,24 @@ class CaptureWriter:
                         self._admitted += 1
                     continue
             try:
-                spill = self._tail()
-                refused = spill.append(_spill_record(item))
+                held: _NewSpill | OSError = self._tail()
             except OSError as e:
-                spill, refused = None, e
-            self._spilled(item, spill, refused)
+                held = e
+            self._spill(item, held)
         with self._lock:
             self._admitting, self._admitted = [], 0
 
-    def _tail(self) -> _Spill:
+    def _tail(self) -> _NewSpill:
         """Return the spill file new messages go to.
 
         The newest, when this writer opened it; a new one, named for now and after the file
         memory goes to at a stop (_leave_on_disk), when there is none or the newest was found at
         start (read only). Raises the disk's refusal.
         """
-        if self._spills and self._spills[-1].out is not None:
-            return self._spills[-1]
-        spill = _Spill.new(self.db_path, int(self.clock() * 1000), 1)
+        newest = self._spills[-1] if self._spills else None
+        if isinstance(newest, _NewSpill):
+            return newest
+        spill = _NewSpill.new(self.db_path, int(self.clock() * 1000), 1)
         with self._lock:
             self._spills.append(spill)
         log.warning("stream writer: messages go to %s before the database", spill.path)
@@ -1676,17 +1693,23 @@ class CaptureWriter:
             self.left_on_disk.append(spill.status())
         self._spills = []
 
-    def _spilled(self, item: Item, spill: _Spill | None, refused: BaseException | None) -> None:
-        """One message _admit or the stop's spill is done with.
+    def _spill(self, item: Item, held: _NewSpill | OSError) -> None:
+        """Append one message of _admit or the stop's spill to the spill file `held`.
 
-        It is counted in one locked section with its being held (_admitted): in `spill`, or,
-        refused by the disk, lost (neither the database nor a spill file holds it), with when it
-        was received.
+        It is counted in one locked section with its being held (_admitted): in `held`, or,
+        refused by the disk (`held` is the refusal when no spill file could be opened), lost
+        (neither the database nor a spill file holds it), with when it was received.
         """
+        if isinstance(held, _NewSpill):
+            try:
+                held.append(_spill_record(item))
+            except OSError as e:
+                held = e
+        refused = held if isinstance(held, OSError) else None
         ts = _received(item) if refused is not None else None
         with self._lock:
-            if refused is None:
-                spill.messages += 1
+            if isinstance(held, _NewSpill):
+                held.messages += 1
             else:
                 self.lost += 1
                 if ts is not None:
@@ -1714,43 +1737,47 @@ class CaptureWriter:
         next one.
         """
         with self._lock:
-            self._prune_before, self._pruned = before, Counter()
-            self._prune = [*KEPT_BY_TIME, *((t, "ts_recv") for t in ARCHIVED)]
+            self._keeping = _Keep(before, [*KEPT_BY_TIME, *((t, "ts_recv") for t in ARCHIVED)])
 
-    def _prune_part(self, conn: sqlite3.Connection) -> None:
-        """Run the next part of the keep in progress (prune), in one transaction."""
-        table, column = self._prune[0]
+    def _prune_part(self, conn: sqlite3.Connection, keep: _Keep) -> None:
+        """Run the next part of `keep`, the keep in progress (prune), in one transaction.
+
+        A keep asked again meanwhile starts over; this one's count stays its own.
+        """
+        table, column = keep.tables[0]
         if table in ARCHIVED:
-            removed, part = self._archive_part(conn, table, column), ARCHIVE_ROWS
+            removed, part = self._archive_part(conn, table, column, keep.before), ARCHIVE_ROWS
         else:
             removed = conn.execute(
                 f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
                 f"WHERE {column} < ? LIMIT ?)",
-                (self._prune_before, PRUNE_ROWS),
+                (keep.before, PRUNE_ROWS),
             ).rowcount
             part = PRUNE_ROWS
         conn.commit()
         with self._lock:
-            self._pruned[table] += removed
+            keep.removed[table] += removed
             if removed < part:
-                self._prune.pop(0)
-            done = not self._prune
+                keep.tables.pop(0)
+            done = not keep.tables
+            if done and self._keeping is keep:
+                self._keeping = None
         if done:
             log.info(
                 "stream writer: rows received before %s removed: %s",
-                ct_label(self._prune_before),
-                ", ".join(f"{t} {n}" for t, n in self._pruned.items()),
+                ct_label(keep.before),
+                ", ".join(f"{t} {n}" for t, n in keep.removed.items()),
             )
 
-    def _archive_part(self, conn: sqlite3.Connection, table: str, column: str) -> int:
-        """Move the next ARCHIVE_ROWS rows received before the keep's time into stream_archive.
+    def _archive_part(
+        self, conn: sqlite3.Connection, table: str, column: str, before: float
+    ) -> int:
+        """Move the next ARCHIVE_ROWS rows received before `before` into stream_archive.
 
         The rows in the table's kept parts of the day (ARCHIVED) become one block; every row
         taken leaves the table, in the caller's transaction. Returns how many were taken.
         """
-        cur = conn.execute(
-            ARCHIVE_TAKE.format(table=table, column=column), (self._prune_before, ARCHIVE_ROWS)
-        )
+        cur = conn.execute(ARCHIVE_TAKE.format(table=table, column=column), (before, ARCHIVE_ROWS))
         names = [d[0] for d in cur.description][1:]
         taken = cur.fetchall()
         at = names.index(column)
@@ -1839,17 +1866,14 @@ class CaptureWriter:
         if items:
             began = self.error_ts if self.error_ts is not None else self.clock()
             try:
-                held = _Spill.new(self.db_path, int(began * 1000), 0)
+                held: _NewSpill | OSError = _NewSpill.new(self.db_path, int(began * 1000), 0)
             except OSError as e:
                 held = e
             else:
                 with self._lock:
                     self._spills.insert(0, held)
             for item in items:
-                if isinstance(held, OSError):
-                    self._spilled(item, None, held)
-                else:
-                    self._spilled(item, held, held.append(_spill_record(item)))
+                self._spill(item, held)
         with self._lock:
             self._leave_spills()
             self._admitting, self._admitted = [], 0

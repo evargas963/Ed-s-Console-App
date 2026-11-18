@@ -94,7 +94,8 @@ class PageSocket(WebSocketsSansIOProtocol):
     @override
     def resume_writing(self) -> None:
         super().resume_writing()
-        self._stalled.cancel()
+        if self._stalled is not None:  # asyncio resumes only after a pause, which set it
+            self._stalled.cancel()
 
     @override
     def keepalive_timeout(self) -> None:

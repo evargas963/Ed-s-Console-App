@@ -426,6 +426,27 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     assert _old_rows(db) >= old - PRUNE_ROWS
 
 
+def test_a_keep_asked_again_while_one_runs_is_not_ended_by_the_older_one(tmp_path):
+    """The keep is asked again (a second close) while an older one has parts left.
+
+    The older one's parts finish on their own count; the newer one stays, every table still to
+    go, with its own time.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db)
+    writer.prune(1.0)
+    older = writer._keeping
+    assert older is not None
+    every = list(older.tables)
+    writer.prune(2.0)
+    with sqlite3.connect(db) as conn:
+        while older.tables:
+            writer._prune_part(conn, older)
+    assert set(older.removed) == {table for table, _column in every}
+    assert writer._keeping is not None
+    assert (writer._keeping.before, writer._keeping.tables) == (2.0, every)
+
+
 def test_each_part_of_the_keep_reads_the_large_tables_through_their_receipt_time_index(tmp_path):
     """Each part of the keep reads a large table through its receipt-time index, never the table.
 
