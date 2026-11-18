@@ -19,7 +19,6 @@ from calc.liquidity_value_engine import (
     HoldCount,
     bars_from_candles,
     build_live_snapshot,
-    hold_counts,
     wilson_interval,
 )
 from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
@@ -30,7 +29,7 @@ from push.levels import NO_PRICE_LEVELS_REASON
 from push.spot import resolve_spot
 from state import bar_store
 from state.level_store import published_levels
-from state.price_level_store import canonical_price_level_snapshot
+from state.price_level_store import canonical_price_level_snapshot, materialize_hold_counts
 from time_et import sessions
 
 
@@ -80,13 +79,13 @@ def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
     """Each fixed level type's hold rate at 15 and 30 minutes over the ticker's held bars.
 
     calc.liquidity_value_engine.hold_counts over every 1-minute bar the bar writer holds and
-    Schwab's daily candles.
+    Schwab's daily candles, counted once per input (state.price_level_store).
     """
-    counts = hold_counts(
+    counts = materialize_hold_counts(
+        tk,
         bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT)),
-        bar_store.series(tk, "1d"),
-        now,
-        sessions=sessions(),
+        daily=bar_store.series(tk, "1d"),
+        now=now,
         config=PlaybookConfig(),
     )
     return [

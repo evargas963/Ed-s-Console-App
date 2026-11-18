@@ -12,8 +12,11 @@ from datetime import date, datetime
 from calc.liquidity_models import PlaybookConfig
 from calc.liquidity_value_engine import (
     Bar,
+    HoldCount,
     PriceLevelSnapshot,
     build_price_level_snapshot,
+    hold_counts,
+    hold_window_close,
     prior_session,
     snapshot_input_fingerprint,
 )
@@ -29,6 +32,12 @@ _MATERIALIZED_SNAPSHOTS: dict[
 #: Guards the whole read-decide-build-write of materialize_price_level_snapshot: deciding to build
 #: from a value then overwritten is a check-then-act, a race unless something serialises it.
 _MATERIALIZE_LOCK = threading.Lock()
+#: ticker -> its hold counts (calc.liquidity_value_engine.hold_counts), with the fingerprint of
+#: their input: the bars to the newest closed session's close, Schwab's daily candles and its
+#: /markets answers. A bar of the session still open is no input, so it recounts nothing.
+_HOLD_COUNTS: dict[str, tuple[tuple[object, ...], dict[str, dict[int, HoldCount]]]] = {}
+#: the counts' own lock: a count takes seconds, and the levels' builds never wait on it
+_HOLD_LOCK = threading.Lock()
 
 
 def materialize_price_level_snapshot(
@@ -70,6 +79,38 @@ def materialize_price_level_snapshot(
         )
         _MATERIALIZED_SNAPSHOTS[key] = (fingerprint, snap)
         return snap
+
+
+def materialize_hold_counts(
+    ticker: str,
+    bars_norm: list[Bar],
+    *,
+    daily: list[Candle],
+    now: datetime,
+    config: PlaybookConfig,
+) -> dict[str, dict[int, HoldCount]]:
+    """Count once per input; return the SAME counts while the input is the same.
+
+    The counts at `now` read only the bars before the newest closed session's close
+    (hold_window_close), so they are counted from those, and a new bar of the open session is a
+    read, never a recount.
+    """
+    tk = ticker_storage_key(ticker)
+    held = sessions()  # one set of Schwab's /markets answers for the key and the count
+    end = hold_window_close(now, held)
+    window = [] if end is None else [b for b in bars_norm if b["_dt"] < end]
+    fingerprint = (
+        end,
+        snapshot_input_fingerprint(tk, date.min, window, "", None, held),
+        repr(daily),
+    )
+    with _HOLD_LOCK:
+        existing = _HOLD_COUNTS.get(tk)
+        if existing is not None and existing[0] == fingerprint:
+            return existing[1]
+        counts = hold_counts(window, daily, now, sessions=held, config=config)
+        _HOLD_COUNTS[tk] = (fingerprint, counts)
+        return counts
 
 
 def canonical_price_level_snapshot(ticker: str, now: datetime) -> PriceLevelSnapshot | None:

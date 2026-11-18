@@ -1165,6 +1165,21 @@ def hold_counts(
     return {lid: {m: HoldCount(*found[lid][m]) for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
 
 
+def hold_window_close(now: datetime, sessions: Mapping[str, Session]) -> datetime | None:
+    """The close of the newest regular session closed at `now`, None with none held.
+
+    hold_counts at `now` reads no bar from it on: a bar after it is no input of the counts.
+    """
+    return max(
+        (
+            r[1]
+            for day in sessions
+            if (r := _regular(sessions, date.fromisoformat(day))) is not None and r[1] <= now
+        ),
+        default=None,
+    )
+
+
 def _closed_sessions(
     bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]
 ) -> dict[date, tuple[tuple[datetime, datetime], list[Bar]]]:
