@@ -315,6 +315,37 @@ def _book_wall_candidates(
     return out
 
 
+#: each served book field's kind: NATIVE (Schwab's as sent) or DERIVED (computed here)
+_BOOK_CLASSIFICATION = {
+    "top_of_book.bid": "NATIVE",
+    "top_of_book.ask": "NATIVE",
+    "top_of_book.bid_size": "NATIVE",
+    "top_of_book.ask_size": "NATIVE",
+    "mark": "NATIVE",
+    "microprice": "DERIVED",
+    "crossed": "DERIVED",
+    "spread_pts": "DERIVED",
+    "depth.*.bid_total": "DERIVED",
+    "depth.*.ask_total": "DERIVED",
+    "depth.*.imbalance": "DERIVED",
+    "depth_pressure": "DERIVED",
+    "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)",
+    "ages.book_age_sec": "DERIVED",
+    "ages.quote_age_sec": "DERIVED",
+    "ages.book_stale": "DERIVED",
+    "provenance.book_time_ms": "NATIVE",
+    "provenance.exchange_quote_ts": "NATIVE",
+    "provenance.server_received_ts": "DERIVED",
+}
+#: the book measures not served, each with why
+_BOOK_DEFERRED = (
+    "aggressor_side (PROXY: needs trade-vs-quote classification history)",
+    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+    "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
+    "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
+)
+
+
 def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
     """Return everything derivable from a single canonical book snapshot, no wall-clock `now`.
 
@@ -385,33 +416,8 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
             "n_ask_levels": len(ask_levels),
             "book_source": cb["venue"] if cb["has_book"] else "unavailable",
         },
-        "classification": {
-            "top_of_book.bid": "NATIVE",
-            "top_of_book.ask": "NATIVE",
-            "top_of_book.bid_size": "NATIVE",
-            "top_of_book.ask_size": "NATIVE",
-            "mark": "NATIVE",
-            "microprice": "DERIVED",
-            "crossed": "DERIVED",
-            "spread_pts": "DERIVED",
-            "depth.*.bid_total": "DERIVED",
-            "depth.*.ask_total": "DERIVED",
-            "depth.*.imbalance": "DERIVED",
-            "depth_pressure": "DERIVED",
-            "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)",
-            "ages.book_age_sec": "DERIVED",
-            "ages.quote_age_sec": "DERIVED",
-            "ages.book_stale": "DERIVED",
-            "provenance.book_time_ms": "NATIVE",
-            "provenance.exchange_quote_ts": "NATIVE",
-            "provenance.server_received_ts": "DERIVED",
-        },
-        "deferred": [
-            "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-            "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
-            "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
-            "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
-        ],
+        "classification": dict(_BOOK_CLASSIFICATION),
+        "deferred": list(_BOOK_DEFERRED),
     }
 
 
@@ -755,6 +761,55 @@ def _opposite(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and a * b < 0
 
 
+def _card_view(
+    r: dict[str, Any],
+    snap: dict[str, Any],
+    points: list[tuple[float, dict[str, Any]]],
+    v: str,
+    view: str,
+    last: int,
+) -> dict[str, Any]:
+    """Return one venue's view on the Liquidity card, standing at its end second `last`."""
+    first = last - OF_LEAN_KEPT_SEC
+    sm = _standing(points, v, view, first, last)
+    shown = _zones(sm, first)
+    zone, since = shown[-1]
+    known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
+    bid, ask = snap.get("bid_total"), snap.get("ask_total")
+    held = None if since is None else last - since
+    return {
+        **{k: snap.get(k) for k in ("bid_total", "ask_total", "difference", "total_depth")},
+        "pct": sm[-1],
+        "pct_text": percent_text(sm[-1]),
+        "zone": zone,
+        "side_word": ZONE_WORDS.get(zone) if zone else None,
+        "held_sec": held,
+        "held_open": since is not None and since == known_from,
+        "held_text": None if held is None else f"HELD {'≥' if since == known_from else ''}{held}s",
+        "sentence": _CROSSED_SENTENCE if r.get("touch_state") == "CROSSED" else _sentence(bid, ask),
+        "divergence": _DIVERGENCE
+        if view == "weighted" and _opposite(sm[-1], snap.get("imbalance"))
+        else None,
+        "flips_2m": _flips(shown, first, last),
+        "bid_text": count_text(bid),
+        "ask_text": count_text(ask),
+        "difference_text": count_text(snap.get("difference")),
+        "total_text": count_text(snap.get("total_depth")),
+        # how far the book's levels reach in price
+        "span_bid_text": price_text(snap.get("span_bid")),
+        "span_ask_text": price_text(snap.get("span_ask")),
+        "lean": {
+            name: {
+                "seconds": window,
+                "step": step,
+                "lean": _lean(sm[-(window + 1) :]),
+                "values": sm[-(window + 1) :: step],
+            }
+            for name, window, step in OF_LEAN_WINDOWS
+        },
+    }
+
+
 def readout_card(
     readout: dict[str, dict[str, Any]],
     points: list[tuple[float, dict[str, Any]]],
@@ -780,49 +835,7 @@ def readout_card(
             if end is None:
                 views[view] = {"pct": None, "zone": None}
                 continue
-            last = int(end)
-            first = last - OF_LEAN_KEPT_SEC
-            sm = _standing(points, v, view, first, last)
-            shown = _zones(sm, first)
-            zone, since = shown[-1]
-            known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
-            bid, ask = snap.get("bid_total"), snap.get("ask_total")
-            held = None if since is None else last - since
-            views[view] = {
-                **{k: snap.get(k) for k in ("bid_total", "ask_total", "difference", "total_depth")},
-                "pct": sm[-1],
-                "pct_text": percent_text(sm[-1]),
-                "zone": zone,
-                "side_word": ZONE_WORDS.get(zone) if zone else None,
-                "held_sec": held,
-                "held_open": since is not None and since == known_from,
-                "held_text": None
-                if held is None
-                else f"HELD {'≥' if since == known_from else ''}{held}s",
-                "sentence": _CROSSED_SENTENCE
-                if r.get("touch_state") == "CROSSED"
-                else _sentence(bid, ask),
-                "divergence": _DIVERGENCE
-                if view == "weighted" and _opposite(sm[-1], snap.get("imbalance"))
-                else None,
-                "flips_2m": _flips(shown, first, last),
-                "bid_text": count_text(bid),
-                "ask_text": count_text(ask),
-                "difference_text": count_text(snap.get("difference")),
-                "total_text": count_text(snap.get("total_depth")),
-                # how far the book's levels reach in price
-                "span_bid_text": price_text(snap.get("span_bid")),
-                "span_ask_text": price_text(snap.get("span_ask")),
-                "lean": {
-                    name: {
-                        "seconds": window,
-                        "step": step,
-                        "lean": _lean(sm[-(window + 1) :]),
-                        "values": sm[-(window + 1) :: step],
-                    }
-                    for name, window, step in OF_LEAN_WINDOWS
-                },
-            }
+            views[view] = _card_view(r, snap, points, v, view, int(end))
         touch = r["views"]["1"]["pct"] if "views" in r else None
         levels = r.get("levels")
         venues[v] = {
