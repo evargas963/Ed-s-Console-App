@@ -153,6 +153,12 @@ def test_the_counts_are_counted_once_per_input_and_a_bar_of_the_open_session_is_
             tk, [b for b in bars if b["_dt"] <= noon], daily=daily, now=later, config=cfg
         )
         assert again is first, "a bar of the open session recounts nothing"
+        closed = datetime(newest.year, newest.month, newest.day, 20, 0, tzinfo=ET)
+        at_close = price_level_store.materialize_hold_counts(
+            tk, bars, daily=daily, now=closed, config=cfg
+        )
+        assert at_close is not first, "once the session closes its bars are counted"
+        assert at_close == hold_counts(bars, daily, closed, sessions=held, config=cfg)
         edited = [dict(b) for b in before]
         closed_day = next(b for b in edited if b["_dt"].date() < newest)
         closed_day["high"] += 50.0  # a bar of a closed session: a new input

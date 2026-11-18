@@ -1165,19 +1165,21 @@ def hold_counts(
     return {lid: {m: HoldCount(*found[lid][m]) for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
 
 
-def hold_window_close(now: datetime, sessions: Mapping[str, Session]) -> datetime | None:
-    """The close of the newest regular session closed at `now`, None with none held.
+def hold_window(bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]) -> list[Bar]:
+    """The bars hold_counts reads at `now`: each before a regular close at or before `now`.
 
-    hold_counts at `now` reads no bar from it on: a bar after it is no input of the counts.
+    Every closed session's bars and everything before them; no bar of a session still open. The
+    closes are tried newest first, so a bar before the newest is decided by one comparison.
     """
-    return max(
+    closes = sorted(
         (
             r[1]
             for day in sessions
             if (r := _regular(sessions, date.fromisoformat(day))) is not None and r[1] <= now
         ),
-        default=None,
+        reverse=True,
     )
+    return [b for b in bars_norm if any(b["_dt"] < close for close in closes)]
 
 
 def _closed_sessions(

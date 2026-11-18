@@ -16,7 +16,7 @@ from calc.liquidity_value_engine import (
     PriceLevelSnapshot,
     build_price_level_snapshot,
     hold_counts,
-    hold_window_close,
+    hold_window,
     prior_session,
     snapshot_input_fingerprint,
 )
@@ -35,7 +35,9 @@ _MATERIALIZE_LOCK = threading.Lock()
 #: ticker -> its hold counts (calc.liquidity_value_engine.hold_counts), with the fingerprint of
 #: their input: the bars to the newest closed session's close, Schwab's daily candles and its
 #: /markets answers. A bar of the session still open is no input, so it recounts nothing.
-_HOLD_COUNTS: dict[str, tuple[tuple[object, ...], dict[str, dict[int, HoldCount]]]] = {}
+_HOLD_COUNTS: dict[
+    str, tuple[tuple[tuple[str, str, str, int, str], str], dict[str, dict[int, HoldCount]]]
+] = {}
 #: the counts' own lock: a count takes seconds, and the levels' builds never wait on it
 _HOLD_LOCK = threading.Lock()
 
@@ -92,15 +94,14 @@ def materialize_hold_counts(
     """Count once per input; return the SAME counts while the input is the same.
 
     The counts at `now` read only the bars before the newest closed session's close
-    (hold_window_close), so they are counted from those, and a new bar of the open session is a
-    read, never a recount.
+    (hold_window), so they are counted from those, and a new bar of the open session is a read,
+    never a recount. Those bars, the daily candles and the sessions decide the counts: a session
+    that closes adds its bars.
     """
     tk = ticker_storage_key(ticker)
     held = sessions()  # one set of Schwab's /markets answers for the key and the count
-    end = hold_window_close(now, held)
-    window = [] if end is None else [b for b in bars_norm if b["_dt"] < end]
+    window = hold_window(bars_norm, now, held)
     fingerprint = (
-        end,
         snapshot_input_fingerprint(tk, date.min, window, "", None, held),
         repr(daily),
     )
