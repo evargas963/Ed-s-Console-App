@@ -123,6 +123,41 @@ def bars_from_candles(candles: list[Candle]) -> list[Bar]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class PriorDayLevels:
+    """The prior session's levels: its daily candle's high, low and close as Schwab sent them.
+
+    Its POC and value area are estimated from its RTH 1-minute bars (`rth_bars` of them); None
+    where those bars make no profile.
+    """
+
+    prior_date: date
+    rth_bars: int
+    pdh: float
+    pdl: float
+    pdc: float
+    pd_poc: float | None
+    pd_vah: float | None
+    pd_val: float | None
+
+
+@dataclass(frozen=True)
+class OvernightRange:
+    """The highest high and lowest low of the overnight window's bars."""
+
+    high: float
+    low: float
+
+
+@dataclass(frozen=True)
+class OpeningRange:
+    """The highest high and lowest low of the opening minutes' bars, and their midpoint."""
+
+    high: float
+    low: float
+    mid: float
+
+
 def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
     """Return THE prior session, for the previous-day levels and the overnight window.
 
@@ -141,7 +176,7 @@ def get_previous_day_levels(
     config: PlaybookConfig,
     *,
     sessions: Mapping[str, Session],
-) -> dict[str, Any]:
+) -> PriorDayLevels:
     """Return the prior session's levels.
 
     Its high, low and close as Schwab sent them on its daily candle (`prior`, prior_session),
@@ -153,16 +188,16 @@ def get_previous_day_levels(
         b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(sessions, b["_dt"])
     ]
     p = volume_profile(prev_bars, config.value_area_percent, config.tick_size)
-    return {
-        "prior_date": prior_date,
-        "rth_bars": len(prev_bars),
-        "pdh": prior.high,
-        "pdl": prior.low,
-        "pdc": prior.close,
-        "pd_poc": None if p is None else p.poc,
-        "pd_vah": None if p is None else p.vah,
-        "pd_val": None if p is None else p.val,
-    }
+    return PriorDayLevels(
+        prior_date=prior_date,
+        rth_bars=len(prev_bars),
+        pdh=prior.high,
+        pdl=prior.low,
+        pdc=prior.close,
+        pd_poc=None if p is None else p.poc,
+        pd_vah=None if p is None else p.vah,
+        pd_val=None if p is None else p.val,
+    )
 
 
 def get_overnight_levels(
@@ -171,19 +206,19 @@ def get_overnight_levels(
     prev_session: date | None,
     *,
     sessions: Mapping[str, Session],
-) -> dict[str, float]:
+) -> OvernightRange | None:
     """Overnight range over normalized bars (bars_from_candles).
 
     The continuous interval from the prior session's (`prev_session`, prior_session's candle
     date) regular close to this session's regular open, as Schwab's /markets sent them -- a
     weekend's or holiday's bars included. With no prior session the interval has no start, so
     only this session's pre-open bars are used. No bars in the window, or a session's hours not
-    held: {}.
+    held: None.
     """
     today = _regular(sessions, session_date)
     prev = None if prev_session is None else _regular(sessions, prev_session)
     if today is None or (prev_session is not None and prev is None):
-        return {}
+        return None
     session_open_dt = today[0]
     prev_close_dt = None if prev is None else prev[1]
 
@@ -199,11 +234,10 @@ def get_overnight_levels(
             overnight.append(b)
 
     if not overnight:
-        return {}
-    return {
-        "overnight_high": max(b["high"] for b in overnight),
-        "overnight_low": min(b["low"] for b in overnight),
-    }
+        return None
+    return OvernightRange(
+        high=max(b["high"] for b in overnight), low=min(b["low"] for b in overnight)
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -217,10 +251,10 @@ def compute_opening_range(
     config: PlaybookConfig,
     *,
     sessions: Mapping[str, Session],
-) -> dict[str, float]:
-    """Return the bars of the first N minutes (default 15) from the date's regular open (Schwab).
+) -> OpeningRange | None:
+    """Return the range of the first N minutes (default 15) from the date's regular open (Schwab).
 
-    From normalized bars (bars_from_candles). {} when the date has no regular session, when
+    From normalized bars (bars_from_candles). None when the date has no regular session, when
     Schwab's /markets answer for it is not held (the open is unknown), or when no bar falls in it.
     """
     regular = _regular(sessions, session_date)
@@ -230,12 +264,9 @@ def compute_opening_range(
     ]
 
     if not orb_bars:
-        return {}
-    return {
-        "orb_high": max(b["high"] for b in orb_bars),
-        "orb_low": min(b["low"] for b in orb_bars),
-        "orb_mid": (max(b["high"] for b in orb_bars) + min(b["low"] for b in orb_bars)) / 2.0,
-    }
+        return None
+    high, low = max(b["high"] for b in orb_bars), min(b["low"] for b in orb_bars)
+    return OpeningRange(high=high, low=low, mid=(high + low) / 2.0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -876,24 +907,24 @@ def build_price_level_snapshot(
         )
     else:
         eng = get_previous_day_levels(bars_norm, prior, cfg, sessions=sessions)
-        day: date = eng["prior_date"]
+        day = eng.prior_date
         prior_date = day
         producer = f"{_PRODUCER_NS}.get_previous_day_levels"
         window = f"{day.isoformat()} RTH (most recent prior RTH session)"
         put(
-            (("PDH", eng["pdh"]), ("PDL", eng["pdl"]), ("PDC", eng["pdc"])),
+            (("PDH", eng.pdh), ("PDL", eng.pdl), ("PDC", eng.pdc)),
             producer=producer,
             window=window,
             vendor_basis=DAILY_CANDLE_BASIS,
         )
         put(
-            (("PD_POC", eng["pd_poc"]), ("PD_VAH", eng["pd_vah"]), ("PD_VAL", eng["pd_val"])),
+            (("PD_POC", eng.pd_poc), ("PD_VAH", eng.pd_vah), ("PD_VAL", eng.pd_val)),
             producer=producer,
             window=window,
         )
-        if eng["rth_bars"] < LEVELS_PRIOR_SESSION_MIN_BARS:
+        if eng.rth_bars < LEVELS_PRIOR_SESSION_MIN_BARS:
             degraded.append(
-                f"prior_day: prior session {day} holds only {eng['rth_bars']} of >= "
+                f"prior_day: prior session {day} holds only {eng.rth_bars} of >= "
                 f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
                 "estimated from a partial tape"
             )
@@ -951,33 +982,26 @@ def build_price_level_snapshot(
 
     # ── opening range ────────────────────────────────────────────────────────
     orb = compute_opening_range(bars_norm, session_date, cfg, sessions=sessions)
-    if not orb:
+    if orb is None:
         families_absent.append(
             {"family": "opening_range", "reason": "no bar in the opening minutes, or no open known"}
         )
     else:
         put(
-            (
-                ("ORB_HIGH", orb["orb_high"]),
-                ("ORB_LOW", orb["orb_low"]),
-                ("ORB_MID", orb["orb_mid"]),
-            ),
+            (("ORB_HIGH", orb.high), ("ORB_LOW", orb.low), ("ORB_MID", orb.mid)),
             producer=f"{_PRODUCER_NS}.compute_opening_range",
             window=f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH",
         )
 
     # ── overnight ────────────────────────────────────────────────────────────
     overnight = get_overnight_levels(bars_norm, session_date, prior_date, sessions=sessions)
-    if not overnight:
+    if overnight is None:
         families_absent.append(
             {"family": "overnight", "reason": "no overnight-window bars in available tape"}
         )
     else:
         put(
-            (
-                ("OVERNIGHT_HIGH", overnight["overnight_high"]),
-                ("OVERNIGHT_LOW", overnight["overnight_low"]),
-            ),
+            (("OVERNIGHT_HIGH", overnight.high), ("OVERNIGHT_LOW", overnight.low)),
             producer=f"{_PRODUCER_NS}.get_overnight_levels",
             window=(
                 f"{session_date.isoformat()} before the RTH open (no prior session)"
