@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -80,7 +81,7 @@ def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_store
     assert published
     assert cch.last_capture_per_day(db, "MRVL", 1) == []
     assert cch.newest_capture_ts(db, "MRVL") is None
-    with sqlite3.connect(tmp_path / "stream_capture.db") as read:
+    with closing(sqlite3.connect(tmp_path / "stream_capture.db")) as read, read:
         kept = read.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall()
     assert [topic for topic, _msg in kept] == ["chain_history.MRVL"]
     assert json.loads(kept[0][1])["started"] == _BEGUN

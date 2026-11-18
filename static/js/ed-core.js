@@ -1529,6 +1529,22 @@
       .match(/^[a-z0-9-]+/) || ["unknown"])[0];
     return '<span class="fl-tag ' + hook + '" data-cls="' + esc(c) + '">' + esc(c) + "</span>";
   }
+  // a panel's rows, each [name, served text, served classification word or none]
+  function rowsHtml(rows) {
+    return rows
+      .map(function (r) {
+        return (
+          '<div class="fl-row"><span class="k">' +
+          esc(r[0]) +
+          '</span><span class="v">' +
+          esc(r[1]) +
+          "</span>" +
+          classTag(r[2]) +
+          "</div>"
+        );
+      })
+      .join("");
+  }
 
   // expose for view modules + tests (no trading logic here)
   window.EdShell = {
@@ -1541,6 +1557,7 @@
     orDash: orDash,
     request: request,
     classTag: classTag,
+    rowsHtml: rowsHtml,
     classOf: classOf,
     served: served,
     notLive: notLive,
