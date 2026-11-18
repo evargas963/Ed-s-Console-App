@@ -9,7 +9,7 @@ and its price row (live_price_rows).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, overload
 
 from instrument_identity import ticker_storage_key
 from live_price_rows import price_row
@@ -18,8 +18,17 @@ from state import bar_store
 from time_et import ET, Session, sessions
 
 
-def _moved_text(fraction: float) -> str:
-    """Return a gap or a move as the tab shows it: its arrow and its signed percent."""
+@overload
+def _moved_text(fraction: float) -> str: ...
+@overload
+def _moved_text(fraction: None) -> None: ...
+def _moved_text(fraction: float | None) -> str | None:
+    """Return a gap or a move as the tab shows it: its arrow and its signed percent.
+
+    None when there is none, which the page draws as missing.
+    """
+    if fraction is None:
+        return None
     return f"{'▲' if fraction > 0 else '▼'} {fraction:+.2%}"
 
 
@@ -64,10 +73,10 @@ def _prior_session(day: str) -> Session | None:
 def _today_card(
     label: str, gap: float | None, when_text: str, results: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    """Today's card: its gap (a fraction; None while it has none, "-") and what it is against."""
+    """Today's card: its gap (a fraction; None while it has none) and what it is against."""
     return {
         "label": label,
-        "gap_text": "-" if gap is None else _moved_text(gap),
+        "gap_text": _moved_text(gap),
         "gap_up": None if gap is None else gap > 0,
         "when_text": when_text,
         "results": results,

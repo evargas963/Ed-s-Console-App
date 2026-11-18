@@ -710,7 +710,7 @@
       '</div><div class="xp-big ' +
       dir(t.gap_up) +
       '">' +
-      esc(t.gap_text) +
+      esc(orDash(t.gap_text)) +
       '</div><div class="xp-sub">' +
       esc(t.when_text) +
       "</div></div>"
