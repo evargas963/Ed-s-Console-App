@@ -108,7 +108,7 @@ def persist_complete_chain_capture(
         return {"status": "skipped", "reason": "no_expiry"}
     if not completeness_basis:
         return {"status": "skipped", "reason": "no_completeness_basis"}
-    clean = [dict(c) for c in contracts if isinstance(c, dict)]
+    clean = [dict(c) for c in contracts]
     if not clean:
         return {"status": "skipped", "reason": "no_contracts", "ticker": tk, "expiry": exp}
 
