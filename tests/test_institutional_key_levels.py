@@ -141,9 +141,21 @@ def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():
+    # every gamma reported, as each bucket the producer builds counts its unreported ones
+    reported = {"call_gamma_unreported": 0, "put_gamma_unreported": 0}
     exposures = {
-        100.0: {"net_gex_1pct": 5_000_000.0, "call_gex_1pct": 5_000_000.0, "dollarized": True},
-        105.0: {"net_gex_1pct": 9_000_000.0, "call_gex_1pct": 9_000_000.0, "dollarized": True},
+        100.0: {
+            "net_gex_1pct": 5_000_000.0,
+            "call_gex_1pct": 5_000_000.0,
+            "dollarized": True,
+            **reported,
+        },
+        105.0: {
+            "net_gex_1pct": 9_000_000.0,
+            "call_gex_1pct": 9_000_000.0,
+            "dollarized": True,
+            **reported,
+        },
     }
     hvp, lvp = pick_volatility_point_strikes(exposures)
     assert hvp is None  # no negative pocket anywhere
