@@ -27,7 +27,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from push import contract as push_contract
 from push import terrain as push_terrain
-from state import level_store
+from state import capture_store, level_store
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status
@@ -52,6 +52,8 @@ def _et(hh: int, mm: int = 0, day: str = "2026-10-07") -> datetime:
 
 
 def _forget() -> None:
+    """Forget what a restart forgets: the levels, the plane's rows and the captures held."""
+    capture_store.clear()
     with level_store._lock:
         for tk in ("TSLA", "SPY"):
             level_store._levels.pop(tk, None)
