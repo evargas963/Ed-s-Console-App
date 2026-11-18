@@ -39,7 +39,13 @@ def test_every_source_is_listed_whole_and_its_file_exists():
                 f"{r['id']}: {r['where']} is not in the repository"
             )
         else:
-            linked = r["saved"].startswith("link only: ") and r["where"].startswith("https://")
+            # a link as CommonMark writes a bare URL: <https://...>
+            where = r["where"]
+            linked = (
+                r["saved"].startswith("link only: ")
+                and where.startswith("<https://")
+                and where.endswith(">")
+            )
             assert linked, r["id"]
 
 
