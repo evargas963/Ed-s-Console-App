@@ -1,8 +1,8 @@
 """tools/keep_going.py, the Stop hook (AGENTS.md Authority).
 
-A stop is refused while a message is unread or an order unanswered, and while production does not
-run main unless the agent's final message begins `WAITING ON OPERATOR:`. Run as the settings wire
-it, on a session transcript in Claude Code's JSON-lines form.
+A stop is refused while a message is unread or an order unanswered, and otherwise unless the
+agent's final message begins `WAITING ON OPERATOR:` (production not on main says why). Run as the
+settings wire it, on a session transcript in Claude Code's JSON-lines form.
 """
 
 from __future__ import annotations
@@ -51,7 +51,12 @@ def _transcript(tmp_path: Path, *said: str) -> Path:
         (DOWN, "WAITING ON CI: #757, #759 and #760 run with Auto-fix on.", False),
         (DOWN, "Merged #758. WAITING ON CI: not at the start, so not the way through.", False),
         (DOWN, "Waiting on CI for #757.", False),
-        (None, "Merged #1128.", True),
+        # production on main: a report is no stop either (operator 2026-11-18: "fix it so you
+        # won't stop"); only what he must decide ends the turn
+        (None, "Merged #1128.", False),
+        (None, "WAITING ON CI: #1162 runs with Auto-fix on.", False),
+        (None, "", False),
+        (None, "WAITING ON OPERATOR: the unidiff install needs his yes.", True),
     ],
 )
 def test_a_stop_is_refused_while_production_is_down_unless_only_the_operator_can_act(
@@ -141,8 +146,9 @@ def test_a_stop_is_refused_while_production_does_not_run_main(at_main, listening
 def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_row(tmp_path):
     """The command `.claude/settings.json` wires for Stop, run on a payload in Claude Code's form.
 
-    With every message answered and production running main, it lets the stop end; with nothing
-    listening on the console's port, it refuses with the reason.
+    With every message answered and production running main, a report refuses the stop (keep
+    working) and WAITING ON OPERATOR lets it end; with nothing listening on the console's port, it
+    refuses with the reason.
     """
     settings = json.loads((REPO / ".claude" / "settings.json").read_text(encoding="utf-8"))
     (command,) = [h["command"] for e in settings["hooks"]["Stop"] for h in e["hooks"]]
@@ -154,7 +160,14 @@ def test_the_settings_run_it_on_stop_and_it_answers_by_this_repositorys_shape_ro
     }
     run = _run(payload, tmp_path)
     assert run.returncode == 0
-    assert run.stdout == ""
+    assert "Keep working" in json.loads(run.stdout)["reason"]
+    own = tmp_path / "waiting"
+    own.mkdir()
+    waiting = {
+        **payload,
+        "transcript_path": str(_transcript(own, "WAITING ON OPERATOR: his yes to a rate.")),
+    }
+    assert _run(waiting, tmp_path).stdout == ""
     answer = json.loads(_run(payload, tmp_path, listening=False).stdout)
     assert answer["decision"] == "block" and "Production" in answer["reason"]
 
@@ -207,8 +220,10 @@ def test_a_payload_it_cannot_read_refuses_the_stop_with_the_reason(tmp_path):
     for payload in ("null", {"session_id": "s"}):
         run = _run(payload, tmp_path)
         assert run.returncode == 2 and "cannot judge the stop" in run.stderr, payload
-    # one it can read, with every order answered and production running main, ends
-    run = _run({"session_id": "s", "last_assistant_message": "Merged #1128."}, tmp_path)
+    # one it can read, with every order answered, production running main and the operator to
+    # decide, ends
+    said = "WAITING ON OPERATOR: his yes to a rate."
+    run = _run({"session_id": "s", "last_assistant_message": said}, tmp_path)
     assert (run.returncode, run.stdout) == (0, "")
 
 
@@ -257,7 +272,7 @@ def test_every_message_is_read_and_every_order_answered_before_the_turn_ends(tmp
     assert keep_going.open_messages(s, "", tmp_path) == left
     assert keep_going.open_messages(s, "ORDER 1 DONE: #776, #777 merged", tmp_path) == []
     assert keep_going.open_messages(s, "", tmp_path) == []
-    assert keep_going.decide("", open_orders=[]) is None
+    assert keep_going.decide("WAITING ON OPERATOR: his yes.", open_orders=[]) is None
     # another session's messages are its own
     assert keep_going.open_messages({"session_id": "orders-2"}, "", tmp_path) == []
 
