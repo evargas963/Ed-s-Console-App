@@ -93,7 +93,7 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
             )
         finally:
             ofs.stop_order_flow_stream()
-            ofs._daemon = None
+            ofs.bind_daemon(None)
 
     ofls.clear_all_live_state()
     try:
