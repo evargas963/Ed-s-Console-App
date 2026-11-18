@@ -713,10 +713,10 @@
   function liqKey() {
     return S.liqVenue === "COMPOSITE" ? "COMPOSITE" : window.EdShell.getState().bookVenue;
   }
-  // a served side's colour: bids green, offers red, balanced gold
-  function liqTone(zone) {
-    return !zone ? "" : zone === "BALANCED" ? "bal" : /BID/.test(zone) ? "bid" : "ask";
-  }
+  // a served zone's colour on the card (bids green, offers red, balanced gold) and its arrow on
+  // the agreement strip, by the zone's name as served (order_flow.ZONE_WORDS)
+  var ZONE_TONE = { BID_HEAVY: "bid", BALANCED: "bal", OFFER_HEAVY: "ask" };
+  var ZONE_ARROW = { BID_HEAVY: "up", BALANCED: "", OFFER_HEAVY: "dn" };
   function liqLeft(pct) {
     return window.EdDraw.centredLeft(pct) + "%";
   }
@@ -860,7 +860,7 @@
     }
     var v = r.views[view],
       one = r.status === "one_sided",
-      tone = one ? "" : liqTone(v.zone);
+      tone = one || !v.zone ? "" : ZONE_TONE[v.zone];
     // laid out as the other cards: the switch, the state and its number, the chart (the bars) and
     // its caption, the three gauges, then the facts
     var h =
@@ -1055,7 +1055,7 @@
       [
         "LIQUIDITY",
         lz ? lv.views[S.liqView].side_word.toLowerCase() : "No book",
-        lz === "BALANCED" ? "" : lz ? (/BID/.test(lz) ? "up" : "dn") : "",
+        lz ? ZONE_ARROW[lz] : "",
       ],
       [
         "VALUE",
