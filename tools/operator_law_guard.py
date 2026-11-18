@@ -233,7 +233,7 @@ _GH_ALLOWED = {
         "view",
     },
     "repo": {"view"},
-    "run": {"download", "list", "rerun", "view", "watch"},
+    "run": {"download", "list", "rerun", "view"},
     "workflow": {"list", "view"},
 }
 _GH_API_READS = frozenset(
