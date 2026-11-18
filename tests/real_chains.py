@@ -51,21 +51,29 @@ def _bsm_delta(s, k, t, sigma, sign, r, q):
     return np.exp(-q * t) * np.where(sign > 0, n, n - 1.0)
 
 
-def _schwab_inputs(book: RealChain):
-    """Each contract Schwab sent with open interest: K, T, sigma, sign, r, q, OI x multiplier.
+def _number(x):
+    """Return a value Schwab sent as a number, else None (rule 2: -999, text, NaN)."""
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        return None
+    return None if not math.isfinite(x) or x == -999 else float(x)
 
-    Read here from Schwab's own fields, the rate and yield the chain's interestRate and
-    dividendYield (percents), T the program's one time to expiry (tested on its own).
+
+def _schwab_inputs(book: RealChain):
+    """Each contract that can be priced: K, T, sigma, sign, r, q, OI x multiplier.
+
+    Read here from Schwab's own fields as numbers (_number), with open interest above 0, the rate
+    and yield the chain's interestRate and dividendYield (percents), T the program's one time to
+    expiry (tested on its own).
     """
     product = option_close_product(book.ticker)
     held = sessions()
     rows = []
     for c in book.chain:
         oi, k, iv, mult = (
-            c.get(f) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
+            _number(c.get(f)) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
         )
-        r, q = c.get("interestRate"), c.get("dividendYield")
-        if not oi or None in (k, iv, mult, r, q) or iv <= 0:
+        r, q = _number(c.get("interestRate")), _number(c.get("dividendYield"))
+        if not oi or None in (k, iv, mult, r, q) or iv <= 0 or c["putCall"] not in ("CALL", "PUT"):
             continue
         t = time_to_expiry_years(
             c["expirationDate"],
@@ -101,39 +109,6 @@ def delta_derivatives(book: RealChain):
     return (k, t, sigma, sign, r, q, size), charm_fd, vanna_fd
 
 
-def _number(x):
-    """Return a value Schwab sent as a number, else None (rule 2: -999, text, NaN)."""
-    if isinstance(x, bool) or not isinstance(x, (int, float)):
-        return None
-    return None if not math.isfinite(x) or x == -999 else float(x)
-
-
-def _flip_inputs(book: RealChain):
-    """Each contract with open interest that can be priced: K, T, sigma, r, q, signed OI x mult."""
-    rows = []
-    product = option_close_product(book.ticker)
-    held = sessions()
-    for c in book.chain:
-        oi, k, iv, mult = (
-            _number(c.get(f)) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
-        )
-        r, q = _number(c.get("interestRate")), _number(c.get("dividendYield"))
-        if not oi or None in (k, iv, mult, r, q) or iv <= 0 or c["putCall"] not in ("CALL", "PUT"):
-            continue
-        t = time_to_expiry_years(
-            c["expirationDate"],
-            book.now,
-            sessions=held,
-            settlement_type=c.get("settlementType"),
-            product=product,
-        )
-        if not t:
-            continue
-        sign = 1.0 if c["putCall"] == "CALL" else -1.0
-        rows.append((k, t, iv / 100.0, r / 100.0, q / 100.0, sign * oi * mult))
-    return np.array(rows).T
-
-
 def _crossing(f, lo: float, hi: float) -> float:
     """Return where `f` changes sign between `lo` and `hi`, halving the gap 60 times."""
     f_lo = f(lo)
@@ -154,7 +129,8 @@ def gamma_flip_worked_out(book: RealChain) -> float | None:
     the price (Hull ch. 19) on Schwab's volatility, rate and yield, summed on a grid of 2,401
     prices over +-15% of the price; each sign change found by bisection; the one nearest the price.
     """
-    k, t, sigma, r, q, w = _flip_inputs(book)
+    k, t, sigma, sign, r, q, size = _schwab_inputs(book)
+    w = sign * size  # the dealer convention: +call / -put
 
     def gex(s: float) -> float:
         vt = sigma * np.sqrt(t)
