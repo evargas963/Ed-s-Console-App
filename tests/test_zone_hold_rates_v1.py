@@ -28,7 +28,7 @@ from calc.liquidity_value_engine import (
 )
 from calc.micro_structure import Candle
 from push import liquidity as push_liquidity
-from state import bar_store
+from state import bar_store, price_level_store
 from tests.feed_live_helper import price_history
 from time_et import ET, session, sessions
 
@@ -128,6 +128,47 @@ def test_a_session_still_open_is_not_counted():
     assert hold_counts(bars, daily, noon, sessions=held, config=cfg) == hold_counts(
         bars, daily, EVENING, sessions=held, config=cfg
     )
+
+
+def test_the_counts_are_counted_once_per_input_and_a_bar_of_the_open_session_is_no_input():
+    """The panel is sent on every new bar; the counts read only closed sessions' bars.
+
+    A bar of the session still open returns the very counts already counted (no recount); a
+    changed bar of a closed session is a new input and is counted again.
+    """
+    bars, daily = bars_from_candles(_candles("SPY", "1m")), _candles("SPY", "1d")
+    held, cfg = sessions(), PlaybookConfig()
+    newest = max(b["_dt"] for b in bars).date()  # the capture's last day, open at its noon
+    noon = datetime(newest.year, newest.month, newest.day, 12, 0, tzinfo=ET)
+    before = [b for b in bars if b["_dt"] < noon]
+    assert len(before) + 1 == len([b for b in bars if b["_dt"] <= noon]), "its noon bar"
+    tk = "ZZHOLDONCE"
+    try:
+        first = price_level_store.materialize_hold_counts(
+            tk, before, daily=daily, now=noon, config=cfg
+        )
+        assert first == hold_counts(bars, daily, noon, sessions=held, config=cfg)
+        later = noon + timedelta(minutes=1)
+        again = price_level_store.materialize_hold_counts(
+            tk, [b for b in bars if b["_dt"] <= noon], daily=daily, now=later, config=cfg
+        )
+        assert again is first, "a bar of the open session recounts nothing"
+        closed = datetime(newest.year, newest.month, newest.day, 20, 0, tzinfo=ET)
+        at_close = price_level_store.materialize_hold_counts(
+            tk, bars, daily=daily, now=closed, config=cfg
+        )
+        assert at_close is not first, "once the session closes its bars are counted"
+        assert at_close == hold_counts(bars, daily, closed, sessions=held, config=cfg)
+        edited = [dict(b) for b in before]
+        closed_day = next(b for b in edited if b["_dt"].date() < newest)
+        closed_day["high"] += 50.0  # a bar of a closed session: a new input
+        recounted = price_level_store.materialize_hold_counts(
+            tk, edited, daily=daily, now=later, config=cfg
+        )
+        assert recounted is not first
+        assert recounted == hold_counts(edited, daily, later, sessions=held, config=cfg)
+    finally:
+        price_level_store._HOLD_COUNTS.pop(tk, None)
 
 
 def test_ten_days_are_too_few_touches_to_show_a_rate():

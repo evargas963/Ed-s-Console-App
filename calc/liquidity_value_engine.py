@@ -1165,6 +1165,23 @@ def hold_counts(
     return {lid: {m: HoldCount(*found[lid][m]) for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
 
 
+def hold_window(bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]) -> list[Bar]:
+    """The bars hold_counts reads at `now`: each before a regular close at or before `now`.
+
+    Every closed session's bars and everything before them; no bar of a session still open. The
+    closes are tried newest first, so a bar before the newest is decided by one comparison.
+    """
+    closes = sorted(
+        (
+            r[1]
+            for day in sessions
+            if (r := _regular(sessions, date.fromisoformat(day))) is not None and r[1] <= now
+        ),
+        reverse=True,
+    )
+    return [b for b in bars_norm if any(b["_dt"] < close for close in closes)]
+
+
 def _closed_sessions(
     bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]
 ) -> dict[date, tuple[tuple[datetime, datetime], list[Bar]]]:
