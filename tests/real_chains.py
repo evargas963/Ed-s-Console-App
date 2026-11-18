@@ -38,6 +38,38 @@ class RealChain:
     now: datetime
 
 
+def book_ranks(chain: list[dict], spot: float) -> dict[str, float]:
+    """Return the whole book's strike ranks, worked out from the raw chain outside the program.
+
+    Per strike, over every contract of every expiry, with Schwab's gamma and delta as sent: the
+    size of gamma x open interest x multiplier x spot^2 x 1% (GEX) and of delta x open interest x
+    multiplier x spot (DEX). Call and put wall: the strike of the largest call / put GEX; absolute
+    gamma: of the largest call GEX + put GEX (SpotGamma); key delta: of the largest call DEX + put
+    DEX; call delta wall: of the largest call DEX. A Greek Schwab sent as no number (absent or
+    -999), or a contract with no open interest, is left out of that sum.
+    """
+    gex: dict[tuple[str, float], float] = {}
+    dex: dict[tuple[str, float], float] = {}
+    for c in chain:
+        key, oi = (c["putCall"], c["strikePrice"]), c.get("openInterest")
+        for field, sums, scale in (("gamma", gex, spot**2 * 0.01), ("delta", dex, spot)):
+            v = c.get(field)
+            if isinstance(v, (int, float)) and v != -999 and oi is not None:
+                sums[key] = sums.get(key, 0.0) + abs(v) * oi * c["multiplier"] * scale
+    strikes = {k for _side, k in gex | dex}
+
+    def best(sums: dict[tuple[str, float], float], *sides: str) -> float:
+        return max(strikes, key=lambda k: sum(sums.get((s, k), 0.0) for s in sides))
+
+    return {
+        "call_wall": best(gex, "CALL"),
+        "put_wall": best(gex, "PUT"),
+        "absolute_gamma_strike": best(gex, "CALL", "PUT"),
+        "key_delta_strike": best(dex, "CALL", "PUT"),
+        "call_delta_wall": best(dex, "CALL"),
+    }
+
+
 def _load(name: str) -> RealChain:
     d = json.loads((_FX / name).read_text(encoding="utf-8"))
     return RealChain(
