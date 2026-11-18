@@ -17,86 +17,18 @@ Real chains: CRWD, TSLA, MRVL and SPY's same-day chain of 2026-10-07 and SPY's w
 from __future__ import annotations
 
 import json
-import math
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from calc.math_levels import contract_inputs
 from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
-from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, RealChain
-from time_et import ET, option_close_product, sessions, time_to_expiry_years
+from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, gamma_flip_worked_out
+from time_et import ET, sessions
 from tools import check_end_to_end as cee
-
-
-def _number(x):
-    """Return a value Schwab sent as a number, else None (rule 2: -999, text, NaN)."""
-    if isinstance(x, bool) or not isinstance(x, (int, float)):
-        return None
-    return None if not math.isfinite(x) or x == -999 else float(x)
-
-
-def _inputs(book: RealChain):
-    """Each contract with open interest that can be priced: K, T, sigma, r, q, signed OI x mult."""
-    rows = []
-    product = option_close_product(book.ticker)
-    held = sessions()
-    for c in book.chain:
-        oi, k, iv, mult = (
-            _number(c.get(f)) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
-        )
-        r, q = _number(c.get("interestRate")), _number(c.get("dividendYield"))
-        if not oi or None in (k, iv, mult, r, q) or iv <= 0 or c["putCall"] not in ("CALL", "PUT"):
-            continue
-        t = time_to_expiry_years(
-            c["expirationDate"],
-            book.now,
-            sessions=held,
-            settlement_type=c.get("settlementType"),
-            product=product,
-        )
-        if not t:
-            continue
-        sign = 1.0 if c["putCall"] == "CALL" else -1.0
-        rows.append((k, t, iv / 100.0, r / 100.0, q / 100.0, sign * oi * mult))
-    return np.array(rows).T
-
-
-def _crossing(f, lo: float, hi: float) -> float:
-    """Return where `f` changes sign between `lo` and `hi`, halving the gap 60 times."""
-    f_lo = f(lo)
-    for _ in range(60):
-        mid = (lo + hi) / 2.0
-        f_mid = f(mid)
-        if f_lo * f_mid > 0:
-            lo, f_lo = mid, f_mid
-        else:
-            hi = mid
-    return (lo + hi) / 2.0
-
-
-def _expected_flip(book: RealChain) -> float | None:
-    k, t, sigma, r, q, w = _inputs(book)
-
-    def gex(s: float) -> float:
-        vt = sigma * np.sqrt(t)
-        d1 = (np.log(s / k) + (r - q + 0.5 * sigma**2) * t) / vt
-        phi = np.exp(-0.5 * d1**2) / math.sqrt(2.0 * math.pi)
-        g = np.exp(-q * t) * phi / (s * vt)
-        return float(np.sum(g * w) * s * s * 0.01)
-
-    xs = np.linspace(book.spot * 0.85, book.spot * 1.15, 2401)
-    ys = [gex(x) for x in xs]
-    roots = [
-        _crossing(gex, xs[i - 1], xs[i])
-        for i in range(1, len(xs))
-        if ys[i - 1] == 0 or ys[i - 1] * ys[i] < 0
-    ]
-    return min(roots, key=lambda x: abs(x - book.spot)) if roots else None
 
 
 @pytest.mark.parametrize(
@@ -106,7 +38,7 @@ def test_the_flip_reprices_with_schwabs_rate_and_dividend_yield(book):
     snap = compute_terrain(
         book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
     )
-    expected = _expected_flip(book)
+    expected = gamma_flip_worked_out(book)
     assert expected is not None
     # the program's curve is computed again between the two strikes it changes sign between:
     # its crossing is within a few hundred-thousandths of the price of the true one
