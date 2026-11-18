@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import calibration.complete_chain_capture as cch
@@ -73,7 +74,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
         )
         sweep.deliver(chain)
         assert published and all((m["spot"], m["spot_ts"]) == (LAST, TRADED) for _t, m in published)
-        with sqlite3.connect(tmp_path / "ed_console.db") as c:
+        with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
             stored = c.execute(
                 "SELECT spot, chain_spot, chain_spot_ts FROM complete_chain_captures"
             ).fetchall()
@@ -118,7 +119,7 @@ def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
         )
     (read,) = cch.last_capture_per_day(db, TK, 1)
     assert (read["spot"], read["spot_ts"]) == (None, None)
-    with sqlite3.connect(db) as c:
+    with closing(sqlite3.connect(db)) as c, c:
         recorded = {r[0] for r in c.execute("SELECT spot FROM complete_chain_captures")}
     assert recorded == {CRWD.spot}
     published = []
