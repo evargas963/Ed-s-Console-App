@@ -6,9 +6,11 @@ with their own window. Read from State: the published levels and the live price.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from calc.terrain_engine import (
+    LevelMove,
     MigrationRow,
     StrikeRow,
     level_moves,
@@ -29,16 +31,16 @@ def _served_migration(row: MigrationRow) -> dict[str, Any]:
     return {**row._asdict(), "change_text": migration_change_text(row.change)}
 
 
-def served_level_move(move: dict[str, Any]) -> dict[str, Any]:
+def served_level_move(move: LevelMove) -> dict[str, Any]:
     """Return one level's move since the prior day with its texts, as the screen shows them.
 
     Each day as its strike (None: not known), and the change (level_change_text).
     """
     return {
-        **move,
-        "prior_text": strike_text(move["prior"]),
-        "today_text": strike_text(move["today"]),
-        "change_text": level_change_text(move["change"]),
+        **asdict(move),
+        "prior_text": strike_text(move.prior),
+        "today_text": strike_text(move.today),
+        "change_text": level_change_text(move.change),
     }
 
 
