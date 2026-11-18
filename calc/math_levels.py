@@ -312,21 +312,20 @@ def _gamma_profile_totals(parsed: list[ProfileRow], grid: list[float]) -> list[f
     gamma is the Black-Scholes-Merton gamma with each contract's rate r and dividend yield q as
     Schwab sent them (Hull, Options, Futures and Other Derivatives, ch. 19):
     e^(-qT) * phi(d1) / (s * sigma * sqrt(T)), d1 = (ln(s/K) + (r - q + sigma^2/2) T) /
-    (sigma sqrt(T)). Evaluated as arrays, one block of prices at a time. A gamma that is not
-    finite contributes nothing.
+    (sigma sqrt(T)). Evaluated as arrays, one block of prices at a time. Every input is a
+    positive, finite number (_contract_inputs: a strike above 0, a volatility above 0, a time
+    left above 0; a price above 0), so every gamma is a number.
     """
     arr = np.asarray(parsed, dtype=float)
     strike, oi, mult, t_years, sigma, side, rate, dividend = (arr[:, i] for i in range(8))
     weight = side * oi * mult * np.exp(-dividend * t_years)
     s_all = np.asarray(grid, dtype=float)
     out: list[float] = []
-    with np.errstate(all="ignore"):
-        for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
-            s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
-            d1, vt = d1_vt(s, strike, t_years, sigma, rate - dividend, log=np.log, sqrt=np.sqrt)
-            g = norm_pdf(d1, exp=np.exp) / (s * vt)
-            g = np.where(np.isfinite(g), g, 0.0)
-            out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
+    for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
+        s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
+        d1, vt = d1_vt(s, strike, t_years, sigma, rate - dividend, log=np.log, sqrt=np.sqrt)
+        g = norm_pdf(d1, exp=np.exp) / (s * vt)
+        out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
     return out
 
 
