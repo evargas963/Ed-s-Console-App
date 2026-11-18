@@ -276,19 +276,18 @@ def test_no_row_reaches_the_page_before_the_page_is_told_what_its_symbol_is():
             asked = {"op": "subscribe", "ticker": "SPY", "panels": {"tape": {}}}
             await ws.send(json.dumps({**asked, "symbols": ["SPY"]}))
             await ws.send(json.dumps({**asked, "symbols": ["SPY", "ZZNEW"]}))
-            end = time_et.elapsed() + 2.5 * live_ui.HEARTBEAT_SEC  # two beats at least
-            while (left := end - time_et.elapsed()) > 0:
+            end = loop.time() + 2.5 * live_ui.HEARTBEAT_SEC  # two beats at least
+            while (left := end - loop.time()) > 0:
                 try:
                     msg = json.loads(await asyncio.wait_for(ws.recv(), left))
                 except TimeoutError:
                     break
                 if msg["type"] == "symbols":
                     known.update(s["key"] for s in msg["symbols"])
-                late.extend(
-                    (msg["type"], r["ticker"])
-                    for r in msg.get("rows") or []
-                    if r["ticker"] not in known
-                )
+                if msg["type"] in ("feed", "quotes"):  # the frames that carry rows
+                    late.extend(
+                        (msg["type"], r["ticker"]) for r in msg["rows"] if r["ticker"] not in known
+                    )
         finally:
             gate.set()
             await asyncio.gather(*held)
