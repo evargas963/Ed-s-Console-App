@@ -41,6 +41,41 @@ class RealChain:
     now: datetime
 
 
+def book_ranks(chain: list[dict], spot: float) -> dict[str, float]:
+    """Return the whole book's strike ranks, worked out from the raw chain outside the program.
+
+    Per strike, over every contract of every expiry, with Schwab's gamma and delta as sent: the
+    size of gamma x open interest x multiplier x spot^2 x 1% (GEX) and of delta x open interest x
+    multiplier x spot (DEX). Call and put wall: the strike of the largest call / put GEX; absolute
+    gamma: of the largest call GEX + put GEX (SpotGamma); key delta: of the largest call DEX + put
+    DEX; call delta wall: of the largest call DEX. A Greek Schwab sent as no number (absent or
+    -999), or a contract with no open interest, is left out of that sum.
+    """
+    # each rank's own running total by strike, of the contracts it sums
+    ranks = {
+        "call_wall": ("gamma", {"CALL"}),
+        "put_wall": ("gamma", {"PUT"}),
+        "absolute_gamma_strike": ("gamma", {"CALL", "PUT"}),
+        "key_delta_strike": ("delta", {"CALL", "PUT"}),
+        "call_delta_wall": ("delta", {"CALL"}),
+    }
+    scale = {"gamma": spot**2 * 0.01, "delta": spot}
+    totals: dict[str, dict[float, float]] = {name: {} for name in ranks}
+    for c in chain:
+        oi = c.get("openInterest")
+        for name, (field, sides) in ranks.items():
+            v = c.get(field)
+            if (
+                c["putCall"] in sides
+                and isinstance(v, (int, float))
+                and v != -999
+                and oi is not None
+            ):
+                by_strike, k = totals[name], c["strikePrice"]
+                by_strike[k] = by_strike.get(k, 0) + abs(v) * oi * c["multiplier"] * scale[field]
+    return {name: max(by_strike, key=by_strike.__getitem__) for name, by_strike in totals.items()}
+
+
 _erf = np.vectorize(math.erf)
 
 
