@@ -653,12 +653,12 @@ _last_feed_stamp: dict[str, tuple[bool, frozenset[str], bool | None]] = {}
 def restamp_off_the_loop() -> None:
     """Take the daemon's beat (the feed's callback, on the event loop) to the pricing thread.
 
-    The surfaces are stamped where they are priced (_chain_pricing), never on the event loop,
+    The surfaces are stamped where they are priced (chain_pricing), never on the event loop,
     whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1). The restamp is at the
     instant it runs, as a pricing is (_price_waiting_chain): one that waited behind a pricing
     is judged by the beat of then, not by the time it was queued.
     """
-    _chain_pricing.submit(lambda: restamp_open_surfaces(time_et.now())).add_done_callback(
+    chain_pricing.submit(lambda: restamp_open_surfaces(time_et.now())).add_done_callback(
         _restamp_ended
     )
 
@@ -1065,7 +1065,7 @@ def _on_stream_tick(sym: str) -> None:
             and spot is not None
             and (crosses := _level_crosses_at(published.snap, before, spot))
         ):
-            _chain_pricing.submit(
+            chain_pricing.submit(
                 _log_level_crosses,
                 tk,
                 spot,
@@ -1123,7 +1123,7 @@ def ticker_selected(tk: str) -> None:
 
 
 #: prices every ticker's levels, off the event loop, one at a time
-_chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
+chain_pricing = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-pricing")
 #: what waits to be priced for a ticker: a chain the daemon DELIVERED, the ticker's STORED
 #: captures (startup, for a ticker the daemon has not delivered yet), or a REPRICE of its held
 #: chain (a page selecting the ticker, or a streamed tick of it or of one of its contracts while
@@ -1187,7 +1187,7 @@ def _wait_to_price(
             _chains_delivered.add(tk)
         _chains_waiting[tk] = (what, contracts, ts, spot)
     if held is None:
-        _chain_pricing.submit(_price_waiting_chain)
+        chain_pricing.submit(_price_waiting_chain)
     return True
 
 
@@ -1248,7 +1248,7 @@ def _price_chain(
 #: what the console takes from the daemon's bus (start_order_flow_stream, at startup): each
 #: streamed tick, each chain the daemon fetched, and each beat of the daemon's status, the last
 #: restamped on the pricing thread
-FEED_CALLBACKS = {
+FEED_CALLBACKS: dict[str, Callable[..., None]] = {
     "on_tick_callback": _on_stream_tick,
     "on_chain_callback": _on_chain,
     "on_feed_callback": restamp_off_the_loop,
@@ -1681,8 +1681,7 @@ def project_gamma_surface(
         vol_row: list[dict[str, float] | None]
         contracts_row: list[dict[str, str | None]]
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
-        for col in expirations:
-            e = col["expiry"]
+        for e in expiries:
             bucket = per_expiry[e].get(k)  # every column is one of per_expiry's
             legs = {"call": leg_symbol.get((e, k, "call")), "put": leg_symbol.get((e, k, "put"))}
             gex, dex, vanna, oi, volume, contracts = _gamma_surface_cell_fields(bucket, legs)

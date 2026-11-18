@@ -81,7 +81,7 @@ def _print(msg: dict, tk: str = "SPY") -> list:
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
     before = {c["cross_id"] for c in _stored(tk)}
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 10)  # the queued reprice waits to be taken here
+    server.chain_pricing.submit(gate.wait, 10)  # the queued reprice waits to be taken here
     try:
         server._on_stream_tick(tk)
         with server._chains_waiting_lock:
@@ -90,8 +90,8 @@ def _print(msg: dict, tk: str = "SPY") -> list:
         gate.set()
     at = datetime.fromtimestamp(msg["ts_recv"], ET)
     if job is not None:
-        server._chain_pricing.submit(server._price_chain, tk, *job, at).result()
-    server._chain_pricing.submit(lambda: None).result()
+        server.chain_pricing.submit(server._price_chain, tk, *job, at).result()
+    server.chain_pricing.submit(lambda: None).result()
     return [c for c in _stored(tk) if c["cross_id"] not in before]
 
 

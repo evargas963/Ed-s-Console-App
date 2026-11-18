@@ -519,7 +519,7 @@ def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
     _beat(_AT - 0.5)
     _publish_chain(_AT)
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
+    server.chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
     ofs._on_tick_callback = server._on_stream_tick
     try:
         with pages() as served:
@@ -568,7 +568,7 @@ def test_a_restamp_that_waited_is_stamped_from_the_beat_of_the_instant_it_runs()
     """
     _publish_chain(_AT)
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 10)  # the pricing thread is busy, as with a ticker
+    server.chain_pricing.submit(gate.wait, 10)  # the pricing thread is busy, as with a ticker
     try:
         queued = time_et.now()
         _beat(queued)
@@ -578,6 +578,6 @@ def test_a_restamp_that_waited_is_stamped_from_the_beat_of_the_instant_it_runs()
         _beat(time_et.now())
     finally:
         gate.set()
-    server._chain_pricing.submit(int).result(10)  # the restamp queued before this has run
+    server.chain_pricing.submit(int).result(10)  # the restamp queued before this has run
     states = _sym_states()
     assert states and set(states) == {"pending"}
