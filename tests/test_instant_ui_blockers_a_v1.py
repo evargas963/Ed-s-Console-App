@@ -275,7 +275,14 @@ def test_a_timer_woken_before_its_second_waits_out_the_rest():
         with srv._reprice_lock:
             rearmed = srv._reprice_timers["ZZEARLY"]
         assert rearmed is not stand_in, "it waits out the rest on a timer of its own"
-        rearmed.join(timeout=5)
+        # that timer may itself wake early on Windows and re-arm again (seen on the runner
+        # 2026-11-18): follow the ticker's current timer until it has none
+        for _ in range(20):
+            with srv._reprice_lock:
+                current = srv._reprice_timers.get("ZZEARLY")
+            if current is None:
+                break
+            current.join(timeout=5)
         with srv._chains_waiting_lock:
             assert "ZZEARLY" in srv._chains_waiting, "once the second is out, it is queued"
         with srv._reprice_lock:
