@@ -353,29 +353,19 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
 
 
 def test_route_serializes_carried_state_without_recomputing():
-    """The book panel and the engine call the SAME producer.
+    """The book panel and the engine call the SAME producer, a pure one.
 
-    Once the
-    structural state is computed for (ticker, BOOK_TIME) it is memoized; a second serialization of
-    the SAME unchanged book must carry that cached state, NOT re-run the structural computation
-    (a recompute stores a new entry).
+    Two serializations of the same unchanged book give the same values; only the wall-clock ages
+    and stamps move with `now`.
     """
-    ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
     data = _data()
-    first = _micro(data, now_ts=100.0, ticker="CARRYTEST")
-    held = ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"]
-    second = _micro(data, now_ts=200.0, ticker="CARRYTEST")
-    assert ofe._MICRO_STRUCTURAL_CACHE["CARRYTEST"] is held, (
-        "structural recomputed instead of carried"
-    )
-
-    # structural fields are identical (carried); only wall-clock ages/stamps advance.
+    first = _micro(data, now_ts=100.0)
+    second = _micro(data, now_ts=200.0)
     assert second["depth"] == first["depth"]
     assert second["top_of_book"] == first["top_of_book"]
     assert second["wall_candidates"] == first["wall_candidates"]
     assert second["ages"]["book_age_sec"] != first["ages"]["book_age_sec"]
     assert second["provenance"]["server_received_ts"] == 200.0
-    ofe._MICRO_STRUCTURAL_CACHE.pop("CARRYTEST", None)
 
 
 def test_changed_ladder_under_same_book_time_is_not_served_stale():
@@ -410,9 +400,8 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
         asks=[(712.49, 1000), (712.51, 40), (712.53, 40), (712.75, 80), (713.00, 200)],
     )
 
-    ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
-    m1 = _micro(v1, ticker="STALE", now_ts=1.0)
-    m2 = _micro(v2, ticker="STALE", now_ts=2.0)
+    m1 = _micro(v1, now_ts=1.0)
+    m2 = _micro(v2, now_ts=2.0)
 
     # Both snapshots genuinely carry the identical BOOK_TIME...
     assert m1["provenance"]["book_time_ms"] == m2["provenance"]["book_time_ms"] == float(BT)
@@ -425,14 +414,9 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert [w["side"] for w in m1["wall_candidates"]] == ["bid"]
     assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
 
-    # And an unchanged re-read of v2 (same ticker, same content) still carries without recompute.
-    held = ofe._MICRO_STRUCTURAL_CACHE["STALE"]
-    m2b = _micro(v2, ticker="STALE", now_ts=3.0)
-    assert ofe._MICRO_STRUCTURAL_CACHE["STALE"] is held, (
-        "recomputed despite identical canonical book"
-    )
+    # and an unchanged re-read of v2 gives v2's values again
+    m2b = _micro(v2, now_ts=3.0)
     assert m2b["depth"] == m2["depth"]
-    ofe._MICRO_STRUCTURAL_CACHE.pop("STALE", None)
 
 
 def test_engine_and_route_read_the_same_canonical_state():
@@ -440,12 +424,10 @@ def test_engine_and_route_read_the_same_canonical_state():
 
     One faucet, not two producers.
     """
-    ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
     data = _data()
-    out = OrderFlowEngine().compute(_read(data), now=1787233772.0, ticker="SAME")
-    route = _micro(data, now_ts=1787233772.0, ticker="SAME")
+    out = OrderFlowEngine().compute(_read(data), now=1787233772.0)
+    route = _micro(data, now_ts=1787233772.0)
     assert out["book_microstructure"]["depth"] == route["depth"]
-    ofe._MICRO_STRUCTURAL_CACHE.pop("SAME", None)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

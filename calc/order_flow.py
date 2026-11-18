@@ -192,13 +192,6 @@ OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (
     OF_BOOK_DEPTH_DEEP,
 )
 
-#: Per-ticker carry cache: ticker -> (canonical_book_identity, structural_payload). Lets the route
-#: serialize the engine's already-computed state for an UNCHANGED book instead of re-walking raw
-#: data. Validity keys on the canonical book's CONTENT identity (see `_canonical_book_identity`),
-#: NOT on BOOK_TIME alone — BOOK_TIME is not assumed unique, so a changed ladder under a repeated
-#: BOOK_TIME must yield a different identity and force recompute.
-_MICRO_STRUCTURAL_CACHE: dict[str, tuple[tuple[Any, ...], dict[str, Any]]] = {}
-
 
 def _sorted_valid_levels(
     levels: Sequence[tuple[float | None, float | None]], *, descending: bool
@@ -242,28 +235,6 @@ def _extract_canonical_book(data: dict[str, Any]) -> dict[str, Any]:
         "book_time_ms": snapshot.book_time_ms if snapshot else None,
         "mark": mark,
     }
-
-
-def _canonical_book_identity(cb: dict[str, Any]) -> tuple[Any, ...]:
-    """Return the hashable CONTENT identity of the canonical book.
-
-    It holds every field the structural state is derived from. The carry cache validates on
-    THIS, never on BOOK_TIME alone: if the same ticker receives a changed ladder (or changed
-    top-of-book / mark) under a repeated BOOK_TIME, the identity differs and
-    `compute_book_microstructure` recomputes instead of serving stale state. BOOK_TIME is
-    included, but only as one component — its uniqueness is not assumed.
-    """
-    return (
-        cb["book_time_ms"],
-        cb["venue"],
-        cb["bid"],
-        cb["ask"],
-        cb["bid_size"],
-        cb["ask_size"],
-        cb["mark"],
-        tuple(cb["bid_levels"]),
-        tuple(cb["ask_levels"]),
-    )
 
 
 def _microprice(
@@ -449,9 +420,7 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
     return None if book_time_ms is None else now - book_time_ms / 1000.0
 
 
-def compute_book_microstructure(
-    data: dict[str, Any], *, now_ts: float, ticker: str | None = None
-) -> dict[str, Any]:
+def compute_book_microstructure(data: dict[str, Any], *, now_ts: float) -> dict[str, Any]:
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
     The ONE producer the engine and the book panel (`push.book.book`) both read.
@@ -459,27 +428,14 @@ def compute_book_microstructure(
     carries the live streaming book + top-of-book
     (app.options.order_flow.state.get_content_for_symbol); `data.exchange_quote_ts` (optional) is
     the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
-    service (absent: not live). The structural state
-    is extracted/computed ONCE and memoized per (ticker, BOOK_TIME); a caller with the same
-    unchanged book SERIALIZES the cached state instead of re-walking raw data. Only the age
-    fields depend on `now` and are always stamped fresh. Fail-closed: no book snapshot -> status
+    service (absent: not live). Pure: computed from the book given on every call (about 90 us on
+    a real book). Only the age fields depend on `now`. Fail-closed: no book snapshot -> status
     'no_book' with null metrics (no fabricated values).
     """
     now = now_ts
     cb = _extract_canonical_book(data)
     book_time_ms = cb["book_time_ms"]
-
-    # Carry only when the canonical book CONTENT is byte-for-byte identical — not merely the same
-    # BOOK_TIME. A changed ladder under a repeated BOOK_TIME has a different identity and
-    # recomputes.
-    identity = _canonical_book_identity(cb)
-    cached = _MICRO_STRUCTURAL_CACHE.get(ticker) if ticker else None
-    if cached is not None and cached[0] == identity:
-        structural = cached[1]  # carry: identical canonical book, no recompute
-    else:
-        structural = _microstructure_structural(cb)
-        if ticker:
-            _MICRO_STRUCTURAL_CACHE[ticker] = (identity, structural)
+    structural = _microstructure_structural(cb)
 
     # Ages + per-serialization stamps are the only wall-clock-dependent fields.
     exch_ts = float_finite_or_none(data.get("exchange_quote_ts"))
@@ -932,16 +888,13 @@ def _compute_cum_delta_slope(
 class OrderFlowEngine:
     """Order Flow Engine: computes metrics from Schwab data using only identified field paths."""
 
-    def compute(
-        self, data: dict[str, Any], *, now: float, ticker: str | None = None
-    ) -> dict[str, Any]:
+    def compute(self, data: dict[str, Any], *, now: float) -> dict[str, Any]:
         """Compute the book microstructure and the tape flow of one symbol at `now`.
 
         `now` is in epoch seconds; missing data yields None.
         """
-        # the book, extracted once by its one producer; `ticker` lets the route serialize this
-        # same computed state (carry, not recompute)
-        book_micro = compute_book_microstructure(data, now_ts=now, ticker=ticker)
+        # the book, by its one producer (the book panel calls the same one)
+        book_micro = compute_book_microstructure(data, now_ts=now)
         prints = canonical_tape_prints(data["content"])  # the tape, read once
         cum_first, cum_last = cum_delta_window(prints)
         ms = now * 1000.0

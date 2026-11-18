@@ -339,16 +339,26 @@ def _text(n: float | None, digits: int) -> str | None:
 
 def at_price(
     rows: list[dict[str, Any]], strikes: list[float], spot: float | None
-) -> dict[str, float | str | None]:
-    """Each shown row's distance from the live price, the strike the price sits under, its text.
+) -> dict[str, Any]:
+    """Return the shown rows, each with its distance from the live price and its spot line.
 
-    The matrix is ranked at the book's price, the price on screen is the live one.
+    The spot line marks the strike the price sits under; the price and its text come with them.
+    The matrix is ranked at the book's price, the price on screen is the live one. Pure: the
+    rows given are not changed.
     """
     under = None if spot is None else under_strike(spot, strikes)
-    for row in rows:
-        row["distance_text"] = None if spot is None else _signed(row["strike"] - spot, 2)
-        row["spot_line"] = row["strike"] == under
-    return {"spot": spot, "spot_text": price_text(spot)}
+    return {
+        "rows": [
+            {
+                **row,
+                "distance_text": None if spot is None else _signed(row["strike"] - spot, 2),
+                "spot_line": row["strike"] == under,
+            }
+            for row in rows
+        ],
+        "spot": spot,
+        "spot_text": price_text(spot),
+    }
 
 
 def _signed(n: float | None, digits: int) -> str | None:
