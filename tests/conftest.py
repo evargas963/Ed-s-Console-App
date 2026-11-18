@@ -123,7 +123,7 @@ def _live_feed_starts_down():
     with no timer of an earlier test's. And so are the chain captures the console holds
     (state.capture_store): every test's first ask reads its own database.
     """
-    time_et._first_trade = {}
+    time_et.HELD.first_trade = {}
     capture_store.clear()
     server = sys.modules.get("server")
     if server is not None:
