@@ -136,14 +136,12 @@ class Asked:
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "identity", "view", "panels", "wake")
+    __slots__ = ("ws", "symbols", "pending", "view", "panels", "wake")
 
     def __init__(self, ws: WebSocket) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()  # symbols changed since the last send
-        #: the last subscribe's answer, not yet sent
-        self.identity: list[dict[str, str]] | None = None
         #: the page's selected ticker (its key) and each panel it shows, with its parameters;
         #: None: no ticker selected, so no panel
         self.view: tuple[str, dict[str, dict[str, Any]]] | None = None
@@ -224,9 +222,6 @@ class LiveUiServer:
         while True:
             await c.wake.wait()
             c.wake.clear()
-            if c.identity is not None:
-                identity, c.identity = c.identity, None
-                await self._send(c, {"type": "symbols", "symbols": identity})
             now = self.clock()
             syms, c.pending = c.pending, set()
             rows = [live_price_rows.price_row(s, now) for s in syms if s in c.symbols]
@@ -281,8 +276,10 @@ class LiveUiServer:
                 identity.append({"requested": s, "key": k, "display": display_symbol(k)})
                 if k not in keys:
                     keys.append(k)
+            # what each asked-for symbol is goes out before its symbols are the page's: a beat
+            # in between carries only symbols the page already knows, never a row ahead of it
+            await self._send(c, {"type": "symbols", "symbols": identity})
             c.symbols = frozenset(keys)
-            c.identity = identity  # what each asked-for symbol is, before its rows
             c.pending = set(keys)  # snapshot: the current row for each, now
             selected, asked_panels = req.get("ticker"), req.get("panels")
             was, c.view = (

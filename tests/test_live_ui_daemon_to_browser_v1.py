@@ -240,7 +240,9 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
 
     async def body(_bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPX", "$VIX", "spy", "MU"]}))
-        first = json.loads(await asyncio.wait_for(ws.recv(), 2))
+        # a beat may come before the subscribe is read, carrying no row: no row before the answer
+        while (first := json.loads(await asyncio.wait_for(ws.recv(), 2)))["type"] != "symbols":
+            assert first["type"] == "feed" and first["rows"] == [], first
         assert first == {
             "type": "symbols",
             "symbols": [
@@ -250,6 +252,47 @@ def test_a_subscribe_is_answered_with_what_each_symbol_is_before_its_rows():
                 {"requested": "MU", "key": "MU", "display": "MU"},
             ],
         }
+
+    asyncio.run(_run(body))
+
+
+def test_no_row_reaches_the_page_before_the_page_is_told_what_its_symbol_is():
+    """A beat between a subscribe and its answer carried rows the page could not place.
+
+    Seen in CI 2026-11-18 (tests/test_data_path_startup_v1.py): the first frame after a subscribe
+    was a beat with SPY's row, ahead of the symbols answer. The page's sender was busy: here it is
+    held producing a panel (every worker of the loop's pool waiting, so the panel cannot start)
+    when the page asks for a new symbol; the next beat must not carry that symbol's row before the
+    page is told what it is.
+    """
+
+    async def body(_bus, ws, _feed, _stats):
+        gate = threading.Event()
+        loop = asyncio.get_running_loop()
+        held = [loop.run_in_executor(None, gate.wait, 30) for _ in range(64)]
+        known: set[str] = set()
+        late: list[tuple[str, str]] = []
+        try:
+            asked = {"op": "subscribe", "ticker": "SPY", "panels": {"tape": {}}}
+            await ws.send(json.dumps({**asked, "symbols": ["SPY"]}))
+            await ws.send(json.dumps({**asked, "symbols": ["SPY", "ZZNEW"]}))
+            end = loop.time() + 2.5 * live_ui.HEARTBEAT_SEC  # two beats at least
+            while (left := end - loop.time()) > 0:
+                try:
+                    msg = json.loads(await asyncio.wait_for(ws.recv(), left))
+                except TimeoutError:
+                    break
+                if msg["type"] == "symbols":
+                    known.update(s["key"] for s in msg["symbols"])
+                if msg["type"] in ("feed", "quotes"):  # the frames that carry rows
+                    late.extend(
+                        (msg["type"], r["ticker"]) for r in msg["rows"] if r["ticker"] not in known
+                    )
+        finally:
+            gate.set()
+            await asyncio.gather(*held)
+        assert "ZZNEW" in known, known
+        assert late == [], late[:5]
 
     asyncio.run(_run(body))
 
