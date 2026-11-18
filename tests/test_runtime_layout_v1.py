@@ -14,9 +14,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
-import runtime_layout
 from runtime_layout import _default_runtime_root
 
 REPO = Path(__file__).resolve().parent.parent
@@ -34,22 +31,30 @@ def _python(script: str, env: dict) -> subprocess.CompletedProcess:
     )
 
 
-def test_linked_worktree_metadata_failure_refuses_local_runtime(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_linked_worktree_metadata_failure_refuses_local_runtime(tmp_path: Path) -> None:
+    """The module's own file in a linked checkout whose .git marker cannot be followed."""
     linked = tmp_path / "linked"
     linked.mkdir()
-    monkeypatch.setattr(runtime_layout, "SOURCE_ROOT", linked)
+    (linked / "runtime_layout.py").write_bytes((REPO / "runtime_layout.py").read_bytes())
+    base = {k: v for k, v in os.environ.items() if k != "ED_RUNTIME_ROOT"}
+
+    def default_root() -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, "-c", "import runtime_layout; runtime_layout._default_runtime_root()"],
+            cwd=str(linked),
+            env=base,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
 
     (linked / ".git").write_text("not-a-gitdir", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="cannot resolve canonical runtime root"):
-        runtime_layout._default_runtime_root()
+    assert "cannot resolve canonical runtime root" in default_root().stderr
 
     gitdir = tmp_path / "primary" / ".git" / "worktrees" / "linked"
     gitdir.mkdir(parents=True)
     (linked / ".git").write_text(f"gitdir: {gitdir}", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="commondir missing"):
-        runtime_layout._default_runtime_root()
+    assert "commondir missing" in default_root().stderr
 
 
 def test_a_named_runtime_root_never_works_out_the_default(tmp_path):
