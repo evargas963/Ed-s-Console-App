@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import calc.l1_trade_observation as l1
 from app.options.order_flow.state import OrderFlowState
 from calc import order_flow as ofe
 from tests.shared_helpers import sent
@@ -61,17 +62,22 @@ def _data(messages: list[dict]) -> dict:
     return {"content": state.get_content_for_symbol(key)}
 
 
+def _tape(messages: list[dict]) -> list[dict]:
+    """The tape the engine reads from `messages` (OrderFlowEngine.compute's prints)."""
+    return l1.canonical_tape_prints(_data(messages)["content"])
+
+
 def test_cum_delta_proxy_skips_missing_print_size():
     prints = _prints("RKLB")
     assert [size for _p, size, _t in prints] == [None, None, None, 138]
     assert prints[3][0] < prints[2][0]  # a downtick: the sized print signs negative
-    assert ofe._compute_cum_delta_proxy(_data(sent(_MIX, "RKLB"))) == -138
+    assert l1.compute_cum_delta_proxy(_tape(sent(_MIX, "RKLB"))) == -138
 
 
 def test_cum_delta_proxy_returns_none_when_all_print_sizes_missing():
     prints = _prints("$SPX")
     assert len(prints) == 4 and all(size is None for _p, size, _t in prints)
-    assert ofe._compute_cum_delta_proxy(_data(sent(_MIX, "$SPX"))) is None
+    assert l1.compute_cum_delta_proxy(_tape(sent(_MIX, "$SPX"))) is None
 
 
 def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
@@ -82,7 +88,7 @@ def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
     """
     t0 = _NVDA_ZERO["item"]["TRADE_TIME_MILLIS"]
     data = _data([_NVDA_ZERO])
-    assert ofe._compute_cum_delta_proxy(data) == 0.0
+    assert l1.compute_cum_delta_proxy(l1.canonical_tape_prints(data["content"])) == 0.0
     flow = ofe.OrderFlowEngine().compute(data, now=t0 / 1000 + 61)
     assert flow["cum_delta_proxy"] == 0.0
     assert flow["cum_delta_window"] == "prints Mon 10/19 03:00 AM CT to Mon 10/19 03:00 AM CT"
@@ -91,7 +97,7 @@ def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
 def test_tape_pressure_skips_missing_print_size():
     """RKLB's one sized print, a downtick, is all the pressure: -138 / 138."""
     now = _prints("RKLB")[-1][2] / 1000
-    assert ofe._compute_tape_pressure(_data(sent(_MIX, "RKLB")), window_sec=60.0, now=now) == -1.0
+    assert l1.compute_tape_pressure(_tape(sent(_MIX, "RKLB")), 60.0, now * 1000) == -1.0
 
 
 def test_an_old_tape_has_no_current_window_pressure():
@@ -103,10 +109,11 @@ def test_an_old_tape_has_no_current_window_pressure():
     These three seconds of SPY's messages carry no bid or ask, so its prints are unsigned: the
     window holds them at its last trade (all of their size unsigned) and nothing an hour on.
     """
-    data = _data(sent(_MIX, "SPY"))
-    last = max(t for _p, _s, t in _prints("SPY")) / 1000
-    assert ofe._compute_unsigned(data, 30.0, last) == 1.0
-    assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last) is None  # none signed
-    assert ofe._compute_unsigned(data, 30.0, last + 3600) is None
-    assert ofe._compute_tape_pressure(data, window_sec=30.0, now=last + 3600) is None
-    assert ofe._compute_cum_delta_slope(data, now=last + 3600, window_sec=60.0) is None
+    tape = _tape(sent(_MIX, "SPY"))
+    last = max(t for _p, _s, t in _prints("SPY"))
+    hour = 3_600_000
+    assert l1.unsigned_share(tape, last - 30_000) == 1.0
+    assert l1.compute_tape_pressure(tape, 30.0, last) is None  # none signed
+    assert l1.unsigned_share(tape, last + hour - 30_000) is None
+    assert l1.compute_tape_pressure(tape, 30.0, last + hour) is None
+    assert ofe._compute_cum_delta_slope(tape, now=(last + hour) / 1000, window_sec=60.0) is None
