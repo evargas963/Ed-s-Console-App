@@ -586,7 +586,7 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
     try:
         market.run(steps)
     finally:
-        ofs._daemon = None
+        ofs.bind_daemon(None)
         with level_store._lock:
             level_store._levels.pop("MRVL", None)
     assert far in held[L1] and far in held[BOOK]

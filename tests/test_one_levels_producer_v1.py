@@ -267,13 +267,13 @@ def test_a_push_reprices_the_ticker_a_page_shows_through_the_feed(_clean):
     _put_chain(fetched_ts=_T - 30.0)
     _clean.open(TK)
     gate = _busy()
-    ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
+    ofs.FEED.on_tick = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         _streamed(_A, _PUSHED_SET, _T)
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:
-        ofs._on_tick_callback = None
+        ofs.FEED.on_tick = None
         gate.set()
     c, pushed = _price_job(job)
     assert job[0] == server.REPRICE
@@ -583,7 +583,7 @@ def test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain():
     _daemon(held=[_A])
     _put_chain(fetched_ts=_T - 30.0)
     gate = _busy()
-    ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
+    ofs.FEED.on_tick = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         _streamed(_A, _PUSHED_SET, _T)
         with server._chains_waiting_lock:
@@ -592,7 +592,7 @@ def test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain():
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:
-        ofs._on_tick_callback = None
+        ofs.FEED.on_tick = None
         gate.set()
     c, pushed = _price_job(job)
     assert TK not in after_push
@@ -756,7 +756,7 @@ def _real_option(with_greek: bool) -> dict:
 def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_greek):
     m = _real_option(with_greek)
     hits: list = []
-    ofs._on_tick_callback = hits.append  # the console's callback, as start_order_flow_stream sets
+    ofs.FEED.on_tick = hits.append  # the console's callback, as start_order_flow_stream sets
     try:
         ofs._ingest_pushed(
             f"optquote.{m['item']['key']}",
@@ -768,7 +768,7 @@ def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_g
             ),
         )
     finally:
-        ofs._on_tick_callback = None
+        ofs.FEED.on_tick = None
     assert hits == ([m["item"]["key"]] if with_greek else [])
 
 
