@@ -25,7 +25,7 @@ from tests.feed_live_helper import RTH_INSTANT, daemon_status
 
 
 def _reset(tmp_path):
-    ofs._feed_running = False
+    ofs.FEED.running = False
     ofls.clear_all_live_state()
     return tmp_path / "stream_capture.db"
 
