@@ -27,6 +27,8 @@ import tracemalloc
 from contextlib import closing
 from pathlib import Path
 
+import pytest
+
 import live_market_plane as lmp
 import server
 import time_et
@@ -46,6 +48,7 @@ from stream_spine import (
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    _refuses_every_write,
     quote_msg,
     verbatim_msg,
 )
@@ -56,6 +59,27 @@ _IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture wi
 _TSLA = json.loads(
     (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
 )["quote"]
+
+
+def test_a_refusal_is_read_from_the_engines_code_and_an_error_without_one_is_a_refusal(tmp_path):
+    """INDUCED CONDITIONS: SQLite itself full (its page limit on the test's own connection), a
+    statement SQLite rejects, and an error Python's sqlite3 raises with no engine code.
+
+    Full refuses every write; a rejected statement is that row's own; an error with no code is
+    read as a refusal, never an AttributeError that would end the writer.
+    """
+    with closing(sqlite3.connect(tmp_path / "t.db")) as conn:
+        conn.execute("CREATE TABLE t (x)")
+        conn.execute("PRAGMA max_page_count = 2")
+        with pytest.raises(sqlite3.OperationalError) as full:
+            for _ in range(10):
+                conn.execute("INSERT INTO t VALUES (zeroblob(4000))")
+        with pytest.raises(sqlite3.OperationalError) as rejected:
+            conn.execute("SELECT nothing FROM nowhere")
+    assert full.value.sqlite_errorcode == sqlite3.SQLITE_FULL
+    assert _refuses_every_write(full.value) is True
+    assert _refuses_every_write(rejected.value) is False
+    assert _refuses_every_write(sqlite3.OperationalError("no engine code")) is True
 
 
 def _failures(db) -> list:

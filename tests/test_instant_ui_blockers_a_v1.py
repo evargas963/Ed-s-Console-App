@@ -178,7 +178,7 @@ def test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows():
     served.open("ZZVIEW")
     served.open("ZZOTHERPAGE")  # a second page, on another ticker
     gate = threading.Event()
-    srv._chain_pricing.submit(gate.wait, 10)
+    srv.chain_pricing.submit(gate.wait, 10)
     try:
         for tk in ("ZZNOTVIEWED", "ZZVIEW", "ZZOTHERPAGE"):
             srv._on_stream_tick(tk)
@@ -186,7 +186,7 @@ def test_a_tick_queues_a_reprice_only_for_a_ticker_a_page_shows():
             waiting = dict(srv._chains_waiting)
     finally:
         gate.set()
-        srv._chain_pricing.submit(lambda: None).result(timeout=10)
+        srv.chain_pricing.submit(lambda: None).result(timeout=10)
         served.stop()
     assert waiting == {
         "ZZVIEW": (srv.REPRICE, None, None, (None, None)),
@@ -223,7 +223,7 @@ def test_a_tickers_ticks_queue_one_reprice_a_second_and_the_last_tick_is_not_los
     served = Pages()
     page = served.open("ZZSEC")
     gate = threading.Event()
-    srv._chain_pricing.submit(gate.wait, 30)  # the pricing thread held: the queue is read here
+    srv.chain_pricing.submit(gate.wait, 30)  # the pricing thread held: the queue is read here
     try:
         started = time_et.elapsed()
         srv._on_stream_tick("ZZSEC")
@@ -237,7 +237,7 @@ def test_a_tickers_ticks_queue_one_reprice_a_second_and_the_last_tick_is_not_los
         after_the_page = wait_for("ZZSEC", 2 * srv.REPRICE_EVERY_SEC)
     finally:
         gate.set()
-        srv._chain_pricing.submit(lambda: None).result(timeout=10)
+        srv.chain_pricing.submit(lambda: None).result(timeout=10)
         served.stop()
     assert (first, inside, later, after_the_page) == (True, False, True, False)
     assert queued[1] - started >= srv.REPRICE_EVERY_SEC, "the second reprice waits out the second"

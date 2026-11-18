@@ -119,12 +119,12 @@ def test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the
         await ui
 
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 30)
+    server.chain_pricing.submit(gate.wait, 30)
     try:
         asyncio.run(go())
     finally:
         gate.set()
-        server._chain_pricing.submit(lambda: None).result(timeout=30)
+        server.chain_pricing.submit(lambda: None).result(timeout=30)
     job = {"SPY": (server.REPRICE, None, None, (None, None))}
     assert seen == [job, job, {}]
 

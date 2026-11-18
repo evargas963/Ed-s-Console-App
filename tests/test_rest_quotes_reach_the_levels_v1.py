@@ -122,7 +122,7 @@ def _repriced(answer: dict, received: float) -> level_store.PublishedLevels:
     (server._reprice_from_tick), while the page still shows the ticker: waited for here.
     """
     gate = threading.Event()
-    server._chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
+    server.chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
     ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         with pages() as served:
