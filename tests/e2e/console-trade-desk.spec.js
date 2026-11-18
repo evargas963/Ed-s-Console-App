@@ -23,6 +23,7 @@ const {
   STRIKES,
   BARS,
   intercept,
+  openView,
   watchErrors,
   deskPanels,
   deskSocket,
@@ -35,6 +36,18 @@ const COMP = MICRO.readout.venues.COMPOSITE;
 const listed = (strikes) => strikes.today.all.map((r) => String(r.strike)).reverse();
 // the zone the price is inside (the liquidity panel's own spot_location)
 const INSIDE = LIQ.zones[LIQ.spot_location.inside];
+// a level far above the candles' range: the GRC as the levels panel serves one
+const FAR_GRC = {
+  id: "grc",
+  price: 837.58,
+  price_text: "837.58",
+  family: "gamma",
+  label: "GRC",
+  short: "GRC",
+  evidence_tier: "DERIVED",
+  distance: 66.28,
+  side: "ABOVE",
+};
 
 test("every chart is the one TradingView-style chart, with its controls", async ({ page }) => {
   // operator 2026-09-28: "each and every chart in the app needs to use the same TV controls" --
@@ -49,16 +62,7 @@ test("every chart is the one TradingView-style chart, with its controls", async 
     ["liquidity", "map", "", "#liqmBody"],
   ];
   for (const [ws, sub, view, host] of views) {
-    await page.addInitScript(
-      ([w, s, v]) => {
-        localStorage.setItem("ed_ticker", "SPY");
-        localStorage.setItem("ed_ws", w);
-        localStorage.setItem("ed_sub", s);
-        if (v) localStorage.setItem("ed_view", v);
-      },
-      [ws, sub, view],
-    );
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, ws, sub, view);
     await expect(page.locator(host + " .tvc-auto"), ws + "/" + sub).toBeVisible();
     await expect(page.locator(host + " .tvc-log"), ws + "/" + sub).toBeVisible();
   }
@@ -274,16 +278,7 @@ test("the Gamma chart and the liquidity map carry the Trade Desk toolbar; a time
     ["options", "gamma", "chart", "#chartBody", "EdGammaChart", "bars:chart"],
     ["liquidity", "map", "", "#liqmBody", "EdLiquidityMap", "bars:liq"],
   ]) {
-    await page.addInitScript(
-      ([w, s, v]) => {
-        localStorage.setItem("ed_ticker", "SPY");
-        localStorage.setItem("ed_ws", w);
-        localStorage.setItem("ed_sub", s);
-        if (v) localStorage.setItem("ed_view", v);
-      },
-      [ws, sub, view],
-    );
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, ws, sub, view);
     for (const sel of [
       '[data-act="style"]',
       '[data-tool="hline"]',
@@ -624,17 +619,7 @@ test.describe("Trade Desk renders served values", () => {
       .toBeGreaterThan(0);
     await page.locator('#tdmToolbar [data-tf="15"]').click();
     await expect.poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.tf)).toBe("15");
-    const far = {
-      id: "grc",
-      price: 837.58,
-      price_text: "837.58",
-      family: "gamma",
-      label: "GRC",
-      short: "GRC",
-      evidence_tier: "DERIVED",
-      distance: 66.28,
-      side: "ABOVE",
-    };
+    const far = FAR_GRC;
     sock.frame(
       "levels:map",
       "SPY",
@@ -814,12 +799,7 @@ test.describe("Trade Desk renders served values", () => {
     // operator 2026-09-29: "in tv all you do is scroll [on the price legend] and it will expand the
     // chart vertically; the way you have it you have to click and drag"
     await intercept(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars))
       .toBeGreaterThan(0);
@@ -850,12 +830,7 @@ test.describe("Trade Desk renders served values", () => {
   test("Desk: the live price line keeps its last trade time", async ({ page }) => {
     await intercept(page);
     await deskSocket(page, []);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars))
       .toBeGreaterThan(0);
@@ -1290,16 +1265,7 @@ test.describe("Trade Desk renders served values", () => {
       ["order-flow", "book", "", "book:dom"],
     ];
     for (const [ws, sub, view, name] of panels) {
-      await page.addInitScript(
-        ([w, s, v]) => {
-          localStorage.setItem("ed_ticker", "SPY");
-          localStorage.setItem("ed_ws", w);
-          localStorage.setItem("ed_sub", s);
-          if (v) localStorage.setItem("ed_view", v);
-        },
-        [ws, sub, view],
-      );
-      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await openView(page, ws, sub, view);
       if (sub === "flow") await page.evaluate((c) => window.EdFlow.select(c), CONTRACT);
       await expect
         .poll(() => page.evaluate(() => window.__landed), sub + " " + view)
@@ -1457,17 +1423,7 @@ test.describe("Trade Desk renders served values", () => {
     page,
   }) => {
     const errs = watchErrors(page);
-    const far = {
-      id: "grc",
-      price: 837.58,
-      price_text: "837.58",
-      family: "gamma",
-      label: "GRC",
-      short: "GRC",
-      evidence_tier: "DERIVED",
-      distance: 66.28,
-      side: "ABOVE",
-    };
+    const far = FAR_GRC;
     const wall = {
       id: "call_wall",
       price: 772,
