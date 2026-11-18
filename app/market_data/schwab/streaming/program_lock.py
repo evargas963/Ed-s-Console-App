@@ -33,21 +33,6 @@ log = logging.getLogger(__name__)
 #: restart loop on it). 2 is the live-binding refusal (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
 
-#: Windows' kernel32, for the stop event; elsewhere (Linux CI) the stop request is SIGTERM. Each
-#: use is under `sys.platform == "win32"`, the check type checkers read (typeshed's own)
-if sys.platform == "win32":
-    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    _KERNEL32.CreateEventW.restype = _KERNEL32.OpenEventW.restype = ctypes.c_void_p
-    _KERNEL32.CreateEventW.argtypes = (
-        ctypes.c_void_p,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_wchar_p,
-    )
-    _KERNEL32.OpenEventW.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_wchar_p)
-    _KERNEL32.SetEvent.argtypes = _KERNEL32.CloseHandle.argtypes = (ctypes.c_void_p,)
-    _KERNEL32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
-    _KERNEL32.WaitForSingleObject.restype = ctypes.c_uint32
 #: OpenEventW's right to set an event; WaitForSingleObject's answer for a set one
 EVENT_MODIFY_STATE = 0x0002
 WAIT_OBJECT_0 = 0
@@ -136,66 +121,98 @@ def stop_event_name(db_path: str | Path | None = None) -> str:
     return "Local\\EdConsoleStop-" + hashlib.sha256(lock.encode("utf-8")).hexdigest()[:32]
 
 
-class StopRequest:
-    """The program's stop request, which launch.py stop sets (ask_to_stop).
+# The stop request (StopRequest) and its setter (ask_to_stop), made once a program, by the
+# platform it runs on: a named event on Windows, SIGTERM elsewhere (Linux CI). Type checkers
+# read this one check (typeshed's own), so each platform's calls are checked as that platform's.
+if sys.platform == "win32":
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _KERNEL32.CreateEventW.restype = _KERNEL32.OpenEventW.restype = ctypes.c_void_p
+    _KERNEL32.CreateEventW.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_wchar_p,
+    )
+    _KERNEL32.OpenEventW.argtypes = (ctypes.c_uint32, ctypes.c_int, ctypes.c_wchar_p)
+    _KERNEL32.SetEvent.argtypes = _KERNEL32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    _KERNEL32.WaitForSingleObject.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+    _KERNEL32.WaitForSingleObject.restype = ctypes.c_uint32
 
-    It is made before the program takes its lock (capture.main), so a program whose pid the lock
-    holds can always be asked. On Windows it is a named manual-reset event (stop_event_name),
-    made by kernel32's CreateEventW with default security: only processes of this user's logon
-    session can open it.
-    It needs no port and no secret, and set twice it stays set. Elsewhere (Linux CI) the request
-    is SIGTERM to the process holding the lock, the platform's own ask to stop, taken by this
-    request's handler; close restores the handler it replaced.
-    """
+    class StopRequest:
+        """The program's stop request, which launch.py stop sets (ask_to_stop).
 
-    def __init__(self, db_path: str | Path | None = None) -> None:
-        self._handle = self._sigterm = None
-        self._closed = False
-        self._asked = threading.Event()
-        if sys.platform != "win32":
-            self._sigterm = signal.signal(signal.SIGTERM, lambda _sig, _frame: self._asked.set())
-            return
-        self._handle = _KERNEL32.CreateEventW(None, True, False, stop_event_name(db_path))
-        if not self._handle:
-            raise ctypes.WinError(ctypes.get_last_error())
+        It is made before the program takes its lock (capture.main), so a program whose pid the
+        lock holds can always be asked. It is a named manual-reset event (stop_event_name), made
+        by kernel32's CreateEventW with default security: only processes of this user's logon
+        session can open it. It needs no port and no secret, and set twice it stays set.
+        """
 
-    def wait(self, seconds: float) -> bool:
-        """Whether the stop was asked for, waiting up to `seconds` for it; a failed wait raises."""
-        if self._closed:
-            raise ValueError("wait on a closed stop request")
-        if sys.platform != "win32":
-            return self._asked.wait(seconds)
-        result = _KERNEL32.WaitForSingleObject(self._handle, round(seconds * 1000))
-        if result not in (WAIT_OBJECT_0, WAIT_TIMEOUT):
-            raise ctypes.WinError(ctypes.get_last_error())
-        return result == WAIT_OBJECT_0
+        def __init__(self, db_path: str | Path | None = None) -> None:
+            self._closed = False
+            self._handle = _KERNEL32.CreateEventW(None, True, False, stop_event_name(db_path))
+            if not self._handle:
+                raise ctypes.WinError(ctypes.get_last_error())
 
-    def close(self) -> None:
-        self._closed = True
-        if sys.platform != "win32":
-            signal.signal(signal.SIGTERM, self._sigterm)
-        else:
+        def wait(self, seconds: float) -> bool:
+            """Whether the stop was asked for, waiting up to `seconds`; a failed wait raises."""
+            if self._closed:
+                raise ValueError("wait on a closed stop request")
+            result = _KERNEL32.WaitForSingleObject(self._handle, round(seconds * 1000))
+            if result not in (WAIT_OBJECT_0, WAIT_TIMEOUT):
+                raise ctypes.WinError(ctypes.get_last_error())
+            return result == WAIT_OBJECT_0
+
+        def close(self) -> None:
+            self._closed = True
             _KERNEL32.CloseHandle(self._handle)
 
+    def ask_to_stop(db_path: str | Path | None = None) -> None:
+        """Set the stop request (StopRequest) of the program whose lock is at `db_path`'s runtime.
 
-def ask_to_stop(db_path: str | Path | None = None) -> None:
-    """Set the stop request (StopRequest) of the program whose lock is at `db_path`'s runtime.
+        The lock is owner_lock_path(`db_path`). Raises OSError when there is no request to set:
+        no program runs there, or it has not made its request yet.
+        """
+        name = stop_event_name(db_path)
+        handle = _KERNEL32.OpenEventW(EVENT_MODIFY_STATE, False, name)
+        if not handle:
+            raise ctypes.WinError(ctypes.get_last_error(), f"no stop event {name} to open")
+        try:
+            if not _KERNEL32.SetEvent(handle):
+                raise ctypes.WinError(ctypes.get_last_error())
+        finally:
+            _KERNEL32.CloseHandle(handle)
 
-    The lock is owner_lock_path(`db_path`). Raises OSError when there is no request to set: no
-    program runs there, or it has not made its request yet.
-    """
-    if sys.platform != "win32":
+else:
+
+    class StopRequest:
+        """The program's stop request, which launch.py stop sets (ask_to_stop).
+
+        SIGTERM to the process holding the lock, the platform's own ask to stop, taken by this
+        request's handler; close restores the handler it replaced. It names no event, so it
+        takes the lock's database path only as Windows' does.
+        """
+
+        def __init__(self, _db_path: str | Path | None = None) -> None:
+            self._closed = False
+            self._asked = threading.Event()
+            self._sigterm = signal.signal(signal.SIGTERM, lambda _sig, _frame: self._asked.set())
+
+        def wait(self, seconds: float) -> bool:
+            """Whether the stop was asked for, waiting up to `seconds` for it."""
+            if self._closed:
+                raise ValueError("wait on a closed stop request")
+            return self._asked.wait(seconds)
+
+        def close(self) -> None:
+            self._closed = True
+            signal.signal(signal.SIGTERM, self._sigterm)
+
+    def ask_to_stop(db_path: str | Path | None = None) -> None:
+        """Send SIGTERM to the program whose lock is at `db_path`'s runtime (StopRequest).
+
+        Raises FileNotFoundError when no lock is held, ProcessLookupError when its process ended.
+        """
         pid = _holder(owner_lock_path(db_path).read_text())  # FileNotFoundError: no lock
         if pid is None:
             raise ProcessLookupError("no running program holds the lock")
         os.kill(pid, signal.SIGTERM)
-        return
-    name = stop_event_name(db_path)
-    handle = _KERNEL32.OpenEventW(EVENT_MODIFY_STATE, False, name)
-    if not handle:
-        raise ctypes.WinError(ctypes.get_last_error(), f"no stop event {name} to open")
-    try:
-        if not _KERNEL32.SetEvent(handle):
-            raise ctypes.WinError(ctypes.get_last_error())
-    finally:
-        _KERNEL32.CloseHandle(handle)
