@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -364,9 +365,8 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
         balance = publish_sunday()
     finally:
         _forget()
-        with sqlite3.connect(
-            server.get_db().db_path
-        ) as db:  # the session's shared database keeps no SPY capture
+        # the session's shared database keeps no SPY capture
+        with closing(sqlite3.connect(server.get_db().db_path)) as db, db:
             db.execute(
                 "DELETE FROM complete_chain_captures WHERE ticker = 'SPY' AND ts_utc = ?",
                 (friday["ts_utc"],),
@@ -384,7 +384,7 @@ def test_on_a_closed_day_a_delivered_chain_keeps_the_close_counts_schwab_blanks(
     # no option market trades on Sunday, so there is no same-day close to reprice to: no 0DTE level
     # is made from the next expiry
     assert same_day and all(v is None for v in same_day.values()), same_day
-    with sqlite3.connect(server.get_db().db_path) as db:
+    with closing(sqlite3.connect(server.get_db().db_path)) as db, db:
         assert db.execute(
             "SELECT COUNT(*) FROM complete_chain_captures WHERE ticker = 'SPY'"
         ).fetchone() == (0,)

@@ -45,20 +45,14 @@
     else render(h, ticker(), d);
   });
 
-  var tag = window.EdShell.classTag;
   function section(title, rows) {
-    var h = '<div class="fl-sec"><div class="fl-sec-h">' + esc(title) + "</div>";
-    rows.forEach(function (r) {
-      h +=
-        '<div class="fl-row"><span class="k">' +
-        esc(r[0]) +
-        '</span><span class="v">' +
-        esc(r[1]) +
-        "</span>" +
-        tag(r[2]) +
-        "</div>";
-    });
-    return h + "</div>";
+    return (
+      '<div class="fl-sec"><div class="fl-sec-h">' +
+      esc(title) +
+      "</div>" +
+      window.EdShell.rowsHtml(rows) +
+      "</div>"
+    );
   }
 
   // Per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-first,

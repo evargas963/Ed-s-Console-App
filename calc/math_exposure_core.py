@@ -704,8 +704,9 @@ def overlay_streamed_contract_fields(
     answer it keeps the chain's.
 
     A contract Schwab streams takes its newest streamed record (`streamed_by_symbol`); the pushed
-    field is its one producer (AGENTS.md rule 3). Its volume, bid and ask are the stream's
-    (`total_volume`, `bid`, `ask`), each None until the stream sends it. Its Greeks and
+    field is its one producer (AGENTS.md rule 3). Its volume, bid, ask and money intrinsic value
+    are the stream's (`total_volume`, `bid`, `ask`, `money_intrinsic`), each None until the
+    stream sends it. Its Greeks and
     volatility are the stream's newest once the stream holds all six (the set the chain sweep
     takes, option_contract.streamed_greek_set); until then they are the chain's, which the sweep
     asked /quotes for because the stream had not sent them. Open interest is the chain's for
@@ -724,13 +725,14 @@ def overlay_streamed_contract_fields(
                 "volume": sent.get("total_volume"),
                 "bid": sent.get("bid"),
                 "ask": sent.get("ask"),
+                "money_intrinsic": sent.get("money_intrinsic"),
             }
             greeks = streamed_greek_set(sent)
             if greeks is not None:
                 pushed.update(greeks)
             out.append(replace(c, **pushed))
         else:
-            out.append(replace(c, volume=None, bid=None, ask=None))
+            out.append(replace(c, volume=None, bid=None, ask=None, money_intrinsic=None))
     return out, sum(1 for c in contracts if c.symbol in held)
 
 

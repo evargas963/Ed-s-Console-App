@@ -10,9 +10,11 @@ SPY's LEVELONE_EQUITIES prints after it, in the order the daemon received them: 
 
 from __future__ import annotations
 
+import gc
 import json
 import sqlite3
 import threading
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -434,6 +436,38 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
     ] == [("Call wall", 765.0, CROSSED_UP, STRIKE_AWAY)]
     # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
     assert edb.get_recent_crosses("SPY", n=10) == stored
+
+
+def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
+    """Opening the database, storing a cross and reading it back leave no connection open.
+
+    A sqlite3 connection used as a context manager commits or rolls back and stays open (Python's
+    sqlite3 documentation); one left open warns when it is freed, and on Windows holds the file.
+    """
+    gc.collect()  # what earlier tests left is freed before this test watches
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        edb = EdDB(tmp_path / "level_crosses.db")
+        edb.record_level_crosses(
+            [
+                LevelCrossEvent(
+                    ticker="SPY",
+                    ts_utc=SPY_PRINT_A_STRIKE_AWAY["ts_recv"],
+                    ts_et="2026-10-22 16:39:03 ET",
+                    level_name="Call wall",
+                    level_value=765.0,
+                    direction=CROSSED_UP,
+                    spot_at_cross=STRIKE_AWAY,
+                    zone_before=None,
+                    zone_after=None,
+                    timeframe="1m",
+                )
+            ]
+        )
+        assert len(edb.get_recent_crosses("SPY", n=10)) == 1
+        gc.collect()
+    assert [str(w.message) for w in caught if issubclass(w.category, ResourceWarning)] == []
+    (tmp_path / "level_crosses.db").unlink()  # Windows refuses this while a connection holds it
 
 
 def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Path) -> None:
