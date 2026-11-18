@@ -8,7 +8,7 @@ availability:
         -> Schwab capability unavailable/degraded
         -> Schwab-dependent decision influence fails closed
 
-`config.schwab_live_blocked_for`, the gate `schwab_client` refuses on, blocks absent and
+`config.schwab_credentials`, the gate `schwab_client` refuses on, blocks absent and
 placeholder credentials; `/api/health` publishes the capability from the capture daemon's heartbeat
 (the daemon is the only Schwab client), so health can never advertise a Schwab connection that is
 not open.
@@ -25,7 +25,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
-from config import schwab_live_blocked_for
+from config import schwab_credentials
 from feed import schwab_client
 from stream_spine import HealthRegistry, MessageBus
 
@@ -38,7 +38,7 @@ SCHWAB_ENV = ("SCHWAB_API_KEY", "SCHWAB_APP_SECRET", "ED_CI_OFFLINE")
 
 
 def _blocked(**env: str) -> bool:
-    """config.schwab_live_blocked_for in a fresh interpreter, with exactly `env` set.
+    """Whether config.schwab_credentials blocks, in a fresh interpreter with exactly `env` set.
 
     Its environment holds exactly `env` of the Schwab settings (each test states the situation
     it is testing).
@@ -49,7 +49,7 @@ def _blocked(**env: str) -> bool:
             sys.executable,
             "-c",
             "import config; c = config.build_config(); "
-            "print(config.schwab_live_blocked_for(c.api_key, c.app_secret))",
+            "print(config.schwab_credentials(c.api_key, c.app_secret) is None)",
         ],
         cwd=REPO,
         env={**base, **env},
@@ -70,7 +70,7 @@ def test_absent_credentials_block_live_schwab():
     With none, no client is built and no call goes out unauthenticated.
     """
     assert _blocked() is True, "no credentials must block live Schwab"
-    assert schwab_live_blocked_for("", "") is True
+    assert schwab_credentials("", "") is None
     assert _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET) is False, (
         "PROOF 3: live credentials must NOT be blocked"
     )
@@ -78,7 +78,7 @@ def test_absent_credentials_block_live_schwab():
         _blocked(SCHWAB_API_KEY=LIVE_KEY, SCHWAB_APP_SECRET=LIVE_SECRET, ED_CI_OFFLINE="1") is True
     ), "CI offline must still block"
     # credentials handed to the gate are judged as handed, whatever the environment
-    assert schwab_live_blocked_for(LIVE_KEY, LIVE_SECRET) is False
+    assert schwab_credentials(LIVE_KEY, LIVE_SECRET) == (LIVE_KEY, LIVE_SECRET)
 
 
 def test_an_unavailable_capability_cannot_serve_live_data():

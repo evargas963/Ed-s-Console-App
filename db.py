@@ -222,12 +222,13 @@ class EdDB:
         cols = [f.name for f in fields(LevelCrossEvent)]
         sql = (
             f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
+            " RETURNING cross_id"
         )
         logged: list[dict[str, Any]] = []
         with self._connect() as conn:
             for event in events:
                 d = asdict(event)
-                cross_id = int(conn.execute(sql, [d[c] for c in cols]).lastrowid)
+                (cross_id,) = conn.execute(sql, [d[c] for c in cols]).fetchone()
                 logged.append({**d, "cross_id": cross_id})  # the stored row
         return logged
 

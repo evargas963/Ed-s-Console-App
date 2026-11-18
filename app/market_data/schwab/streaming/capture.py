@@ -190,7 +190,7 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
     symbol to stream (rule 2).
     """
     listed = [
-        c
+        (c.expires_at, c.strike, c.side, c.symbol, c.gamma)
         for c in contracts
         if c.symbol
         and c.strike is not None
@@ -198,18 +198,18 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
         and c.side is not None
         and c.expires_at > now
     ]
-    expirations = sorted({c.expires_at for c in listed})
-    strikes = sorted({c.strike for c in listed})
+    expirations = sorted({expires for expires, *_ in listed})
+    strikes = sorted({strike for _e, strike, *_ in listed})
     centre = nearest_position(strikes, price) if strikes else 0
     rows = []
-    for c in listed:
+    for expires, strike, side, symbol, gamma in listed:
         distance = max(
-            bisect.bisect_left(expirations, c.expires_at),
-            2 * abs(bisect.bisect_left(strikes, c.strike) - centre),
+            bisect.bisect_left(expirations, expires),
+            2 * abs(bisect.bisect_left(strikes, strike) - centre),
         )
-        row = (c.expires_at, abs(c.strike - price), c.strike, c.side, c.symbol)
-        if c.gamma is not None:
-            rows.append((distance, 0, -c.gamma, *row))
+        row = (expires, abs(strike - price), strike, side, symbol)
+        if gamma is not None:
+            rows.append((distance, 0, -gamma, *row))
         else:  # no gamma: after every contract as near that has one
             rows.append((distance, 1, *row))
     return tuple(r[-1] for r in sorted(rows))
@@ -671,9 +671,12 @@ class DailyLog(logging.StreamHandler[TextIO]):
                 )
 
     def close(self) -> None:
-        with self.lock:
+        self.acquire()  # logging.Handler's own lock, as StreamHandler.flush takes it
+        try:
             if self.day is not None:
                 self.stream.close()
+        finally:
+            self.release()
         super().close()
 
 
@@ -717,7 +720,7 @@ async def stop_on_request(stop: asyncio.Event, request: StopRequest) -> None:
 
 
 #: the window's interrupts: Ctrl+C, and Ctrl+Break where Windows has it
-INTERRUPTS = (signal.SIGINT, *([signal.SIGBREAK] if hasattr(signal, "SIGBREAK") else []))
+INTERRUPTS = (signal.SIGINT, signal.SIGBREAK) if sys.platform == "win32" else (signal.SIGINT,)
 
 
 def _start_log() -> None:
@@ -911,7 +914,9 @@ SESSIONS_KEPT = 5
 KEEP_EVERY_SEC = 60.0
 
 
-async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
+async def keep_sessions(
+    writer: CaptureWriter, clock: Callable[[], float], stop: asyncio.Event
+) -> None:
     """Keep the newest SESSIONS_KEPT sessions, once after each close of the last option market.
 
     Once after each close of the last option market (time_et.options_closed_at), the writer
@@ -924,12 +929,12 @@ async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
     stopped = asyncio.ensure_future(stop.wait())
     try:
         while not stopped.done():
-            now = datetime.fromtimestamp(daemon.clock(), ET)
+            now = datetime.fromtimestamp(clock(), ET)
             closed = options_closed_at(now) if option_market_open(now) is False else None
             if closed is not None and closed != kept_for:
                 since = sessions_since(now, SESSIONS_KEPT)
                 if since is not None:
-                    daemon.writer.prune(since.timestamp())
+                    writer.prune(since.timestamp())
                     log.info(
                         "keep: removing rows received before %s (the newest %d sessions stay)",
                         ct_label(since.timestamp()),
@@ -1069,7 +1074,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
         ),
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(show_stream(bus, stop), name="stream window"),
-        asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
+        asyncio.create_task(keep_sessions(writer, daemon.clock, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
         asyncio.create_task(
             serve_live_ui(

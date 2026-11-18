@@ -161,13 +161,13 @@ def _message(
     The message carries the timestamp of Schwab's frame and the time it was received.
     """
     kind, src = SERVICE_TOPIC[service]
-    at = {"src": src, "schwab_ts": schwab_ts, "ts_recv": ts_recv}
+    at: dict[str, Any] = {"src": src, "schwab_ts": schwab_ts, "ts_recv": ts_recv}
     if service == "LEVELONE_EQUITIES":
-        flat = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
-        return kind, quote_msg(symbol=sym, native=item, **at, **flat)
+        fields: dict[str, Any] = {name: item.get(k) for k, name in LEVELONE_FIELDS.items()}
+        return kind, quote_msg(symbol=sym, native=item, **at, **fields)
     if service == "CHART_EQUITY":
-        flat = {name: item.get(k) for k, name in CHART_FIELDS.items()}
-        return kind, bar_msg(symbol=sym, native=item, **at, **flat)
+        fields = {name: item.get(k) for k, name in CHART_FIELDS.items()}
+        return kind, bar_msg(symbol=sym, native=item, **at, **fields)
     if service in ("LEVELONE_OPTIONS", "NEWS_HEADLINE"):
         return kind, verbatim_msg(symbol=sym, content=item, **at)
     return kind, book_msg(symbol=sym, service=service, content=item, **at)
@@ -290,7 +290,7 @@ class Connection:
             self.asked[svc] = frozenset(want)
         self.wake.set()
 
-    async def send_requests(self) -> None:
+    async def send_requests(self, stream: TimedStream) -> None:
         """Send every queued request, each split under Schwab's message limit.
 
         Nothing waits for an answer: the reader matches each answer to its request (answered).
@@ -303,9 +303,9 @@ class Connection:
                 params = {"keys": ",".join(chunk)}
                 if cmd != "UNSUBS":
                     params["fields"] = FIELDS[svc]
-                req, rid = self.stream._make_request(service=svc, command=cmd, parameters=params)
+                req, rid = stream._make_request(service=svc, command=cmd, parameters=params)
                 self._sent[rid] = _Sent(svc, cmd, chunk, self.clock())
-                await self.stream._send({"requests": [req]})
+                await stream._send({"requests": [req]})
                 log.info("%s %s sent: %d symbols, requestid %d", svc, cmd, len(chunk), rid)
 
     def answered(self, response: dict[str, Any]) -> None:
@@ -367,7 +367,7 @@ class Connection:
             self.bus.forget(held_key(svc, sym))
         self.held[svc] = kept
 
-    async def connect(self, client: object) -> None:
+    async def connect(self, client: object) -> TimedStream:
         stream = TimedStream(client, self.clock)
         # every message Schwab sends, whatever its size: the websockets library caps a received
         # message at 1 MiB by default, and nothing of ours does
@@ -376,6 +376,7 @@ class Connection:
         self._requests, self._sent = [], {}
         self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
         log.info("schwab: connected")
+        return stream
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
@@ -397,7 +398,7 @@ class Connection:
                     exc_info=True,
                 )
 
-    async def read(self) -> None:
+    async def read(self, stream: TimedStream) -> None:
         """Handle every frame Schwab sends, as it comes, until the socket is gone.
 
         Each answer goes to its request (answered), the data to the services' publishers. This
@@ -408,7 +409,7 @@ class Connection:
         """
         while True:
             try:
-                msg = await self.stream._receive()
+                msg = await stream._receive()
             except UnparsableMessage as e:  # a frame Schwab sent that cannot be read
                 log.warning(
                     "schwab: skipped a frame (%s: %s)",
@@ -429,14 +430,14 @@ class Connection:
                     exc_info=True,
                 )
 
-    async def send(self) -> None:
+    async def send(self, stream: TimedStream) -> None:
         """Send what is asked (ask), as soon as it is asked, until the connection ends."""
         while True:
             await self.wake.wait()
             self.wake.clear()
-            await self.send_requests()
+            await self.send_requests(stream)
 
-    async def watch(self, stop: asyncio.Event) -> None:
+    async def watch(self, stream: TimedStream, stop: asyncio.Event) -> None:
         """Check the connection every READ_SEC until `stop`; raise once it is broken.
 
         Broken: no frame from Schwab for DEAD_SEC, or a request Schwab has not answered once the
@@ -446,8 +447,8 @@ class Connection:
         after at the median).
         """
         while not await time_et.set_within(stop, READ_SEC):
-            now, schwab_now = self.clock(), self.stream.schwab_ts
-            if now - self.stream.last_frame_ts > DEAD_SEC:
+            now, schwab_now = self.clock(), stream.schwab_ts
+            if now - stream.last_frame_ts > DEAD_SEC:
                 raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
             late = [
                 s
@@ -469,13 +470,13 @@ class Connection:
         one checks the connection (watch). The first to end ends the others: the stop, or the
         connection's error, raised.
         """
-        await self.connect(client)
+        stream = await self.connect(client)
         try:
             self.ask()
             parts = {
-                asyncio.ensure_future(self.read()),
-                asyncio.ensure_future(self.send()),
-                asyncio.ensure_future(self.watch(stop)),
+                asyncio.ensure_future(self.read(stream)),
+                asyncio.ensure_future(self.send(stream)),
+                asyncio.ensure_future(self.watch(stream, stop)),
             }
             try:
                 done, _ = await asyncio.wait(parts, return_when=asyncio.FIRST_COMPLETED)
