@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import sqlite3
 import threading
@@ -250,20 +251,12 @@ class EdDB:
         return [dict(r) for r in rows]
 
 
-# ════════════════════════════════════════════════════════════════════════════════
-# SINGLETON — one DB instance for the app (thread-safe)
-# ════════════════════════════════════════════════════════════════════════════════
-
-_db_instance: EdDB | None = None
-_db_lock: threading.Lock = threading.Lock()
-
-
+@functools.cache
 def get_db() -> EdDB:
-    """Get or create the singleton DB instance. Thread-safe."""
-    global _db_instance
-    if _db_instance is not None:
-        return _db_instance
-    with _db_lock:
-        if _db_instance is None:
-            _db_instance = EdDB()
-    return _db_instance
+    """Return the program's one EdDB, made at the first call (functools.cache).
+
+    An EdDB holds nothing but its path (a connection per call) and its schema setup is locked and
+    creates only what is missing, so a second one made by a concurrent first call is the same
+    database; the cache keeps one.
+    """
+    return EdDB()
