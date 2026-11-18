@@ -168,7 +168,8 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert row["bid"] == pytest.approx(583.40) and row["ask"] == pytest.approx(583.42)
         # the header's bid × ask as the screen shows them, two decimals
         assert (row["bid_text"], row["ask_text"]) == ("583.40", "583.42")
-        assert row["trade_ts"] == pytest.approx(now, abs=0.001)  # epoch SECONDS
+        # epoch SECONDS: Schwab's TRADE_TIME_MILLIS as sent, over 1000
+        assert row["trade_ts"] == int(now * 1000) / 1000
         assert row["trade_age_text"] in ("0s", "1s")
         assert "forming_1m" not in row
         # the next trade moves it, pushed on its own (not on the beat)
