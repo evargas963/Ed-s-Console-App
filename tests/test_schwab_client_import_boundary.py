@@ -62,14 +62,20 @@ def test_build_config_fail_closed_without_secrets(tmp_path: Path) -> None:
 
 
 def test_server_import_does_not_build_client_or_run_login_flow() -> None:
-    """`import server` in a fresh interpreter builds no client and runs no login flow."""
+    """`import server` in a fresh interpreter builds no client and runs no login flow.
+
+    Neither leaves a client in memory: no schwab-py client and no authlib OAuth2 session (the
+    login flow's) is among the objects the interpreter holds once the import is done.
+    """
     code = (
-        "from unittest.mock import patch\n"
-        "with patch('feed.schwab_client.build_client_from_token') as b, "
-        "patch('feed.schwab_client.run_login_flow') as lf:\n"
-        "    import server\n"
-        "    b.assert_not_called(); lf.assert_not_called()\n"
-        "    assert server.app is not None\n"
+        "import gc\n"
+        "import server\n"
+        "assert server.app is not None\n"
+        "CLIENTS = {'Client', 'AsyncClient', 'OAuth2Client', 'AsyncOAuth2Client'}\n"
+        "held = [type(o).__module__ + '.' + type(o).__name__ for o in gc.get_objects()\n"
+        "        if type(o).__module__.split('.')[0] in ('schwab', 'authlib')\n"
+        "        and type(o).__name__ in CLIENTS]\n"
+        "assert held == [], held\n"
     )
     r = subprocess.run(
         [sys.executable, "-c", code], cwd=REPO, capture_output=True, text=True, timeout=300
