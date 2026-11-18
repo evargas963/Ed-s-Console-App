@@ -261,7 +261,9 @@ def test_a_timer_woken_before_its_second_waits_out_the_rest():
             assert "ZZEARLY" in srv._chains_waiting
             del srv._chains_waiting["ZZEARLY"]
         with srv._reprice_lock:
-            srv._repriced_at["ZZEARLY"] = time_et.elapsed() - srv.REPRICE_EVERY_SEC / 2
+            # the first reprice moved half a second back: the second is half out
+            srv._repriced_at["ZZEARLY"] -= srv.REPRICE_EVERY_SEC / 2
+            first_at = srv._repriced_at["ZZEARLY"]
             srv._arm_reprice("ZZEARLY", 30.0)  # stands for the timer a tick sets
             stand_in = srv._reprice_timers["ZZEARLY"]
         stand_in.cancel()
@@ -276,7 +278,7 @@ def test_a_timer_woken_before_its_second_waits_out_the_rest():
             assert "ZZEARLY" in srv._chains_waiting, "once the second is out, it is queued"
         with srv._reprice_lock:
             assert "ZZEARLY" not in srv._reprice_timers
-            assert srv._repriced_at["ZZEARLY"] <= time_et.elapsed()
+            assert srv._repriced_at["ZZEARLY"] - first_at >= srv.REPRICE_EVERY_SEC
     finally:
         gate.set()
         srv.chain_pricing.submit(lambda: None).result(timeout=10)
