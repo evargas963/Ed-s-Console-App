@@ -48,26 +48,29 @@ def book_ranks(chain: list[dict], spot: float) -> dict[str, float]:
     DEX; call delta wall: of the largest call DEX. A Greek Schwab sent as no number (absent or
     -999), or a contract with no open interest, is left out of that sum.
     """
-    gex: dict[tuple[str, float], float] = {}
-    dex: dict[tuple[str, float], float] = {}
-    for c in chain:
-        key, oi = (c["putCall"], c["strikePrice"]), c.get("openInterest")
-        for field, sums, scale in (("gamma", gex, spot**2 * 0.01), ("delta", dex, spot)):
-            v = c.get(field)
-            if isinstance(v, (int, float)) and v != -999 and oi is not None:
-                sums[key] = sums.get(key, 0.0) + abs(v) * oi * c["multiplier"] * scale
-    strikes = {k for _side, k in gex | dex}
-
-    def best(sums: dict[tuple[str, float], float], *sides: str) -> float:
-        return max(strikes, key=lambda k: sum(sums.get((s, k), 0.0) for s in sides))
-
-    return {
-        "call_wall": best(gex, "CALL"),
-        "put_wall": best(gex, "PUT"),
-        "absolute_gamma_strike": best(gex, "CALL", "PUT"),
-        "key_delta_strike": best(dex, "CALL", "PUT"),
-        "call_delta_wall": best(dex, "CALL"),
+    # each rank's own running total by strike, of the contracts it sums
+    ranks = {
+        "call_wall": ("gamma", {"CALL"}),
+        "put_wall": ("gamma", {"PUT"}),
+        "absolute_gamma_strike": ("gamma", {"CALL", "PUT"}),
+        "key_delta_strike": ("delta", {"CALL", "PUT"}),
+        "call_delta_wall": ("delta", {"CALL"}),
     }
+    scale = {"gamma": spot**2 * 0.01, "delta": spot}
+    totals: dict[str, dict[float, float]] = {name: {} for name in ranks}
+    for c in chain:
+        oi = c.get("openInterest")
+        for name, (field, sides) in ranks.items():
+            v = c.get(field)
+            if (
+                c["putCall"] in sides
+                and isinstance(v, (int, float))
+                and v != -999
+                and oi is not None
+            ):
+                by_strike, k = totals[name], c["strikePrice"]
+                by_strike[k] = by_strike.get(k, 0) + abs(v) * oi * c["multiplier"] * scale[field]
+    return {name: max(by_strike, key=by_strike.__getitem__) for name, by_strike in totals.items()}
 
 
 def _load(name: str) -> RealChain:
