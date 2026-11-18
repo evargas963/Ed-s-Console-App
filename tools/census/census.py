@@ -1642,13 +1642,17 @@ for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
     for m in re.finditer(
         r"`([\w./-]+/[\w.-]+\.(?:py|js|mjs|md|toml|yml|json|bat|css|html))`", TEXT[f]
     ):
-        if not (REPO / m.group(1)).exists():
+        named = m.group(1)
+        # a path git ignores is a file of the machine's own (the agent's settings, a log), named
+        # for what it is wherever it is not
+        ignored_by_git = run(["git", "check-ignore", "--no-index", named], stdout_only=True)
+        if not (REPO / named).exists() and not ignored_by_git:
             add(
                 S,
                 "documents naming a file that does not exist",
                 "Close the change",
                 "regex",
-                f"{f}: {m.group(1)}",
+                f"{f}: {named}",
             )
 
 # =============================================================================================

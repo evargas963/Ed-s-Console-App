@@ -102,7 +102,7 @@ jobs:
             echo "install-deps attempt ${attempt} failed"
           done
           if [ "$ok" -ne 1 ]; then
-            echo "install-deps failed after retries; ubuntu-24.04 already ships Chromium libs via the runner image"
+            echo "install-deps failed after retries; the runner image has Chromium's libraries"
             npx playwright install chromium
           fi
 
@@ -175,7 +175,8 @@ jobs:
         run: |
           # xdist's `-n auto` reads os.process_cpu_count(), which reports fewer cores than the
           # runner has; the worker count is pinned to nproc.
-          echo "CI_CPUS nproc=$(nproc) cpu_count=$(python -c 'import os; print(os.cpu_count())') process_cpu_count=$(python -c 'import os; p=getattr(os,"process_cpu_count",None); print(p() if p else None)')"
+          counts=$(python -c 'import os; print(os.cpu_count(), os.process_cpu_count())')
+          echo "CI_CPUS nproc=$(nproc) cpu_count process_cpu_count=$counts"
           # The browser tests run on a runner of their own (linux-browser): pytest on every core
           # beside Playwright starves Playwright's real-time timeouts. A test marked `alone` holds
           # a wall-clock limit, so it runs after the workers, with none beside it.

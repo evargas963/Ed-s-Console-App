@@ -48,6 +48,7 @@ from stream_spine import (
 )
 from tests.real_chains import MRVL, SPY_0DTE
 from tests.schwab_rest_standin import SPY_QUOTES
+from tests.shared_helpers import et_ts
 from time_et import ET
 
 
@@ -61,10 +62,6 @@ async def _until(ok, seconds: float = 30.0) -> None:
 def _rows(db, sql: str) -> list:
     with sqlite3.connect(db) as conn:
         return conn.execute(sql).fetchall()
-
-
-def _et(text: str) -> float:
-    return datetime.fromisoformat(text).replace(tzinfo=ET).timestamp()
 
 
 def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(tmp_path):
@@ -184,12 +181,12 @@ def _recorded(bus) -> None:
         bus.publish(
             "quote.SPY",
             quote_msg(
-                symbol="SPY", last=1.0, src="schwab_l1", ts_recv=_et(when), native={"key": "SPY"}
+                symbol="SPY", last=1.0, src="schwab_l1", ts_recv=et_ts(when), native={"key": "SPY"}
             ),
         )
         bus.publish(
             "feedstatus.LEVELONE_EQUITIES",
-            {"ts": _et(when), "service": "LEVELONE_EQUITIES", "socket_open": True, "held": 1},
+            {"ts": et_ts(when), "service": "LEVELONE_EQUITIES", "socket_open": True, "held": 1},
         )
     for when in ("2026-09-30 15:00", "2026-10-07 15:00"):
         bus.publish(
@@ -198,13 +195,13 @@ def _recorded(bus) -> None:
                 symbol="SPY   261007C00777000",
                 content={"key": "SPY   261007C00777000"},
                 src="schwab_options_l1",
-                ts_recv=_et(when),
+                ts_recv=et_ts(when),
             ),
         )
     for when in ("2026-09-29 12:00", "2026-09-30 12:00"):  # both before; the newest stays
         bus.publish(
             *capture.watchlist_message(
-                ["SPY"], op="added", ticker="SPY", request_id=when, ts_recv=_et(when)
+                ["SPY"], op="added", ticker="SPY", request_id=when, ts_recv=et_ts(when)
             )
         )
 
@@ -217,7 +214,7 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     bus = MessageBus()
-    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: _et(clock))
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: et_ts(clock))
     daemon.writer = writer
 
     async def go():
@@ -358,9 +355,9 @@ def _status_while_locked(db, writer: CaptureWriter, ready) -> tuple[dict, int]:
 
 
 def _old_rows(db) -> int:
-    return _rows(db, f"SELECT COUNT(*) FROM rest_quotes_raw WHERE ts_recv < {_et(_FIVE_SESSIONS)}")[
-        0
-    ][0]
+    return _rows(
+        db, f"SELECT COUNT(*) FROM rest_quotes_raw WHERE ts_recv < {et_ts(_FIVE_SESSIONS)}"
+    )[0][0]
 
 
 def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_still_being_removed(
@@ -382,7 +379,7 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         await asyncio.sleep(0)
-        writer.prune(_et(_FIVE_SESSIONS))
+        writer.prune(et_ts(_FIVE_SESSIONS))
         sent = _publish_mix(bus, {m["service"] for m in _MIX["messages"]})
         await _until(lambda: writer.status()["rows_written"] >= sent)
         old_left = _old_rows(db)
@@ -418,7 +415,7 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
     assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
-    writer.prune(_et(_FIVE_SESSIONS))
+    writer.prune(et_ts(_FIVE_SESSIONS))
     stop = asyncio.Event()
     stop.set()  # the stop is asked as the ten are handed over
     asyncio.run(writer.run(sub, stop=stop))
@@ -547,7 +544,7 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
     symbol, entry = next(iter(SPY_QUOTES.items()))
     old = {
         "src": "schwab_quotes",
-        "ts_recv": _et("2026-09-28 13:00"),
+        "ts_recv": et_ts("2026-09-28 13:00"),
         "status": 200,
         "body": json.dumps({symbol: entry}),
     }
@@ -567,7 +564,7 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
         await _until(lambda: writer.status()["waiting"] == 10)
-        writer.prune(_et(_FIVE_SESSIONS))
+        writer.prune(et_ts(_FIVE_SESSIONS))
         holder.execute("COMMIT")
 
         def keep_refused() -> bool:
@@ -745,7 +742,7 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
-        writer.prune(_et(_FIVE_SESSIONS))
+        writer.prune(et_ts(_FIVE_SESSIONS))
         await _until(
             lambda: all(_rows(db, f"SELECT COUNT(*) FROM {t}")[0][0] == 0 for t in ARCHIVED)
         )
@@ -755,7 +752,7 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
     asyncio.run(go())
     with sqlite3.connect(db) as read:
         archived = {t: archived_rows(read, t) for t in ARCHIVED}
-    unknown_day_ends, close = _et("2026-09-30 00:00"), _et("2026-09-30 15:30")
+    unknown_day_ends, close = et_ts("2026-09-30 00:00"), et_ts("2026-09-30 15:30")
     assert archived["stream_book_raw"] == [
         r for r in before["stream_book_raw"] if r[0] < unknown_day_ends or r[0] >= close
     ]
