@@ -46,6 +46,7 @@ from tests.real_chains import (
     SPY_CLOSE,
     SPY_PRINT_A_STRIKE_AWAY,
     SPY_PRINT_ON_A_STRIKE,
+    book_ranks,
 )
 from time_et import ET
 
@@ -220,6 +221,11 @@ def _spy_close_at(msg):
         now=SPY_CLOSE.now,
         sessions=time_et.sessions(),
     ).to_dict()
+    ranks = book_ranks(SPY_CLOSE.chain, SPY_CLOSE.spot)  # worked out from the raw chain
+    assert (published["put_wall"], published["call_wall"]) == (
+        ranks["put_wall"],
+        ranks["call_wall"],
+    )
     assert (published["put_wall"], published["call_wall"]) == (764.0, 765.0)
     price = msg["native"]["LAST_PRICE"]
     return published | price_relations(published, price).to_dict() | {"spot": price}
