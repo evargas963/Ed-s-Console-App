@@ -119,7 +119,7 @@ def _beat(daemon: capture.Daemon) -> dict:
 def _publish_options(bus, health, events) -> None:
     for e in events:  # each received at its recorded time
         h = connection._publisher("LEVELONE_OPTIONS", bus, health, lambda t=e["ts_recv"]: t)
-        h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
+        h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"]["QUOTE_TIME_MILLIS"]))
 
 
 async def _until(pred, limit: float = 10.0) -> None:

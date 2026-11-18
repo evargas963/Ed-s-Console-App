@@ -9,7 +9,7 @@ and its price row (live_price_rows).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, overload
 
 from instrument_identity import ticker_storage_key
 from live_price_rows import price_row
@@ -18,8 +18,17 @@ from state import bar_store
 from time_et import ET, Session, sessions
 
 
-def _moved_text(fraction: float) -> str:
-    """Return a gap or a move as the tab shows it: its arrow and its signed percent."""
+@overload
+def _moved_text(fraction: float) -> str: ...
+@overload
+def _moved_text(fraction: None) -> None: ...
+def _moved_text(fraction: float | None) -> str | None:
+    """Return a gap or a move as the tab shows it: its arrow and its signed percent.
+
+    None when there is none, which the page draws as missing.
+    """
+    if fraction is None:
+        return None
     return f"{'▲' if fraction > 0 else '▼'} {fraction:+.2%}"
 
 
@@ -61,9 +70,17 @@ def _prior_session(day: str) -> Session | None:
     return before[-1] if before else None
 
 
-def _today_waiting(label: str, why: str) -> dict[str, Any]:
-    """Today's card while it has no gap to show, saying why."""
-    return {"label": label, "gap_text": "-", "gap_up": None, "when_text": why, "results": []}
+def _today_card(
+    label: str, gap: float | None, when_text: str, results: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Today's card: its gap (a fraction; None while it has none) and what it is against."""
+    return {
+        "label": label,
+        "gap_text": _moved_text(gap),
+        "gap_up": None if gap is None else gap > 0,
+        "when_text": when_text,
+        "results": results,
+    }
 
 
 def _today_served(tk: str, now: float) -> dict[str, Any]:
@@ -74,33 +91,30 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
     day = datetime.fromtimestamp(now, ET).date().isoformat()
     held = sessions()
     if day not in held or not held[day].regular:
-        return _today_waiting("Today", "no regular session today in Schwab's market hours")
+        return _today_card("Today", None, "no regular session today in Schwab's market hours", [])
     today = held[day]
     if now < today.regular[0][0].timestamp():
+        label = "Today's gap · before the open"
         row = price_row(tk, now)
         live = row["chg_pct"]
         if live is None:
-            return _today_waiting("Today's gap · before the open", "no trade from Schwab yet")
-        return {
-            "label": "Today's gap · before the open",
-            "gap_text": _moved_text(live / 100),
-            "gap_up": live > 0,
-            "when_text": f"vs. prior close · Schwab, live · {row['trade_time_ct']}",
-            "results": [],
-        }
+            return _today_card(label, None, "no trade from Schwab yet", [])
+        return _today_card(
+            label, live / 100, f"vs. prior close · Schwab, live · {row['trade_time_ct']}", []
+        )
+    label = "Today's gap · at the open"
     prior = _prior_session(day)
     o = None if prior is None else today_open(bar_store.series(tk, "5m"), today, prior, now)
     if o is None:
-        return _today_waiting("Today's gap · at the open", "waiting for Schwab's open bar to close")
+        return _today_card(label, None, "waiting for Schwab's open bar to close", [])
     went = "up" if o.first_five > 0 else "down"
     bar_start = today.regular[0][0]
     bar_end = datetime.fromtimestamp(bar_start.timestamp() + BAR_SECONDS, ET)
-    return {
-        "label": "Today's gap · at the open",
-        "gap_text": _moved_text(o.gap),
-        "gap_up": o.gap > 0,
-        "when_text": "vs. prior close · Schwab's 5-minute bars",
-        "results": [
+    return _today_card(
+        label,
+        o.gap,
+        "vs. prior close · Schwab's 5-minute bars",
+        [
             {
                 "label": f"Today {bar_start:%H:%M}–{bar_end:%H:%M} ET",
                 "five_text": _moved_text(o.first_five),
@@ -113,7 +127,7 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
                 ),
             }
         ],
-    }
+    )
 
 
 def experimental(tk: str, now: float) -> dict[str, Any]:
