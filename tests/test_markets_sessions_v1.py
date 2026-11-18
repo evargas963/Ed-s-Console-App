@@ -181,7 +181,7 @@ def test_the_pre_market_begins_with_the_first_trade_schwab_streams_that_day():
     evening = [m for m in fx["messages"] if m["which"] == "last print of the evening"]
     first = [m for m in fx["messages"] if m["which"] == "first print of the day"]
     tickers = sorted({m["ticker"] for m in fx["messages"]})
-    held, label = time_et._sessions, time_et.session_label
+    held, label = time_et.HELD.sessions, time_et.session_label
 
     def states(at: str) -> set:
         now = _et(at).timestamp()
@@ -201,7 +201,7 @@ def test_the_pre_market_begins_with_the_first_trade_schwab_streams_that_day():
         }
         take(first)
         opened = min(m["item"]["TRADE_TIME_MILLIS"] for m in first) / 1000
-        assert time_et._first_trade["2026-11-11"] == datetime.fromtimestamp(opened, ET)
+        assert time_et.HELD.first_trade["2026-11-11"] == datetime.fromtimestamp(opened, ET)
         assert label(_et("2026-11-11 04:00")) == time_et.CLOSED  # before that trade was made
         assert label(_et("2026-11-11 04:00:01")) == time_et.PRE_MARKET
         assert label(_et("2026-11-11 04:17")) == time_et.PRE_MARKET
@@ -211,12 +211,12 @@ def test_the_pre_market_begins_with_the_first_trade_schwab_streams_that_day():
         assert label(_et("2026-11-11 20:00")) == time_et.CLOSED
         assert states("2026-11-11 04:17") == {(lmp.LIVE, None)}
         assert time_et.market_session_date(_et("2026-11-11 04:17")) == date(2026, 11, 11)
-        before = time_et._first_trade
+        before = time_et.HELD.first_trade
         take(first)
-        assert time_et._first_trade is before
+        assert time_et.HELD.first_trade is before
     finally:
-        time_et._sessions = held
-        time_et._first_trade = {}
+        time_et.HELD.sessions = held
+        time_et.HELD.first_trade = {}
         for tk in tickers:
             lmp._by_ticker.pop(tk, None)
             lmp._fields_by_ticker.pop(tk, None)
