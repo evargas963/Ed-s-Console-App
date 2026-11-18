@@ -690,7 +690,8 @@ REFUSAL_CODES = frozenset({3, 5, 6, 7, 8, 10, 11, 13, 14, 15, 26})
 
 
 def _refuses_every_write(error: sqlite3.DatabaseError) -> bool:
-    return error.sqlite_errorcode is None or error.sqlite_errorcode & 0xFF in REFUSAL_CODES
+    # an error Python's sqlite3 raises itself carries no code attribute: no row of its own
+    return not hasattr(error, "sqlite_errorcode") or error.sqlite_errorcode & 0xFF in REFUSAL_CODES
 
 
 #: the writer's states, on the heartbeat
