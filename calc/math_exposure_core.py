@@ -459,7 +459,6 @@ def compute_exposures_by_strike(
         return exposures, _diagnostics(len(contracts), 0, 0)
     # each contract's slot: its strike's call leg (2i) or put leg (2i + 1)
     slot = np.array([2 * at[k] + (c.side != "CALL") for c, k in rows])
-    slots = 2 * len(at)
     # Schwab's values as read (option_contract), one row per contract; not sent: NaN
     oi, mult, volume, delta, gamma, iv, strike, rate, dividend = np.array(
         [
@@ -505,6 +504,29 @@ def compute_exposures_by_strike(
             gex_1pct=gamma * oi * mult * spt * spt * 0.01,  # $-GEX per 1% spot move
             vanna=vanna * 0.01 * oi * mult,  # per 1 vol point
         )
+    _fill_buckets(exposures, slot, known, counted, terms, volume, oi, priced=spot is not None)
+    missing = int((~known).sum() + (known & (np.isnan(delta) | np.isnan(gamma))).sum())
+    return exposures, _diagnostics(len(contracts), int(known.sum()), missing)
+
+
+def _fill_buckets(
+    exposures: dict[float, Bucket],
+    slot: NDArray[np.int64],
+    known: NDArray[np.bool_],
+    counted: NDArray[np.bool_],
+    terms: dict[str, NDArray[np.float64]],
+    volume: NDArray[np.float64],
+    oi: NDArray[np.float64],
+    *,
+    priced: bool,
+) -> None:
+    """Add each contract's terms to its strike's call or put leg (`slot`), and finish each strike.
+
+    `known`: the contracts whose exposure terms can be known; `counted`: those with open interest
+    above 0, whose unknown term is counted unreported; `priced`: the dollar fields and vanna are
+    among `terms`.
+    """
+    slots = 2 * len(exposures)
     volume_sums = _sticky_sums(slot, volume, slots)
     oi_sums = _sticky_sums(slot, oi, slots)
     sums = {term: _known_sums(slot[known], value[known], slots) for term, value in terms.items()}
@@ -520,8 +542,8 @@ def compute_exposures_by_strike(
         for g in ("oi_mult", "gamma", "delta", "vanna")
     }
     strike_of = slot // 2
-    volume_unreported = np.bincount(strike_of[np.isnan(volume)], minlength=len(at)).tolist()
-    oi_unreported = np.bincount(strike_of[np.isnan(oi)], minlength=len(at)).tolist()
+    volume_unreported = np.bincount(strike_of[np.isnan(volume)], minlength=len(exposures)).tolist()
+    oi_unreported = np.bincount(strike_of[np.isnan(oi)], minlength=len(exposures)).tolist()
     for i, b in enumerate(exposures.values()):
         c, p = 2 * i, 2 * i + 1  # the strike's call and put legs
         b["volume_unreported"], b["oi_unreported"] = volume_unreported[i], oi_unreported[i]
@@ -538,14 +560,12 @@ def compute_exposures_by_strike(
         b["call_oi_mult"], b["put_oi_mult"] = sums["oi_mult"][c], sums["oi_mult"][p]
         b["call_delta"], b["put_delta"] = sums["delta"][c], sums["delta"][p]
         b["call_gamma"], b["put_gamma"] = sums["gamma"][c], sums["gamma"][p]
-        if spot is not None:  # the dollar fields and vanna, priced with spot
+        if priced:  # the dollar fields and vanna, priced with spot
             b["call_dex_dollars"] = sums["dex_dollars"][c]
             b["put_dex_dollars"] = sums["dex_dollars"][p]
             b["call_gex_1pct"], b["put_gex_1pct"] = sums["gex_1pct"][c], sums["gex_1pct"][p]
             b["call_vanna"], b["put_vanna"] = sums["vanna"][c], sums["vanna"][p]
         _finish_bucket(b)
-    missing = int((~known).sum() + (known & (np.isnan(delta) | np.isnan(gamma))).sum())
-    return exposures, _diagnostics(len(contracts), int(known.sum()), missing)
 
 
 def _known_sums(slot: NDArray[np.int64], values: NDArray[np.float64], slots: int) -> list[float]:
