@@ -481,7 +481,7 @@
         gx = r.value,
         gy = m ? m.prior : null;
       var hasGy = gy != null && gx != null;
-      var pos = gx != null && gx >= 0,
+      var tone = window.EdDraw.bySign(gx, "pos", "neg", ""),
         wToday = window.EdDraw.barWidth(gx, maxAbs);
       var ghostBar = hasGy
         ? '<i class="mig-ghost ' +
@@ -512,14 +512,14 @@
         r.strike_text +
         "</span>" +
         '<span class="gbs-track mig-track"><i class="gbs-bar ' +
-        (pos ? "pos" : "neg") +
+        tone +
         '" style="width:' +
         wToday.toFixed(1) +
         '%"></i>' +
         (_migGhost ? ghostBar : "") +
         "</span>" +
         '<span class="gbs-v ' +
-        (gx == null ? "" : pos ? "pos" : "neg") +
+        tone +
         '">' +
         esc(orDash(r.text)) + // served: net GEX $ as the screen shows it
         "</span>" +
