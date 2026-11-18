@@ -75,6 +75,11 @@ def _daily(session, bars) -> list:
     ]
 
 
+def _held_fingerprint(session):
+    """Return the fingerprint the store holds with the test ticker's snapshot for `session`."""
+    return price_level_store._MATERIALIZED_SNAPSHOTS[("ZZRC324", session.isoformat())][0]
+
+
 def _mat(session, bars):
     return materialize_price_level_snapshot(
         "ZZRC324",
@@ -104,6 +109,7 @@ def test_an_interior_bar_change_is_a_new_generation():
     session = most_recent_trading_day_et()
 
     first = _mat(session, _bars(session, 105.0))
+    first_fingerprint = _held_fingerprint(session)
     pdh_before = first.price("PDH")
     assert pdh_before == 105.0
 
@@ -112,7 +118,7 @@ def test_an_interior_bar_change_is_a_new_generation():
         "an interior bar changed and the producer returned the SAME object — the "
         "fingerprint is sampling the input instead of covering it (RC-324)"
     )
-    assert second.input_fingerprint != first.input_fingerprint
+    assert _held_fingerprint(session) != first_fingerprint
     assert second.price("PDH") != pdh_before, (
         f"PDH stayed {pdh_before!r} after the high was moved to 999 — a stale value served "
         "for a new input"
@@ -148,7 +154,10 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
         "concurrent callers received DIFFERENT snapshot objects — two results for one "
         "input, the exact defect Cursor reproduced with PDH 105 and 205 (RC-324)"
     )
-    assert len({r.input_fingerprint for r in results}) == 1
+    assert (
+        price_level_store._MATERIALIZED_SNAPSHOTS[("ZZRC324", session.isoformat())][1]
+        is (results[0])
+    ), "the store holds the one object every caller received, with its one fingerprint"
     assert results[0].price("PDH") == 105.0
 
 

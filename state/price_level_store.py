@@ -21,8 +21,11 @@ from calc.micro_structure import Candle
 from instrument_identity import ticker_storage_key
 from time_et import market_session_date, sessions
 
-#: (ticker, session_date_iso) -> the ONE published price-level snapshot for its current bar input
-_MATERIALIZED_SNAPSHOTS: dict[tuple[str, str], PriceLevelSnapshot] = {}
+#: (ticker, session_date_iso) -> the ONE published price-level snapshot, with the fingerprint of
+#: the input it was built from (calc.liquidity_value_engine.snapshot_input_fingerprint)
+_MATERIALIZED_SNAPSHOTS: dict[
+    tuple[str, str], tuple[tuple[str, str, str, int, str], PriceLevelSnapshot]
+] = {}
 #: Guards the whole read-decide-build-write of materialize_price_level_snapshot: deciding to build
 #: from a value then overwritten is a check-then-act, a race unless something serialises it.
 _MATERIALIZE_LOCK = threading.Lock()
@@ -54,8 +57,8 @@ def materialize_price_level_snapshot(
     # unguarded, two concurrent callers can both see no result for this input and build two
     with _MATERIALIZE_LOCK:
         existing = _MATERIALIZED_SNAPSHOTS.get(key)
-        if existing is not None and existing.input_fingerprint == fingerprint:
-            return existing
+        if existing is not None and existing[0] == fingerprint:
+            return existing[1]
         snap = build_price_level_snapshot(
             tk,
             session_date,
@@ -65,8 +68,7 @@ def materialize_price_level_snapshot(
             sessions=held,
             config=config,
         )
-        snap.input_fingerprint = fingerprint
-        _MATERIALIZED_SNAPSHOTS[key] = snap
+        _MATERIALIZED_SNAPSHOTS[key] = (fingerprint, snap)
         return snap
 
 
@@ -77,6 +79,7 @@ def canonical_price_level_snapshot(ticker: str, now: datetime) -> PriceLevelSnap
     (server._publish_price_levels), or None when none is published yet. Every server surface
     reads this; none computes a level.
     """
-    return _MATERIALIZED_SNAPSHOTS.get(
+    held = _MATERIALIZED_SNAPSHOTS.get(
         (ticker_storage_key(ticker), market_session_date(now).isoformat())
     )
+    return None if held is None else held[1]
