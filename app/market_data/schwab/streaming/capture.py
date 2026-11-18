@@ -671,9 +671,12 @@ class DailyLog(logging.StreamHandler[TextIO]):
                 )
 
     def close(self) -> None:
-        with self.lock:
+        self.acquire()  # logging.Handler's own lock, as StreamHandler.flush takes it
+        try:
             if self.day is not None:
                 self.stream.close()
+        finally:
+            self.release()
         super().close()
 
 
@@ -911,7 +914,9 @@ SESSIONS_KEPT = 5
 KEEP_EVERY_SEC = 60.0
 
 
-async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
+async def keep_sessions(
+    writer: CaptureWriter, clock: Callable[[], float], stop: asyncio.Event
+) -> None:
     """Keep the newest SESSIONS_KEPT sessions, once after each close of the last option market.
 
     Once after each close of the last option market (time_et.options_closed_at), the writer
@@ -924,12 +929,12 @@ async def keep_sessions(daemon: Daemon, stop: asyncio.Event) -> None:
     stopped = asyncio.ensure_future(stop.wait())
     try:
         while not stopped.done():
-            now = datetime.fromtimestamp(daemon.clock(), ET)
+            now = datetime.fromtimestamp(clock(), ET)
             closed = options_closed_at(now) if option_market_open(now) is False else None
             if closed is not None and closed != kept_for:
                 since = sessions_since(now, SESSIONS_KEPT)
                 if since is not None:
-                    daemon.writer.prune(since.timestamp())
+                    writer.prune(since.timestamp())
                     log.info(
                         "keep: removing rows received before %s (the newest %d sessions stay)",
                         ct_label(since.timestamp()),
@@ -1069,7 +1074,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
         ),
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(show_stream(bus, stop), name="stream window"),
-        asyncio.create_task(keep_sessions(daemon, stop), name="keep"),
+        asyncio.create_task(keep_sessions(writer, daemon.clock, stop), name="keep"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
         asyncio.create_task(
             serve_live_ui(

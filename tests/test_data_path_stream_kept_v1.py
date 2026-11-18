@@ -223,7 +223,7 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
         await asyncio.sleep(0)
         _recorded(bus)
         await _until(lambda: writer.status()["rows_written"] == 8)
-        keep = asyncio.create_task(capture.keep_sessions(daemon, stop))
+        keep = asyncio.create_task(capture.keep_sessions(writer, daemon.clock, stop))
         try:
             await _until(  # the keep's every part done: removed and archived
                 lambda: (
