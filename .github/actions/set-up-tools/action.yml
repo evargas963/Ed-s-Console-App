@@ -1,0 +1,29 @@
+---
+# The tools every job that runs the program's code sets up, once (GitHub's composite action:
+# https://docs.github.com/en/actions/sharing-automations/creating-actions/creating-a-composite-action).
+# Each job checks the repository out first, then installs what it needs itself.
+name: Set up the tools
+description: Python 3.13, uv with its cache, and Node.js 22 with npm's cache.
+inputs:
+  npm-lock:
+    description: the package-lock.json npm's cache is keyed on
+    default: package-lock.json
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      with:
+        python-version: "3.13"
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+      with:
+        enable-cache: true
+
+    - name: Set up Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: ${{ inputs.npm-lock }}
