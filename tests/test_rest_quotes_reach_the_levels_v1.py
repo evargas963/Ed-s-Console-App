@@ -123,7 +123,7 @@ def _repriced(answer: dict, received: float) -> level_store.PublishedLevels:
     """
     gate = threading.Event()
     server.chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
-    ofs._on_tick_callback = server._on_stream_tick  # as start_order_flow_stream sets it
+    ofs.FEED.on_tick = server._on_stream_tick  # as start_order_flow_stream sets it
     try:
         with pages() as served:
             served.open(TK)  # a page shows SPY, so its ticks reprice it
@@ -134,7 +134,7 @@ def _repriced(answer: dict, received: float) -> level_store.PublishedLevels:
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:
-        ofs._on_tick_callback = None
+        ofs.FEED.on_tick = None
         gate.set()
     assert job[0] == server.REPRICE
     server._price_chain(TK, *job, datetime.fromtimestamp(received, ET))
