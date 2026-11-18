@@ -27,6 +27,7 @@ import itertools
 import logging
 import queue
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import live_market_plane as _lmp
@@ -77,9 +78,32 @@ def price_state(
     return _lmp.live_state(ticker, "LEVELONE_EQUITIES", now)
 
 
-#: the capture daemon this console runs in (start_order_flow_stream): watchlist requests and the
-#: Flow panel's contract go to it
-_daemon: Daemon | None = None
+@dataclass
+class Feed:
+    """The console's one reader of the daemon's bus, and what it calls.
+
+    Owned by bind_daemon (the daemon this console runs in: watchlist requests and the Flow panel's
+    contract go to it) and start_order_flow_stream / stop_order_flow_stream (the task on the event
+    loop, whether it runs, and the callbacks). The callbacks run on the event loop, so each
+    returns at once: `on_tick` with the symbol of every streamed equity quote, every option quote
+    carrying a _REPRICE_FIELDS value and every contract of a /quotes answer (server._on_stream_tick:
+    reprices its ticker); `on_chain` with what assemble_chain_part settles (server._on_chain);
+    `on_feed` on each status beat; `on_flow` with the symbol of every streamed equity quote and
+    book (server.flow_changed). `tick_failures` counts the tick callback's failures.
+    """
+
+    daemon: Daemon | None = None
+    task: asyncio.Task[None] | None = None
+    running: bool = False
+    on_tick: Callable[[str], None] | None = None
+    on_chain: Callable[..., None] | None = None
+    on_feed: Callable[[], None] | None = None
+    on_flow: Callable[[str], None] | None = None
+    tick_failures: int = 0
+
+
+#: the console's one bus reader (Feed)
+FEED = Feed()
 #: request id -> the future the daemon's watchlist record for it resolves
 #: (_answer_watchlist_request)
 _watchlist_answers: dict[int, asyncio.Future[dict[str, Any]]] = {}
@@ -98,13 +122,14 @@ async def watchlist_request(action: str, ticker: str) -> dict[str, Any]:
     check). Raises ConnectionError while no daemon runs in this program, TimeoutError when no
     record comes in WATCHLIST_ANSWER_SEC.
     """
-    if _daemon is None:
+    daemon = FEED.daemon
+    if daemon is None:
         raise ConnectionError("no capture daemon runs in this program")
     rid = next(_request_ids)
     answer = asyncio.get_running_loop().create_future()
     _watchlist_answers[rid] = answer
     try:
-        _daemon.console_frame({"op": "watchlist", "action": action, "ticker": ticker, "id": rid})
+        daemon.console_frame({"op": "watchlist", "action": action, "ticker": ticker, "id": rid})
 
         return await asyncio.wait_for(answer, WATCHLIST_ANSWER_SEC)
     finally:
@@ -117,32 +142,13 @@ async def select_flow_contract(contract: str | None) -> None:
     The daemon keeps it (capture.Daemon.flow_contract) and streams it on both option services on
     top of its rule.
     """
-    if _daemon is not None:
-        _daemon.console_frame({"op": "flow_contract", "contract": contract})
+    if FEED.daemon is not None:
+        FEED.daemon.console_frame({"op": "flow_contract", "contract": contract})
 
 
-# ── Runtime state (single asyncio task inside the SAME event loop as the server —
-#    no dedicated thread/loop needed once nothing here opens a socket) ──
-_feed_task: asyncio.Task[None] | None = None
-_feed_running = False
-
-#: Called with the symbol of every streamed equity quote, every option quote carrying a
-#: _REPRICE_FIELDS value and every contract of a /quotes answer (server._on_stream_tick:
-#: reprices its ticker).
-#: Runs on the event loop, so it must return at once.
-_on_tick_callback: Callable[[str], None] | None = None
-_on_feed_callback: Callable[[], None] | None = None
-#: Called with the symbol of every streamed equity quote and equity book (server.flow_changed:
-#: the pages showing its order flow get it again). Runs on the event loop, so it returns at once.
-_on_flow_callback: Callable[[str], None] | None = None
-_tick_callback_failures = 0
 #: Every streamed 1-minute bar (bar1m.SYM, Schwab CHART_EQUITY), for server._bar_writer to write;
 #: None is server.stop_bar_writer's stop.
 streamed_bars: queue.SimpleQueue[dict[str, Any] | None] = queue.SimpleQueue()
-#: Called on the event loop with what assemble_chain_part settles: (ticker, contracts, fetched_ts,
-#: None, (spot, spot_ts)) for each whole chain the daemon fetched, and (ticker, None, ts, reason,
-#: None) for one it could not deliver (server._on_chain).
-_on_chain_callback: Callable[..., None] | None = None
 #: ticker -> the chain being received: {"ts", "parts", "got": {part: contracts}}
 _chain_parts: dict[str, dict[str, Any]] = {}
 
@@ -209,26 +215,25 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
 
 
 def _tick(sym: str) -> None:
-    global _tick_callback_failures
-    if _on_tick_callback is None:
+    if FEED.on_tick is None:
         return
     try:
-        _on_tick_callback(sym)
+        FEED.on_tick(sym)
     except Exception as e:  # counted + WARNING; ingest must go on
-        _tick_callback_failures += 1
-        if _tick_callback_failures & (_tick_callback_failures - 1) == 0:
+        FEED.tick_failures += 1
+        if FEED.tick_failures & (FEED.tick_failures - 1) == 0:
             log.warning(
                 "tick callback failed for %s (%s failures): %s",
                 sym,
-                _tick_callback_failures,
+                FEED.tick_failures,
                 e,
                 exc_info=True,
             )
 
 
 def _flow(sym: str) -> None:
-    if _on_flow_callback is not None:
-        _on_flow_callback(sym)
+    if FEED.on_flow is not None:
+        FEED.on_flow(sym)
 
 
 def _service_feed(symbol: str, service: str, now: float) -> dict[str, str]:
@@ -315,8 +320,8 @@ def _ingest_pushed(topic: str, msg: Payload) -> None:
 def _apply_chain_part(msg: dict[str, Any]) -> None:
     """Take a chain's part; each chain it completes goes to the chain callback."""
     for done in assemble_chain_part(msg):
-        if _on_chain_callback is not None:
-            _on_chain_callback(*done)
+        if FEED.on_chain is not None:
+            FEED.on_chain(*done)
 
 
 def _apply_rest_quotes(msg: dict[str, Any]) -> None:
@@ -400,7 +405,7 @@ async def _bus_loop(bus: MessageBus) -> None:
     sub = bus.subscribe("", policy=LATEST)
     record: Payload
     try:
-        while _feed_running:
+        while FEED.running:
             topic, record = await sub.get()
             if not is_forwarded(topic, record):
                 continue
@@ -416,10 +421,10 @@ async def _beat_loop() -> None:
 
     The beat is live_ui's, the one record of whether the daemon and Schwab are live.
     """
-    while _feed_running:
+    while FEED.running:
         await asyncio.sleep(HEARTBEAT_SEC)
-        if _on_feed_callback is not None:
-            _on_feed_callback()
+        if FEED.on_feed is not None:
+            FEED.on_feed()
 
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
@@ -440,26 +445,25 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     c = ticker_storage_key(for_contract)
     levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS")
     l1 = _service_feed(c, "LEVELONE_OPTIONS", now)
-    healthy = bool(_feed_running and l1["state"] == _lmp.LIVE)
+    healthy = bool(FEED.running and l1["state"] == _lmp.LIVE)
     return {
         "subscription_state": SUBSCRIBED
         if levelone is not None and c in levelone
         else NOT_STREAMED,
         "feed_health": {
-            "replay": "healthy" if healthy else "stale" if _feed_running else "not connected",
+            "replay": "healthy" if healthy else "stale" if FEED.running else "not connected",
             "l1": l1,
             "book": _service_feed(c, "OPTIONS_BOOK", now),
         },
     }
 
 
-def bind_daemon(daemon: Daemon) -> None:
+def bind_daemon(daemon: Daemon | None) -> None:
     """Bind the capture daemon this console runs in (capture.run, before the web server starts).
 
-    Its bus is the console's one source, and its requests go to it.
+    Its bus is the console's one source, and its requests go to it; None: no daemon (a test's end).
     """
-    global _daemon
-    _daemon = daemon
+    FEED.daemon = daemon
 
 
 def start_order_flow_stream(
@@ -472,21 +476,17 @@ def start_order_flow_stream(
 
     False when no daemon runs in this program.
     """
-    global _feed_task, _feed_running, _on_tick_callback, _on_chain_callback, _on_feed_callback
-    global _on_flow_callback
-    if _daemon is None:
+    if FEED.daemon is None:
         log.error("no capture daemon runs in this program: the console has no data")
         return False
-    if _feed_task is not None and not _feed_task.done():
+    if FEED.task is not None and not FEED.task.done():
         log.info("Live-plane feed already running")
         return True
-    _on_tick_callback = on_tick_callback
-    _on_chain_callback = on_chain_callback
-    _on_feed_callback = on_feed_callback
-    _on_flow_callback = on_flow_callback
-    _feed_running = True
-    _feed_task = asyncio.get_event_loop().create_task(
-        _run_feed(_daemon.bus), name="daemon-bus-feed"
+    FEED.on_tick, FEED.on_chain = on_tick_callback, on_chain_callback
+    FEED.on_feed, FEED.on_flow = on_feed_callback, on_flow_callback
+    FEED.running = True
+    FEED.task = asyncio.get_event_loop().create_task(
+        _run_feed(FEED.daemon.bus), name="daemon-bus-feed"
     )
     log.info("Live-plane feed started (source=the capture daemon's bus, this program)")
     return True
@@ -501,11 +501,10 @@ def stop_order_flow_stream() -> None:
 
     The task logs FEED_LOOP_STOP_DONE when it ends.
     """
-    global _feed_running, _feed_task
-    _feed_running = False
+    FEED.running = False
     clear_all_live_state()
-    task = _feed_task
+    task = FEED.task
     if task is not None and not task.done():
         task.cancel()
-    _feed_task = None
+    FEED.task = None
     _log_stream("FEED_CANCEL_REQUESTED")

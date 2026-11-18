@@ -520,7 +520,7 @@ def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
     _publish_chain(_AT)
     gate = threading.Event()
     server.chain_pricing.submit(gate.wait, 10)  # the job waits, as behind another ticker's
-    ofs._on_tick_callback = server._on_stream_tick
+    ofs.FEED.on_tick = server._on_stream_tick
     try:
         with pages() as served:
             served.open(TK)  # a page shows SPY, so its ticks reprice it
@@ -528,7 +528,7 @@ def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:
-        ofs._on_tick_callback = None
+        ofs.FEED.on_tick = None
         gate.set()
     server._price_chain(TK, *job, datetime.fromtimestamp(_AT, ET))
     assert job[0] == server.REPRICE
