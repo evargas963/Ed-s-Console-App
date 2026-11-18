@@ -14,78 +14,6 @@
       "item": "runtime_layout.py reads a worktree's .git file and commondir by hand; standard: git rev-parse --git-common-dir"
     },
     {
-      "category": "computed value: Schwab sends it",
-      "item": "option mid (bid+ask)/2: Schwab sends option MARK (LEVELONE_OPTIONS field 37), equal in 99.95% (decision 1)"
-    },
-    {
-      "category": "computed value: no screen, no job",
-      "item": "total dealer vanna (decision 2)"
-    },
-    {
-      "category": "computed value: decide show or delete",
-      "item": "share of gamma expiring today, 0DTE (decision 3)"
-    },
-    {
-      "category": "computed value: home-made",
-      "item": "how far the top gamma strike leads the next, Abs gamma lead % (decision 4)"
-    },
-    {
-      "category": "computed value: home-made",
-      "item": "pin score, not even served (decision 5)"
-    },
-    {
-      "category": "computed value: home-made",
-      "item": "pin candidate, empty on 8 of 8 tickers (decision 6)"
-    },
-    {
-      "category": "computed value: decide show or delete",
-      "item": "25-delta risk reversal, needs a true 30-day tenor (decision 7)"
-    },
-    {
-      "category": "computed value: home-made",
-      "item": "wall ranges 68.2% (decision 8)"
-    },
-    {
-      "category": "computed value: home-made",
-      "item": "GSF/GRC half-gamma prices, empty on 6 of 8 (decision 9)"
-    },
-    {
-      "category": "computed value: home-made weights",
-      "item": "confluence score per strike: keep as ours or replace (decision 12)"
-    },
-    {
-      "category": "computed value: wrong method",
-      "item": "per-strike IV should use the out-of-money side (decision 13)"
-    },
-    {
-      "category": "computed value: all zero",
-      "item": "score slopes, all 0.00 (decision 14)"
-    },
-    {
-      "category": "computed value: decide show or delete",
-      "item": "spread / mark (decision 15)"
-    },
-    {
-      "category": "computed value: home-made thresholds",
-      "item": "liquidity card smoothing, 10%/70% zones, CHOPPY: register as ours (decision 16)"
-    },
-    {
-      "category": "computed value: no job",
-      "item": "book slope, concentration (decision 17)"
-    },
-    {
-      "category": "computed value: conflicts with DATA_FLOW §6 item 9",
-      "item": "options trades at bid/ask/inside by quote rule (decision 21)"
-    },
-    {
-      "category": "computed value: register",
-      "item": "value shift, VWAP vs value: register the 0.2% as ours (decision 24)"
-    },
-    {
-      "category": "computed value: no job",
-      "item": "auction word (decision 25)"
-    },
-    {
       "category": "one value, several names",
       "item": "max_pain_dte equals front expiry_dte"
     },
@@ -106,10 +34,6 @@
       "item": "prior-day test passed while checking our close, not Schwab's: every test's expected value needs a source check"
     },
     {
-      "category": "Schwab sends it",
-      "item": "weekly and monthly candles, today's candle, isInTheMoney computed by us"
-    },
-    {
       "category": "slow screen",
       "item": "/api/health over 1 s in 103 of 677 samples"
     },
@@ -123,20 +47,12 @@
       "item": "tests/e2e/console-gamma-asof.spec.js:123 on Windows (REVIEW row)"
     },
     {
-      "category": "database",
-      "item": "which tables take the 82.8 GB of ed_console.db: not measured"
-    },
-    {
       "category": "needs market",
       "item": "every watchlist ticker's screen values against Schwab's own numbers"
     },
     {
       "category": "needs market",
       "item": "live update speed, full chain reprice on unchanged inputs"
-    },
-    {
-      "category": "contradiction: rule vs guard",
-      "item": "AGENTS.md:309 the agent never polls CI itself vs tools/operator_law_guard.py:222,235 allowing gh pr checks and gh run watch"
     },
     {
       "category": "contradiction: rule vs hook",
@@ -173,30 +89,6 @@
     {
       "category": "contradiction: doc vs code",
       "item": "process_lock_guard.py:11-12,198-199 a push to main is operator_yes_guard's vs operator_yes_guard.py:16 judges no push: no guard handles it"
-    },
-    {
-      "category": "contradiction: config vs config",
-      "item": ".cursor/hooks.json 'roster must stay identical' to .claude/settings.json, but it wires no Stop or UserPromptSubmit hook"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": ".cursor/rules/00-always.mdc:2 AGENTS.md is the single law vs CLAUDE.md:6-23 rules found nowhere in AGENTS.md"
-    },
-    {
-      "category": "contradiction: value disagrees",
-      "item": "ACTIVE_PROGRAM.md:68 ENF-23 second readers 19 and :273 12 vs check_one_reader --list 4"
-    },
-    {
-      "category": "contradiction: doc vs tool",
-      "item": "ACTIVE_PROGRAM.md:268 ONE-24 schwab_field_inventory is not a second reader vs check_one_reader counting it twice"
-    },
-    {
-      "category": "contradiction: doc vs doc",
-      "item": "DATA_FLOW.md:843-844 a gap gets a check only after a failure vs AGENTS.md:19-21 every requirement names its enforcement"
-    },
-    {
-      "category": "contradiction: value disagrees",
-      "item": "flaky-test-fix SKILL.md:8 -n 8 vs pytest.yml:127,216 -n $(nproc) and scripts/run-pytest-full.mjs:118 one worker per processor"
     }
   ]
 }

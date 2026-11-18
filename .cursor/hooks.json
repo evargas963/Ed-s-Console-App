@@ -1,9 +1,11 @@
 {
   "version": 1,
-  "_comment": "Cursor's roster must stay identical to .claude/settings.json — a guard one host does not run is not a guard. tests/test_hook_chain_v1.py asserts the two agree.",
+  "_comment": "Cursor runs the same guards before each tool as .claude/settings.json's PreToolUse — a guard one host does not run is not a guard; tests/test_hook_chain_v1.py asserts the two agree. The prompt and stop hooks (tools/wiring_rules.py, tools/keep_going.py) read Claude Code's hook input and run in Claude Code only.",
   "hooks": {
     "preToolUse": [
-      {"command": ".venv/Scripts/python.exe tools/hook_chain.py tools/operator_law_guard.py tools/process_lock_guard.py tools/operator_yes_guard.py"}
+      {
+        "command": ".venv/Scripts/python.exe tools/hook_chain.py tools/operator_law_guard.py tools/process_lock_guard.py tools/operator_yes_guard.py"
+      }
     ]
   }
 }
