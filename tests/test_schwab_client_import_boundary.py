@@ -98,7 +98,7 @@ fx =json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 with TestClient(server.app) as client:
     ofs._on_chain_callback = server._on_chain
     for topic, msg in chain_messages("SPY", fx["chain"], fx["capture_ts_utc"], """
-    """fx["spot"], fx["capture_ts_utc"]):
+    """fx["spot"], fx["capture_ts_utc"], False):
         ofs._ingest_pushed(topic, msg)
     server.chain_pricing.submit(lambda: None).result(timeout=120)   # the chain is priced
     for route in server.app.routes:

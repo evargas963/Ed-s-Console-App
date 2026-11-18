@@ -66,11 +66,7 @@ from calc.terrain_engine import (
     side_total,
 )
 from calc.terrain_read import crossed
-from calibration.complete_chain_capture import (
-    CAPTURE_BASIS,
-    last_capture_per_day,
-    newest_capture_ts,
-)
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
@@ -107,7 +103,7 @@ from push.spot import SPOT_SOURCE_NONE, SPOT_SOURCE_PLANE, resolve_spot
 from push.verdict import (
     terrain_cache_get,
 )
-from state import bar_store, cross_store, level_store
+from state import bar_store, capture_store, cross_store, level_store
 from state.level_store import PublishedLevels, published_levels
 from state.price_level_store import (
     canonical_price_level_snapshot,
@@ -764,7 +760,7 @@ def _close_capture(tk: str, closed: datetime) -> list[dict[str, Any]] | None:
 
     Its two newest market days' captures, when the newest was taken at or after `closed`.
     """
-    stored = last_capture_per_day(get_db().db_path, tk, 2)
+    stored = capture_store.captures(get_db().db_path, tk)
     return stored if stored and stored[0]["ts_utc"] >= closed.timestamp() else None
 
 
@@ -891,14 +887,14 @@ def _publish_levels(
     # the values read from the stored chain captures (forces, the prior day's per-strike rows)
     # change only with a new capture or a new chain day: computed then, once, for all readers
     captures_key = (
-        (newest_capture_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
+        (capture_store.newest_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
         if kept is None
         else kept.captures_key
     )
     if previous is not None and previous.captures_key == captures_key:
         forces, prior = previous.forces, previous.prior_day
     else:
-        stored = captures if captures is not None else last_capture_per_day(get_db().db_path, tk, 2)
+        stored = captures if captures is not None else capture_store.captures(get_db().db_path, tk)
         # This publication priced a stored capture, so its charm map is that newer capture.
         # A live chain is not that capture: the same function then runs once on the banked one.
         held_charm = snap.charm_by_strike if captures and captures[0]["spot"] is not None else None
@@ -1152,18 +1148,34 @@ def _on_chain(
     ts: float,
     reason: str | None,
     spot: tuple[float | None, float | None] | None,
+    capture: bool,
 ) -> None:
     """Take one chain: the feed's chain callback (streaming.assemble_chain_part), on the event loop.
 
     A whole chain the daemon fetched is priced on a pricing thread at its one spot (spot, trade
     time); a chain it could not deliver keeps the ticker's last levels, which then say why no
-    newer chain came.
+    newer chain came. A chain the sweep stored as its window's capture is kept as one
+    (state.capture_store), in the shape the stored rows read back (its contracts are in expiry
+    order already: the sweep asks the expiries ascending, option_contract.listed_expiries).
     """
     tk = ticker_storage_key(ticker)
     # a whole chain carries its spot (assemble_chain_part); one not delivered carries neither
     if contracts is None or spot is None:
         level_store.chain_failed(tk, f"chain fetch failed ({reason})")
         return
+    if capture:
+        capture_store.keep(
+            tk,
+            {
+                "et_date": et_date_str_from_ts_utc(ts),
+                "ts_utc": ts,
+                "spot": spot[0],
+                # a trade time without its price is no spot
+                "spot_ts": None if spot[0] is None else spot[1],
+                "basis": CAPTURE_BASIS,
+                "contracts": contracts,
+            },
+        )
     _wait_to_price(tk, DELIVERED, contracts, ts, spot)
 
 
@@ -1234,7 +1246,7 @@ def _price_chain(
         return
     try:
         if what == STORED:
-            captures = last_capture_per_day(get_db().db_path, tk, 2)
+            captures = capture_store.captures(get_db().db_path, tk)
             if captures:
                 _publish_levels(tk, captures=captures, now=now)
             return

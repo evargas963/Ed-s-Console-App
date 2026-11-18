@@ -104,7 +104,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
         await asyncio.sleep(0)
         for rc in (SPY_0DTE, MRVL):
             for topic, msg in chain_messages(
-                rc.ticker, rc.chain, rc.now.timestamp(), rc.spot, rc.now.timestamp()
+                rc.ticker, rc.chain, rc.now.timestamp(), rc.spot, rc.now.timestamp(), False
             ):
                 bus.publish(topic, msg)
             bus.publish(

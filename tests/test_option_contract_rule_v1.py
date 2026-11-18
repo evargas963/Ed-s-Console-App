@@ -182,7 +182,7 @@ class _Market:
 
     def chain(self, tk: str, ts: float = CAPTURED, contracts: list[dict] | None = None) -> None:
         for topic, msg in chain_messages(
-            tk, CHAINS[tk] if contracts is None else contracts, ts, None, None
+            tk, CHAINS[tk] if contracts is None else contracts, ts, None, None, False
         ):
             self.bus.publish(topic, msg)
 

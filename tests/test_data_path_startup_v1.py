@@ -94,7 +94,7 @@ async def _following(
     stop = asyncio.Event()
     task = asyncio.create_task(daemon.follow_market(stop))
     await asyncio.sleep(0)
-    for topic, msg in chain_messages("SPY", contracts, now, None, None):
+    for topic, msg in chain_messages("SPY", contracts, now, None, None, False):
         bus.publish(topic, msg)
     return stop, task
 
@@ -341,7 +341,7 @@ def test_a_chain_that_cannot_be_read_fails_where_the_sweep_reads_it():
     _fixture, contracts = _spy_0dte()
     contracts[0] = "not a contract"
     with pytest.raises(AttributeError, match="get"):
-        chain_messages("SPY", contracts, time_et.now(), None, None)
+        chain_messages("SPY", contracts, time_et.now(), None, None, False)
 
 
 def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
@@ -934,7 +934,12 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
 
     try:
         server._on_chain(
-            tk, read_chain(contracts), CRWD.now.timestamp(), None, (CRWD.spot, CRWD.now.timestamp())
+            tk,
+            read_chain(contracts),
+            CRWD.now.timestamp(),
+            None,
+            (CRWD.spot, CRWD.now.timestamp()),
+            False,
         )
         server.chain_pricing.submit(lambda: None).result(timeout=60)
         done: set[str] = set()

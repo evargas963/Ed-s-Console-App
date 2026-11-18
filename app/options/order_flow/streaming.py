@@ -148,7 +148,12 @@ _chain_parts: dict[str, dict[str, Any]] = {}
 
 #: what one chain message settles: (ticker, contracts, time, reason, (spot, spot_ts))
 type ChainSettled = tuple[
-    str, list[dict[str, Any]] | None, float, str | None, tuple[float | None, float | None] | None
+    str,
+    list[dict[str, Any]] | None,
+    float,
+    str | None,
+    tuple[float | None, float | None] | None,
+    bool,
 ]
 
 
@@ -156,9 +161,10 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
     """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it settles.
 
     In order: a chain whose parts did not all arrive before the next one began
-    (ticker, None, ts, reason, None); a fetch that failed (ticker, None, ts, Schwab's answer, None);
-    the whole chain once its last part is in (ticker, contracts, fetched_ts, None, (spot, spot_ts)),
-    with the chain's one spot and its trade time. A chain missing a part is never returned.
+    (ticker, None, ts, reason, None, False); a fetch that failed (ticker, None, ts, Schwab's answer,
+    None, False); the whole chain once its last part is in (ticker, contracts, fetched_ts, None,
+    (spot, spot_ts), capture), with the chain's one spot and its trade time and whether the sweep
+    stored it as its window's capture. A chain missing a part is never returned.
     """
     tk, ts = msg.get("ticker"), msg.get("ts_recv")
     if not tk or not isinstance(ts, (int, float)):
@@ -174,13 +180,14 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
                 f"the daemon's chain of {tk} arrived with "
                 f"{len(cur['got'])} of its {cur['parts']} parts",
                 None,
+                False,
             )
         )
         del _chain_parts[tk]
         cur = None
     if "failed" in msg:
         _chain_parts.pop(tk, None)
-        return [*out, (tk, None, float(ts), str(msg["failed"]), None)]
+        return [*out, (tk, None, float(ts), str(msg["failed"]), None, False)]
     if cur is None:
         if int(msg["part"]) != 0:
             return out  # a chain begun before this console connected: not its chain
@@ -195,6 +202,7 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
                 float(ts),
                 None,
                 (msg["spot"], msg["spot_ts"]),
+                msg["capture"],
             )
         )
     return out
