@@ -122,7 +122,7 @@ def write_heatmap_e2e_fixture() -> None:
     t.write_heatmap_e2e_fixture()"
     """
     d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=240, books=_books(_FX["rows"]))
-    _DRAWN.write_bytes((json.dumps(d, indent=1) + "\n").encode("utf-8"))
+    _DRAWN.write_bytes((json.dumps(d, indent=2) + "\n").encode("utf-8"))  # as Prettier writes
 
 
 def test_the_heatmap_the_browser_draws_is_the_producers_own(heat):

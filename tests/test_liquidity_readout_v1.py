@@ -1083,7 +1083,7 @@ def write_readout_e2e_fixtures() -> None:
             record_markets(json.loads(a["body"]))
     for name, kw in _E2E_FILES.items():
         (_E2E / name).write_text(
-            json.dumps(build_readout_payload(**kw), indent=1, sort_keys=True) + "\n",
+            json.dumps(build_readout_payload(**kw), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
