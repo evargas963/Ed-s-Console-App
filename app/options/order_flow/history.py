@@ -388,6 +388,49 @@ BOOKS = RecentBooks()
 LEAN = RecentLean()
 
 
+def _dominant(bid: float | None, ask: float | None) -> str:
+    """Return the displayed side at a price and bucket (the cell's colour).
+
+    The one Schwab sent, or the larger of the two.
+    """
+    if ask is None:
+        return "BID"
+    if bid is None:
+        return "ASK"
+    return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
+
+
+def _heatmap_cells(
+    rows: list[KeptBook], t0: float, bucket_sec: float, n_buckets: int
+) -> list[Cell]:
+    """Return the books `rows` binned into time buckets x price, by bucket then price.
+
+    A cell is the LAST observed size at that price within the bucket, each side as sent.
+    """
+    cells: dict[tuple[int, float], dict[str, float | None]] = {}
+    for ts_recv, bids, asks in rows:
+        bucket = min(n_buckets - 1, int((ts_recv - t0) / bucket_sec))
+        for levels, side in ((bids, "bid"), (asks, "ask")):
+            for px, vol in levels:
+                # a side Schwab sent no level for at this price stays absent, never 0
+                cells.setdefault((bucket, px), {"bid": None, "ask": None})[side] = vol
+    return sorted(
+        (
+            {
+                "t": k[0],
+                "price": k[1],
+                "bid": v["bid"],
+                "ask": v["ask"],
+                "bid_text": count_text(v["bid"]),
+                "ask_text": count_text(v["ask"]),
+                "side": _dominant(v["bid"], v["ask"]),
+            }
+            for k, v in cells.items()
+        ),
+        key=lambda c: (c["t"], c["price"]),
+    )
+
+
 def book_heatmap_for_ticker(
     ticker: str, venue: str, *, minutes: float = 60.0, books: RecentBooks = BOOKS
 ) -> BookHeatmap | NoHeatmap:
@@ -415,41 +458,7 @@ def book_heatmap_for_ticker(
     span = rows[-1][0] - t0  # binning floors at 1s below; no invented span
     n_buckets = 90
     bucket_sec = max(1.0, span / n_buckets)
-
-    cells: dict[tuple[int, float], dict[str, float | None]] = {}
-    for ts_recv, bids, asks in rows:
-        bucket = min(n_buckets - 1, int((ts_recv - t0) / bucket_sec))
-        for levels, side in ((bids, "bid"), (asks, "ask")):
-            for px, vol in levels:
-                # a side Schwab sent no level for at this price stays absent, never 0
-                cells.setdefault((bucket, px), {"bid": None, "ask": None})[side] = vol
-
-    def _dominant(bid: float | None, ask: float | None) -> str:
-        """Return the displayed side at this price and bucket (the cell's colour).
-
-        The one Schwab sent, or the larger of the two.
-        """
-        if ask is None:
-            return "BID"
-        if bid is None:
-            return "ASK"
-        return "BID" if bid > ask else "ASK" if ask > bid else "EVEN"
-
-    cell_list: list[Cell] = sorted(
-        (
-            {
-                "t": k[0],
-                "price": k[1],
-                "bid": v["bid"],
-                "ask": v["ask"],
-                "bid_text": count_text(v["bid"]),
-                "ask_text": count_text(v["ask"]),
-                "side": _dominant(v["bid"], v["ask"]),
-            }
-            for k, v in cells.items()
-        ),
-        key=lambda c: (c["t"], c["price"]),
-    )
+    cell_list = _heatmap_cells(rows, t0, bucket_sec, n_buckets)
     display_lo, display_hi = _display_window(cell_list)
     starts = [t0 + i * bucket_sec for i in range(n_buckets)]
     return {
