@@ -763,6 +763,8 @@ def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path
             out = stopping.stdout.read()
             stopping.wait(60)
             reader.join(60)
+            stopping.stdout.close()  # both read to their end: the pipes are closed
+            stopping.stderr.close()
             err = "".join(said)
         finally:
             _end(daemon)

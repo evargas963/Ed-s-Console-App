@@ -11,6 +11,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
+from dataclasses import asdict
 from typing import Any
 
 from app.options.order_flow import history
@@ -190,7 +191,7 @@ class OrderFlowState:
         trade = extract_vendor_print(content_item)
         if trade is None:
             return
-        key = vendor_triple(trade["time_millis"], trade["price"], trade["size"])
+        key = vendor_triple(trade.time_millis, trade.price, trade.size)
         with self._lock:
             # an adjacent repeat of the same trade is a restatement: never a second print
             if is_adjacent_restatement(self._prev_trade.get(sym), key):
@@ -199,7 +200,7 @@ class OrderFlowState:
             self._receive_seq[sym] = self._receive_seq.get(sym, 0) + 1
             self._get_tape(sym).append(
                 {
-                    **trade,
+                    **asdict(trade),
                     "receive_seq": self._receive_seq[sym],
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
@@ -209,9 +210,7 @@ class OrderFlowState:
                     ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    **history.quoted(
-                        trade["price"], self._top.get(sym), self._stream_greeks.get(sym)
-                    ),
+                    **history.quoted(trade.price, self._top.get(sym), self._stream_greeks.get(sym)),
                 }
             )
 
