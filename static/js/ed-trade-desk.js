@@ -30,9 +30,13 @@
   }
 
   // ---- one stage card: numbered badge, title, one HERO stat, a short supporting-row list ----
-  function stage(n, accentCls, title, hero, heroUnit, heroDir, rows, badgeText, badgeCls) {
-    var dirGlyph = heroDir > 0 ? "▲" : heroDir < 0 ? "▼" : "";
-    var dirCls = heroDir > 0 ? "pos" : heroDir < 0 ? "neg" : "";
+  // a served zone's arrow and colour on a hero (bids up and green, offers down and red), by the
+  // zone's name as served (order_flow.ZONE_WORDS); a hero with no zone has neither
+  var ZONE_GLYPH = { BID_HEAVY: "▲", BALANCED: "", OFFER_HEAVY: "▼" };
+  var ZONE_CLS = { BID_HEAVY: "pos", BALANCED: "", OFFER_HEAVY: "neg" };
+  function stage(n, accentCls, title, hero, heroUnit, heroZone, rows, badgeText, badgeCls) {
+    var dirGlyph = heroZone ? ZONE_GLYPH[heroZone] : "";
+    var dirCls = heroZone ? ZONE_CLS[heroZone] : "";
     var h =
       '<div class="td-stage ' +
       accentCls +
@@ -77,7 +81,7 @@
   function detectStage(d) {
     // the book panel as sent: undefined (none yet), failed, or the book
     if (d === undefined)
-      return stage(1, "td-accent-blue", "Detect — book microstructure", "-", "", 0, [], null);
+      return stage(1, "td-accent-blue", "Detect — book microstructure", "-", "", null, [], null);
     if (d.failed != null) {
       // said so, never told as a book Schwab did not send
       return stage(
@@ -86,7 +90,7 @@
         "Detect — book microstructure",
         d.failed,
         "",
-        0,
+        null,
         [],
         "FAILED",
         "warn",
@@ -99,7 +103,7 @@
         "Detect — book microstructure",
         "No book yet",
         "",
-        0,
+        null,
         [],
         "NO BOOK",
         "warn",
@@ -127,7 +131,6 @@
     var heroVal = r5 && r5.pct_text != null ? r5.pct_text : "-";
     var heroUnit =
       zone == null ? "" : r5.side_word.toLowerCase() + " (" + esc(d.venue) + ", depth 5)";
-    var side = zone == null || zone === "BALANCED" ? null : /BID/.test(zone) ? "BID" : "ASK";
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
     // no book age served reads AGE UNKNOWN, never live
     var bs = d.ages.book_stale;
@@ -138,7 +141,7 @@
       "Detect — book microstructure",
       heroVal,
       heroUnit,
-      side === "BID" ? 1 : side === "ASK" ? -1 : 0,
+      zone,
       rows,
       badge,
       d.top_outage || bs !== false ? "stale" : "live",
@@ -148,13 +151,13 @@
   function frameStage(sent) {
     // the levels panel as sent: undefined (none yet), failed, or the levels
     if (sent === undefined)
-      return stage(2, "td-accent-green", "Frame — liquidity levels", "-", "", 0, [], null);
+      return stage(2, "td-accent-green", "Frame — liquidity levels", "-", "", null, [], null);
     if (sent.failed != null)
-      return stage(2, "td-accent-green", "Frame — liquidity levels", sent.failed, "", 0, [], null);
+      return stage(2, "td-accent-green", "Frame — liquidity levels", sent.failed, "", null, [], null);
     var levelsD = sent;
     var levels = levelsD.levels; // always served (levels_payload)
     if (!levels.length)
-      return stage(2, "td-accent-green", "Frame — liquidity levels", "No levels", "", 0, [], null);
+      return stage(2, "td-accent-green", "Frame — liquidity levels", "No levels", "", null, [], null);
     // served: levels ordered by distance to the live price (by_distance), each with its distance and side
     var byId = {};
     levels.forEach(function (r) {
@@ -172,7 +175,7 @@
         "Frame — liquidity levels",
         "No priced levels",
         "",
-        0,
+        null,
         [],
         null,
       );
@@ -187,7 +190,7 @@
       "Frame — nearest liquidity level",
       heroVal,
       nearest.from_spot_text + notLive(levelsD),
-      0,
+      null,
       rows,
       null,
     );
@@ -196,7 +199,7 @@
   function confirmStage(d) {
     // d: the terrain panel as sent; undefined: none yet ('-')
     if (d === undefined)
-      return stage(3, "td-accent-amber", "Confirm — options regime", "-", "", 0, [], null);
+      return stage(3, "td-accent-amber", "Confirm — options regime", "-", "", null, [], null);
     if (d.failed != null)
       return stage(
         3,
@@ -204,7 +207,7 @@
         "Confirm — options regime",
         "No regime",
         d.failed,
-        0,
+        null,
         [],
         null,
       );
@@ -229,7 +232,7 @@
       "Confirm — options regime",
       orDash(d.regime),
       "",
-      0,
+      null,
       rows,
       d.confidence,
       d.confidence === "TRUSTED" ? "live" : "warn",

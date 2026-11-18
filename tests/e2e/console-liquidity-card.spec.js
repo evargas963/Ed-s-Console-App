@@ -287,6 +287,31 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     expect(errs).toEqual([]);
   });
 
+  test("each depth's headline and the agreement strip take the served zone's colour and arrow", async ({
+    page,
+  }) => {
+    // the zone's name as served (order_flow.ZONE_WORDS): bids green and up, offers red and down,
+    // balanced gold with no arrow
+    const tone = { BID_HEAVY: "bid", BALANCED: "bal", OFFER_HEAVY: "ask" };
+    const arrow = { BID_HEAVY: "up", BALANCED: "", OFFER_HEAVY: "dn" };
+    const errs = watchErrors(page);
+    await openDesk(page, READOUT_LIVE);
+    const seen = new Set();
+    for (const view of ["weighted", "1", "3", "5"]) {
+      await card(page).locator('[data-liqview="' + view + '"]').click();
+      const v = LIVE_COMP.views[view];
+      seen.add(v.zone);
+      await expect(card(page).locator(".liq-pct")).toHaveText(v.pct_text);
+      await expect(card(page).locator(".liq-pct")).toHaveClass("liq-pct " + tone[v.zone]);
+      await expect(card(page).locator(".liq-word")).toHaveClass("liq-word " + tone[v.zone]);
+      const cell = page.locator("#tdmAgree .tdm-ag").first();
+      await expect(cell).toContainText("LIQUIDITY" + v.side_word.toLowerCase());
+      await expect(cell.locator("b")).toHaveClass(arrow[v.zone]);
+    }
+    expect(seen.size, "the real books lean more than one way across the depths").toBeGreaterThan(1);
+    expect(errs).toEqual([]);
+  });
+
   test("the composite is one book panel of one venue: no second venue is asked", async ({
     page,
   }) => {
