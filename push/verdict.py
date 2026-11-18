@@ -160,6 +160,20 @@ def _levels_state(
             lmp.NOT_LIVE,
             "this ticker's first chain since the daemon started has not arrived" + sep,
         )
+    # before the age LIVE gate: a chain from before this option window is not live while the
+    # first since reopen is still due (two rounds). Otherwise a slow sweep (round ≥ 150 s) marks
+    # pre-break levels LIVE at reopen because age alone still fits inside stale_after.
+    window = option_window_began(at)
+    began_ts = None if window is None else window.timestamp()
+    if (
+        began_ts is not None
+        and float(computed_ts_utc) < began_ts
+        and now - began_ts <= stale_after
+    ):
+        return LEVELS_STALE, (
+            f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began_ts)} and "
+            "its first chain since has not arrived"
+        )
     if age <= stale_after:
         return lmp.LIVE, ""
     if waiting:
