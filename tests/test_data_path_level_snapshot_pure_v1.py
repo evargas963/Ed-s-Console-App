@@ -38,7 +38,7 @@ def _bars(tk: str) -> list:
 
 
 def _state(snap: PriceLevelSnapshot) -> dict:
-    out = {s: getattr(snap, s, None) for s in PriceLevelSnapshot.__slots__}
+    out = {s: getattr(snap, s) for s in PriceLevelSnapshot.__slots__}
     out["levels"] = {k: v.to_contract_dict() for k, v in snap.levels.items()}
     return out
 

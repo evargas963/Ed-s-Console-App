@@ -319,7 +319,7 @@ def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(t
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         for e in _EVENTS:  # each received at its recorded time
             h = connection._publisher("LEVELONE_OPTIONS", bus, health, lambda t=e["ts_recv"]: t)
-            h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"].get("QUOTE_TIME_MILLIS", 0)))
+            h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"]["QUOTE_TIME_MILLIS"]))
         deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
         while writer.status()["rows_written"] < len(_EVENTS) and time_et.elapsed() < deadline:
             await asyncio.sleep(0.01)

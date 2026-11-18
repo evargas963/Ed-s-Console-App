@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
 from tests.real_chains import CRWD, MRVL, SPY_0DTE, SPY_FULL, TSLA, RealChain
 from time_et import ET, option_close_product, sessions, time_to_expiry_years
+from tools import check_end_to_end as cee
 
 
 def _number(x):
@@ -119,12 +121,11 @@ def test_no_product_file_reads_the_stock_streams_dividend_yield():
     source). No product file names the pushed one.
     """
     repo = Path(__file__).resolve().parent.parent
-    folders = ("app", "calc", "calibration", "feed", "push", "state")
-    product = [
-        p
-        for p in [*repo.glob("*.py"), *(f for d in folders for f in (repo / d).rglob("*.py"))]
-        if p.name != "conftest.py"
-    ]
+    # every product Python file the repository tracks, as check_end_to_end defines product
+    files = subprocess.run(
+        ["git", "ls-files", "*.py"], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout.split()
+    product = [repo / f for f in files if cee.is_product(f)]
     assert len(product) > 40, "every product file is read"
     assert [p.name for p in product if "DIVIDEND_YIELD" in p.read_text(encoding="utf-8")] == []
 
