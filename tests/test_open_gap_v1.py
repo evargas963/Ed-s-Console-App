@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import server
@@ -24,7 +24,8 @@ from open_gap import open_gap_record, today_open
 from push import experimental as push_experimental
 from state import bar_store
 from tests.page_on_socket import pages
-from time_et import ET, session
+from tests.shared_helpers import et_ts
+from time_et import session
 
 TSLA = json.loads(
     (Path(__file__).parent / "fixtures" / "real_tsla_5m365_answers_2026_11_15.json").read_text(
@@ -44,10 +45,6 @@ LAST_10 = [
     ("Tue Nov 03", "▲ +0.60%", "▼ -0.94%", False),
     ("Mon Nov 02", "▲ +1.22%", "▲ +0.96%", True),
 ]
-
-
-def _et(text: str) -> float:
-    return datetime.fromisoformat(text).replace(tzinfo=ET).timestamp()
 
 
 def test_the_record_splits_the_opens_by_the_gaps_direction():
@@ -84,8 +81,8 @@ def test_today_s_open_from_schwab_s_bars_is_the_record_s_own_once_its_bar_has_cl
         for o in open_gap_record(TSLA["regular"], TSLA["extended"]).opens
         if o.day == date(2026, 10, 7)
     ]
-    assert today_open(candles, today, prior, _et("2026-10-07 09:40")) == recorded
-    assert today_open(candles, today, prior, _et("2026-10-07 09:33")) is None, "bar not closed"
+    assert today_open(candles, today, prior, et_ts("2026-10-07 09:40")) == recorded
+    assert today_open(candles, today, prior, et_ts("2026-10-07 09:33")) is None, "bar not closed"
 
 
 def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_designed():
@@ -113,9 +110,9 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
             assert server._write_price_history(answer("5m365r", TSLA["regular"])) is None
             assert on_socket.told(page, 0.2) == set(), "the same answer again tells nothing"
         assert ("TSLA", "5m365") not in bar_store._series  # their candles are not held as series
-        weekend = push_experimental.experimental("TSLA", _et("2026-10-10 12:00"))
-        before_open = push_experimental.experimental("TSLA", _et("2026-10-07 09:00"))
-        spy = push_experimental.experimental("SPY", _et("2026-10-07 09:00"))
+        weekend = push_experimental.experimental("TSLA", et_ts("2026-10-10 12:00"))
+        before_open = push_experimental.experimental("TSLA", et_ts("2026-10-07 09:00"))
+        spy = push_experimental.experimental("SPY", et_ts("2026-10-07 09:00"))
     finally:
         for key in [k for k in bar_store._open_gap_answers if k[0] == "TSLA"]:
             del bar_store._open_gap_answers[key]
@@ -162,8 +159,8 @@ def test_today_s_card_after_the_open_waits_for_the_bar_then_serves_its_result():
     ]
     try:
         bar_store.put_series("TSLA", "5m", candles)
-        waiting = push_experimental.experimental("TSLA", _et("2026-10-07 09:33"))
-        closed = push_experimental.experimental("TSLA", _et("2026-10-07 09:40"))
+        waiting = push_experimental.experimental("TSLA", et_ts("2026-10-07 09:33"))
+        closed = push_experimental.experimental("TSLA", et_ts("2026-10-07 09:40"))
     finally:
         bar_store._series.pop(("TSLA", "5m"), None)
     assert waiting["today"]["when_text"] == "waiting for Schwab's open bar to close"

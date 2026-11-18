@@ -2681,6 +2681,14 @@
         padding: 2px 0;
         color: var(--ed-ink-2);
       }
+      .aid-b > .notproven {
+        align-self: flex-start;
+      }
+      .aid-note {
+        font-size: 11px;
+        color: var(--ed-ink-3);
+        letter-spacing: 0.02em;
+      }
       .aid-q {
         text-align: left;
         padding: 8px 10px;
@@ -3629,10 +3637,8 @@
           <div class="cr"><span>Expiry</span><span id="aiCtxExp">All</span></div>
           <div class="cr"><span>Freshness</span><span id="aiCtxFresh">-</span></div>
         </div>
-        <div class="notproven" style="align-self: flex-start">
-          AI BACKEND NOT_PROVEN — access architecture only
-        </div>
-        <div style="font-size: 11px; color: var(--ed-ink-3); letter-spacing: 0.02em">
+        <div class="notproven">AI BACKEND NOT_PROVEN — access architecture only</div>
+        <div class="aid-note">
           Backend = canonical truth · AI = interpretation only. Intended questions:
         </div>
         <button type="button" class="aid-q">Why is this level important?</button>

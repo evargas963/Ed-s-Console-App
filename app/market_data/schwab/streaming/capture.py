@@ -256,7 +256,7 @@ def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[s
 
 
 def _not_started() -> object:
-    """The daemon's Schwab client before run: there is none, so a check cannot be made."""
+    """Raise ConnectionError: before run the daemon has no Schwab client to make a check with."""
     raise ConnectionError("the Schwab connection has not started")
 
 

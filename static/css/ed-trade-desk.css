@@ -1290,6 +1290,7 @@
 .tdm-foot {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px 18px;
   font-size: 12px;
   letter-spacing: 0.04em;
@@ -1299,10 +1300,6 @@
   background: var(--ed-panel);
   border: 1px solid var(--ed-edge);
   border-radius: var(--ed-r-lg);
-}
-
-.tdm-foot {
-  align-items: center;
 }
 
 .tdm-foot-src {

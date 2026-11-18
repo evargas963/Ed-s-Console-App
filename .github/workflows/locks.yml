@@ -64,4 +64,4 @@ jobs:
           section 'Failure modes' | grep -q . \
             || { echo "::error::no '## Failure modes' section with content"; exit 1; }
           section 'Census before and after' | grep -Eq '[0-9][0-9,]* -> [0-9]' \
-            || { echo "::error::'## Census before and after' has no measured count (N -> M)"; exit 1; }
+            || { echo "::error::'## Census before and after' has no count (N -> M)"; exit 1; }

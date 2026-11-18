@@ -9,7 +9,7 @@ plan SHAPE worked from, file by file. This document is updated in the same chang
 
 ## 1. The structure
 
-```
+```text
 EdWebConsole/
 ├── feed/        the only code that talks to Schwab: the stream, the REST calls (chains, quotes,
 │                price history, /markets), the sign-in; each field taken as sent

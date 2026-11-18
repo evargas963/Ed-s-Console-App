@@ -7,7 +7,7 @@ and checked against it; a change that does not fit stops and goes to the operato
 
 ## 1. The design (operator 2026-10-29)
 
-```
+```text
 [Schwab] ─ stream + REST ─► [ one program:  Feed ─► State ─► Calculators ─► State ─► Push ] ─ one WebSocket ─► [page]
                                                       │
                                                       └─► Recorder ─► [databases: history]

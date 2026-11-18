@@ -63,4 +63,12 @@ export default [
       globals: { ...globals.node, ...globals.browser },
     },
   },
+  {
+    files: ["**/tools/**/*.js"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "commonjs",
+      globals: { ...globals.node },
+    },
+  },
 ];
