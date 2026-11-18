@@ -29,9 +29,12 @@ from app.market_data.schwab.streaming import capture
 from feed import connection
 from feed.chain_sweep import chain_messages
 from stream_spine import (
+    ARCHIVE_ROWS,
+    ARCHIVE_TAKE,
     ARCHIVED,
     LOG,
     PRUNE_ROWS,
+    RECEIPT_TIME_INDEXES,
     WRITER_BLOCKED,
     WRITER_DEAD,
     WRITER_RECORDING,
@@ -421,6 +424,35 @@ def test_a_stop_asked_during_the_keep_writes_what_was_queued_and_removes_nothing
     asyncio.run(writer.run(sub, stop=stop))
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10
     assert _old_rows(db) >= old - PRUNE_ROWS
+
+
+def test_each_part_of_the_keep_reads_the_large_tables_through_their_receipt_time_index(tmp_path):
+    """Each part of the keep reads a large table through its receipt-time index, never the table.
+
+    Production 2026-11-17: each keep after a start took 3.5 to 8 minutes with nothing to move
+    (ed.db, 26 million option quotes and 17 million book rows), and a stop asked during one waited
+    for its part (launch.py stop: 'still running' after 30 s). SQLite's plan of the take ordered by
+    rowid was SCAN, every row of the table, on each of them. Asked of SQLite on the schema the
+    writer creates, the take for every table indexed by receipt time is a SEARCH of that index.
+    """
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    with sqlite3.connect(db) as conn:
+        plans = {
+            table: [
+                row[3]
+                for row in conn.execute(
+                    "EXPLAIN QUERY PLAN " + ARCHIVE_TAKE.format(table=table, column="ts_recv"),
+                    (0.0, ARCHIVE_ROWS),
+                )
+            ]
+            for table in RECEIPT_TIME_INDEXES
+        }
+    assert set(RECEIPT_TIME_INDEXES) <= set(ARCHIVED)
+    assert plans == {
+        table: [f"SEARCH {table} USING INDEX {index.split()[2]} (ts_recv<?)"]
+        for table, index in RECEIPT_TIME_INDEXES.items()
+    }
 
 
 def test_every_message_a_round_has_taken_counts_as_held_until_it_is_written(tmp_path):
