@@ -9,8 +9,7 @@ Runtime state lives in the runtime root's ``data/`` and ``logs/`` (data_dir, log
 ``schwab_token.json`` (config.token_path), each ignored by git, so a source update never touches
 it (docs/ARCHITECTURE.md §5), whatever the process's working directory. A standalone checkout is
 its own runtime root, so production's database, logs and token sit in its checkout. A linked Git
-worktree resolves runtime state to its primary worktree by reading Git's own ``.git`` /
-``commondir`` metadata.
+worktree resolves runtime state to its primary worktree, as git itself names it.
 ``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout directory, but may not
 select a linked source worktree.
 
@@ -23,6 +22,7 @@ has loaded `.env` (config.load_dotenv_file), whatever was imported first.
 from __future__ import annotations
 
 import os
+import subprocess
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -52,33 +52,28 @@ def _dir_from_env(name: str, default: Callable[[], Path]) -> Path:
 def _default_runtime_root() -> Path:
     """Return Git's primary worktree, or this standalone checkout.
 
-    Linked worktrees store a text ``.git`` file pointing into
-    ``<primary>/.git/worktrees/<name>``. Git's adjacent ``commondir`` file points back to
-    the primary ``.git`` directory. Reading those native files avoids a second path
-    registry and makes every linked checkout converge on the same runtime identity.
+    A linked worktree (its ``.git`` a file) asks git for the primary's ``.git`` directory
+    (``git rev-parse --path-format=absolute --git-common-dir``), so every linked checkout
+    converges on the same runtime identity. A worktree git cannot read is refused with git's
+    reason, never run against a runtime of its own.
     """
-    dotgit = SOURCE_ROOT / ".git"
-    if not dotgit.is_file():
+    if not (SOURCE_ROOT / ".git").is_file():
         return SOURCE_ROOT
-    why = f"cannot resolve canonical runtime root from linked worktree {SOURCE_ROOT}"
-    marker = dotgit.read_text(encoding="utf-8").strip()  # an OSError names the file itself
-    if not marker.lower().startswith("gitdir:"):
-        raise RuntimeError(f"{why}: invalid linked-worktree marker: {dotgit}")
-    gitdir = Path(marker.split(":", 1)[1].strip())
-    if not gitdir.is_absolute():
-        gitdir = (SOURCE_ROOT / gitdir).resolve()
-    commondir_file = gitdir / "commondir"
-    if not commondir_file.is_file():
-        raise RuntimeError(f"{why}: linked-worktree commondir missing: {commondir_file}")
-    common_git = (gitdir / commondir_file.read_text(encoding="utf-8").strip()).resolve()
-    if common_git.name != ".git":
+    answer = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=SOURCE_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    common_git = Path(answer.stdout.strip())
+    if answer.returncode != 0 or common_git.name != ".git":
         raise RuntimeError(
-            f"{why}: linked-worktree commondir is not a .git directory: {common_git}"
+            f"cannot resolve canonical runtime root from linked worktree {SOURCE_ROOT}: "
+            f"git rev-parse --git-common-dir answered {answer.returncode}: "
+            f"{(answer.stderr or answer.stdout).strip()}"
         )
-    primary = common_git.parent.resolve()
-    if not primary.is_dir():
-        raise RuntimeError(f"{why}: linked-worktree primary root missing: {primary}")
-    return primary
+    return common_git.parent
 
 
 def runtime_root() -> Path:
