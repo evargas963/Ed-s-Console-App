@@ -255,6 +255,11 @@ def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[s
     return frozenset()
 
 
+def _not_started() -> object:
+    """The daemon's Schwab client before run: there is none, so a check cannot be made."""
+    raise ConnectionError("the Schwab connection has not started")
+
+
 def _request_ended(task: asyncio.Future[None]) -> None:
     """Handle a watchlist request's end: one that ended on an error is logged with its traceback."""
     if not task.cancelled() and task.exception() is not None:
@@ -300,8 +305,8 @@ class Daemon:
         self.saved_options: frozenset[str] = frozenset()
         self.chains: ChainSweep | None = None  # its round time, its tickers
         self.writer: CaptureWriter | None = None  # its state rides the heartbeat
-        #: the daemon's one Schwab client (run): the checks
-        self.schwab_client: Callable[[], object] | None = None
+        #: the daemon's one Schwab client (run): the checks; none before run
+        self.schwab_client: Callable[[], object] = _not_started
         #: the one Schwab stream connection, asking for what is wanted (wanted)
         self.connection = Connection(bus, health, self.wanted, time_et.now)
 
@@ -543,11 +548,10 @@ class Daemon:
             if ticker in self.watchlist:
                 told(ON_LIST)
                 return
-            if (client := self.schwab_client) is None:  # asked before run: no client to check with
-                told(NOT_CHECKED, answer="the Schwab connection has not started")
-                return
             try:
-                quoted, status, answer = await asyncio.to_thread(check_ticker, client(), ticker)
+                quoted, status, answer = await asyncio.to_thread(
+                    check_ticker, self.schwab_client(), ticker
+                )
             except Exception as e:  # the check could not be made: not added, and why
                 log.warning(
                     "watchlist: %s not checked: %s: %s", ticker, type(e).__name__, e, exc_info=True

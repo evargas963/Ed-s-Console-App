@@ -727,7 +727,12 @@ def test_an_add_asked_before_the_schwab_connection_starts_is_answered_not_checke
 
     got = asyncio.run(go())
     assert [(m["request_id"], m["op"], m["ticker"], m["answer"]) for m in got] == [
-        ("r1", capture.NOT_CHECKED, "TSLA", "the Schwab connection has not started")
+        (
+            "r1",
+            capture.NOT_CHECKED,
+            "TSLA",
+            "ConnectionError: the Schwab connection has not started",
+        )
     ]
     assert daemon.watchlist == ["SPY"]
 
