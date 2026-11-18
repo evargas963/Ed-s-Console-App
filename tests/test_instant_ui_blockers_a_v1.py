@@ -103,8 +103,10 @@ def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path)
         url = f"http://127.0.0.1:{httpd.server_address[1]}/"
         with ThreadPoolExecutor(max_workers=n) as pool:
             codes = list(pool.map(lambda _: client.session.get(url).status_code, range(n)))
+        client.session.close()
     finally:
         httpd.shutdown()
+        httpd.server_close()  # shutdown ends serving; this closes the listening socket
     assert codes == [200] * n
     assert seen["most"] == sc.REQUESTS_AT_ONCE == 4, f"{seen['most']} requests at once"
     assert len(seen["ports"]) == sc.REQUESTS_AT_ONCE, f"{len(seen['ports'])} connections"
