@@ -655,7 +655,14 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
             # unread frames queue without bound, so the page still reads the program's close
             async with connect(f"ws://127.0.0.1:{console}/ws", max_queue=None) as page:
                 await page.send(json.dumps({"op": "subscribe", "symbols": ["spy"]}))
-                frames = [json.loads(await asyncio.wait_for(page.recv(), 30))]
+                # a beat may come before the subscribe is read: the page's rows only after it
+                before = []
+                while (frame := json.loads(await asyncio.wait_for(page.recv(), 30)))["type"] != (
+                    "symbols"
+                ):
+                    before.append(frame)
+                assert [f.get("rows") for f in before] == [[]] * len(before), before
+                frames = [frame, json.loads(await asyncio.wait_for(page.recv(), 30))]
                 while frames[-1]["type"] != "feed":
                     frames.append(json.loads(await asyncio.wait_for(page.recv(), 30)))
                 stopping = stop(home)
