@@ -33,10 +33,10 @@ log = logging.getLogger(__name__)
 #: restart loop on it). 2 is the live-binding refusal (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
 
-#: Windows' kernel32, for the stop event; None elsewhere (Linux CI), where the stop request is
-#: SIGTERM
-_KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True) if sys.platform == "win32" else None
-if _KERNEL32 is not None:
+#: Windows' kernel32, for the stop event; elsewhere (Linux CI) the stop request is SIGTERM. Each
+#: use is under `sys.platform == "win32"`, the check type checkers read (typeshed's own)
+if sys.platform == "win32":
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _KERNEL32.CreateEventW.restype = _KERNEL32.OpenEventW.restype = ctypes.c_void_p
     _KERNEL32.CreateEventW.argtypes = (
         ctypes.c_void_p,
@@ -152,7 +152,7 @@ class StopRequest:
         self._handle = self._sigterm = None
         self._closed = False
         self._asked = threading.Event()
-        if _KERNEL32 is None:
+        if sys.platform != "win32":
             self._sigterm = signal.signal(signal.SIGTERM, lambda _sig, _frame: self._asked.set())
             return
         self._handle = _KERNEL32.CreateEventW(None, True, False, stop_event_name(db_path))
@@ -163,7 +163,7 @@ class StopRequest:
         """Whether the stop was asked for, waiting up to `seconds` for it; a failed wait raises."""
         if self._closed:
             raise ValueError("wait on a closed stop request")
-        if self._handle is None:
+        if sys.platform != "win32":
             return self._asked.wait(seconds)
         result = _KERNEL32.WaitForSingleObject(self._handle, round(seconds * 1000))
         if result not in (WAIT_OBJECT_0, WAIT_TIMEOUT):
@@ -172,7 +172,7 @@ class StopRequest:
 
     def close(self) -> None:
         self._closed = True
-        if self._handle is None:
+        if sys.platform != "win32":
             signal.signal(signal.SIGTERM, self._sigterm)
         else:
             _KERNEL32.CloseHandle(self._handle)
@@ -184,7 +184,7 @@ def ask_to_stop(db_path: str | Path | None = None) -> None:
     The lock is owner_lock_path(`db_path`). Raises OSError when there is no request to set: no
     program runs there, or it has not made its request yet.
     """
-    if _KERNEL32 is None:
+    if sys.platform != "win32":
         pid = _holder(owner_lock_path(db_path).read_text())  # FileNotFoundError: no lock
         if pid is None:
             raise ProcessLookupError("no running program holds the lock")

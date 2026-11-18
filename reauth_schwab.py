@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 
-from config import build_config, load_dotenv_file, schwab_live_blocked_for
+from config import build_config, load_dotenv_file, schwab_credentials
 from feed.schwab_client import (
     auth_is_refreshable,
     complete_oauth_from_redirect_url,
@@ -69,8 +69,10 @@ def reauth() -> None:
     manual = "--manual" in sys.argv or "-m" in sys.argv
     load_dotenv_file()
     cfg = build_config()
-    if schwab_live_blocked_for(cfg.api_key, cfg.app_secret):
+    credentials = schwab_credentials(cfg.api_key, cfg.app_secret)
+    if credentials is None:
         sys.exit("No Schwab credentials: set SCHWAB_API_KEY and SCHWAB_APP_SECRET in .env")
+    api_key, app_secret = credentials
     token_path = os.path.abspath(cfg.token_path)
 
     print("=" * 60)
@@ -86,8 +88,8 @@ def reauth() -> None:
         try:
             ok, msg = complete_oauth_from_redirect_url(
                 redirect_url,
-                api_key=cfg.api_key,
-                app_secret=cfg.app_secret,
+                api_key=api_key,
+                app_secret=app_secret,
                 callback_url=cfg.callback_url,
                 token_path=token_path,
             )
@@ -132,8 +134,8 @@ def reauth() -> None:
         )
     )
     ok, msg = flow_fn(
-        api_key=cfg.api_key,
-        app_secret=cfg.app_secret,
+        api_key=api_key,
+        app_secret=app_secret,
         callback_url=cfg.callback_url,
         token_path=token_path,
     )

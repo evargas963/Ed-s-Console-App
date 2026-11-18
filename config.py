@@ -36,17 +36,19 @@ _CI_SCHWAB_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
 )
 
 
-def schwab_live_blocked_for(api_key: str | None, app_secret: str | None) -> bool:
-    """Return True when live Schwab cannot work: a credential missing, empty, or a CI placeholder.
+def schwab_credentials(api_key: str | None, app_secret: str | None) -> tuple[str, str] | None:
+    """Return (api_key, app_secret) when live Schwab can work with them, else None.
 
-    The one gate (docs/ARCHITECTURE.md "Failure domains"): `schwab_client.build_client_from_token`
-    builds no client on it, so no Schwab call is made and the rest of the application starts.
+    None: a credential missing, empty, or a CI placeholder. The one gate (docs/ARCHITECTURE.md
+    "Failure domains"): `schwab_client.build_client_from_token` builds no client on None, so no
+    Schwab call is made and the rest of the application starts.
     """
     if not api_key or not app_secret:
-        return True
-    return any(api_key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
+        return None
+    placeholder = any(api_key.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES) and any(
         app_secret.startswith(p) for p in _CI_SCHWAB_PLACEHOLDER_PREFIXES
     )
+    return None if placeholder else (api_key, app_secret)
 
 
 @dataclass(frozen=True)
@@ -75,7 +77,7 @@ def build_config() -> AppConfig:
 
     It is the one reader of its credentials: each as the environment holds it, None when not
     set. Offline (ED_CI_OFFLINE, tests and CI) takes none, so the one gate,
-    `schwab_live_blocked_for`, refuses live Schwab.
+    `schwab_credentials`, refuses live Schwab.
     """
     offline = os.environ.get("ED_CI_OFFLINE") in ("1", "true", "yes")
     return AppConfig(
