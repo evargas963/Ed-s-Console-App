@@ -1,4 +1,6 @@
-"""The Stop hook (AGENTS.md Authority): every order answered, and production running main.
+"""The Stop hook (AGENTS.md Authority): every order answered, production on main, no idle stop.
+
+A turn ends only when its final message begins `WAITING ON OPERATOR:` (decide).
 
 Every message is read and every order answered (operator 2026-11-07: "once i tell you do
 something, you must do it. you do not get to choose", "you must enforce this rule"; 2026-11-08:
@@ -215,8 +217,11 @@ def decide(
 ) -> str | None:
     """Return why the stop is refused, or None when it may end.
 
-    An unread message or an unanswered order refuses the stop, WAITING ON OPERATOR or not;
-    production not running main refuses it unless the final message begins WAITING ON OPERATOR.
+    An unread message or an unanswered order refuses the stop, WAITING ON OPERATOR or not. Every
+    other stop is refused unless the final message begins WAITING ON OPERATOR: work stops only for
+    what the operator must decide (operator 2026-11-18: "i've alrady asked you ten times to not
+    stop but you continue. fix it so y ou won't stop"; 2026-11-07: "you only stop if something is
+    unclear or you have questions"). A report, a wait on CI or a finished order is not a stop.
     """
     if open_orders:
         return (
@@ -235,7 +240,12 @@ def decide(
         return None
     if production is not None:
         return "Production does not run main: " + production
-    return None
+    return (
+        "Keep working: the operator's order is to work through the census without stopping. Take "
+        "the next workable row (the tracker's next list, then the census); a wait on CI is filled "
+        "with it. Stop only for what he must decide: begin the final message `WAITING ON "
+        "OPERATOR:` and say what."
+    )
 
 
 def main() -> int:
