@@ -72,8 +72,8 @@ def test_the_prior_days_high_low_and_close_are_schwabs_daily_candle_as_sent():
                 sessions=sessions(),
             )
             sent = _sent(symbol, prior_day)
-            assert out["prior_date"] == prior_day
-            assert (out["pdh"], out["pdl"], out["pdc"]) == (
+            assert out.prior_date == prior_day
+            assert (out.pdh, out.pdl, out.pdc) == (
                 sent["high"],
                 sent["low"],
                 sent["close"],
@@ -89,7 +89,7 @@ def test_the_prior_close_is_schwabs_official_close_not_the_last_minutes():
         PlaybookConfig(),
         sessions=sessions(),
     )
-    assert out["pdc"] == 763.99
+    assert out.pdc == 763.99
 
 
 def test_monday_s_prior_session_is_friday_schwab_sends_no_weekend_candle():
@@ -128,6 +128,7 @@ def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only(
         PlaybookConfig(),
         sessions=sessions(),
     )
-    assert out["rth_bars"] == 390
-    assert out["pd_val"] <= out["pd_poc"] <= out["pd_vah"]
-    assert out["pdl"] <= out["pd_val"] and out["pd_vah"] <= out["pdh"]
+    assert out.rth_bars == 390
+    assert out.pd_val is not None and out.pd_poc is not None and out.pd_vah is not None
+    assert out.pd_val <= out.pd_poc <= out.pd_vah
+    assert out.pdl <= out.pd_val and out.pd_vah <= out.pdh
