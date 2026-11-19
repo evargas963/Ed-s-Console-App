@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import tools.operating_process_lock as OPL
 import tools.process_lock_guard as PLG
 
@@ -256,12 +258,12 @@ def test_an_edit_target_that_cannot_be_placed_is_refused(tmp_path):
     it can (Windows), it is app code and refused. It is never let through.
     """
     primary, _wt = _linked_worktree_layout(tmp_path)
-    try:
-        bad = PLG.production_checkout_edit_violations(
-            {"file_path": str(primary / "tools" / "x\x00.py")}, primary
-        )
-    except ValueError:
-        return  # a raising guard is a block (test_hook_chain_v1)
+    target = {"file_path": str(primary / "tools" / "x\x00.py")}
+    if sys.platform != "win32":
+        with pytest.raises(ValueError):  # a raising guard is a block (test_hook_chain_v1)
+            PLG.production_checkout_edit_violations(target, primary)
+        return
+    bad = PLG.production_checkout_edit_violations(target, primary)
     assert any("PROD_CHECKOUT_EDIT" in b for b in bad), bad
 
 
@@ -272,12 +274,12 @@ def test_a_cross_checkout_target_that_cannot_be_placed_is_refused(tmp_path):
     shell rail: it raises (a block) or it is refused, never let through.
     """
     primary, wt = _linked_worktree_layout(tmp_path)
-    try:
-        bad = PLG.production_checkout_edit_violations(
-            {"file_path": str(primary / "x\x00.md")}, repo=wt
-        )
-    except ValueError:
-        return  # a raising guard is a block (test_hook_chain_v1)
+    target = {"file_path": str(primary / "x\x00.md")}
+    if sys.platform != "win32":
+        with pytest.raises(ValueError):  # a raising guard is a block (test_hook_chain_v1)
+            PLG.production_checkout_edit_violations(target, repo=wt)
+        return
+    bad = PLG.production_checkout_edit_violations(target, repo=wt)
     assert len(bad) == 1 and "PROD_CHECKOUT_EDIT" in bad[0], bad
 
 
