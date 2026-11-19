@@ -122,10 +122,10 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
     body, rows = _desk_events(tk, _load(crosses)["rows"], now, "D")
     items = [it for it in body["items"] if it["dom"] == "LEVELS"]
     assert items
-    by_key = {f"x{r['cross_id']}": r for r in rows}
+    by_key = {f"x{r.cross_id}": r for r in rows}
     for it in items:
         r = by_key[it["key"]]
-        assert (it["price"], it["dir"], it["ts"]) == (r["level_value"], r["direction"], r["ts_utc"])
+        assert (it["price"], it["dir"], it["ts"]) == (r.level_value, r.direction, r.ts_utc)
     newest_at = {}
     for it in sorted(items, key=lambda it: it["ts"]):
         newest_at[it["price"]] = it
