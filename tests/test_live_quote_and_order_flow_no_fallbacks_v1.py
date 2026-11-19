@@ -21,11 +21,11 @@ def test_plane_change_percent_is_schwab_net_change_percent():
         received_ts=time_et.now(),
     )
     row = lmp.get_quote("NCPX")
-    assert row["chg_pct"] == 1.0 and row["net_change"] == 1.0
+    assert row.chg_pct == 1.0 and row.net_change == 1.0
     lmp.record_from_level_one_equity(
         "NCPX", {"key": "NCPX", "BID_PRICE": 100.9}, received_ts=time_et.now()
     )
-    assert lmp.get_quote("NCPX")["chg_pct"] == 1.0  # unchanged field stands
+    assert lmp.get_quote("NCPX").chg_pct == 1.0  # unchanged field stands
 
 
 def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_it():
@@ -40,7 +40,7 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
         received_ts=time_et.now(),
     )
     row = lmp.get_quote("ZZREG")
-    assert (row["chg_pct"], row["chg_pct_regular"]) == (-0.495313, None)
+    assert (row.chg_pct, row.chg_pct_regular) == (-0.495313, None)
     lmp.record_from_level_one_equity(
         "ZZREG",
         {
@@ -52,7 +52,7 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
         received_ts=time_et.now(),
     )
     row = lmp.get_quote("ZZREG")
-    assert (row["chg_pct"], row["chg_pct_regular"]) == (-0.928243, -0.928243)
+    assert (row.chg_pct, row.chg_pct_regular) == (-0.928243, -0.928243)
 
 
 def test_mark_is_the_streamed_mark_only():

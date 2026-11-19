@@ -42,12 +42,12 @@ def todays_candles(tk: str, now: datetime) -> list[Candle]:
     """
     s = session(now.astimezone(ET).date().isoformat())
     row = lmp.get_quote(tk)
-    if s is None or not s.regular or now < s.regular[0][0] or row is None:
+    if s is None or not s.regular or now < s.regular[0][0]:
         return []
-    o, h, lo, c = row["open_price"], row["high_price"], row["low_price"], row["regular_last"]
+    o, h, lo, c = row.open_price, row.high_price, row.low_price, row.regular_last
     if o is None or h is None or lo is None or c is None or o == 0:
         return []
-    return [Candle(s.regular[0][0].timestamp(), o, h, lo, c, row["total_volume"])]
+    return [Candle(s.regular[0][0].timestamp(), o, h, lo, c, row.total_volume)]
 
 
 def daily_candles(tk: str, now: datetime) -> list[Candle]:
