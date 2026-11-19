@@ -1311,35 +1311,17 @@ FEED_CALLBACKS: dict[str, Callable[..., None]] = {
 
 
 STATUS_EVERY_SEC = 60.0
-#: the daemon writes a feed-status row every 60 s; older than this, the record has stopped
-FEED_RECORD_STALE_SEC = 150.0
 
 
-def _feed_record_state(path: Path, now: float) -> str:
-    """How old the newest stream_feed_status row in the stream database at `path` is at `now`.
+def _record_state(st: dict[str, Any] | None) -> str:
+    """Return the Recorder's own line, as the daemon's heartbeat carries it (WriterStatus.line).
 
-    It proves the whole path (the daemon's loop, the bus, the writer, the database) wrote this
-    minute.
+    Its rows are counted once committed, and what it holds unwritten is its backlog; no live
+    read of the database (AGENTS.md rule 6).
     """
-    if not path.is_file():
-        return "feed record: NO DATABASE"
-    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE name='stream_feed_status'"
-        ).fetchone():
-            return "feed record: none yet"
-        newest = conn.execute("SELECT MAX(ts) FROM stream_feed_status").fetchone()[0]
-    finally:
-        conn.close()
-    if newest is None:
-        return "feed record: none yet"
-    age = now - float(newest)
-    return (
-        f"feed record: written {age:.0f}s ago"
-        if age <= FEED_RECORD_STALE_SEC
-        else f"FEED RECORD STALE: last written {age / 60:.0f} min ago"
-    )
+    if st is None or st["writer"] is None:
+        return "record: NOT REPORTED"
+    return f"record: {st['writer']['line']}"
 
 
 def _status_line(now: float) -> str:
@@ -1365,7 +1347,7 @@ def _status_line(now: float) -> str:
             + ("open" if st is not None and st["schwab_socket_open"] else "NOT OPEN"),
             prices,
             f"levels: {len(as_of)} tickers, newest as of {newest}",
-            _feed_record_state(canonical_db_path(), now),
+            _record_state(st),
             (
                 f"chains: the daemon's last round of the watchlist took {round_sec:.0f} s"
                 if round_sec
