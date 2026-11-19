@@ -29,7 +29,7 @@ from feed.schwab_client import flatten_chain_contracts
 from option_contract import GREEKS, LISTED, read_chain
 from push import chain as push_chain
 from state import level_store
-from stream_spine import verbatim_msg
+from stream_spine import book_msg, verbatim_msg
 from tests.feed_live_helper import daemon_status
 from time_et import ET
 
@@ -347,6 +347,38 @@ def test_every_option_quote_sends_the_chain_panel_of_its_ticker():
     finally:
         ofs.FEED.on_flow = None
     assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "chain" in srv.FLOW_PANELS
+
+
+def test_every_option_book_sends_the_flow_panel_of_its_ticker():
+    """Each OPTIONS_BOOK message tells the Flow panel (`contract`) of the contract's ticker."""
+    _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
+    # TSLA 2026-08-31 367.5 call's first OPTIONS_BOOK message as Schwab sent it
+    history = json.loads(
+        (_FIXTURES / "real_options_stream_history_samples.json").read_text(encoding="utf-8")
+    )
+    sym, book = next(
+        (c["symbol"], e["content"])
+        for c in history["contracts"]
+        for e in c["events"]
+        if e["kind"] == "book"
+    )
+    assert sym in {c["symbol"] for c in _TSLA_CONTRACTS}
+    told: list[str] = []
+    ofs.FEED.on_flow = told.append
+    try:
+        ofs._ingest_pushed(
+            f"book.{sym}",
+            book_msg(
+                symbol=sym,
+                service="OPTIONS_BOOK",
+                content=book,
+                src="schwab_book",
+                ts_recv=_AT.timestamp(),
+            ),
+        )
+    finally:
+        ofs.FEED.on_flow = None
+    assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "contract" in srv.FLOW_PANELS
 
 
 def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it():

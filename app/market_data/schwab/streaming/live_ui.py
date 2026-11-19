@@ -53,7 +53,7 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, override
+from typing import Any, cast, override
 
 from starlette.datastructures import State
 from starlette.websockets import WebSocket, WebSocketDisconnect
@@ -254,12 +254,12 @@ class LiveUiServer:
         while (msg := await c.ws.receive())["type"] == "websocket.receive":
             frame = msg["text"] if "text" in msg else msg["bytes"]
             try:
-                req = json.loads(frame)
+                loaded: object = json.loads(frame)
             except (TypeError, ValueError) as e:
                 log.warning("live ui: a page frame that is not JSON (%s): %.200r", e, frame)
                 continue
-            subscribe = isinstance(req, dict) and req.get("op") == "subscribe"
-            raw = req.get("symbols") if subscribe else None
+            req = cast(dict[str, Any], loaded) if isinstance(loaded, dict) else {}
+            raw: object = req.get("symbols") if req.get("op") == "subscribe" else None
             if not isinstance(raw, list):
                 log.warning(
                     "live ui: a page frame that is not a subscribe with symbols: %.200r", frame
@@ -268,9 +268,8 @@ class LiveUiServer:
             keys: list[str]
             identity: list[dict[str, str]]
             keys, identity = [], []
-            for s in raw:
-                k = ticker_storage_key(s) if isinstance(s, str) else ""
-                if not k:
+            for s in cast(list[object], raw):
+                if not isinstance(s, str) or not (k := ticker_storage_key(s)):
                     log.warning("live ui: a subscribed symbol not a string, or blank: %.200r", s)
                     continue
                 identity.append({"requested": s, "key": k, "display": display_symbol(k)})
@@ -307,9 +306,9 @@ class LiveUiServer:
             log.warning("live ui: a subscribe's panels not an object: %.200r", shown)
             return {}
         out: dict[str, dict[str, Any]] = {}
-        for name, params in shown.items():
+        for name, params in cast(dict[str, object], shown).items():
             if kind_of(name) in self.panels and isinstance(params, dict):
-                out[name] = params
+                out[name] = cast(dict[str, Any], params)
             else:
                 log.warning(
                     "live ui: a subscribed panel unknown, or its parameters not an object: "

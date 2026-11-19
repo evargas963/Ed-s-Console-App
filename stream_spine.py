@@ -32,7 +32,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import IO, Any, override
+from typing import IO, Any, cast, override
 
 import time_et
 from calibration.complete_chain_capture import ensure_schema, store_capture_message
@@ -375,8 +375,8 @@ class Subscription:
     policy: str
     current: dict[str, tuple[str, Any]]  # the bus's current state
     #: LOG: every message, then LOG_END at the stop (_end_at)
-    queue: asyncio.Queue[tuple[str, Any]] = field(default_factory=asyncio.Queue)
-    changed: dict[str, None] = field(default_factory=dict)  # LATEST: keys, in order
+    queue: asyncio.Queue[tuple[str, Any]] = field(default_factory=asyncio.Queue[tuple[str, Any]])
+    changed: dict[str, None] = field(default_factory=dict[str, None])  # LATEST: keys, in order
     wake: asyncio.Event = field(default_factory=asyncio.Event)
 
     def deliver(self, key: str, topic: str, msg: Any) -> None:
@@ -425,6 +425,7 @@ class MessageBus:
     def __init__(self) -> None:
         self._subs: list[Subscription] = []
         #: key (current_key) -> (topic, record)
+        # a topic's record (a dict); a chain's, its parts (a list)
         self.current: dict[str, tuple[str, Any]] = {}
         #: chain topic -> (fetch time, {part: message}, parts): the newest fetch, filling
         self._chains: dict[str, tuple[float, dict[int, dict[str, Any]], int]] = {}
@@ -445,7 +446,7 @@ class MessageBus:
         if sub in self._subs:
             self._subs.remove(sub)
 
-    def publish(self, topic: str, msg: Any) -> None:
+    def publish(self, topic: str, msg: dict[str, Any]) -> None:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
         changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
@@ -469,17 +470,11 @@ class MessageBus:
         Returns whether the record changed.
         """
         held = self.current.get(key)
-        t: int | None = msg.get("schwab_ts") if isinstance(msg, dict) else None
+        t: int | None = msg.get("schwab_ts")
         body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
-        body: Payload = (
-            msg.get(body_key) if body_key is not None and isinstance(msg, dict) else None
-        )
-        if not isinstance(body, dict):  # a whole record: replaced whole
-            if (
-                held is not None
-                and isinstance(held[1], dict)
-                and _older(t, held[1].get("schwab_ts"))
-            ):
+        body: Payload = msg.get(body_key) if body_key is not None else None
+        if body_key is None or not isinstance(body, dict):  # a whole record: replaced whole
+            if held is not None and _older(t, held[1].get("schwab_ts")):
                 return False
             self.current[key] = (topic, msg)
             return True
@@ -948,10 +943,11 @@ def _object_bytes(obj: object, seen: set[int]) -> int:
         seen.add(id(o))
         total += sys.getsizeof(o)
         if type(o) is dict:
-            stack.extend(o.keys())
-            stack.extend(o.values())
+            held = cast(dict[object, object], o)
+            stack.extend(held.keys())
+            stack.extend(held.values())
         elif type(o) is list or type(o) is tuple:
-            stack.extend(o)
+            stack.extend(cast(list[object] | tuple[object, ...], o))
     return total
 
 
@@ -1506,8 +1502,8 @@ class CaptureWriter:
                 self._hand(item)
         finally:
             ending.cancel()
-            with self._lock:  # a dead thread takes no stop message
-                if self.state != WRITER_DEAD:
+            with self._lock:  # a dead thread takes no stop message (the thread sets it)
+                if cast(str, self.state) != WRITER_DEAD:
                     self._q.put(None)
             await asyncio.to_thread(thread.join)
 
