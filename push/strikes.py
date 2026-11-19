@@ -105,7 +105,7 @@ def _scale_with_prior(
     return max(both) if both else None
 
 
-def _served_migrations(m: PositioningMigration) -> dict[str, Any]:
+def _shown_scope(m: PositioningMigration) -> dict[str, Any]:
     """One scope's migration as the screen shows it.
 
     Each row with its change's text (_served_migration), and the strikes that grew, shrank and
@@ -188,9 +188,7 @@ def terrain_strikes_payload(
         "spot_strike": nearest_strike([r.strike for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
         "max_abs_row": max_abs_served(today["all"], "gex"),
-        # each row with its change as the screen shows it (_served_migration), and the strikes
-        # that grew, shrank and traded most, each list as the screen shows it
-        "migration": {sc: _served_migrations(m) for sc, m in migration.items()},
+        "migration": {sc: _shown_scope(m) for sc, m in migration.items()},
         # the call wall, put wall and gamma flip today against the prior day's own, each with its
         # texts as the screen shows them
         "level_moves": [served_level_move(v) for v in level_moves(snap, prior_day)],
