@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, NamedTuple, TypedDict
 
 from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -111,6 +111,7 @@ from state.price_level_store import (
 )
 from time_et import (
     ET,
+    Session,
     ct_label,
     et_date_str_from_ts_utc,
     market_session_date,
@@ -791,6 +792,133 @@ def _priced_at(
     return kept.priced_at if live[0] is None else live
 
 
+def _publication_spot(
+    previous: PublishedLevels | None,
+    capture: dict[str, Any] | None,
+    valued_at: datetime,
+    priced_at: tuple[float | None, str, float | None],
+    now: datetime,
+) -> tuple[float | None, str, float | None]:
+    """Return the price a publication is computed at: (price, source, time).
+
+    Once the window of a chain that is not a capture has ended, the spot already published is
+    the close, and a later print is not; otherwise `priced_at`.
+    """
+    if (
+        capture is None
+        and valued_at < now
+        and previous is not None
+        and previous.snap.spot is not None
+    ):
+        return previous.snap.spot, previous.spot_source, previous.spot_as_of_ts_utc
+    return priced_at
+
+
+class _Priced(NamedTuple):
+    """A chain priced with each contract's newest values, and what the pricing read."""
+
+    priced: list[OptionContract]
+    #: the contracts given newer values than the chain's, and how many
+    live_syms: list[str]
+    n_live: int
+    #: when each of those newer values was received
+    received: list[float]
+    #: one read of the heartbeat, the streamed values, which of them are live, which are held
+    feed: lmp.FeedNow
+    streamed: dict[str, dict[str, Any]]
+    feed_live: set[str]
+    held: set[str]
+
+
+def _price_chain_values(
+    chain: list[OptionContract],
+    listed: Collection[str],
+    fetched_ts: float,
+    window_open: bool,
+    now: datetime,
+) -> _Priced:
+    """Return `chain` priced: inside the window each contract's newest values; else as sent.
+
+    The newest values are the stream's, or its /quotes answer's when that was received since this
+    chain began; the close values are the chain as sent. The cell stamp says whether that stream
+    is live.
+    """
+    # one read of the heartbeat: pricing and the cell stamp share it
+    feed = lmp.feed_now(now.timestamp())
+    streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
+    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
+    held = set(lmp.held_option_symbols(listed, now.timestamp(), feed))
+    quoted = rest_quotes(listed, fetched_ts)
+    priced, n_live = (
+        overlay_streamed_contract_fields(chain, streamed, held, quoted)
+        if window_open
+        else (chain, 0)
+    )
+    live_syms = _overlaid_symbols(chain, priced)
+    pushed_ts = [
+        ts
+        for s in live_syms
+        if s in streamed and (ts := _leg_stream_ts_recv(streamed[s])) is not None
+    ]
+    # a contract the stream does not hold was given its /quotes answer: that answer's receive time
+    quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
+    return _Priced(
+        priced, live_syms, n_live, pushed_ts + quoted_ts, feed, streamed, feed_live, held
+    )
+
+
+def _forces_and_prior(
+    tk: str,
+    previous: PublishedLevels | None,
+    kept: PublishedLevels | None,
+    captures: list[dict[str, Any]] | None,
+    snap: TerrainSnapshot,
+    fetched_ts: float,
+) -> tuple[tuple[float | None, str], Forces, TerrainSnapshot | None]:
+    """Return the key of the stored captures read, and the forces and prior day read from them.
+
+    They change only with a new capture or a new chain day: computed then, once, for all readers.
+    """
+    captures_key = (
+        (capture_store.newest_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
+        if kept is None
+        else kept.captures_key
+    )
+    if previous is not None and previous.captures_key == captures_key:
+        return captures_key, previous.forces, previous.prior_day
+    stored = captures if captures is not None else capture_store.captures(get_db().db_path, tk)
+    # This publication priced a stored capture, so its charm map is that newer capture.
+    # A live chain is not that capture: the same function then runs once on the banked one.
+    held_charm = snap.charm_by_strike if captures and captures[0]["spot"] is not None else None
+    forces = _forces_from_captures(tk, stored, held_charm)
+    return captures_key, forces, _prior_day(tk, stored, fetched_ts)
+
+
+def _published_surface(
+    tk: str,
+    p: _Priced,
+    snap: TerrainSnapshot,
+    at: tuple[float, str, float | None],
+    now: datetime,
+) -> dict[str, Any]:
+    """Return the gamma surface of the priced chain at the spot `at`, its cells stamped."""
+    spot, spot_source, spot_ts = at
+    projected = project_gamma_surface(p.priced, snap.books)
+    projected.update(
+        spot=spot,
+        spot_source=spot_source,
+        spot_as_of_ts_utc=spot_ts,
+        stream_overlay_contracts=p.n_live,
+        stream_overlay_symbols=p.live_syms,
+        stream_overlay_computed_ts_utc=now.timestamp(),
+    )
+    surface = _stamp_gamma_surface_cell_stream_state(projected, p.streamed, p.feed_live, p.held)
+    surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
+    # a later beat that differs from this one restamps it (restamp_open_surfaces)
+    _last_feed_stamp[tk] = _feed_stamp_key(p.feed, _surface_symbols(surface), now.timestamp())
+    return surface
+
+
 def _publish_levels(
     tk: str,
     chain: list[OptionContract] | None = None,
@@ -802,30 +930,17 @@ def _publish_levels(
 ) -> TerrainSnapshot | None:
     """Produce a ticker's levels, per-strike rows and gamma-surface grid: THE producer of them.
 
-    Prices the ticker's chain once -- each contract with its newest values, the stream's or its
-    /quotes answer's (overlay_streamed_contract_fields) -- and publishes all three together, so the
-    heatmap, Strike Detail and Key Levels always show one computation. A delivered chain is passed
-    in with its spot (`chain_spot`: Schwab's LAST_PRICE when the chain was complete and its trade
-    time; (None, None) when the daemon held none); a tick (a streamed value, or a /quotes answer)
-    passes none and the kept chain is repriced at the live price (resolve_spot) with every value
-    received since. Once that ticker's option window has
-    ended, a
-    later publication keeps the spot already published, so a later equity print does not move
-    the close book. Called only on the one pricing thread
-    (_price_chain), so each publication is computed from inputs read after the one it replaces.
-    `captures` (startup
-    and a closed market, DATA_FLOW decision 7) are the two newest market days' stored captures,
-    read once: the newest is priced at that capture's chain spot (one stored without it has no
-    price), valued at its own time, or at that ticker's option close when the capture is past
-    it, and both feed the forces and prior-day rows. `now`: the instant of this publication.
-    A chain that is not a capture is valued then, or at that ticker's option close once it has
-    passed. Inside that window each contract's newest values price over the chain (the stream's,
-    or its /quotes answer's when that was received since the chain began), and each leg's age
-    is taken. Outside it the close values are the balance until the next open: the first chain
-    begun at or after the close, the one published or the ticker's stored capture taken then,
-    priced as Schwab sent it, a reported 0 included; nothing Schwab sends later (a chain, a
-    pushed value) replaces it. Until the close values are held, a chain is priced as sent.
-    Returns the snapshot, or None when there is no chain to price.
+    Prices the chain once (_price_chain_values) and publishes all three together, so every screen
+    shows one computation; called only on the one pricing thread (_price_chain). A delivered chain
+    comes with its spot (`chain_spot`: Schwab's LAST_PRICE when it was complete, and its trade
+    time; (None, None) with none); a tick passes no chain, and the kept one is repriced at the
+    live price with every value received since. `captures` (startup and a closed market, DATA_FLOW
+    decision 7): the two newest market days' stored captures; the newest is priced at its own
+    chain spot and time (or its option close, once past), and both feed the forces and prior
+    day. `now`: this publication's instant; a chain that is not a capture is valued then, or at
+    the option close once passed, after which the spot already published stands
+    (_publication_spot). Outside the window the close values (the first chain begun at or after
+    the close, as Schwab sent it, a 0 included) stand until the next open. None: no chain.
     """
     previous = published_levels(tk)
     product = option_close_product(tk)
@@ -851,80 +966,19 @@ def _publish_levels(
     begun = datetime.fromtimestamp(fetched_ts, ET)
     valued_at = valuation_instant(begun if capture is not None else now, product)
     priced_at = _priced_at(tk, chain_spot, kept, now)
-    if (
-        capture is None
-        and valued_at < now
-        and previous is not None
-        and previous.snap.spot is not None
-    ):
-        # the window has ended: the spot already published is the close, and a later print is not
-        spot, spot_source, spot_ts = (
-            previous.snap.spot,
-            previous.spot_source,
-            previous.spot_as_of_ts_utc,
-        )
-    else:
-        spot, spot_source, spot_ts = priced_at
+    spot, spot_source, spot_ts = _publication_spot(previous, capture, valued_at, priced_at, now)
     # the ticker's contracts are the ones Schwab listed in its newest chain
     listed = {c.symbol: c for c in chain if c.symbol} if kept is None else kept.contracts
-    # one read of the heartbeat: pricing and the cell stamp share it
-    feed = lmp.feed_now(now.timestamp())
-    streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
-    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
-    held = set(lmp.held_option_symbols(listed, now.timestamp(), feed))
-    # inside the window each contract's newest values (the stream's, or its /quotes answer's
-    # when that was received since this chain began); the close values are the chain as sent.
-    # The cell stamp says whether that stream is live.
-    quoted = rest_quotes(listed, fetched_ts)
-    priced, n_live = (
-        overlay_streamed_contract_fields(chain, streamed, held, quoted)
-        if closed is None
-        else (chain, 0)
-    )
-    live_syms = _overlaid_symbols(chain, priced)
-    pushed_ts = [
-        ts
-        for s in live_syms
-        if s in streamed and (ts := _leg_stream_ts_recv(streamed[s])) is not None
-    ]
-    # a contract the stream does not hold was given its /quotes answer: that answer's receive time
-    quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
-    snap = compute_terrain(tk, priced, spot, now=valued_at, sessions=sessions())
-    # the values read from the stored chain captures (forces, the prior day's per-strike rows)
-    # change only with a new capture or a new chain day: computed then, once, for all readers
-    captures_key = (
-        (capture_store.newest_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
-        if kept is None
-        else kept.captures_key
-    )
-    if previous is not None and previous.captures_key == captures_key:
-        forces, prior = previous.forces, previous.prior_day
-    else:
-        stored = captures if captures is not None else capture_store.captures(get_db().db_path, tk)
-        # This publication priced a stored capture, so its charm map is that newer capture.
-        # A live chain is not that capture: the same function then runs once on the banked one.
-        held_charm = snap.charm_by_strike if captures and captures[0]["spot"] is not None else None
-        forces = _forces_from_captures(tk, stored, held_charm)
-        prior = _prior_day(tk, stored, fetched_ts)
+    p = _price_chain_values(chain, listed, fetched_ts, closed is None, now)
+    snap = compute_terrain(tk, p.priced, spot, now=valued_at, sessions=sessions())
+    captures_key, forces, prior = _forces_and_prior(tk, previous, kept, captures, snap, fetched_ts)
     surface = None
     if spot is not None and snap.books:
-        projected = project_gamma_surface(priced, snap.books)
-        projected.update(
-            spot=float(spot),
-            spot_source=spot_source,
-            spot_as_of_ts_utc=spot_ts,
-            stream_overlay_contracts=n_live,
-            stream_overlay_symbols=live_syms,
-            stream_overlay_computed_ts_utc=now.timestamp(),
-        )
-        surface = _stamp_gamma_surface_cell_stream_state(projected, streamed, feed_live, held)
-        surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
-        # a later beat that differs from this one restamps it (restamp_open_surfaces)
-        _last_feed_stamp[tk] = _feed_stamp_key(feed, _surface_symbols(surface), now.timestamp())
+        surface = _published_surface(tk, p, snap, (float(spot), spot_source, spot_ts), now)
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
-        levels_ts_utc=max([fetched_ts, *pushed_ts, *quoted_ts]),
+        levels_ts_utc=max([fetched_ts, *p.received]),
         chain_basis=capture["basis"] if capture is not None else CAPTURE_BASIS,
         spot_source=spot_source,
         spot_as_of_ts_utc=spot_ts,
@@ -934,7 +988,7 @@ def _publish_levels(
         charm_rows=_charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         chain=chain,
-        priced_chain=priced,
+        priced_chain=p.priced,
         contracts=listed,
         forces=forces,
         prior_day=prior,
@@ -1561,49 +1615,86 @@ def _forces_from_captures(
                 )
                 return None if newer is None or older is None else newer - older
 
-            # CHARM below/above from the NEWER banked wide chain (full book).
-            # Dealer-signed net_charm = call_charm - put_charm per strike.
-            charm_below = charm_above = None
-            try:
-                per_ch = (
-                    compute_charm_by_strike(c1, spot1, now=clock1, sessions=held, product=product)
-                    if charm_by_strike is None
-                    else charm_by_strike
-                )
-                charm_below = side_total([v["net_charm"] for k, v in per_ch.items() if k < spot1])
-                charm_above = side_total([v["net_charm"] for k, v in per_ch.items() if k > spot1])
-            except Exception as e:
-                log.warning("forces charm for %s failed (%s)", tk, e, exc_info=True)
-            dex_below = side_total([d for k, d in dex1.items() if k < spot1])
-            dex_above = side_total([d for k, d in dex1.items() if k > spot1])
-            doi_below = _oi_change(lambda k: k < spot1)
-            doi_above = _oi_change(lambda k: k > spot1)
-            payload = {
-                "ticker": tk,
-                "available": True,
-                "doi_below": doi_below,
-                "doi_above": doi_above,
-                "doi_below_text": count_text(doi_below),
-                "doi_above_text": count_text(doi_above),
-                "dex_below_dollars": dex_below,
-                "dex_above_dollars": dex_above,
-                "dex_below_text": dollars_text(dex_below),
-                "dex_above_text": dollars_text(dex_above),
-                "charm_below": charm_below,
-                "charm_above": charm_above,
-                "charm_below_text": compact_text(charm_below),
-                "charm_above_text": compact_text(charm_above),
-                "older_et_date": d0,
-                "method": (
-                    "OI side totals of the two captures, each side by the newer capture's spot; "
-                    "DEX = net_dex_dollars side sums on the newer capture; "
-                    "CHARM = dealer-signed net_charm side sums on the newer capture"
+            payload = _forces_row(
+                tk,
+                d0,
+                (_oi_change(lambda k: k < spot1), _oi_change(lambda k: k > spot1)),
+                (
+                    side_total([d for k, d in dex1.items() if k < spot1]),
+                    side_total([d for k, d in dex1.items() if k > spot1]),
                 ),
-            }
+                _charm_sides(
+                    tk, charm_by_strike, c1, spot1, now=clock1, sessions=held, product=product
+                ),
+            )
     except Exception as e:
         log.warning("forces for %s failed (%s)", tk, e, exc_info=True)
         payload = forces_absent(tk)
     return payload
+
+
+def _charm_sides(
+    tk: str,
+    charm_by_strike: dict[float, CharmBucket] | None,
+    contracts: list[OptionContract],
+    spot: float,
+    *,
+    now: datetime,
+    sessions: Mapping[str, Session],
+    product: str,
+) -> tuple[float | None, float | None]:
+    """Return the dealer-signed net charm below and above the newer capture's `spot`.
+
+    From `charm_by_strike` when this publication priced that capture, else computed once on its
+    `contracts` at its valuation instant `now`. Net charm is call_charm - put_charm per strike,
+    over the full book. A failure leaves both unknown, logged.
+    """
+    try:
+        per_ch = (
+            compute_charm_by_strike(contracts, spot, now=now, sessions=sessions, product=product)
+            if charm_by_strike is None
+            else charm_by_strike
+        )
+        return (
+            side_total([v["net_charm"] for k, v in per_ch.items() if k < spot]),
+            side_total([v["net_charm"] for k, v in per_ch.items() if k > spot]),
+        )
+    except Exception as e:
+        log.warning("forces charm for %s failed (%s)", tk, e, exc_info=True)
+        return None, None
+
+
+def _forces_row(
+    tk: str,
+    older_et_date: str,
+    doi: tuple[float | None, float | None],
+    dex: tuple[float | None, float | None],
+    charm: tuple[float | None, float | None],
+) -> Forces:
+    """Return the forces row: the open interest change, DEX and charm, each below and above."""
+    (doi_below, doi_above), (dex_below, dex_above), (charm_below, charm_above) = doi, dex, charm
+    return {
+        "ticker": tk,
+        "available": True,
+        "doi_below": doi_below,
+        "doi_above": doi_above,
+        "doi_below_text": count_text(doi_below),
+        "doi_above_text": count_text(doi_above),
+        "dex_below_dollars": dex_below,
+        "dex_above_dollars": dex_above,
+        "dex_below_text": dollars_text(dex_below),
+        "dex_above_text": dollars_text(dex_above),
+        "charm_below": charm_below,
+        "charm_above": charm_above,
+        "charm_below_text": compact_text(charm_below),
+        "charm_above_text": compact_text(charm_above),
+        "older_et_date": older_et_date,
+        "method": (
+            "OI side totals of the two captures, each side by the newer capture's spot; "
+            "DEX = net_dex_dollars side sums on the newer capture; "
+            "CHARM = dealer-signed net_charm side sums on the newer capture"
+        ),
+    }
 
 
 def _legs(legs: tuple[float, float] | None) -> dict[str, float] | None:
