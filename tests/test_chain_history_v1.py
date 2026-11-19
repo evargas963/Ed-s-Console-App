@@ -30,6 +30,7 @@ from feed import chain_sweep as cs
 from feed import schwab_client as sc
 from json_blob_codec import decode_json_blob, decode_text_blob
 from option_contract import read_chain
+from state import level_store
 from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
@@ -565,4 +566,15 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     )
     caps = cch.last_capture_per_day(db, "ZZ", 2)
     assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
-    assert server._prior_capture(caps, et_ts("2026-09-28 16:20")) is None
+    after = et_ts("2026-09-28 16:20")
+    assert server._prior_capture(caps, after) is None
+    try:
+        server._publish_levels("ZZ", captures=caps, now=datetime.fromtimestamp(after, ET))
+        levels = level_store.published_levels("ZZ")
+        assert levels is not None
+        forces = levels.forces
+    finally:
+        with level_store._lock:
+            level_store._levels.pop("ZZ", None)
+    assert forces["available"] is False
+    assert forces["doi_below"] is None and "reason" not in forces
