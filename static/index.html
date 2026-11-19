@@ -1843,13 +1843,9 @@
         border: 1px solid var(--ed-accent-edge);
       }
       /* B: freshness-coupled dimming — stale/reference content recedes */
-      /* Operator finding (2026-09-11): opacity:.5 + saturate(.6) here blanket-dimmed every
-     cell's TEXT and COLOR, making the actual numbers hard to read whenever a surface was
-     stale/reference -- exactly when an operator most needs to read them clearly to judge
-     whether to trust what's on screen. The banner (buildBanner) is the truthful status
-     disclosure; this class's only job is a persistent, unmistakable-but-non-obscuring
-     visual mark. A dashed --ed-stale outline reads as "this container is flagged" without
-     touching a single cell's contrast. */
+      /* No dimming: a stale surface's numbers stay as readable as live ones. The banner
+     (buildBanner) says the status; this class only marks the container, with a dashed
+     --ed-stale outline that touches no cell's contrast. */
       .recede {
         outline: 2px dashed var(--ed-stale);
         outline-offset: -2px;
@@ -1875,11 +1871,9 @@
           inset 1px 0 0 var(--ed-edge-strong),
           inset -1px 0 0 var(--ed-edge-strong);
       }
-      /* Always-live heatmap mandate (2026-09-15, operator directive), FINAL: every cell keeps
-     showing its real, valid, already-computed value regardless of stream state -- these
-     marks are DISCLOSURE ONLY, layered beside the value (never dimming/obscuring it, same
-     lesson as .recede above), so a trader can tell live from a held snapshot at a glance
-     without the number itself ever being withheld, narrowed, or replaced with '-'. */
+      /* Every cell keeps its served value whatever the stream's state; these marks only
+     disclose it, beside the value (never dimming it, as .recede above), so live and a held
+     snapshot are told apart at a glance without the number being withheld. */
       .heat .hcell.state-partial {
         box-shadow: inset 0 0 0 1px var(--ed-warn);
       }
@@ -2087,11 +2081,8 @@
       .gbs-v.neg {
         color: var(--ed-neg-ink);
       }
-      /* Independent-review finding (2026-09-12): the per-strike volume field (already computed
-     and, for the actively-streamed contract, kept fresh by server.py's overlay) reached this
-     row's own data but was never rendered -- "the GEX bar renderer does not display the newly
-     updated per-strike volume field." Compact, muted -- a secondary number beside the primary
-     signed GEX$ value, not competing with it. */
+      /* the strike's served volume: a secondary number beside the signed GEX$ value, compact so
+     it does not compete with it */
       .gbs-vol {
         width: 52px;
         text-align: right;
@@ -2302,8 +2293,8 @@
         margin-bottom: 2px;
       }
 
-      /* REAL-DATA DENSITY REPAIR (2026-09-10): the approved workstation shows ~11 legible strike rows in
-     the hero. Rows keep this height in every scope; All available scrolls the complete population. */
+      /* about 11 legible strike rows in the hero; rows keep this height in every scope, and All
+     available scrolls the complete population */
       .heat {
         font-size: 13.5px;
         width: max-content;
@@ -2313,8 +2304,8 @@
       .heat td {
         height: 31px;
       }
-      /* MEASURED on the live 216x34 surface (2026-09-10): without a floor, 34 expiration columns compressed
-     into the panel width and overprinted. A column never renders narrower than a legible signed value;
+      /* without a floor, a surface's many expiration columns compress into the panel and
+     overprint. A column never renders narrower than a legible signed value;
      the grid grows past the panel and .heat-wrap scrolls horizontally (Wider / All available). */
       .heat .hexp,
       .heat .hcell {
@@ -2583,8 +2574,7 @@
       .of .notproven {
         display: inline-block;
       }
-      /* Options Flow tape rows (operator field-inventory audit, 2026-09-13) — native trade
-     prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
+      /* Options Flow tape rows: Schwab's trade prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
       .of td {
         padding: 5px 8px;
         text-align: right;

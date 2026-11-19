@@ -540,7 +540,7 @@ class ChainSweep:
         rotation takes minutes).
 
         Before each ticker's chain, the chain of every ticker a page has selected (`shown`, read
-        then: operator 2026-11-11, the ticker on the screen first) with all its quotes, so it is
+        then: the ticker on the screen first, AGENTS.md rule 7) with all its quotes, so it is
         delivered before the next ticker is asked for; never the same ticker twice in a row. A
         chain is asked for only while it is due (chain_due), so one delivered after the close is
         not asked again. One removed from the watchlist since the rotation began is not asked

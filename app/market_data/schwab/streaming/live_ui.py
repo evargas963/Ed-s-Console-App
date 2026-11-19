@@ -248,8 +248,8 @@ class LiveUiServer:
         On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
         thread holds, or works a while, never holds the beat or another page, and the frame's
         JSON (a chain's runs to hundreds of kilobytes) is written there too, never on the loop
-        that takes Schwab's stream (measured 2026-11-19 at the open: encoding on the loop took
-        about a fifth of it). A producer that raises is this panel's failure alone, said in words
+        that takes Schwab's stream (encoding there took about a fifth of the loop at the open). A
+        producer that raises is this panel's failure alone, said in words
         (`failed`), its traceback logged, as a route's 500 was; the page's other panels and its
         prices keep coming.
         """
@@ -381,8 +381,8 @@ def changed(state: State, ticker: str, *kinds: str) -> None:
     While the program serves the pages (`state.prices`, the web server's app state); callable
     from any thread. On the loop's own thread (the bus intake, for every quote and book Schwab
     streams) they are marked at once: a hand-off to its own loop would write its wake-up socket
-    for each one, a system call per message the intake cannot spare (measured 2026-11-19 at the
-    open: the option intake a minute behind Schwab). From another thread (the pricing thread's
+    for each one, a system call per message the intake cannot spare (at the open it left the
+    option intake a minute behind Schwab). From another thread (the pricing thread's
     producer) the loop is handed one call for them all.
     """
     prices = state.prices

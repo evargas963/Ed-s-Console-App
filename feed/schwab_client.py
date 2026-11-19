@@ -261,9 +261,9 @@ class OneRefreshSession(OAuth2Client):
         """Send the request; Schwab's answer is the access token's truth (RFC 6750 §3.1).
 
         A 401 whose challenge names `invalid_token` means Schwab no longer accepts the token this
-        request carried, whatever its `expires_at` says (measured 2026-11-05: a refresh read 37
-        minutes late was stamped valid for 30 more, and 1,030 requests were refused before it was
-        due): that token is taken as expired, so it is refreshed once, one request at a time
+        request carried, whatever its `expires_at` says (a refresh read late is stamped valid
+        from when it was read, so Schwab can refuse a token its stamp calls valid): that token
+        is taken as expired, so it is refreshed once, one request at a time
         (ensure_active_token), and the request is sent once more with the new one.
         """
         sent = self.token
