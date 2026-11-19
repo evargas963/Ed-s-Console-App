@@ -1146,6 +1146,15 @@
     el.textContent = w ? w.line : "-";
     el.className = w ? "v " + w.cls : "v";
   }
+  // The daemon's Schwab sign-in, as each heartbeat carries it: the line, its full reason and its
+  // class are the daemon's (capture.sign_in_line). None served: '-'.
+  function paintSignIn(s) {
+    var el = document.getElementById("hSignIn");
+    if (!el) return;
+    el.textContent = s ? s.line : "-";
+    el.title = s ? s.why : "the daemon's Schwab sign-in, from its heartbeat";
+    el.className = s ? "v " + s.cls : "v";
+  }
   function openPriceSocket() {
     var ws;
     try {
@@ -1168,6 +1177,7 @@
       }
       if (msg && msg.type === "feed") {
         paintRecord(msg.feed && msg.feed.writer);
+        paintSignIn(msg.feed && msg.feed.sign_in);
         if (msg.feed) paintSession(msg.feed.session, "");
         else paintSession(null, "session unknown: the daemon sent no status");
         ingestWatchlist(msg.feed);
