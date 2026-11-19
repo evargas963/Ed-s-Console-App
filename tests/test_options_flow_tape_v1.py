@@ -27,6 +27,7 @@ from app.options.order_flow import history, state
 from app.options.order_flow.history import recent_prints, tape_row
 from app.options.order_flow.state import OrderFlowState, read_book
 from app.options.order_flow.streaming import _ingest_pushed
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain, read_contract
 from push import contract as push_contract
 from push import tape as push_tape
@@ -239,14 +240,14 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
         server._publish_levels(
             "SPY",
             captures=[
-                {
-                    "contracts": read_chain(close["chain"]),
-                    "ts_utc": close["ts_utc"],
-                    "spot": close["spot"],
-                    "spot_ts": None,
-                    "et_date": at_close.date().isoformat(),
-                    "basis": server.CAPTURE_BASIS,
-                }
+                StoredCapture(
+                    contracts=read_chain(close["chain"]),
+                    ts_utc=close["ts_utc"],
+                    spot=close["spot"],
+                    spot_ts=None,
+                    et_date=at_close.date().isoformat(),
+                    basis=server.CAPTURE_BASIS,
+                )
             ],
             now=at_close,
         )

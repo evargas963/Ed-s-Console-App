@@ -21,6 +21,7 @@ import pytest
 import server
 import time_et
 from app.market_data.schwab.streaming.capture import shown_first
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import chain as push_chain
 from push import surface as push_surface
@@ -51,14 +52,14 @@ def published():
     server._publish_levels(
         "NVDA",
         captures=[
-            {
-                "contracts": read_chain(NVDA["contracts"]),
-                "ts_utc": NVDA["ts_utc"],
-                "spot": NVDA["spot"],
-                "et_date": at.date().isoformat(),
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
+            StoredCapture(
+                contracts=read_chain(NVDA["contracts"]),
+                ts_utc=NVDA["ts_utc"],
+                spot=NVDA["spot"],
+                et_date=at.date().isoformat(),
+                basis=server.CAPTURE_BASIS,
+                spot_ts=None,
+            )
         ],
         now=at,
     )
@@ -126,14 +127,14 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
     server._publish_levels(
         tk,
         captures=[
-            {
-                "contracts": read_chain(NFLX.chain),
-                "ts_utc": NFLX.now.timestamp(),
-                "spot": NFLX.spot,
-                "et_date": NFLX.now.date().isoformat(),
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
+            StoredCapture(
+                contracts=read_chain(NFLX.chain),
+                ts_utc=NFLX.now.timestamp(),
+                spot=NFLX.spot,
+                et_date=NFLX.now.date().isoformat(),
+                basis=server.CAPTURE_BASIS,
+                spot_ts=None,
+            )
         ],
         now=NFLX.now,
     )

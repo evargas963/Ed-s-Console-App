@@ -15,6 +15,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from state import bar_store, price_level_store
 from stream_spine import HealthRegistry, MessageBus
@@ -177,14 +178,14 @@ def publish_capture(
     server._publish_levels(
         tk,
         captures=[
-            {
-                "contracts": read_chain(chain),
-                "ts_utc": ts_utc,
-                "spot": spot,
-                "et_date": et_date,
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
+            StoredCapture(
+                contracts=read_chain(chain),
+                ts_utc=ts_utc,
+                spot=spot,
+                et_date=et_date,
+                basis=server.CAPTURE_BASIS,
+                spot_ts=None,
+            )
         ],
         now=now,
     )

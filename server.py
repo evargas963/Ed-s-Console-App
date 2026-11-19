@@ -62,7 +62,7 @@ from calc.terrain_engine import (
     compute_terrain,
 )
 from calc.terrain_read import crossed
-from calibration.complete_chain_capture import CAPTURE_BASIS
+from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from db import LevelCrossEvent, get_db
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
@@ -754,13 +754,13 @@ def _closed_since(now: datetime, product: str) -> datetime | None:
     return closed
 
 
-def _close_capture(tk: str, closed: datetime) -> list[dict[str, Any]] | None:
+def _close_capture(tk: str, closed: datetime) -> list[StoredCapture] | None:
     """Return the ticker's stored close values, or None when none is stored.
 
     Its two newest market days' captures, when the newest was taken at or after `closed`.
     """
     stored = capture_store.captures(get_db().db_path, tk)
-    return stored if stored and stored[0]["ts_utc"] >= closed.timestamp() else None
+    return stored if stored and stored[0].ts_utc >= closed.timestamp() else None
 
 
 def _priced_at(
@@ -786,7 +786,7 @@ def _priced_at(
 
 def _publication_spot(
     previous: PublishedLevels | None,
-    capture: dict[str, Any] | None,
+    capture: StoredCapture | None,
     valued_at: datetime,
     priced_at: tuple[float | None, str, float | None],
     now: datetime,
@@ -863,7 +863,7 @@ def _forces_and_prior(
     tk: str,
     previous: PublishedLevels | None,
     kept: PublishedLevels | None,
-    captures: list[dict[str, Any]] | None,
+    captures: list[StoredCapture] | None,
     snap: TerrainSnapshot,
     fetched_ts: float,
 ) -> tuple[tuple[float | None, str], Forces, TerrainSnapshot | None]:
@@ -892,7 +892,7 @@ def _forces_and_prior(
         snap.books.values(),
         snap.charm_by_strike,
         prior.books.values(),
-        prior_capture["et_date"],
+        prior_capture.et_date,
     )
     return captures_key, now_forces, prior
 
@@ -928,7 +928,7 @@ def _publish_levels(
     fetched_ts: float | None = None,
     *,
     chain_spot: tuple[float | None, float | None] = (None, None),
-    captures: list[dict[str, Any]] | None = None,
+    captures: list[StoredCapture] | None = None,
     now: datetime,
 ) -> TerrainSnapshot | None:
     """Produce a ticker's levels, per-strike rows and gamma-surface grid: THE producer of them.
@@ -958,8 +958,8 @@ def _publish_levels(
         captures = captures or _close_capture(tk, closed)
     capture = captures[0] if captures else None
     if capture is not None:
-        chain, fetched_ts = capture["contracts"], capture["ts_utc"]
-        chain_spot = capture["spot"], capture["spot_ts"]
+        chain, fetched_ts = capture.contracts, capture.ts_utc
+        chain_spot = capture.spot, capture.spot_ts
     # the levels a tick reprices (no chain passed in); None when a chain is priced
     kept = None
     if chain is None or fetched_ts is None:
@@ -982,7 +982,7 @@ def _publish_levels(
         snap=snap,
         computed_ts_utc=fetched_ts,
         levels_ts_utc=max([fetched_ts, *p.received]),
-        chain_basis=capture["basis"] if capture is not None else CAPTURE_BASIS,
+        chain_basis=capture.basis if capture is not None else CAPTURE_BASIS,
         spot_source=spot_source,
         spot_as_of_ts_utc=spot_ts,
         priced_at=priced_at,
@@ -1227,18 +1227,7 @@ def _on_chain(
         level_store.chain_failed(tk, f"chain fetch failed ({reason})")
         return
     if capture:
-        capture_store.keep(
-            tk,
-            {
-                "et_date": et_date_str_from_ts_utc(ts),
-                "ts_utc": ts,
-                "spot": spot[0],
-                # a trade time without its price is no spot
-                "spot_ts": None if spot[0] is None else spot[1],
-                "basis": CAPTURE_BASIS,
-                "contracts": contracts,
-            },
-        )
+        capture_store.keep(tk, StoredCapture.taken(ts, spot, contracts))
     _wait_to_price(tk, DELIVERED, contracts, ts, spot)
 
 
@@ -1542,30 +1531,31 @@ def stop_terrain_loop() -> None:
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
-def _prior_capture(captures: list[dict[str, Any]], chain_ts: float) -> dict[str, Any] | None:
+def _prior_capture(captures: list[StoredCapture], chain_ts: float) -> StoredCapture | None:
     """Return the previous market day's close capture before the day of the chain's.
 
     Of the ticker's two newest market days' captures (newest first): on a closed market today's
     rows ARE the newest capture, so the day before is the chain's day's, not the wall clock's
-    (which picks that same capture and compares it with itself). None with none captured, or
-    none stored with its spot.
+    (which picks that same capture and compares it with itself). None with none captured.
     """
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
-    prior = next((c for c in captures if c["et_date"] < chain_day), None)
-    return prior if prior is not None and prior["spot"] is not None else None
+    return next((c for c in captures if c.et_date < chain_day), None)
 
 
-def _prior_day(tk: str, prior: dict[str, Any]) -> TerrainSnapshot:
+def _prior_day(tk: str, prior: StoredCapture) -> TerrainSnapshot | None:
     """Return the levels of the prior day's close capture (_prior_capture).
 
     The one producer (compute_terrain) on that capture, at its own spot and time: its per-strike
-    rows, its walls and flip, and its books, which the forces read.
+    rows, its walls and flip, and its books, which the forces read. None for a capture stored
+    without its spot: it has no levels.
     """
+    if prior.spot is None:
+        return None
     return compute_terrain(
         tk,
-        prior["contracts"],
-        float(prior["spot"]),
-        now=datetime.fromtimestamp(prior["ts_utc"], ET),
+        prior.contracts,
+        prior.spot,
+        now=datetime.fromtimestamp(prior.ts_utc, ET),
         sessions=sessions(),
     )
 

@@ -30,7 +30,7 @@ from calc.confluence_composite import (
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
 from calc.math_levels import compute_charm_by_strike
 from calc.terrain_engine import TerrainSnapshot
-from calibration.complete_chain_capture import CAPTURE_BASIS
+from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from numeric_contract import price_text
 from option_contract import read_chain
 from push import chain as push_chain
@@ -570,10 +570,10 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
         chain, spot=held.spot, now=held.now, sessions=sessions(), product=INDEX_OPTIONS
     )
     matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, 0.0)
-    rows = window_rows(matrix, _around(sorted(matrix["ranked"]), price))
-    assert price > max(matrix["strikes"])
-    assert under_strike(price, matrix["strikes"]) is None
-    shown = at_price(rows, matrix["strikes"], price)
+    rows = window_rows(matrix, _around(sorted(matrix.ranked), price))
+    assert price > max(matrix.strikes)
+    assert under_strike(price, matrix.strikes) is None
+    shown = at_price(rows, matrix.strikes, price)
     assert (shown["spot"], shown["spot_text"]) == (price, price_text(price))
     assert shown["rows"] and not any(r["spot_line"] for r in shown["rows"])
     assert all("spot_line" not in r for r in rows), "the rows given are not changed"
@@ -776,8 +776,8 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     )
     close = build_matrix(at_close, charm_close, iv, held.spot, 0.0)
     late = build_matrix(after, charm_late, iv, held.spot, 0.0)
-    close_rows = window_rows(close, _around(sorted(close["ranked"]), held.spot))
-    late_rows = window_rows(late, _around(sorted(late["ranked"]), held.spot))
+    close_rows = window_rows(close, _around(sorted(close.ranked), held.spot))
+    late_rows = window_rows(late, _around(sorted(late.ranked), held.spot))
     assert not _window_has(close_rows, "vanna_text")
     assert not _window_has(close_rows, "charm_text")
     assert not _window_has(close_rows, "score")
@@ -1403,26 +1403,26 @@ def test_an_after_hours_print_keeps_the_close_book():
 _BANKED_AFTER_CLOSE = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
 
 
-def _two_day_captures(chain: list) -> list[dict]:
+def _two_day_captures(chain: list) -> list[StoredCapture]:
     """SPY's captured 0DTE `chain`, as the forces read it, banked on two days at its price.
 
     Once after the 2026-10-07 index close, and once on 2026-10-06 at noon.
     """
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     return [
-        {
-            "et_date": day,
-            "spot": SPY_0DTE.spot,
-            "spot_ts": at.timestamp(),
-            "basis": CAPTURE_BASIS,
-            "contracts": chain,
-            "ts_utc": at.timestamp(),
-        }
+        StoredCapture(
+            et_date=day,
+            spot=SPY_0DTE.spot,
+            spot_ts=at.timestamp(),
+            basis=CAPTURE_BASIS,
+            contracts=chain,
+            ts_utc=at.timestamp(),
+        )
         for day, at in (("2026-10-07", _BANKED_AFTER_CLOSE), ("2026-10-06", prior))
     ]
 
 
-def _published(caps: list[dict], now: datetime) -> level_store.PublishedLevels:
+def _published(caps: list[StoredCapture], now: datetime) -> level_store.PublishedLevels:
     """The levels published from stored captures `caps` (newest first) at `now`."""
     tk = "SPYFORCES"
     try:
@@ -1455,8 +1455,8 @@ def test_the_forces_read_the_charm_map_of_the_chain_just_priced():
     """
     held = SPY_0DTE
     caps = _two_day_captures(read_chain(held.chain))
-    caps[0].update(  # the newer capture taken at 12:32, in the session
-        ts_utc=held.now.timestamp(), spot_ts=held.now.timestamp()
+    caps[0] = replace(  # the newer capture taken at 12:32, in the session
+        caps[0], ts_utc=held.now.timestamp(), spot_ts=held.now.timestamp()
     )
     levels = _published(caps, held.now)
     snap, forces = levels.snap, levels.forces

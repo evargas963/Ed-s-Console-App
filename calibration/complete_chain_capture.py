@@ -1,12 +1,12 @@
 """The chain history (DATA_FLOW decisions 1 and 7): the Recorder's capture table.
 
 Each capture the chain sweep (feed/chain_sweep.py) takes -- the first chain of each ticker begun
-in each capture window, every 30 minutes from its option market's open and at its close -- is
-written by the Recorder (stream_spine.CaptureWriter.store_capture, store_capture_message) in one
-transaction, one row per expiry, compressed, with Schwab's own underlying price, before the
-console hears of the chain (operator 2026-11-01: "Yes, store first"). Schwab
-has no past option chains, so a chain not saved is gone. Research reads this table; the console
-loads the newest capture per ticker at startup.
+at or after its option market's close, once a day (chain_sweep.capture_slot) -- is written by the
+Recorder (stream_spine.CaptureWriter.store_capture, store_capture_message) in one transaction,
+one row per expiry, compressed, with Schwab's own underlying price, before the console hears of
+the chain (operator 2026-11-01: "Yes, store first"). Schwab has no past option chains, so a
+chain not saved is gone. The console reads each ticker's two newest days' captures
+(last_capture_per_day) as StoredCapture records.
 """
 
 from __future__ import annotations
@@ -14,13 +14,14 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob, encode_text_blob
-from option_contract import read_chain
+from option_contract import OptionContract, read_chain
 from time_et import ET
 
 #: why the daemon's captures are complete: every listed expiry, every strike. The daemon writes
@@ -217,22 +218,53 @@ def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
         conn.close()
 
 
+@dataclass(frozen=True)
+class StoredCapture:
+    """One stored capture: a ticker's whole chain as the sweep took it, every expiry.
+
+    `spot` is the chain's one spot with its trade time `spot_ts`: Schwab's LAST_PRICE when the
+    chain was complete. A capture stored without one has no spot (None, None): the
+    underlyingPrice of its /chains answers is recorded beside it and read by nothing.
+    """
+
+    et_date: str
+    ts_utc: float
+    spot: float | None
+    spot_ts: float | None
+    basis: str
+    contracts: list[OptionContract]
+
+    @classmethod
+    def taken(
+        cls,
+        ts_utc: float,
+        spot: tuple[float | None, float | None],
+        contracts: list[OptionContract],
+        basis: str = CAPTURE_BASIS,
+    ) -> StoredCapture:
+        """The capture of a chain begun at `ts_utc`, on its ET date; `spot` (price, trade time)."""
+        return cls(
+            et_date=datetime.fromtimestamp(ts_utc, ET).date().isoformat(),
+            ts_utc=ts_utc,
+            spot=spot[0],
+            spot_ts=None if spot[0] is None else spot[1],  # a trade time without its price
+            basis=basis,
+            contracts=contracts,
+        )
+
+
 def last_capture_per_day(
     db_path: Path | str,
     ticker: str,
     days: int,
     *,
     before_et_date: str | None = None,
-) -> list[dict[str, Any]]:
+) -> list[StoredCapture]:
     """Return the last capture of each of the newest `days` market days (newest first).
 
-    That is the close, each as {et_date, ts_utc, spot, spot_ts, basis, contracts} with every
-    expiry of that capture, its contracts read once (option_contract.read_chain). `spot` is the
-    chain's one spot with its trade time `spot_ts`: Schwab's LAST_PRICE when the chain was
-    complete. A capture stored without one has no spot (None, None): the underlyingPrice of its
-    /chains answers is recorded beside it and read by nothing.
-    `before_et_date` keeps only days before it (the previous market day for a day-over-day
-    view).
+    That is the close, with every expiry of that capture, its contracts read once
+    (option_contract.read_chain). `before_et_date` keeps only days before it (the previous
+    market day for a day-over-day view).
     """
     tk = ticker_storage_key(ticker)
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
@@ -255,25 +287,21 @@ def last_capture_per_day(
             picked.append((day, ts))
             if len(picked) == days:
                 break
-        out: list[dict[str, Any]] = []
-        for day, ts in picked:
+        out: list[StoredCapture] = []
+        for _day, ts in picked:
             rows = conn.execute(
                 "SELECT chain_spot, chain_spot_ts, completeness_basis, chain_json "
                 "FROM complete_chain_captures "
                 "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
                 (tk, CAPTURE_BASIS, ts),
             ).fetchall()
-            spot, spot_ts = rows[0][0], rows[0][1]
             out.append(
-                {
-                    "et_date": day,
-                    "ts_utc": ts,
-                    "spot": spot,
-                    # a trade time without its price is no spot
-                    "spot_ts": None if spot is None else spot_ts,
-                    "basis": rows[0][2],
-                    "contracts": read_chain(c for r in rows for c in decode_json_blob(r[3])),
-                }
+                StoredCapture.taken(
+                    ts,
+                    (rows[0][0], rows[0][1]),
+                    read_chain(c for r in rows for c in decode_json_blob(r[3])),
+                    rows[0][2],
+                )
             )
         return out
     finally:

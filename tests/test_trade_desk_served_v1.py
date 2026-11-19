@@ -33,7 +33,7 @@ from calc.terrain_engine import (
     wall_lean,
 )
 from calc.terrain_read import level_side
-from calibration.complete_chain_capture import CAPTURE_BASIS
+from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from db import LevelCrossEvent
 from option_contract import read_chain
 from push import desk as push_desk
@@ -329,14 +329,14 @@ def _priced(tk, chain, spot, ts_utc):
     server._publish_levels(
         tk,
         captures=[
-            {
-                "et_date": datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
-                "ts_utc": ts_utc,
-                "spot": spot,
-                "spot_ts": None,
-                "basis": CAPTURE_BASIS,
-                "contracts": read_chain(chain),
-            }
+            StoredCapture(
+                et_date=datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
+                ts_utc=ts_utc,
+                spot=spot,
+                spot_ts=None,
+                basis=CAPTURE_BASIS,
+                contracts=read_chain(chain),
+            )
         ],
         now=datetime.fromtimestamp(ts_utc, time_et.ET),
     )
