@@ -25,7 +25,7 @@ from numeric_contract import (
     price_text,
     strike_text,
 )
-from option_contract import OptionContract, StreamedTop
+from option_contract import OptionContract, StreamedGreeks, StreamedTop
 from time_et import ct_clock, ct_label, ct_ticks
 
 log = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ class BookHeatmap(TypedDict):
     method: str
 
 
-def quoted(trade: float, top: StreamedTop, streamed: dict[str, Any] | None) -> Quoted:
+def quoted(trade: float, top: StreamedTop, streamed: StreamedGreeks) -> Quoted:
     """Return what the live state held as a print at `trade` was received, kept with the print.
 
     Its top of book (`top`), its streamed volume, volatility and delta (`streamed`), and
@@ -164,9 +164,9 @@ def quoted(trade: float, top: StreamedTop, streamed: dict[str, Any] | None) -> Q
         "bid_size": top.bid_size,
         "ask": ask,
         "ask_size": top.ask_size,
-        "volume": _held(streamed, "total_volume"),
-        "iv": _held(streamed, "volatility"),
-        "delta": _held(streamed, "delta"),
+        "volume": streamed.total_volume.value,
+        "iv": streamed.volatility.value,
+        "delta": streamed.delta.value,
         "landed": landed,
     }
 
@@ -246,11 +246,6 @@ def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
         "oi_text": count_text(contract.open_interest),
         "iv_text": iv_text(printed["iv"]),
     }
-
-
-def _held(record: dict[str, Any] | None, name: str) -> Any:
-    """Return `record`'s value of `name`; None when the state holds no record or no such value."""
-    return None if record is None else record.get(name)
 
 
 #: The default price window drops this share of displayed size at each end: one thin resting order

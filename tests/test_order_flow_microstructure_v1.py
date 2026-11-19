@@ -582,8 +582,8 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
                 symbol=opt_sym, content=opt["item"], src="schwab_options_l1", ts_recv=opt["ts_recv"]
             ),
         )
-        assert ofls.get_stream_greeks(eq_sym)["total_volume_ts_recv"] == eq["ts_recv"]
-        assert ofls.get_stream_greeks(opt_sym)["gamma_ts_recv"] == opt["ts_recv"]
+        assert ofls.get_stream_greeks(eq_sym).total_volume.ts_recv == eq["ts_recv"]
+        assert ofls.get_stream_greeks(opt_sym).gamma.ts_recv == opt["ts_recv"]
     finally:
         ofls.clear_symbol(eq_sym)
         ofls.clear_symbol(opt_sym)

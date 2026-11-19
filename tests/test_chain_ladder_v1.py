@@ -6,11 +6,12 @@ money intrinsic value, positive in the money). Real CRWD chain; real SPY 2026-11
 """
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from calc.math_exposure_core import overlay_streamed_contract_fields
 from calc.terrain_engine import chain_ladder as _chain_ladder
-from option_contract import chain_row, read_chain, streamed_top
+from option_contract import NO_GREEKS, NO_TOP, Streamed, chain_row, read_chain, streamed_top
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 FX = json.loads((FIXTURES / "real_crwd_complete_chain_quarter.json").read_text(encoding="utf-8"))
@@ -98,7 +99,7 @@ def test_a_streamed_contract_takes_the_streams_money_intrinsic_value():
     assert contract.money_intrinsic == 462.63
     sym = contract.symbol
     (streamed,), held = overlay_streamed_contract_fields(
-        [contract], {sym: streamed_top(content)}, {sym}, {}
+        [contract], {sym: Streamed(replace(NO_TOP, **streamed_top(content)), NO_GREEKS)}, {sym}, {}
     )
     assert held == 1 and streamed.money_intrinsic == -1.645
     rows, _ = _chain_ladder([streamed], SPY["spot"], [chain_row(streamed)])
