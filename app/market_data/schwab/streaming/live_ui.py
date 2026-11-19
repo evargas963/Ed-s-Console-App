@@ -113,6 +113,11 @@ class PageSocket(WebSocketsSansIOProtocol):
         self.transport.abort()
 
 
+def _json(frame: dict[str, Any]) -> str:
+    """Return a frame as the page reads it: compact JSON, a value JSON cannot hold as its text."""
+    return json.dumps(frame, separators=(",", ":"), default=str)
+
+
 def kind_of(name: str) -> str:
     """Return the kind of panel `name`: its kind, or "<kind>:<reader>" for one of several readers.
 
@@ -216,7 +221,7 @@ class LiveUiServer:
     # -- browser side -----------------------------------------------------------------
 
     async def _send(self, c: _Client, payload: dict[str, Any]) -> None:
-        await c.ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
+        await c.ws.send_text(_json(payload))
         if "rows" in payload:  # a symbols frame carries none
             self.stats["rows_sent"] += len(payload["rows"])
 
@@ -235,22 +240,26 @@ class LiveUiServer:
             ticker, shown = c.view
             for name in sorted(kinds & shown.keys()):
                 asked = Asked(ticker, self.clock(), shown[name])
-                body = await self._produce(name, asked)
-                await self._send(c, {"type": name, "ticker": asked.ticker, **body})
+                await c.ws.send_text(await asyncio.to_thread(self._frame, name, asked))
 
-    async def _produce(self, name: str, asked: Asked) -> Mapping[str, Any]:
-        """Return panel `name`'s body: its kind's producer, given what the page asked.
+    def _frame(self, name: str, asked: Asked) -> str:
+        """Return panel `name`'s frame as the page reads it: its producer's body, as JSON text.
 
         On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
-        thread holds, or works a while, never holds the beat or another page. A producer that
-        raises is this panel's failure alone, said in words (`failed`), its traceback logged, as
-        a route's 500 was; the page's other panels and its prices keep coming.
+        thread holds, or works a while, never holds the beat or another page, and the frame's
+        JSON (a chain's runs to hundreds of kilobytes) is written there too, never on the loop
+        that takes Schwab's stream (measured 2026-11-19 at the open: encoding on the loop took
+        about a fifth of it). A producer that raises is this panel's failure alone, said in words
+        (`failed`), its traceback logged, as a route's 500 was; the page's other panels and its
+        prices keep coming.
         """
         try:
-            return await asyncio.to_thread(self.panels[kind_of(name)], asked)
+            body = self.panels[kind_of(name)](asked)
+            return _json({"type": name, "ticker": asked.ticker, **body})
         except Exception as e:
             log.exception("live ui: panel %s of %s not produced", name, asked.ticker)
-            return {"failed": f"the program could not produce this panel: {type(e).__name__}: {e}"}
+            failed = f"the program could not produce this panel: {type(e).__name__}: {e}"
+            return _json({"type": name, "ticker": asked.ticker, "failed": failed})
 
     async def _read(self, c: _Client) -> None:
         while (msg := await c.ws.receive())["type"] == "websocket.receive":
