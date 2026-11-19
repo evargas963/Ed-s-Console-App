@@ -1601,12 +1601,66 @@ class CaptureWriter:
         return incoming, stopping
 
     def _store_round(self, conn: sqlite3.Connection) -> None:
-        """Store the round's messages into the open batch, each counted stored as it is."""
-        for item in self._round:
-            out = self._store(conn, item)
-            with self._lock:
-                self._batch.append((item, out))
-                self._stored += 1
+        """Store the round's messages into the open batch, counted stored together.
+
+        A refusal on the way leaves none of them counted: the open transaction is rolled back
+        and the whole round is held (_refused).
+        """
+        stored = self._stored_all(conn, self._round)
+        with self._lock:
+            self._batch += stored
+            self._stored = len(self._round)
+
+    def _stored_all(
+        self, conn: sqlite3.Connection, items: list[Item]
+    ) -> list[tuple[Item, Outcome]]:
+        """Store `items`, each with its outcome; each table's rows in one INSERT of many rows.
+
+        SQLite gives up Python's interpreter lock for each statement, and the writer then waits
+        to take it back from the program's busy threads, up to the switch interval
+        (sys.getswitchinterval, 5 ms) each time: one statement a table, not one a row. A table's
+        rows keep their order. A capture, a kept failure and a message with no row are stored
+        one by one (_store).
+        """
+        out: list[tuple[Item, Outcome]] = []
+        rows: dict[str, list[tuple[str, Payload]]] = {}
+        for item in items:
+            if isinstance(item, tuple):
+                kind, msg = item[0].split(".", 1)[0], item[1]
+                if kind in _INSERTS and not (
+                    isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None
+                ):
+                    rows.setdefault(kind, []).append(item)
+                    continue
+            out.append((item, self._store(conn, item)))
+        for kind, taken in rows.items():
+            step = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) // len(_TABLES[kind][1])
+            for i in range(0, len(taken), step):
+                out += self._many(conn, kind, taken[i : i + step])
+        return out
+
+    def _many(
+        self, conn: sqlite3.Connection, kind: str, items: list[tuple[str, Payload]]
+    ) -> list[tuple[Item, Outcome]]:
+        """Write `kind`'s messages in one INSERT, each with its RowWritten.
+
+        SQLite undoes a refused statement whole, so when one of them cannot be a row each is
+        written by itself (insert), its own row or its own kept failure. A refusal of every
+        write is raised, as insert raises it.
+        """
+        sql, row = _INSERTS[kind]
+        head, _, one = sql.partition("VALUES")
+        try:
+            values = [row(msg) for _topic, msg in items]
+            conn.execute(
+                head + "VALUES" + ",".join([one] * len(values)), [v for r in values for v in r]
+            )
+        except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+            if not isinstance(e, ROW_FAILURES) and _refuses_every_write(e):
+                raise
+            return [(item, self.insert(*item, conn=conn)) for item in items]
+        table = _TABLES[kind][0]
+        return [(item, RowWritten(table, r)) for item, r in zip(items, values, strict=True)]
 
     def _write(self, q: queue.SimpleQueue[Item | None]) -> None:
         """Run the writer thread's loop.
@@ -1871,8 +1925,7 @@ class CaptureWriter:
         records = spill.read(SPILL_CHUNK, self.clock())
         if records:
             self._batch_spilled = True
-            for item, _end in records:
-                self._batch.append((item, self._store(conn, item)))
+            self._batch += self._stored_all(conn, [item for item, _end in records])
             end = records[-1][1]
             conn.execute(
                 "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
