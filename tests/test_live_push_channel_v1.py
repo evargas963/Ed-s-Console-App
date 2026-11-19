@@ -454,6 +454,12 @@ _OPTION_BURST = [
 ]
 
 
+def _has_bid(symbol: str, bid: float) -> bool:
+    """Whether the console's top of book for `symbol` holds `bid`."""
+    top = ofls.option_top(symbol)
+    return top is not None and top.get("bid") == bid
+
+
 @pytest.mark.usefixtures("feed")
 def test_the_console_takes_its_records_many_to_a_turn_of_its_loop():
     """Each turn of the loop waits to take back the interpreter lock from the program's threads.
@@ -485,7 +491,7 @@ def test_the_console_takes_its_records_many_to_a_turn_of_its_loop():
         counting = asyncio.create_task(count())
         assert ofs.start_order_flow_stream()
         try:
-            while any((ofls.option_top(s) or {}).get("bid") != b for s, b in newest.items()):
+            while not all(_has_bid(s, b) for s, b in newest.items()):
                 await asyncio.sleep(0)
         finally:
             counting.cancel()
