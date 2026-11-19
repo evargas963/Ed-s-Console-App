@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-from app.options.order_flow.state import OrderFlowState
+from app.options.order_flow.state import streamed_record
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
 from calc.terrain_engine import compute_terrain
 from calc.terrain_read import FLIP_CURVE_DISAGREES
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import Received, read_chain
+from stream_spine import MessageBus
+from tests.feed_live_helper import on_the_bus
 from tests.real_chains import CRWD, SPY_0DTE, SPY_FULL
 from time_et import sessions
 
@@ -42,10 +44,9 @@ def test_each_contract_carries_the_chains_rate_and_dividend_as_sent():
 
 
 def test_the_option_stream_keeps_iv_beside_gamma():
-    st = OrderFlowState()
     sym = "SPY   301231C00700000"
-    st.push_level_one(sym, {"key": sym, "GAMMA": 0.01, "VOLATILITY": 18.5}, ts_recv=1000.0)
-    g = st.get_stream_greeks(sym)
+    sent = {"key": sym, "GAMMA": 0.01, "VOLATILITY": 18.5}
+    g = streamed_record(on_the_bus(MessageBus(), "LEVELONE_OPTIONS", sent, 1000.0)).greeks
     assert g.gamma.value == 0.01 and g.volatility == Received(18.5, 1000.0)
 
 

@@ -38,7 +38,7 @@ from push import surface as push_surface
 from push import verdict as push_verdict
 from state import level_store
 from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture
+from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture, pushed
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 
@@ -294,7 +294,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
     call = next(c for c in _CONTRACTS if c["putCall"] == "CALL" and c.get("gamma") is not None)
     sym = call["symbol"]
     _daemon(_AT.timestamp(), [sym])
-    ofs._ingest_pushed(
+    pushed(
         f"optquote.{sym}",
         verbatim_msg(
             symbol=sym,

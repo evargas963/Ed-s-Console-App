@@ -21,6 +21,10 @@ import calc.l1_trade_observation as l1
 import time_et
 from app.options.order_flow.state import OrderFlowState
 from calc import order_flow as ofe
+from stream_spine import MessageBus
+from tests.feed_live_helper import apply_record, on_the_bus
+
+EQ = "LEVELONE_EQUITIES"
 
 _SENT = next(
     m["item"]
@@ -49,18 +53,20 @@ def _sent(sym: str, price: float | None, size: float | None, trade_ms: int) -> d
 
 
 def _tape(sym: str, *rows, state=None) -> list:
-    """Each (price, size, trade time) as one LEVELONE message, pushed through the live state.
+    """Each (price, size, trade time) as one LEVELONE message, through a bus to the live state.
 
-    Pushed through the live state (or `state`) in receive order: the content the engine reads.
-    Each message's bid and ask are at its price, so Lee and Ready's midpoint is the price and the
-    tick test signs it (Lee and Ready on a real quote: tests/test_tape_lee_ready_v1.py).
+    Each goes on a bus of its own, as the daemon puts it, and its record to the live state (or
+    `state`), as the console applies it, in receive order: the content the engine reads. Each
+    message's bid and ask are at its price, so Lee and Ready's midpoint is the price and the tick
+    test signs it (Lee and Ready on a real quote: tests/test_tape_lee_ready_v1.py).
     """
     st = live_state._LIVE_STATE if state is None else state
     st.clear_symbol(sym)
+    bus = MessageBus()
+    st.current = bus.current
     for i, (price, size, trade_ms) in enumerate(rows):
         msg = _sent(sym, price, size, trade_ms)
-        st.push_option_top(sym, msg)
-        st.push_level_one(sym, msg, ts_recv=1000.0 + i)
+        apply_record(st, EQ, on_the_bus(bus, EQ, msg, 1000.0 + i))
     return st.prints(sym)
 
 
@@ -142,9 +148,12 @@ def test_missing_size_remains_unavailable():
 def test_reconnect_clear_resets_restatement_identity():
     sym = "RECON"
     live_state.clear_symbol(sym)
-    live_state.push_level_one(sym, _sent(sym, P, 1, 5), ts_recv=time_et.now())
+    bus = MessageBus()
+    live_state.bind_bus(bus.current)
+    st = live_state._LIVE_STATE
+    apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), time_et.now()))
     live_state.clear_all_live_state()
-    live_state.push_level_one(sym, _sent(sym, P, 1, 5), ts_recv=time_et.now())
+    apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), time_et.now()))
     tape = live_state.prints(sym)
     assert len(tape) == 1
     assert tape[0]["receive_seq"] == 1

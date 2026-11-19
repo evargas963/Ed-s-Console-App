@@ -1,7 +1,8 @@
 """
 app/options/order_flow/state.py — In-memory live order flow state from streaming.
 
-Stores recent book snapshots, tape prints, and top-of-book from Schwab streaming.
+Keeps recent book snapshots and tape prints from Schwab streaming; each symbol's top of book,
+Greeks and volume are read from its record on the daemon's bus (streamed_record), never kept here.
 Feeds OrderFlowEngine with content.* structure for book_imbalance_5 and cum_delta_proxy.
 """
 
@@ -11,7 +12,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from typing import Any
 
 from app.options.order_flow import history
@@ -39,6 +40,7 @@ from option_contract import (
     streamed_greeks,
     streamed_top,
 )
+from stream_spine import FIELD_DELTA, held_key
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -54,6 +56,26 @@ def streamed_volume(content: dict[str, Any]) -> float | None:
     The one reader of it (this state and the chain sweep); a reported 0 is 0 (AGENTS.md rule 2).
     """
     return schwab_count(content.get("TOTAL_VOLUME"))
+
+
+def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
+    """Return a LEVELONE record on the bus (topic, record) as what the stream holds of it.
+
+    Its top of book, and its Greeks, volatility and volume, each with the time its own field was
+    received (the record's field_ts: a message carries only the fields that changed); a Greek
+    Schwab sends as -999 is no value. NO_TOP and NO_GREEKS when the bus holds no record.
+    """
+    if record is None:
+        return Streamed(NO_TOP, NO_GREEKS)
+    topic, rec = record
+    content = rec[FIELD_DELTA[topic.split(".", 1)[0]]]
+    received = {f: stamp[1] for f, stamp in rec["field_ts"].items()}
+    greeks = streamed_greeks(content)
+    sent = {name: Received(v, received[name.upper()]) for name, v in greeks.items()}
+    volume = streamed_volume(content)
+    if volume is not None:
+        sent["total_volume"] = Received(volume, received["TOTAL_VOLUME"])
+    return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
 
 
 def read_book(content_item: dict[str, Any], service: str) -> Book | None:
@@ -126,10 +148,15 @@ class OrderFlowState:
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque[dict[str, Any]]] = {}
-        self._top: dict[str, StreamedTop] = {}
         self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
         self._receive_seq: dict[str, int] = {}
-        self._stream_greeks: dict[str, StreamedGreeks] = {}
+        #: the bus's current records (stream_spine.MessageBus.current, bind): each symbol's top of
+        #: book, Greeks and volume are read from them, never kept here
+        self.current: dict[str, tuple[str, Any]] = {}
+
+    def streamed(self, service: str, symbol: str) -> Streamed:
+        """Return what Schwab `service` last sent of `symbol`, from its record on the bus."""
+        return streamed_record(self.current.get(held_key(service, ticker_storage_key(symbol))))
 
     def _get_tape(self, symbol: str) -> deque[dict[str, Any]]:
         with self._lock:
@@ -157,15 +184,16 @@ class OrderFlowState:
 
     def push_level_one(
         self,
+        service: str,
         symbol: str,
         content_item: dict[str, Any],
         ts_recv: float | None = None,
         field_received: dict[str, Any] | None = None,
     ) -> None:
-        """Apply one Schwab L1 observation with canonical merge/freshness/tape semantics.
+        """Keep the print one Schwab L1 record of `service` carries, with its quote then.
 
         A current record merged from several messages (the daemon's bus) carries each field's own
-        receive time in `field_received`; each value is stamped with it.
+        receive time in `field_received`; the print is stamped with the newest of its fields'.
         """
         if not content_item:
             return
@@ -177,30 +205,14 @@ class OrderFlowState:
             # delayed message read as live
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
 
-        vf = streamed_volume(content_item)
-
-        # (change percent lives on the live plane only: NET_CHANGE_PERCENT, one store.)
-
-        # The contract's own Greeks and volume, each with its own receive time: a message carries
-        # only the fields that changed (Change delivery), so each field is merged alone; a Greek
-        # Schwab sends as -999 is no value, and stands as None. Open interest is the chain's:
-        # the stream does not send it for every contract it streams.
-        greeks = streamed_greeks(content_item)
-
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
-
-        sent = {name: Received(value, received(name.upper())) for name, value in greeks.items()}
-        if vf is not None:
-            sent["total_volume"] = Received(vf, received("TOTAL_VOLUME"))
-        if sent:
-            with self._lock:
-                self._stream_greeks[sym] = replace(self._stream_greeks.get(sym, NO_GREEKS), **sent)
 
         trade = extract_vendor_print(content_item)
         if trade is None:
             return
         key = vendor_triple(trade.time_millis, trade.price, trade.size)
+        sent = self.streamed(service, sym)
         with self._lock:
             # an adjacent repeat of the same trade is a restatement: never a second print
             if is_adjacent_restatement(self._prev_trade.get(sym), key):
@@ -219,11 +231,8 @@ class OrderFlowState:
                     ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    **history.quoted(
-                        trade.price,
-                        self._top.get(sym, NO_TOP),
-                        self._stream_greeks.get(sym, NO_GREEKS),
-                    ),
+                    # the bid, ask and Greeks the record held when the print was taken
+                    **history.quoted(trade.price, sent.top, sent.greeks),
                 }
             )
 
@@ -248,12 +257,10 @@ class OrderFlowState:
         """Drop session state. Caller holds ``self._lock``."""
         for values in self._tape.values():
             values.clear()
-        self._top.clear()
         for values in self._book.values():
             values.clear()
         self._prev_trade.clear()
         self._receive_seq.clear()
-        self._stream_greeks.clear()
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
@@ -264,39 +271,16 @@ class OrderFlowState:
             self._book.pop(sym, None)
             if sym in self._tape:
                 self._tape[sym].clear()
-            self._top.pop(sym, None)
             self._prev_trade.pop(sym, None)
             self._receive_seq.pop(sym, None)
-            self._stream_greeks.pop(sym, None)
-
-    def push_option_top(self, symbol: str, content_item: dict[str, Any]) -> None:
-        """Merge a contract's or an equity's top of book (LEVELONE BID/ASK price and size, MARK).
-
-        It is merged per field as Schwab sends changes only; not a number clears the field.
-        """
-        sym = ticker_storage_key(symbol)
-        if not sym:
-            return
-        with self._lock:
-            self._top[sym] = replace(self._top.get(sym, NO_TOP), **streamed_top(content_item))
-
-    def option_top(self, symbol: str) -> StreamedTop:
-        """Return the symbol's top of book as Schwab last sent each field (NO_TOP: none yet)."""
-        sym = ticker_storage_key(symbol)
-        with self._lock:
-            return self._top.get(sym, NO_TOP)
-
-    def get_stream_greeks(self, symbol: str) -> StreamedGreeks:
-        """Return one contract's streamed Greeks, volatility and volume (NO_GREEKS: none yet).
-
-        Each field with its own receive time: a message carries only the fields that changed.
-        """
-        sym = ticker_storage_key(symbol)
-        with self._lock:
-            return self._stream_greeks.get(sym, NO_GREEKS)
 
 
 _LIVE_STATE = OrderFlowState()
+
+
+def bind_bus(current: dict[str, tuple[str, Any]]) -> None:
+    """Read each symbol's top of book, Greeks and volume from the daemon's bus records."""
+    _LIVE_STATE.current = current
 
 
 #: each option contract's newest /quotes answer: symbol -> (the time it was received, its values
@@ -324,12 +308,9 @@ def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, 
     return {s: answer for s, answer in kept.items() if answer[0] >= since}
 
 
-def push_option_top(symbol: str, content_item: dict[str, Any]) -> None:
-    _LIVE_STATE.push_option_top(symbol, content_item)
-
-
 def option_top(symbol: str) -> StreamedTop:
-    return _LIVE_STATE.option_top(symbol)
+    """Return a contract's top of book as LEVELONE_OPTIONS last sent each field (NO_TOP: none)."""
+    return _LIVE_STATE.streamed("LEVELONE_OPTIONS", symbol).top
 
 
 def push_book(symbol: str, content_item: dict[str, Any], service: str) -> Book | None:
@@ -338,13 +319,16 @@ def push_book(symbol: str, content_item: dict[str, Any], service: str) -> Book |
 
 
 def push_level_one(
+    service: str,
     symbol: str,
     content_item: dict[str, Any],
     ts_recv: float | None = None,
     field_received: dict[str, Any] | None = None,
 ) -> None:
     """Apply an L1 observation to the live singleton."""
-    _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
+    _LIVE_STATE.push_level_one(
+        service, symbol, content_item, ts_recv=ts_recv, field_received=field_received
+    )
 
 
 def prints(symbol: str) -> list[dict[str, Any]]:
@@ -371,16 +355,11 @@ def clear_symbol(symbol: str) -> None:
     _LIVE_STATE.clear_symbol(symbol)
 
 
-def get_stream_greeks(symbol: str) -> StreamedGreeks:
-    """Return the live singleton's streamed Greeks of one contract (NO_GREEKS: none yet)."""
-    return _LIVE_STATE.get_stream_greeks(symbol)
-
-
 def streamed_values(symbols: Iterable[str]) -> dict[str, Streamed]:
-    """Return what the stream holds of each of `symbols`; one it has sent nothing of: left out."""
+    """Return what LEVELONE_OPTIONS holds of each of `symbols`; one it sent nothing of: left out."""
     out: dict[str, Streamed] = {}
     for sym in symbols:
-        held = Streamed(option_top(sym), get_stream_greeks(sym))
+        held = _LIVE_STATE.streamed("LEVELONE_OPTIONS", sym)
         if held.top is not NO_TOP or held.greeks is not NO_GREEKS:
             out[sym] = held
     return out

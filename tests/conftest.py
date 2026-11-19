@@ -28,6 +28,8 @@ import live_market_plane
 import time_et
 from db_authority import canonical_db_path
 from state import capture_store
+from stream_spine import MessageBus
+from tests import feed_live_helper
 from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
@@ -141,6 +143,10 @@ def _live_feed_starts_down(_markets_answers_held):
     with live_market_plane._lock:
         live_market_plane._feed["held"] = {}
         live_market_plane._feed["status"] = None
+    # the console reads each symbol's stream values from a bus's records: every test starts
+    # bound to an empty bus of its own (feed_live_helper.BUS), as the program starts with one
+    feed_live_helper.BUS = MessageBus()
+    ofls.bind_bus(feed_live_helper.BUS.current)
     yield
     live_market_plane.record_feed_down()
     with live_market_plane._lock:
