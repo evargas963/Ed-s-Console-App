@@ -1890,8 +1890,8 @@ def _publish_missing_price_levels(tickers: Iterable[str], now: datetime) -> None
 #: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
-#: BARS_PANELS on a new bar and FLOW_PANELS on each streamed quote, an equity's or an option's,
-#: and each equity book (flow_changed)
+#: BARS_PANELS on a new bar and FLOW_PANELS on each streamed quote and book, an equity's or an
+#: option's (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),

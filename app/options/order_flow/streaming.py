@@ -357,16 +357,18 @@ def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, A
 
 
 def _apply_book(sym: str, ts: float, msg: dict[str, Any], _received: dict[str, Any] | None) -> None:
-    """Apply a book message: an option contract's, or an equity venue's with its readout."""
+    """Apply a book message: an option contract's, or an equity venue's with its readout.
+
+    Either one sends the panels that show it (the flow callback).
+    """
     content: Payload = msg.get("content")
     if not isinstance(content, dict):
         return
     book = push_book(sym, content, msg["service"])
-    if msg.get("service") == "OPTIONS_BOOK":
-        return
-    if book is not None:
-        recent.BOOKS.record(sym, msg["service"], book)
-    recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
+    if msg.get("service") != "OPTIONS_BOOK":
+        if book is not None:
+            recent.BOOKS.record(sym, msg["service"], book)
+        recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
     _flow(sym)
 
 

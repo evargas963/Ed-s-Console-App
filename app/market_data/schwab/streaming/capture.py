@@ -51,7 +51,7 @@ from datetime import date, datetime
 from itertools import zip_longest
 from pathlib import Path
 from types import FrameType
-from typing import Any, TextIO, TypedDict, override
+from typing import Any, TextIO, TypedDict, cast, override
 
 import uvicorn
 
@@ -201,7 +201,8 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
     expirations = sorted({expires for expires, *_ in listed})
     strikes = sorted({strike for _e, strike, *_ in listed})
     centre = nearest_position(strikes, price) if strikes else 0
-    rows = []
+    # (distance, gamma sent or not, its order, the row): each sorts first by its distance
+    rows: list[tuple[Any, ...]] = []
     for expires, strike, side, symbol, gamma in listed:
         distance = max(
             bisect.bisect_left(expirations, expires),
@@ -875,7 +876,7 @@ def pushed_fields(item: dict[str, Any]) -> str:
     how many it holds.
     """
     return ", ".join(
-        f"{k} [{len(v)}]" if isinstance(v, list) else f"{k} {v}"
+        f"{k} [{len(cast(list[Any], v))}]" if isinstance(v, list) else f"{k} {v}"
         for k, v in item.items()
         if k != "key"
     )

@@ -287,8 +287,9 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
         bus = MessageBus()
         sub = bus.subscribe("", policy=LOG)
         w = CaptureWriter(tmp_path / "s.db", batch_rows=10_000, batch_sec=60.0)
-        bad = object()
-        bus.publish("quote.SPY", bad)  # not a dict -> insert raises inside
+        # STAND-IN: a message the writer cannot store (a value JSON cannot write) -> insert raises
+        bad = {"symbol": "SPY", "native": object()}
+        bus.publish("quote.SPY", bad)
         bus.publish("quote.SPY", quote_msg(symbol="SPY", bid=2.0, src="t", ts_recv=1.0))
         stop = asyncio.Event()
         stop.set()
@@ -297,7 +298,10 @@ def test_insert_failure_is_kept_as_sent_never_kills_writer(tmp_path):
         with closing(sqlite3.connect(tmp_path / "s.db")) as con:
             assert con.execute("SELECT COUNT(*) FROM stream_quotes_raw").fetchone()[0] == 1
             assert con.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall() == [
-                ("quote.SPY", json.dumps(repr(bad)))
+                (
+                    "quote.SPY",
+                    json.dumps(bad, default=repr),
+                )  # as sent: each value JSON can't, its repr
             ]
 
     asyncio.run(go())
