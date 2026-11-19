@@ -573,13 +573,13 @@ both, and the window restarts the program.
   not asked for on `/quotes`. A contract's Greeks are one set, never some from the stream and some
   from `/quotes` (`option_contract.streamed_greek_set`). The sweep takes a record only while the
   contract is held (`Daemon.option_record`). A record outlives its hold, its last values standing
-  (D5), until the contract is asked for again: then the daemon forgets it before sending the
-  request (`Connection.ask`), so the next hold starts from what Schwab sends then. Every other contract (one the stream does not
-  hold: past the limit Schwab stated, or not yet answered) is asked for on `/quotes`,
-  comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API Support
-  2026-10-06: not more than 300), and takes its quote's, as sent (its `greeksTime` is None). Each
-  `/quotes` answer goes to the console at once, as Schwab sent it, with the time the daemon received
-  it (topic `optquotes`, `state.push_rest_quotes`). Enforced by:
+  (D5), until the contract is asked for again: then the daemon forgets it before sending the request
+  (`Connection.ask`), so the next hold starts from what Schwab sends then. Every other contract (one
+  the stream does not hold: past the limit Schwab stated, or not yet answered) is asked for on
+  `/quotes`, comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API
+  Support 2026-10-06: not more than 300), and takes its quote's, as sent (its `greeksTime` is None).
+  Each `/quotes` answer goes to the console at once, as Schwab sent it, with the time the daemon
+  received it (topic `optquotes`, `state.push_rest_quotes`). Enforced by:
   `tests/test_data_path_rest_one_connection_v1.py` (a contract the stream holds is not asked for on
   `/quotes`; each answer reaches the bus as sent with its receive time). Outside that ticker's
   option window — after it has ended, and before the next one opens; a day Schwab says is closed is
