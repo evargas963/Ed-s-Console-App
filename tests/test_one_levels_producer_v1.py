@@ -39,7 +39,7 @@ from push import terrain as push_terrain
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, pushed
 from tests.page_on_socket import Pages
 from tests.real_chains import CRWD
 from time_et import ET
@@ -108,7 +108,7 @@ def _daemon(held=(), *, socket_open=True, price: float | None = _SPOT, at: float
 
 def _streamed(sym: str, content: dict, ts: float) -> None:
     """One LEVELONE_OPTIONS message for `sym`, as the daemon pushes it."""
-    ofs._ingest_pushed(
+    pushed(
         f"optquote.{sym}",
         verbatim_msg(
             symbol=sym, content={"key": sym, **content}, src="schwab_options_l1", ts_recv=ts

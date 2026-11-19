@@ -212,6 +212,20 @@ class Streamed:
     greeks: StreamedGreeks
 
 
+def streamed_quote(sent: Streamed) -> dict[str, float | None]:
+    """Return the quote a streamed contract's record takes: its volume, bid, ask and intrinsic.
+
+    Each the stream's newest (`sent`), None until the stream sends it; the one builder of them
+    (the levels' overlay and the chain sweep).
+    """
+    return {
+        "volume": sent.greeks.total_volume.value,
+        "bid": sent.top.bid,
+        "ask": sent.top.ask,
+        "money_intrinsic": sent.top.money_intrinsic,
+    }
+
+
 def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
     """Return the top of book a contract's LEVELONE_OPTIONS record carries, under our names.
 

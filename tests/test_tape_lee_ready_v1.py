@@ -28,8 +28,7 @@ import app.options.order_flow.state as state
 import app.options.order_flow.streaming as ofs
 import calc.l1_trade_observation as l1
 from calc import order_flow as ofe
-from feed.connection import SERVICE_TOPIC, held_key
-from stream_spine import MessageBus, quote_msg
+from stream_spine import SERVICE_TOPIC, MessageBus, held_key, quote_msg
 
 _MSGS = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spy_levelone_2026_11_13_1000et.json").read_text(
@@ -88,6 +87,7 @@ def _tape() -> list:
     state.clear_all_live_state()
     _kind, src = SERVICE_TOPIC["LEVELONE_EQUITIES"]
     bus = MessageBus()
+    state.bind_bus(bus.current)
     key = held_key("LEVELONE_EQUITIES", "SPY")
     try:
         for m in _MSGS:

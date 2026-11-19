@@ -218,7 +218,7 @@ class LocalSchwab:
 
             def do_POST(self):
                 started = time_et.elapsed()
-                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                self.rfile.read(int(self.headers["Content-Length"]))
                 if outer.token == "edge":
                     self._edge(TOKEN, {}, started)
                     return

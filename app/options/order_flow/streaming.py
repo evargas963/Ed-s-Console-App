@@ -37,11 +37,11 @@ from app.market_data.schwab.streaming.live_push import is_forwarded
 from app.market_data.schwab.streaming.live_ui import HEARTBEAT_SEC
 from app.options.order_flow import history as recent
 from app.options.order_flow.state import (
+    bind_bus,
     clear_all_live_state,
     newest_book,
     push_book,
     push_level_one,
-    push_option_top,
     push_rest_quotes,
 )
 from calc.order_flow import BOOK_VENUES, book_readout
@@ -345,13 +345,12 @@ def _answer_watchlist_request(msg: dict[str, Any]) -> None:
 def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None) -> None:
     """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick.
 
-    The top first, as for a contract: a print is kept with the bid and ask its record holds.
+    A print is kept with the bid and ask its record on the bus holds.
     """
     item: Payload = msg.get("native")
     if not isinstance(item, dict):
         return
-    push_option_top(sym, item)
-    push_level_one(sym, item, ts_recv=ts, field_received=received)
+    push_level_one("LEVELONE_EQUITIES", sym, item, ts_recv=ts, field_received=received)
     _flow(sym)
     _tick(sym)
 
@@ -375,9 +374,9 @@ def _apply_book(sym: str, ts: float, msg: dict[str, Any], _received: dict[str, A
 def _apply_option_quote(
     sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None
 ) -> None:
-    """Apply a LEVELONE_OPTIONS message: the contract's top of book, then its state and tape.
+    """Apply a LEVELONE_OPTIONS message: the contract's tape.
 
-    The top first: a print is kept with the bid and ask its own message brought. Every message
+    A print is kept with the bid and ask its record on the bus holds. Every message
     sends the chain screens its values (the flow callback); a tick when the
     newest message carried a value the levels use (a merged record holds the last of each field;
     only one this message brought is new).
@@ -385,8 +384,7 @@ def _apply_option_quote(
     content: Payload = msg.get("content")
     if not isinstance(content, dict):
         return
-    push_option_top(sym, content)
-    push_level_one(sym, content, ts_recv=ts, field_received=received)
+    push_level_one("LEVELONE_OPTIONS", sym, content, ts_recv=ts, field_received=received)
     _flow(sym)
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
         _tick(sym)
@@ -473,8 +471,11 @@ def bind_daemon(daemon: Daemon | None) -> None:
     """Bind the capture daemon this console runs in (capture.run, before the web server starts).
 
     Its bus is the console's one source, and its requests go to it; None: no daemon (a test's end).
+    Each symbol's top of book, Greeks and volume are read from its bus's records (bind_bus).
     """
     FEED.daemon = daemon
+    if daemon is not None:
+        bind_bus(daemon.bus.current)
 
 
 def start_order_flow_stream(
