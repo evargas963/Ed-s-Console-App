@@ -656,13 +656,14 @@ def _levels_changed(tk: str) -> None:
 
 
 def flow_changed(sym: str) -> None:
-    """Tell the pages on `sym`'s ticker that its quote or book changed (FLOW_PANELS).
+    """Tell the pages on `sym`'s ticker that its quote or book changed.
 
-    `sym` is Schwab's symbol: the equity, or an option contract of a chain the console holds.
+    `sym` is Schwab's symbol: the equity (FLOW_PANELS), or an option contract of a chain the
+    console holds (OPTION_PANELS: an option's quote or book moves no equity panel).
     """
     tk = _tick_ticker(sym)
     if tk:
-        live_ui.changed(app.state, tk, *FLOW_PANELS)
+        live_ui.changed(app.state, tk, *(OPTION_PANELS if vendor_option_root(sym) else FLOW_PANELS))
 
 
 def _surface_symbols(surface: dict[str, Any]) -> list[str]:
@@ -1890,8 +1891,8 @@ def _publish_missing_price_levels(tickers: Iterable[str], now: datetime) -> None
 #: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
-#: BARS_PANELS on a new bar and FLOW_PANELS on each streamed quote and book, an equity's or an
-#: option's (flow_changed)
+#: BARS_PANELS on a new bar, FLOW_PANELS on each streamed equity quote and book and
+#: OPTION_PANELS on each option contract's (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
@@ -1924,6 +1925,8 @@ CHAIN_PANELS = ("expiries",)
 BARS_PANELS = ("bars", "liquidity", "desk")
 #: the chain screens show each contract's newest streamed values (push.chain), and the live price
 FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain")
+#: the panels an option contract's own quote or book moves: its Flow panel and the chain screens
+OPTION_PANELS = ("contract", "chain")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
 #: they are measured from; today's gap and open): the socket sends them again with each of its
 #: price rows

@@ -347,7 +347,7 @@ def test_every_option_quote_sends_the_chain_panel_of_its_ticker():
         )
     finally:
         ofs.FEED.on_flow = None
-    assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "chain" in srv.FLOW_PANELS
+    assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "chain" in srv.OPTION_PANELS
 
 
 def test_a_quote_taken_on_the_loop_marks_the_pages_at_once_with_no_wake_up_write():
@@ -356,12 +356,13 @@ def test_a_quote_taken_on_the_loop_marks_the_pages_at_once_with_no_wake_up_write
     Handed to its own loop (call_soon_threadsafe) each quote wrote the loop's wake-up socket, a
     system call per message: measured 2026-11-19 at the open, the option intake fell a minute
     behind Schwab. On the loop's own thread the page's chain panel is marked before the call
-    returns; handed to the loop, it was not marked until the loop ran the hand-off.
+    returns; handed to the loop, it was not marked until the loop ran the hand-off. An option's
+    quote marks no equity panel: the page's equity book is left alone.
     """
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     sym = _TSLA_CONTRACTS[0]["symbol"]
     pages = Pages()
-    page = pages.open("TSLA", "chain:ladder")
+    page = pages.open("TSLA", "chain:ladder", "book:desk")
     ofs.FEED.on_flow = srv.flow_changed
     try:
 
@@ -413,7 +414,7 @@ def test_every_option_book_sends_the_flow_panel_of_its_ticker():
         )
     finally:
         ofs.FEED.on_flow = None
-    assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "contract" in srv.FLOW_PANELS
+    assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "contract" in srv.OPTION_PANELS
 
 
 def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it():
