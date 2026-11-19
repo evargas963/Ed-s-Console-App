@@ -32,7 +32,7 @@ import time_et
 from calc.math_exposure_core import bucket_metric, merge_exposure_books
 from calc.terrain_engine import compute_terrain
 from calc.terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
-from calibration.complete_chain_capture import CAPTURE_BASIS
+from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import terrain as push_terrain
@@ -460,14 +460,14 @@ def test_a_stored_capture_and_a_live_chain_publish_the_same_fields():
     live = _cached().served()
     _publish(
         captures=[
-            {
-                "contracts": _RECORDS,
-                "ts_utc": _T,
-                "spot": _SPOT,
-                "spot_ts": None,
-                "et_date": "2026-10-07",
-                "basis": server.CAPTURE_BASIS,
-            }
+            StoredCapture(
+                contracts=_RECORDS,
+                ts_utc=_T,
+                spot=_SPOT,
+                spot_ts=None,
+                et_date="2026-10-07",
+                basis=server.CAPTURE_BASIS,
+            )
         ]
     )
     stored = _cached().served()

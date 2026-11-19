@@ -44,7 +44,7 @@ def test_the_store_reads_back_the_database_once_then_keeps_a_new_capture_without
     _stored(db, first)
     held = capture_store.captures(db, "MRVL")
     assert held == last_capture_per_day(db, "MRVL", capture_store.CAPTURE_DAYS)
-    assert [c["ts_utc"] for c in held] == [first]
+    assert [c.ts_utc for c in held] == [first]
 
     # the next day's chain, marked a capture by the sweep: kept as it arrives
     nxt = first + _DAY
@@ -55,11 +55,11 @@ def test_the_store_reads_back_the_database_once_then_keeps_a_new_capture_without
     finally:
         server.stop_terrain_loop()  # drops what waits; MRVL's levels are this test's
     held = capture_store.captures(db, "MRVL")
-    assert [c["ts_utc"] for c in held] == [nxt, first]
-    assert held[0]["contracts"] == contracts and held[0]["spot"] == MRVL.spot
+    assert [c.ts_utc for c in held] == [nxt, first]
+    assert held[0].contracts == contracts and held[0].spot == MRVL.spot
     assert capture_store.newest_ts(db, "MRVL") == nxt
     # the database still holds only the first: the new one came from the chain, not a read
-    assert [c["ts_utc"] for c in last_capture_per_day(db, "MRVL", 2)] == [first]
+    assert [c.ts_utc for c in last_capture_per_day(db, "MRVL", 2)] == [first]
 
 
 def test_a_chain_that_is_not_a_capture_is_not_kept(tmp_path):
@@ -74,7 +74,7 @@ def test_a_chain_that_is_not_a_capture_is_not_kept(tmp_path):
         server.chain_pricing.submit(lambda: None).result(timeout=120)
     finally:
         server.stop_terrain_loop()
-    assert [c["ts_utc"] for c in capture_store.captures(db, "MRVL")] == [first]
+    assert [c.ts_utc for c in capture_store.captures(db, "MRVL")] == [first]
 
 
 def test_a_capture_of_a_day_already_held_replaces_it(tmp_path):
@@ -89,4 +89,4 @@ def test_a_capture_of_a_day_already_held_replaces_it(tmp_path):
         server.chain_pricing.submit(lambda: None).result(timeout=120)
     finally:
         server.stop_terrain_loop()
-    assert [c["ts_utc"] for c in capture_store.captures(db, "MRVL")] == [later]
+    assert [c.ts_utc for c in capture_store.captures(db, "MRVL")] == [later]

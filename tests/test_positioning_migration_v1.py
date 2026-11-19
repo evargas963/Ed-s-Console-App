@@ -141,9 +141,9 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)
         server._publish_levels(
             "PCG",
-            newest["contracts"],
+            newest.contracts,
             monday.timestamp(),
-            chain_spot=(newest["spot"], monday.timestamp()),
+            chain_spot=(newest.spot, monday.timestamp()),
             now=monday,
         )
         monday_prior = level_store.published_levels("PCG").prior_day.per_strike

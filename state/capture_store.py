@@ -1,9 +1,9 @@
 """Every ticker's newest chain captures, as the sweep took them: the live path's history.
 
-A capture is the chain of a capture window the sweep stored as the window's first
-(feed.chain_sweep._write_history), marked on its chain messages; the console keeps it here as it
-arrives (server._on_chain), the newest of each of the CAPTURE_DAYS newest market days, in the
-shape calibration.complete_chain_capture.last_capture_per_day reads them back. A ticker's stored
+A capture is the chain the sweep stored as a day's close capture (feed.chain_sweep), marked on
+its chain messages; the console keeps it here as it arrives (server._on_chain), the newest of each
+of the CAPTURE_DAYS newest market days, each a StoredCapture as
+calibration.complete_chain_capture.last_capture_per_day reads them back. A ticker's stored
 captures are loaded once, the first time it is asked for (the startup loader, rule 6); from then
 on every live reader reads them here, never the database.
 """
@@ -12,20 +12,19 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any
 
-from calibration.complete_chain_capture import last_capture_per_day
+from calibration.complete_chain_capture import StoredCapture, last_capture_per_day
 from instrument_identity import ticker_storage_key
 
 #: the market days of captures the levels read (the forces and the prior day: the two newest)
 CAPTURE_DAYS = 2
 
 #: ticker -> its captures, newest first, one per ET date (each a new list, never mutated)
-_held: dict[str, list[dict[str, Any]]] = {}
+_held: dict[str, list[StoredCapture]] = {}
 _lock = threading.Lock()
 
 
-def captures(db_path: Path | str, ticker: str) -> list[dict[str, Any]]:
+def captures(db_path: Path | str, ticker: str) -> list[StoredCapture]:
     """Return the ticker's newest capture of each of its CAPTURE_DAYS newest days, newest first.
 
     Loaded once from the database the first time the ticker is asked for (its stored history);
@@ -38,7 +37,7 @@ def captures(db_path: Path | str, ticker: str) -> list[dict[str, Any]]:
         return _held[tk]
 
 
-def keep(ticker: str, capture: dict[str, Any]) -> None:
+def keep(ticker: str, capture: StoredCapture) -> None:
     """Keep a capture the sweep just stored: the newest of its ET date, ahead of older days.
 
     Called on the event loop as the chain arrives, so it reads no database: a ticker whose
@@ -48,14 +47,14 @@ def keep(ticker: str, capture: dict[str, Any]) -> None:
     tk = ticker_storage_key(ticker)
     with _lock:
         if tk in _held:
-            older = [c for c in _held[tk] if c["et_date"] != capture["et_date"]]
+            older = [c for c in _held[tk] if c.et_date != capture.et_date]
             _held[tk] = [capture, *older][:CAPTURE_DAYS]
 
 
 def newest_ts(db_path: Path | str, ticker: str) -> float | None:
     """When the ticker's newest capture was taken; None with none."""
     held = captures(db_path, ticker)
-    return held[0]["ts_utc"] if held else None
+    return held[0].ts_utc if held else None
 
 
 def clear() -> None:

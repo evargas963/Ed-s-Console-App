@@ -17,6 +17,7 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import server
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
@@ -50,14 +51,14 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         server._publish_levels(
             tk,
             captures=[
-                {
-                    "contracts": read_chain(CRWD.chain),
-                    "ts_utc": at,
-                    "spot": CRWD.spot,
-                    "et_date": CRWD.now.date().isoformat(),
-                    "basis": server.CAPTURE_BASIS,
-                    "spot_ts": None,
-                }
+                StoredCapture(
+                    contracts=read_chain(CRWD.chain),
+                    ts_utc=at,
+                    spot=CRWD.spot,
+                    et_date=CRWD.now.date().isoformat(),
+                    basis=server.CAPTURE_BASIS,
+                    spot_ts=None,
+                )
             ],
             now=CRWD.now,
         )

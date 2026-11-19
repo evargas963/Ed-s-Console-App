@@ -39,6 +39,7 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server as srv
 from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import contract as push_contract
 from state import level_store
@@ -116,14 +117,14 @@ def build_side_e2e_fixture_response() -> dict:
     srv._publish_levels(
         "SPY",
         captures=[
-            {
-                "contracts": read_chain(close["chain"]),
-                "ts_utc": close["ts_utc"],
-                "spot": close["spot"],
-                "spot_ts": None,
-                "et_date": at_close.date().isoformat(),
-                "basis": srv.CAPTURE_BASIS,
-            }
+            StoredCapture(
+                contracts=read_chain(close["chain"]),
+                ts_utc=close["ts_utc"],
+                spot=close["spot"],
+                spot_ts=None,
+                et_date=at_close.date().isoformat(),
+                basis=srv.CAPTURE_BASIS,
+            )
         ],
         now=at_close,
     )

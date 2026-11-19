@@ -10,6 +10,7 @@ underlying price (tests/real_chains.py): one capture day.
 from __future__ import annotations
 
 import server
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import forces as push_forces
 from state import level_store
@@ -18,14 +19,14 @@ from tests.real_chains import CRWD
 
 def test_forces_with_no_prior_day_captured_are_absent():
     one = [
-        {
-            "et_date": CRWD.now.date().isoformat(),
-            "spot": CRWD.spot,
-            "spot_ts": CRWD.now.timestamp(),
-            "basis": "",
-            "contracts": read_chain(CRWD.chain),
-            "ts_utc": CRWD.now.timestamp(),
-        }
+        StoredCapture(
+            et_date=CRWD.now.date().isoformat(),
+            spot=CRWD.spot,
+            spot_ts=CRWD.now.timestamp(),
+            basis="",
+            contracts=read_chain(CRWD.chain),
+            ts_utc=CRWD.now.timestamp(),
+        )
     ]
     try:
         server._publish_levels("CRWD", captures=one, now=CRWD.now)

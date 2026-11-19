@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from calc.confluence_composite import at_price, build_matrix, window_rows
+from calc.confluence_composite import Matrix, at_price, build_matrix, window_rows
 from calc.math_exposure_core import merge_exposure_books
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -222,7 +222,7 @@ def _move_text(low: dict[str, Any] | None, high: dict[str, Any] | None) -> str |
     return low["price_text"] + "–" + high["price_text"]
 
 
-def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) -> dict[str, Any]:
+def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) -> Matrix:
     """Return the ranking of one expiry of a priced chain: the one the matrix request shows.
 
     `spot` is the price `snap` was priced at; `chosen` is an expiry of `snap`'s books with its
@@ -282,13 +282,17 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     pin = _level_named(levels, "Pin")
     em_up = _level_named(levels, "EM+")
     em_dn = _level_named(levels, "EM−")
-    body = {key: value for key, value in stored.items() if key not in ("ranked", "strikes")}
-    ranked = sorted(stored["ranked"])
+    ranked = sorted(stored.ranked)
     lo, hi, view = window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
-    body["rows"] = window_rows(stored, ranked[lo : hi + 1])
-    if view["note"] is not None:
-        body["notes"] = [*body["notes"], view["note"]]
-    body.update(at_price(body["rows"], stored["strikes"], live_spot))
+    body: dict[str, Any] = {
+        "preset": stored.preset,
+        "scale_text": stored.scale_text,
+        "ceiling": stored.ceiling,
+        "notes": stored.notes if view["note"] is None else [*stored.notes, view["note"]],
+        "peaks": stored.peaks,
+        "rows": window_rows(stored, ranked[lo : hi + 1]),
+    }
+    body.update(at_price(body["rows"], stored.strikes, live_spot))
     low = None
     high = None
     if em_dn is not None:

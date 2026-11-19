@@ -63,6 +63,7 @@ import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
+from calibration.complete_chain_capture import StoredCapture
 from instrument_identity import ticker_storage_key
 from numeric_contract import compact_text, count_text, dollars_text, strike_text
 from option_contract import read_chain
@@ -616,14 +617,14 @@ def _publish(real) -> None:
     server._publish_levels(
         ticker_storage_key(real.ticker),
         captures=[
-            {
-                "contracts": read_chain([dict(c) for c in real.chain]),
-                "ts_utc": real.now.timestamp(),
-                "spot": real.spot,
-                "et_date": real.now.date().isoformat(),
-                "basis": server.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
+            StoredCapture(
+                contracts=read_chain([dict(c) for c in real.chain]),
+                ts_utc=real.now.timestamp(),
+                spot=real.spot,
+                et_date=real.now.date().isoformat(),
+                basis=server.CAPTURE_BASIS,
+                spot_ts=None,
+            )
         ],
         now=real.now,
     )
