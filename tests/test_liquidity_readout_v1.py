@@ -597,6 +597,7 @@ def test_the_zone_turns_at_10_percent(row, venue, view, pct, zone):
     so is every value past it.
     """
     w = _steady(_replayed()[1][row][1], venue, view)
+    # each case is stated to three decimals: half the last one
     assert w["pct"] == pytest.approx(pct, abs=5e-4)
     assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
 

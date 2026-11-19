@@ -80,6 +80,8 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
     fd = (_call_delta(S, T_1h - dt) - _call_delta(S, T_1h)) / dt
     analytic = charm(S, K, T_1h, SIGMA)
     assert analytic is not None
+    # a one-minute finite difference an hour from the bell, where delta bends fast: its own step
+    # error is a few percent, so 5% asks for the magnitude a floor on T would have lost
     assert analytic == pytest.approx(fd, rel=0.05), (
         f"one hour from the close, analytic charm {analytic:.2f} vs FD {fd:.2f} — a T floor "
         "or convention drift is flattening the near-expiry spike again"
