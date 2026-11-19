@@ -117,6 +117,24 @@ def record_from_level_one_equity(
             else:
                 fs[name] = (v, rts if field_received is None else float(field_received[name]))
         snapshot = dict(fs)
+    out, trade_ts = _plane_row(t, snapshot, rts)
+    with _lock:
+        _by_ticker[t] = out
+    if trade_ts is not None:
+        # the last trade Schwab streamed: the day's first one starts its pre-market (session_label)
+        record_trade(datetime.fromtimestamp(trade_ts, ET))
+    for fn in _row_listeners:
+        fn(t)
+    return True
+
+
+def _plane_row(
+    t: str, snapshot: dict[str, tuple[float | str, float]], rts: float
+) -> tuple[dict[str, float | str | None], float | None]:
+    """Return the plane's row of `t` and its trade time (epoch s; None: none held).
+
+    Each field of the row is the last one Schwab sent (`snapshot`).
+    """
 
     def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
@@ -126,17 +144,15 @@ def record_from_level_one_equity(
         v = val(name)
         return None if isinstance(v, str) else v
 
-    spot_f = val(VENDOR_LAST_PRICE)
     trade_ms = number(VENDOR_TRADE_TIME)
     trade_ts = None if trade_ms is None else trade_ms / 1000.0
-    bid, ask, mark = val("BID_PRICE"), val("ASK_PRICE"), val("MARK")
     quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
-    out: dict[str, float | str | None] = {
+    row: dict[str, float | str | None] = {
         "ticker": t,
-        "spot": spot_f,
-        "bid": bid,
-        "ask": ask,
-        "mark": mark,
+        "spot": val(VENDOR_LAST_PRICE),
+        "bid": val("BID_PRICE"),
+        "ask": val("ASK_PRICE"),
+        "mark": val("MARK"),
         "bid_size": val("BID_SIZE"),
         "ask_size": val("ASK_SIZE"),
         "last_size": val(VENDOR_LAST_SIZE),
@@ -159,14 +175,7 @@ def record_from_level_one_equity(
         "security_status": val("SECURITY_STATUS"),
         "server_received_ts": rts,
     }
-    with _lock:
-        _by_ticker[t] = out
-    if trade_ts is not None:
-        # the last trade Schwab streamed: the day's first one starts its pre-market (session_label)
-        record_trade(datetime.fromtimestamp(trade_ts, ET))
-    for fn in _row_listeners:
-        fn(t)
-    return True
+    return row, trade_ts
 
 
 #: callables told the ticker of every published row, in the process that owns this plane: the
