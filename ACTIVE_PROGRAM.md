@@ -70,6 +70,13 @@ The operator's answers to the live-path audit's questions, in his words:
   when a 0 dte expiry does not exist." One producer (`calc.terrain_engine.same_day_levels`): an
   expiry listed today is read from Schwab's Greeks as sent; with none listed today the next listed
   expiry is priced to today's option close (`docs/DATA_FLOW.md` §6 item 10).
+- 2026-11-19, on the chain ladder running a median 4.4 s behind Schwab while marked live: "i need
+  the ui to always be live and to show the most up to date data possible ... if it does answer your
+  question then your question should not have even been a question". A screen shows each value
+  Schwab sends when it arrives, never a copy held for the next computation; a question that rule
+  answers is not brought to him. Built: the chain panel takes each live contract's newest streamed
+  values and is sent on each streamed quote (`push.chain`, `server.FLOW_PANELS`;
+  `tests/test_chain_api_v1.py`).
 
 | ID       | Status   | Work item                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

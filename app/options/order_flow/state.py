@@ -392,3 +392,13 @@ def get_stream_greeks(symbol: str) -> dict[str, Any] | None:
     or None is returned if never observed.
     """
     return _LIVE_STATE.get_stream_greeks(symbol)
+
+
+def streamed_values(symbols: Iterable[str]) -> dict[str, dict[str, Any]]:
+    """Return each of `symbols`' newest streamed Greeks, volume, bid and ask; none: left out."""
+    out: dict[str, dict[str, Any]] = {}
+    for sym in symbols:
+        held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
+        if held:
+            out[sym] = {k: v for r in held for k, v in r.items()}
+    return out
