@@ -105,13 +105,15 @@ def chain_messages(
     fetched_ts: float,
     spot: float | None,
     spot_ts: float | None,
+    capture: bool,
 ) -> list[tuple[str, dict[str, Any]]]:
     """Return a fetched chain as its bus messages.
 
-    Part i of n, CHAIN_PART_CONTRACTS contracts each, all with the time the chain began and the
-    chain's one spot with its trade time. Each contract is read here, once (read_chain, on the
-    sweep's own thread): the console's pricing and the daemon's option rule both take that read.
-    The console assembles the parts; a chain missing a part is never priced.
+    Part i of n, CHAIN_PART_CONTRACTS contracts each, all with the time the chain began, the
+    chain's one spot with its trade time, and whether it is its capture window's stored capture
+    (`capture`: the console keeps it, state.capture_store). Each contract is read here, once
+    (read_chain, on the sweep's own thread): the console's pricing and the daemon's option rule
+    both take that read. The console assembles the parts; a chain missing a part is never priced.
     """
     parts = [
         contracts[i : i + CHAIN_PART_CONTRACTS]
@@ -128,6 +130,7 @@ def chain_messages(
                 "spot_ts": spot_ts,
                 "part": i,
                 "parts": len(parts),
+                "capture": capture,
                 "contracts": read_chain(part),
             },
         )
@@ -851,8 +854,9 @@ class ChainSweep:
         if row["spot"] is not None:  # a trade time without its price is no spot
             chain.spot, chain.spot_ts = row["spot"], row["trade_ts"]
         contracts = chain.contracts()
+        captured = False  # a chain whose history is not stored is no capture
         try:
-            self._write_history(chain)
+            captured = self._write_history(chain)
         except Exception as e:  # the chain still goes to the console; the failure is kept and shown
             log.warning(
                 "chain history for %s not written, kept as delivered: %s: %s",
@@ -874,7 +878,7 @@ class ChainSweep:
                 now,
             )
         for topic, msg in chain_messages(
-            chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts
+            chain.ticker, contracts, chain.started, chain.spot, chain.spot_ts, captured
         ):
             self.publish(topic, msg)
         self._delivered.add(chain.ticker)
@@ -908,27 +912,33 @@ class ChainSweep:
                 len(contracts),
             )
 
-    def _write_history(self, chain: _Chain) -> None:
-        """Write the chain history.
+    def _write_history(self, chain: _Chain) -> bool:
+        """Write the chain history; whether the chain was stored as its window's capture.
 
         A chain begun inside a capture window of the ticker's option market,
         the first one of the window for this ticker (a chain begun before the close is not the
         close capture, whenever it ends), one row per expiry with the underlying price of that
-        expiry's answer, at the time the chain began, every row in one transaction.
+        expiry's answer, at the time the chain began, every row in one transaction. Stored when
+        at least one of its expiries' rows was written.
+        """
+        slot = capture_slot(chain.started)
+        return slot is not None and self._write_window(chain, slot)
+
+    def _write_window(self, chain: _Chain, slot: float) -> bool:
+        """Store the chain as window `slot`'s capture if it is the window's first for its ticker.
+
+        Whether it was stored (_write_history).
         """
         ticker = chain.ticker
-        slot = capture_slot(chain.started)
-        if slot is None:
-            return
         if ticker not in self._written:
             self._written[ticker] = newest_capture_ts(self.db_path, ticker)
         before = self._written[ticker]
         if before is not None and before >= slot:
-            return
+            return False
         self._written[ticker] = slot  # claim the window for this ticker
         try:
             with capture_transaction(self.db_path) as conn:
-                for expiry, cts in chain.by_expiry.items():
+                written = [
                     persist_complete_chain_capture(
                         conn,
                         ticker=ticker,
@@ -940,7 +950,11 @@ class ChainSweep:
                         chain_spot=chain.spot,
                         chain_spot_ts=chain.spot_ts,
                         chains_answer=chain.bodies.get(expiry),  # absent: not recorded
-                    )
+                    )["status"]
+                    == "written"
+                    for expiry, cts in chain.by_expiry.items()
+                ]
         except Exception:
             self._written[ticker] = before  # unwritten: the window's next chain, if any, tries
             raise
+        return any(written)

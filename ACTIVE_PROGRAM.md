@@ -147,9 +147,6 @@ forms ENF-13 lists are open. `git branch --list` and `--contains` aimed at produ
 #### server.py
 
 - S-23 `_side_sums`' sums use the live spot while the rows were priced at the snapshot's.
-- S-38 `_publish_levels` reads the database (`newest_capture_ts`) on every new chain to learn
-  whether a newer capture exists; the daemon, which writes the captures, could carry that time on
-  the chain it delivers.
 - S-30 the equity microstructure route (`flow`), the options one (`streaming_plane`) and the
   microstructure content build return None/{} after an exception with no reason.
 - S-35 `get_levels` expected-move levels: live spot ± the chain-time move, stamped with the
