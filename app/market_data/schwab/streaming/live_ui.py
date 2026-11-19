@@ -188,15 +188,14 @@ class LiveUiServer:
             if ticker in c.symbols:
                 c.pending.add(ticker)
                 c.wake.set()
-        for kind in self.priced:
-            self.mark_changed(ticker, kind)
+        self.mark_all(ticker, self.priced)
 
-    def mark_changed(self, ticker: str, kind: str) -> None:
-        """Mark each panel of `kind` changed for every browser showing it for its `ticker`."""
+    def mark_all(self, ticker: str, kinds: tuple[str, ...]) -> None:
+        """Mark each panel of the `kinds` changed for every browser showing it for its `ticker`."""
         for c in self.clients:
             if c.view is None or c.view[0] != ticker:
                 continue
-            names = {n for n in c.view[1] if kind_of(n) == kind}
+            names = {n for n in c.view[1] if kind_of(n) in kinds}
             if names:
                 c.panels.update(names)
                 c.wake.set()
@@ -368,12 +367,27 @@ def changed(state: State, ticker: str, *kinds: str) -> None:
     """Mark panels `kinds` of `ticker` (its key) changed for the pages showing them.
 
     While the program serves the pages (`state.prices`, the web server's app state); callable
-    from any thread: the pricing thread's producer calls it.
+    from any thread. On the loop's own thread (the bus intake, for every quote and book Schwab
+    streams) they are marked at once: a hand-off to its own loop would write its wake-up socket
+    for each one, a system call per message the intake cannot spare (measured 2026-11-19 at the
+    open: the option intake a minute behind Schwab). From another thread (the pricing thread's
+    producer) the loop is handed one call for them all.
     """
     prices = state.prices
-    if prices is not None:
-        for kind in kinds:
-            prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
+    if prices is None:
+        return
+    if _on_loop(prices.loop):
+        prices.mark_all(ticker, kinds)
+    else:
+        prices.loop.call_soon_threadsafe(prices.mark_all, ticker, kinds)
+
+
+def _on_loop(loop: asyncio.AbstractEventLoop) -> bool:
+    """Tell whether the caller runs on `loop`'s own thread."""
+    try:
+        return asyncio.get_running_loop() is loop
+    except RuntimeError:  # no loop runs on this thread
+        return False
 
 
 def selected(state: State) -> set[str]:
