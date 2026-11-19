@@ -127,6 +127,91 @@ STREAMED_TOP = (
 )
 
 
+@dataclass(frozen=True)
+class StreamedTop:
+    """A contract's or an equity's top of book as Schwab's LEVELONE stream last sent each field.
+
+    Each field the newest value Schwab sent for it (STREAMED_TOP's readers): None until Schwab
+    sends one, and when the one it sent is not a number.
+    """
+
+    bid: float | None = None
+    ask: float | None = None
+    bid_size: float | None = None
+    ask_size: float | None = None
+    mark: float | None = None
+    quote_time_ms: float | None = None
+    money_intrinsic: float | None = None
+
+
+#: a symbol with no top of book received: every field unknown
+NO_TOP = StreamedTop()
+
+
+@dataclass(frozen=True)
+class Received:
+    """One streamed field: the value Schwab sent (None: not a number) and when it was received.
+
+    NOT_SENT, with neither, is a field the stream has not sent.
+    """
+
+    value: float | None
+    ts_recv: float | None
+
+
+#: a field the stream has not sent
+NOT_SENT = Received(None, None)
+
+
+@dataclass(frozen=True)
+class StreamedGreeks:
+    """A contract's Greeks, volatility and volume as LEVELONE_OPTIONS last sent each one.
+
+    Each field with its own receive time (a message carries only the fields that changed);
+    NOT_SENT until the stream sends it.
+    """
+
+    gamma: Received = NOT_SENT
+    delta: Received = NOT_SENT
+    theta: Received = NOT_SENT
+    vega: Received = NOT_SENT
+    rho: Received = NOT_SENT
+    volatility: Received = NOT_SENT
+    total_volume: Received = NOT_SENT
+
+    def newest_ts(self) -> float | None:
+        """Return when the newest of its gamma, delta and volume was received; None: none was."""
+        times = [
+            f.ts_recv for f in (self.gamma, self.delta, self.total_volume) if f.ts_recv is not None
+        ]
+        return max(times) if times else None
+
+    def values(self) -> dict[str, float | None]:
+        """Return each field the stream sent, by its name, as a value (option_contract's names)."""
+        sent = {
+            "gamma": self.gamma,
+            "delta": self.delta,
+            "theta": self.theta,
+            "vega": self.vega,
+            "rho": self.rho,
+            "volatility": self.volatility,
+            "total_volume": self.total_volume,
+        }
+        return {name: f.value for name, f in sent.items() if f is not NOT_SENT}
+
+
+#: a contract with no Greeks streamed
+NO_GREEKS = StreamedGreeks()
+
+
+@dataclass(frozen=True)
+class Streamed:
+    """What the stream holds of one contract: its top of book and its Greeks."""
+
+    top: StreamedTop
+    greeks: StreamedGreeks
+
+
 def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
     """Return the top of book a contract's LEVELONE_OPTIONS record carries, under our names.
 

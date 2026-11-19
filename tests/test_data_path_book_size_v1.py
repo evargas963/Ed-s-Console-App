@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from calc import order_flow as ofe
+from option_contract import StreamedTop
 
 _MSGS = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spy_levelone_2026_11_13_1000et.json").read_text(
@@ -35,7 +36,7 @@ def test_the_book_top_is_the_size_schwab_sent():
     m = ofe.compute_book_microstructure(
         {
             "book": None,
-            "top": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
+            "top": StreamedTop(bid=bid, ask=ask, bid_size=bid_size, ask_size=ask_size),
         },
         now_ts=1.0,
     )

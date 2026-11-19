@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict, get_args
 import numpy as np
 
 from numeric_contract import float_finite_or_none
-from option_contract import OptionContract, streamed_greek_set
+from option_contract import OptionContract, Streamed, streamed_greek_set
 from time_et import Session, time_to_expiry_years
 
 if TYPE_CHECKING:
@@ -702,7 +702,7 @@ _BUCKET_SUMS: tuple[_SumField, ...] = get_args(_SumField.__value__)
 
 def overlay_streamed_contract_fields(
     contracts: list[OptionContract],
-    streamed_by_symbol: dict[str, dict[str, float | None]],
+    streamed_by_symbol: dict[str, Streamed],
     held: set[str],
     quoted: dict[str, tuple[float, dict[str, Any]]],
 ) -> tuple[list[OptionContract], int]:
@@ -731,13 +731,13 @@ def overlay_streamed_contract_fields(
             out.append(replace(c, **quoted[c.symbol][1]) if c.symbol in quoted else c)
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
-            pushed = {
-                "volume": sent.get("total_volume"),
-                "bid": sent.get("bid"),
-                "ask": sent.get("ask"),
-                "money_intrinsic": sent.get("money_intrinsic"),
+            pushed: dict[str, float | None] = {
+                "volume": sent.greeks.total_volume.value,
+                "bid": sent.top.bid,
+                "ask": sent.top.ask,
+                "money_intrinsic": sent.top.money_intrinsic,
             }
-            greeks = streamed_greek_set(sent)
+            greeks = streamed_greek_set(sent.greeks.values())
             if greeks is not None:
                 pushed.update(greeks)
             out.append(replace(c, **pushed))

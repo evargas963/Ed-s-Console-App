@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
@@ -73,8 +74,8 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
     newest_book = [m["item"] for m in rows if m["service"] == "OPTIONS_BOOK"][-1]
 
     def top(sym):
-        t = ofls.option_top(sym) or {}
-        return {k: t[k] for k in want[sym] if k in t}
+        t = asdict(ofls.option_top(sym))
+        return {k: t[k] for k in want[sym] if t[k] is not None}
 
     async def go():
         daemon = capture.Daemon(MessageBus(), HealthRegistry())
@@ -129,8 +130,8 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
     finally:
         ofls.clear_all_live_state()
         lmp.record_feed_down()
-    assert held["bid"] == m["item"]["BID_PRICE"]
-    assert released["bid"] == m["item"]["BID_PRICE"]
+    assert held.bid == m["item"]["BID_PRICE"]
+    assert released.bid == m["item"]["BID_PRICE"]
     assert (
         ofs.get_option_contract_streaming_diagnostics(sym, time_et.now())["subscription_state"]
         == ofs.NOT_STREAMED
