@@ -24,7 +24,7 @@ from starlette.types import Scope
 import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import live_ui
-from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
+from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, VOLATILITY_INDEX
 from app.options.order_flow.state import rest_quotes, streamed_values
 from app.options.order_flow.streaming import (
     price_state,
@@ -391,12 +391,19 @@ def _with_page_settings(html: str) -> str:
     """Tell the page its market-context symbols, strike-window scopes and streaming-state words.
 
     The market-context symbols it always shows are live_push.MARKET_CONTEXT, each with its
-    display name; the scopes its strike windows take are calc.terrain_engine.SCOPES, each with its
-    word; and the words for each streaming state are STREAM_WORDS. A page without a setting's
-    empty meta is refused, never served without it.
+    display name and whether it is the Volatility card's (live_push.VOLATILITY_INDEX); the
+    scopes its strike windows take are calc.terrain_engine.SCOPES, each with its word; and the
+    words for each streaming state are STREAM_WORDS. A page without a setting's empty meta is
+    refused, never served without it.
     """
     for name, value in (
-        ("ed-market-context", [{"key": k, "display": display_symbol(k)} for k in MARKET_CONTEXT]),
+        (
+            "ed-market-context",
+            [
+                {"key": k, "display": display_symbol(k), "volatility": k == VOLATILITY_INDEX}
+                for k in MARKET_CONTEXT
+            ],
+        ),
         ("ed-scopes", [{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES]),
         ("ed-stream-words", STREAM_WORDS),
     ):
