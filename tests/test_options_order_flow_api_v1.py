@@ -19,6 +19,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import contract as push_contract
 from state import level_store
@@ -115,14 +116,14 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         server._publish_levels(
             "SPY",
             captures=[
-                {
-                    "contracts": read_chain(SPY_0DTE.chain),
-                    "ts_utc": at,
-                    "spot": SPY_0DTE.spot,
-                    "spot_ts": None,
-                    "et_date": SPY_0DTE.now.date().isoformat(),
-                    "basis": server.CAPTURE_BASIS,
-                }
+                StoredCapture(
+                    contracts=read_chain(SPY_0DTE.chain),
+                    ts_utc=at,
+                    spot=SPY_0DTE.spot,
+                    spot_ts=None,
+                    et_date=SPY_0DTE.now.date().isoformat(),
+                    basis=server.CAPTURE_BASIS,
+                )
             ],
             now=SPY_0DTE.now,
         )

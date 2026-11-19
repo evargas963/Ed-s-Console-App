@@ -528,12 +528,12 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     put("2026-09-25 16:00", 12.0, ["2030-01-04", "2030-01-11"])  # Friday's last
     put("2026-09-25 16:05", 99.0, ["2030-01-04"], basis="strike_range=ALL")  # old row
     caps = cch.last_capture_per_day(db, "ZZ", 2)
-    assert [(c["et_date"], c["spot"], len(c["contracts"])) for c in caps] == [
+    assert [(c.et_date, c.spot, len(c.contracts)) for c in caps] == [
         ("2026-09-25", 12.0, 2),
         ("2026-09-24", 11.0, 2),
     ]
     prior = cch.last_capture_per_day(db, "ZZ", 1, before_et_date="2026-09-25")
-    assert [(c["et_date"], c["spot"]) for c in prior] == [("2026-09-24", 11.0)]
+    assert [(c.et_date, c.spot) for c in prior] == [("2026-09-24", 11.0)]
 
 
 def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
@@ -565,7 +565,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
         ts_utc=et_ts("2026-09-28 16:15"),
     )
     caps = cch.last_capture_per_day(db, "ZZ", 2)
-    assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
+    assert [(c.et_date, c.basis) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
     after = et_ts("2026-09-28 16:20")
     assert server._prior_capture(caps, after) is None
     try:

@@ -155,7 +155,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
             )
     captures = last_capture_per_day(db, tk, 2)
     # one instant for every reader, the newer capture's (a datetime keeps microseconds)
-    now = datetime.fromtimestamp(captures[0]["ts_utc"], time_et.ET)
+    now = datetime.fromtimestamp(captures[0].ts_utc, time_et.ET)
     at = now.timestamp()
     held = time_et.HELD.sessions
     time_et.HELD.sessions = {}  # the two days' own answers, whatever else a test run holds

@@ -45,8 +45,8 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
     finally:
         schwab.close()
     (stored,) = last_capture_per_day(db, "SPY", 1)
-    assert stored["ts_utc"] == _IN_WINDOW and stored["contracts"]
-    first = stored["contracts"][0]
+    assert stored.ts_utc == _IN_WINDOW and stored.contracts
+    first = stored.contracts[0]
     expiry = first.expiry
     # the stored records are read; the second write is that contract as Schwab's chain sent it
     (sent,) = [c for c in SPY["chain"] if c["symbol"] == first.symbol]
@@ -58,7 +58,7 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
             ticker="SPY",
             expiry=expiry,
             contracts=[sent],
-            spot=stored["spot"],
+            spot=stored.spot,
             completeness_basis=CAPTURE_BASIS,
             ts_utc=_IN_WINDOW,
         )

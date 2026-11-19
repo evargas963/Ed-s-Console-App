@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import server
+from calibration.complete_chain_capture import StoredCapture
 from push import surface as push_surface
 from state import level_store
 
@@ -35,14 +36,14 @@ def drawn(
         server._publish_levels(
             tk,
             captures=[
-                {
-                    "contracts": contracts,
-                    "ts_utc": now.timestamp(),
-                    "spot": spot,
-                    "spot_ts": None,
-                    "et_date": now.date().isoformat(),
-                    "basis": server.CAPTURE_BASIS,
-                }
+                StoredCapture(
+                    contracts=contracts,
+                    ts_utc=now.timestamp(),
+                    spot=spot,
+                    spot_ts=None,
+                    et_date=now.date().isoformat(),
+                    basis=server.CAPTURE_BASIS,
+                )
             ],
             now=now,
         )

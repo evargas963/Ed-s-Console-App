@@ -20,6 +20,7 @@ import server as srv
 from calc import liquidity_value_engine
 from calc.liquidity_models import ZoneType
 from calc.micro_structure import Candle
+from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import liquidity as push_liquidity
 from state import bar_store, level_store
@@ -100,14 +101,14 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     srv._publish_levels(
         TK,
         captures=[
-            {
-                "contracts": read_chain(SPY_CLOSE.chain),
-                "ts_utc": SPY_CLOSE.now.timestamp(),
-                "spot": SPY_CLOSE.spot,
-                "et_date": SPY_CLOSE.now.date().isoformat(),
-                "basis": srv.CAPTURE_BASIS,
-                "spot_ts": None,
-            }
+            StoredCapture(
+                contracts=read_chain(SPY_CLOSE.chain),
+                ts_utc=SPY_CLOSE.now.timestamp(),
+                spot=SPY_CLOSE.spot,
+                et_date=SPY_CLOSE.now.date().isoformat(),
+                basis=srv.CAPTURE_BASIS,
+                spot_ts=None,
+            )
         ],
         now=SPY_CLOSE.now,
     )
