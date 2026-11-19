@@ -42,7 +42,7 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     # (docs/DATA_FLOW.md §2 D5).
     # QUOTE_TIME_MILLIS stays on the top; the book ages from that clock.
     top = option_top(contract)
-    quote_ms = top.get("quote_time_ms") if isinstance(top, dict) else None
+    quote_ms = top.quote_time_ms
     top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now)
     of = OrderFlowEngine().compute(
         {

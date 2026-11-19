@@ -31,6 +31,7 @@ from numeric_contract import (
     price_text,
     schwab_count,
 )
+from option_contract import NO_TOP, StreamedTop
 from time_et import ct_label
 
 OF_TAPE_WINDOW_30S_SEC: float = 30.0
@@ -128,31 +129,31 @@ def _book_imbalance_from_totals(bid_total: float | None, ask_total: float | None
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _top(data: dict[str, Any]) -> dict[str, Any]:
-    """Return the top of book the caller supplies as ``data["top"]``.
+def _top(data: dict[str, Any]) -> StreamedTop:
+    """Return the top of book the caller supplies as ``data["top"]`` (NO_TOP: none supplied).
 
-    Its bid, ask, bid_size, ask_size and mark are each the last value Schwab sent; absent when
+    Its bid, ask, bid_size, ask_size and mark are each the last value Schwab sent; None when
     Schwab has sent none.
     """
-    t: dict[str, Any] | None = data.get("top")
-    return t if isinstance(t, dict) else {}
+    t = data.get("top")
+    return t if isinstance(t, StreamedTop) else NO_TOP
 
 
 def _compute_top_book_pressure(data: dict[str, Any]) -> float | None:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
     t = _top(data)
-    return _book_imbalance_from_totals(t.get("bid_size"), t.get("ask_size"))
+    return _book_imbalance_from_totals(t.bid_size, t.ask_size)
 
 
 def _resolve_bid_ask_prices(data: dict[str, Any]) -> tuple[float | None, float | None]:
     """Level-one BID_PRICE / ASK_PRICE as Schwab sent them."""
     t = _top(data)
-    return t.get("bid"), t.get("ask")
+    return t.bid, t.ask
 
 
 def _resolve_quote_mark(data: dict[str, Any]) -> float | None:
     """Level-one MARK as Schwab sent it, a ticker's or a contract's; a reported 0 is 0."""
-    return _top(data).get("mark")
+    return _top(data).mark
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,8 +208,8 @@ def _extract_canonical_book(data: dict[str, Any]) -> dict[str, Any]:
     snapshot: Book | None = data["book"]
     bid, ask = _resolve_bid_ask_prices(data)
     t = _top(data)
-    bid_size = schwab_count(t.get("bid_size"))
-    ask_size = schwab_count(t.get("ask_size"))
+    bid_size = schwab_count(t.bid_size)
+    ask_size = schwab_count(t.ask_size)
 
     bid_levels = _sorted_valid_levels(snapshot.pairs("BIDS"), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(snapshot.pairs("ASKS"), descending=False) if snapshot else []

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time_et
 from app.options.order_flow.state import OrderFlowState as LiveOrderFlowState
+from option_contract import NO_GREEKS, Received, StreamedGreeks
 
 
 def test_total_volume_is_captured_alongside_the_greeks():
@@ -29,28 +30,28 @@ def test_total_volume_is_captured_alongside_the_greeks():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 12345}, ts_recv=500.0)
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["total_volume"] == 12345.0
-    assert g["total_volume_ts_recv"] == 500.0
+    assert g.total_volume.value == 12345.0
+    assert g.total_volume.ts_recv == 500.0
 
 
 def test_a_volume_only_tick_alone_is_captured_without_any_greek_present():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 777}, ts_recv=time_et.now())
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g == {"total_volume": 777.0, "total_volume_ts_recv": g["total_volume_ts_recv"]}
+    assert g == StreamedGreeks(total_volume=Received(777.0, g.total_volume.ts_recv))
 
 
 def test_a_genuine_zero_volume_is_captured_not_dropped():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 0}, ts_recv=time_et.now())
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["total_volume"] == 0.0
+    assert g.total_volume.value == 0.0
 
 
 def test_a_negative_volume_is_rejected_not_stored_in_greeks_either():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": -1}, ts_recv=time_et.now())
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    assert st.get_stream_greeks("SPY   260116C00580000") is NO_GREEKS
 
 
 def test_a_gamma_only_tick_does_not_blank_a_previously_observed_volume():
@@ -58,13 +59,13 @@ def test_a_gamma_only_tick_does_not_blank_a_previously_observed_volume():
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 500}, ts_recv=time_et.now())
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.02}, ts_recv=time_et.now())
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["total_volume"] == 500.0
-    assert g["gamma"] == 0.02
+    assert g.total_volume.value == 500.0
+    assert g.gamma.value == 0.02
 
 
 def test_never_observed_symbol_returns_none_not_a_dict_of_nones():
     st = LiveOrderFlowState()
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    assert st.get_stream_greeks("SPY   260116C00580000") is NO_GREEKS
 
 
 def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
@@ -82,9 +83,9 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
         "SPY   260116C00580000", {"BID_PRICE": 12.30, "ASK_PRICE": 12.35}, ts_recv=time_et.now()
     )
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["gamma"] == 0.0123, "gamma must survive a tick that does not mention it"
-    assert g["delta"] == 0.45
-    assert "open_interest" not in g, "a contract's open interest is the chain's, not the stream's"
+    assert g.gamma.value == 0.0123, "gamma must survive a tick that does not mention it"
+    assert g.delta.value == 0.45
+    assert "open_interest" not in g.values(), "a contract's open interest is the chain's"
 
 
 def test_each_field_is_independently_updatable():
@@ -96,16 +97,16 @@ def test_each_field_is_independently_updatable():
     )
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.02}, ts_recv=time_et.now())
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["gamma"] == 0.02, "gamma updates independently"
-    assert g["delta"] == 0.40, "delta from the earlier tick is untouched"
-    assert "open_interest" not in g, "a contract's open interest is the chain's, not the stream's"
+    assert g.gamma.value == 0.02, "gamma updates independently"
+    assert g.delta.value == 0.40, "delta from the earlier tick is untouched"
+    assert "open_interest" not in g.values(), "a contract's open interest is the chain's"
 
 
 def test_a_negative_open_interest_is_rejected_not_stored():
     """schwab_count (AGENTS.md rule 2): a negative count is not a number and is not stored."""
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": -5}, ts_recv=time_et.now())
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    assert st.get_stream_greeks("SPY   260116C00580000") is NO_GREEKS
 
 
 def test_the_streams_open_interest_is_not_kept_the_chains_is_the_one_producer():
@@ -117,14 +118,14 @@ def test_the_streams_open_interest_is_not_kept_the_chains_is_the_one_producer():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 0}, ts_recv=time_et.now())
     st.push_level_one("SPY   260116C00580000", {"OPEN_INTEREST": 4200}, ts_recv=time_et.now())
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    assert st.get_stream_greeks("SPY   260116C00580000") is NO_GREEKS
 
 
 def test_a_non_finite_gamma_is_rejected_not_stored():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01}, ts_recv=100.0)
     st.push_level_one("SPY   260116C00580000", {"GAMMA": float("nan")}, ts_recv=105.0)
-    assert st.get_stream_greeks("SPY   260116C00580000")["gamma"] is None, (
+    assert st.get_stream_greeks("SPY   260116C00580000").gamma.value is None, (
         "a gamma sent as no number is no value, never the last one kept"
     )
 
@@ -134,27 +135,27 @@ def test_each_field_carries_its_own_receive_timestamp():
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01}, ts_recv=100.0)
     st.push_level_one("SPY   260116C00580000", {"DELTA": 0.40}, ts_recv=105.0)
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g["gamma_ts_recv"] == 100.0, "an untouched field keeps its OWN last-update time"
-    assert g["delta_ts_recv"] == 105.0
+    assert g.gamma.ts_recv == 100.0, "an untouched field keeps its OWN last-update time"
+    assert g.delta.ts_recv == 105.0
 
 
 def test_greeks_are_symbol_scoped_not_cross_contaminated():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01}, ts_recv=time_et.now())
     st.push_level_one("SPY   260116P00580000", {"GAMMA": 0.02}, ts_recv=time_et.now())
-    assert st.get_stream_greeks("SPY   260116C00580000")["gamma"] == 0.01
-    assert st.get_stream_greeks("SPY   260116P00580000")["gamma"] == 0.02
+    assert st.get_stream_greeks("SPY   260116C00580000").gamma.value == 0.01
+    assert st.get_stream_greeks("SPY   260116P00580000").gamma.value == 0.02
 
 
 def test_clear_symbol_drops_streamed_greeks():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01}, ts_recv=time_et.now())
     st.clear_symbol("SPY   260116C00580000")
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    assert st.get_stream_greeks("SPY   260116C00580000") is NO_GREEKS
 
 
 def test_clear_all_drops_streamed_greeks_for_every_symbol():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"GAMMA": 0.01}, ts_recv=time_et.now())
     st.clear_all()
-    assert st.get_stream_greeks("SPY   260116C00580000") is None
+    assert st.get_stream_greeks("SPY   260116C00580000") is NO_GREEKS

@@ -11,7 +11,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from app.options.order_flow import history
@@ -28,7 +28,17 @@ from calc.l1_trade_observation import (
 from calc.order_flow import Book, Exchanges, Json, Level
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from option_contract import quote_values, streamed_greeks, streamed_top
+from option_contract import (
+    NO_GREEKS,
+    NO_TOP,
+    Received,
+    Streamed,
+    StreamedGreeks,
+    StreamedTop,
+    quote_values,
+    streamed_greeks,
+    streamed_top,
+)
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -116,10 +126,10 @@ class OrderFlowState:
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque[dict[str, Any]]] = {}
-        self._top: dict[str, dict[str, Any]] = {}
+        self._top: dict[str, StreamedTop] = {}
         self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
         self._receive_seq: dict[str, int] = {}
-        self._stream_greeks: dict[str, dict[str, Any]] = {}
+        self._stream_greeks: dict[str, StreamedGreeks] = {}
 
     def _get_tape(self, symbol: str) -> deque[dict[str, Any]]:
         with self._lock:
@@ -180,13 +190,12 @@ class OrderFlowState:
         def received(field: str) -> float:
             return ts_recv if field_received is None else field_received[field]
 
-        if greeks or vf is not None:
+        sent = {name: Received(value, received(name.upper())) for name, value in greeks.items()}
+        if vf is not None:
+            sent["total_volume"] = Received(vf, received("TOTAL_VOLUME"))
+        if sent:
             with self._lock:
-                g = self._stream_greeks.setdefault(sym, {})
-                for name, value in greeks.items():
-                    g[name], g[f"{name}_ts_recv"] = value, received(name.upper())
-                if vf is not None:
-                    g["total_volume"], g["total_volume_ts_recv"] = vf, received("TOTAL_VOLUME")
+                self._stream_greeks[sym] = replace(self._stream_greeks.get(sym, NO_GREEKS), **sent)
 
         trade = extract_vendor_print(content_item)
         if trade is None:
@@ -210,7 +219,11 @@ class OrderFlowState:
                     ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    **history.quoted(trade.price, self._top.get(sym), self._stream_greeks.get(sym)),
+                    **history.quoted(
+                        trade.price,
+                        self._top.get(sym, NO_TOP),
+                        self._stream_greeks.get(sym, NO_GREEKS),
+                    ),
                 }
             )
 
@@ -235,8 +248,7 @@ class OrderFlowState:
         """Drop session state. Caller holds ``self._lock``."""
         for values in self._tape.values():
             values.clear()
-        for key in list(self._top):
-            self._top[key] = {}
+        self._top.clear()
         for values in self._book.values():
             values.clear()
         self._prev_trade.clear()
@@ -266,34 +278,22 @@ class OrderFlowState:
         if not sym:
             return
         with self._lock:
-            top = self._top.setdefault(sym, {})
-            for name, v in streamed_top(content_item).items():
-                if v is None:
-                    top.pop(name, None)
-                else:
-                    top[name] = v
+            self._top[sym] = replace(self._top.get(sym, NO_TOP), **streamed_top(content_item))
 
-    def option_top(self, symbol: str) -> dict[str, Any] | None:
+    def option_top(self, symbol: str) -> StreamedTop:
+        """Return the symbol's top of book as Schwab last sent each field (NO_TOP: none yet)."""
         sym = ticker_storage_key(symbol)
         with self._lock:
-            t = self._top.get(sym)
-            return dict(t) if t else None
+            return self._top.get(sym, NO_TOP)
 
-    def get_stream_greeks(self, symbol: str) -> dict[str, Any] | None:
-        """Return the latest streamed Greeks, OPEN_INTEREST and TOTAL_VOLUME for one contract.
+    def get_stream_greeks(self, symbol: str) -> StreamedGreeks:
+        """Return one contract's streamed Greeks, volatility and volume (NO_GREEKS: none yet).
 
-        The contract is one OPTION contract symbol, each field paired with its own ``_ts_recv``
-        (the field's own last-update wall-clock receive time, not merely this call's time) -- a
-        per-field freshness stamp is what lets a caller judge one field newer than a same-tick
-        sibling that was absent this update, per the sparse-overlay pattern below. Returns None
-        when nothing has ever been observed for this symbol (never a dict of Nones).
+        Each field with its own receive time: a message carries only the fields that changed.
         """
         sym = ticker_storage_key(symbol)
-        if not sym:
-            return None
         with self._lock:
-            g = self._stream_greeks.get(sym)
-            return dict(g) if g else None
+            return self._stream_greeks.get(sym, NO_GREEKS)
 
 
 _LIVE_STATE = OrderFlowState()
@@ -328,7 +328,7 @@ def push_option_top(symbol: str, content_item: dict[str, Any]) -> None:
     _LIVE_STATE.push_option_top(symbol, content_item)
 
 
-def option_top(symbol: str) -> dict[str, Any] | None:
+def option_top(symbol: str) -> StreamedTop:
     return _LIVE_STATE.option_top(symbol)
 
 
@@ -371,20 +371,16 @@ def clear_symbol(symbol: str) -> None:
     _LIVE_STATE.clear_symbol(symbol)
 
 
-def get_stream_greeks(symbol: str) -> dict[str, Any] | None:
-    """Return the live singleton's latest streamed GAMMA/DELTA/OPEN_INTEREST for one contract.
-
-    The contract is one option contract symbol; each value is paired with its own `_ts_recv`,
-    or None is returned if never observed.
-    """
+def get_stream_greeks(symbol: str) -> StreamedGreeks:
+    """Return the live singleton's streamed Greeks of one contract (NO_GREEKS: none yet)."""
     return _LIVE_STATE.get_stream_greeks(symbol)
 
 
-def streamed_values(symbols: Iterable[str]) -> dict[str, dict[str, Any]]:
-    """Return each of `symbols`' newest streamed Greeks, volume, bid and ask; none: left out."""
-    out: dict[str, dict[str, Any]] = {}
+def streamed_values(symbols: Iterable[str]) -> dict[str, Streamed]:
+    """Return what the stream holds of each of `symbols`; one it has sent nothing of: left out."""
+    out: dict[str, Streamed] = {}
     for sym in symbols:
-        held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
-        if held:
-            out[sym] = {k: v for r in held for k, v in r.items()}
+        held = Streamed(option_top(sym), get_stream_greeks(sym))
+        if held.top is not NO_TOP or held.greeks is not NO_GREEKS:
+            out[sym] = held
     return out

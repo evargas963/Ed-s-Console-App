@@ -22,6 +22,7 @@ from calc.order_flow import (
     readout_card,
 )
 from instrument_identity import ticker_storage_key
+from option_contract import StreamedTop
 from push.asked import venue_asked
 from time_et import CLOSE_AUCTION, ET, OPEN_AUCTION, age_text, auction, ct_label
 
@@ -81,7 +82,13 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     if _row["quote_ts"] is not None:
         data["exchange_quote_ts"] = _row["quote_ts"]
     data["top"] = (
-        {k: _row[k] for k in ("bid", "ask", "bid_size", "ask_size", "mark")}
+        StreamedTop(
+            bid=_row["bid"],
+            ask=_row["ask"],
+            bid_size=_row["bid_size"],
+            ask_size=_row["ask_size"],
+            mark=_row["mark"],
+        )
         if _row["bid"] is not None or _row["ask"] is not None
         else None
     )
