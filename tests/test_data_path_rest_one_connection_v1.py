@@ -88,7 +88,7 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
         daemon.watchlist,
         lambda topic, msg: published.append((topic, msg)),
         clock=lambda: now,
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
         streamed=daemon.option_record,
     )
     return daemon, sweep, (lambda: client), published

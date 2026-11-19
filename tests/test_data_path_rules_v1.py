@@ -485,7 +485,7 @@ class _Swept:
             watchlist,
             publish,
             clock=lambda: self.clock["now"],
-            failures=CaptureWriter(tmp_path / "stream_capture.db"),
+            failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
             streamed=lambda _symbol: None,
         )
         self.client = self.schwab.client(tmp_path)
@@ -920,7 +920,7 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
             delivered.append(msg["ts_recv"])
 
     db = tmp_path / "ed_console.db"
-    writer = CaptureWriter(tmp_path / "stream_capture.db")
+    writer = CaptureWriter(db)  # the daemon's one database
     sweep = ChainSweep(
         db, ["SPY"], publish, clock=clock, failures=writer, streamed=lambda _symbol: None
     )
@@ -1486,7 +1486,7 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
         tmp_path / "ed_console.db",
         ["AAA", "BBB", "CCC", "DDD", "EEE"],
         lambda _topic, msg: failed.append(msg["failed"]),
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
         streamed=lambda _symbol: None,
     )
     halt = threading.Event()
@@ -1522,7 +1522,7 @@ def test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_aske
         ["AAA", "BBB"],
         lambda _topic, msg: published.append(msg),
         clock=lambda: now,
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
         streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)

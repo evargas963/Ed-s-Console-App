@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import IO, Any, override
 
 import time_et
+from calibration.complete_chain_capture import ensure_schema, store_capture_message
 from db_authority import canonical_db_path
 from json_blob_codec import decode_text_blob, encode_text_blob
 from time_et import ET, ct_label
@@ -657,6 +658,22 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
 }
 
 
+#: a chain capture's topic kind and its table: the sweep's capture of a capture window, one row
+#: per expiry (store_capture)
+CAPTURE, CAPTURE_TABLE = "capture", "complete_chain_captures"
+#: what became of a capture handed to the writer (store_capture): committed with at least one
+#: row; refused (kept as sent in stream_write_failures, nothing to store, or the writer dead);
+#: held, not committed in the wait (the database refuses writes) and written once it takes them
+CAPTURE_STORED, CAPTURE_REFUSED, CAPTURE_HELD = "stored", "refused", "held"
+
+
+def _capture_written(conn: sqlite3.Connection, msg: Any) -> RowWritten:
+    """Write a capture message's rows; its row record: (ticker, capture time, rows written)."""
+    return RowWritten(
+        CAPTURE_TABLE, (msg["ticker"], msg["ts_utc"], store_capture_message(conn, msg))
+    )
+
+
 #: Topics stored as Schwab's item verbatim: a message without that item is not a row.
 _VERBATIM = {"book", "optquote", "news"}
 
@@ -1232,6 +1249,9 @@ class CaptureWriter:
         self.last_failure: str | None = None
         self.last_failure_ts: float | None = None
         self.unrecorded = 0
+        #: (ticker, ts_utc) -> told when that capture's batch is committed, with whether any of
+        #: its rows was written (store_capture)
+        self._captures: dict[tuple[str, float], tuple[threading.Event, list[str]]] = {}
         self.error: str | None = None
         self.error_ts: float | None = None
         self.left_on_disk: list[dict[str, str | int]] = []
@@ -1248,6 +1268,7 @@ class CaptureWriter:
                 for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             }
             conn.executescript(STREAM_SCHEMA_SQL)
+            ensure_schema(conn)  # the chain history's captures (store_capture)
             for table, index in RECEIPT_TIME_INDEXES.items():
                 if table not in tables:
                     conn.execute(index)
@@ -1278,7 +1299,7 @@ class CaptureWriter:
         """
         kind = topic.split(".", 1)[0]
         spec = _INSERTS.get(kind)
-        if spec is None:
+        if spec is None and kind != CAPTURE:
             return None
         if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
             return None
@@ -1293,6 +1314,8 @@ class CaptureWriter:
                 self._committed([((topic, msg), out)])
             return out
         try:
+            if spec is None:  # a capture: its rows, one per expiry, all or none
+                return _capture_written(conn, msg)
             values = spec[1](msg)
             conn.execute(spec[0], values)
         except ROW_FAILURES as e:
@@ -1340,16 +1363,43 @@ class CaptureWriter:
                 self.unrecorded += 1
             elif not standalone:
                 self._q.put(kept)
-        if not standalone:
-            return
+        if standalone:
+            self._write_alone(kept)
+
+    def _write_alone(self, item: Item) -> None:
+        """Write `item` on a connection of its own: the writer's thread is not running."""
         own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
         try:
             with own:  # commits, or rolls back on an error
-                self._keep(own, kept)
+                out = self._store(own, item)
         finally:
             own.close()
         with self._lock:
-            self._committed([(kept, kept)])
+            self._committed([(item, out)])
+
+    def store_capture(self, msg: dict[str, Any], wait_sec: float) -> str:
+        """Write a chain capture (capture_message) and wait up to `wait_sec` for its commit.
+
+        Another thread: the chain sweep, which tells the console of the chain only after this
+        returns (store first). Returns CAPTURE_STORED, CAPTURE_REFUSED (none of its rows written:
+        refused and kept as sent in stream_write_failures, nothing to store, or the writer dead,
+        counted unrecorded) or CAPTURE_HELD (not committed within `wait_sec`: the writer holds it
+        and writes it once the database takes writes). A writer whose thread is not running
+        writes it here, on a connection of its own.
+        """
+        item = (f"{CAPTURE}.{msg['ticker']}", msg)
+        done, result = threading.Event(), list[str]()
+        with self._lock:
+            standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
+            if self.state == WRITER_DEAD:
+                self.unrecorded += 1
+                return CAPTURE_REFUSED
+            self._captures[(msg["ticker"], msg["ts_utc"])] = (done, result)
+            if not standalone:
+                self._q.put(item)
+        if standalone:
+            self._write_alone(item)
+        return result[0] if done.wait(wait_sec) else CAPTURE_HELD
 
     def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
         """One stream_write_failures row.
@@ -1372,12 +1422,22 @@ class CaptureWriter:
 
         The caller holds the lock, so a batch is counted written and stops being held at one time.
         """
-        for _item, out in batch:
+        for item, out in batch:
             if isinstance(out, RowWritten):
                 self.rows_written += 1
             elif isinstance(out, KeptFailure):
                 self.failures += 1
                 self.last_failure, self.last_failure_ts = f"{out.topic}: {out.error}", out.ts
+            if (
+                isinstance(item, tuple)
+                and item[0].startswith(f"{CAPTURE}.")
+                and isinstance(msg := item[1], dict)
+            ):
+                waiter = self._captures.pop((msg["ticker"], msg["ts_utc"]), None)
+                if waiter is not None:
+                    stored = isinstance(out, RowWritten) and out.values[2] > 0
+                    waiter[1].append(CAPTURE_STORED if stored else CAPTURE_REFUSED)
+                    waiter[0].set()
         if self.state == WRITER_BLOCKED:
             self.state, self.error, self.error_ts = WRITER_RECORDING, None, None
 

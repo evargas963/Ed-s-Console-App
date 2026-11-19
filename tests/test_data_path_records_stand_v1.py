@@ -35,7 +35,7 @@ def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_ke
         ["SPY"],
         lambda _topic, _msg: None,
         clock=lambda: _IN_WINDOW,
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        failures=CaptureWriter(db),  # the daemon's one database
         streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)

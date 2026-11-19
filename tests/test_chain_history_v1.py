@@ -111,7 +111,7 @@ def _sweep(tmp_path, schwab, clock):
         ["SPY"],
         lambda topic, msg: published.append((topic, msg)),
         clock=clock,
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
         streamed=lambda _symbol: None,
     )
     client = schwab.client(tmp_path)
@@ -388,8 +388,9 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
     ((tk, contracts, _t, reason, _spot, capture),) = _assembled(published)
     assert contracts is not None and reason is None
     assert capture is False, "a chain whose history was not stored is no capture"
-    with closing(sqlite3.connect(db)) as conn, conn:
+    with closing(sqlite3.connect(db)) as conn, conn:  # the table takes writes again
         conn.execute("DROP TABLE complete_chain_captures")
+        cch.ensure_schema(conn)
     clock["now"] += 120  # the same window's next chain
     _rotate(sweep, client)
     with closing(sqlite3.connect(db)) as c, c:
