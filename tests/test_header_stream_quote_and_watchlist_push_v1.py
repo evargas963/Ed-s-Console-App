@@ -56,7 +56,7 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     try:
         # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
         ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
-        assert lmp.get_quote(tk) is None and srv.resolve_spot(tk, now=now)[0] is None
+        assert lmp.get_quote(tk) is lmp.NO_QUOTE and srv.resolve_spot(tk, now=now)[0] is None
         # the daemon puts the same message in its plane; the console reads the daemon's one row
         lmp.record_from_level_one_equity(tk, native, received_ts=now)
         row = ofs.price_row(tk, now)

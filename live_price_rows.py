@@ -51,21 +51,13 @@ def _trade_age_text(trade_ts: float | None, now: float) -> str | None:
     return None if trade_ts is None else age_text(now - trade_ts)
 
 
-def _spot_of(row: dict[str, Any] | None) -> float | None:
-    """Return a plane row's live price: its Schwab LAST_PRICE as the stream sent it.
-
-    None while the row has none (never received, or sent as not a number).
-    """
-    return None if row is None else row["spot"]
-
-
 def spot(ticker: str) -> float | None:
-    """`ticker`'s live price, the price row's own (price_row's `spot`).
+    """`ticker`'s live price, the price row's own (price_row's `spot`): Schwab's LAST_PRICE.
 
-    For a reader that needs only the price: the capture daemon's option rule.
+    For a reader that needs only the price: the capture daemon's option rule. None while the
+    row has none (never received, or sent as not a number).
     """
-    tk = ticker_storage_key(ticker)
-    return _spot_of(lmp.get_quote(tk) if tk else None)
+    return lmp.get_quote(ticker_storage_key(ticker)).spot
 
 
 def price_row(ticker: str, now: float) -> dict[str, Any]:
@@ -76,14 +68,10 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
     """
     tk = ticker_storage_key(ticker)
     label, outage = lmp.live_state(tk, "LEVELONE_EQUITIES", now)
-    row = lmp.get_quote(tk) if tk else None
-    spot = _spot_of(row)
-
-    def field(name: str):
-        return None if row is None else row[name]
-
-    trade_ts = field("trade_ts")
-    quote_ts = field("exchange_quote_ts")
+    row = lmp.get_quote(tk)
+    spot = row.spot
+    trade_ts = row.trade_ts
+    quote_ts = row.exchange_quote_ts
     return {
         "ticker": tk,
         "spot": spot,
@@ -94,32 +82,32 @@ def price_row(ticker: str, now: float) -> dict[str, Any]:
         "feed_live": label == lmp.LIVE,
         "feed_label": label,
         "outage": outage,
-        "bid": field("bid"),
-        "ask": field("ask"),
-        "bid_text": price_text(field("bid")),
-        "ask_text": price_text(field("ask")),
-        "bid_size": field("bid_size"),
-        "ask_size": field("ask_size"),
-        "mark": field("mark"),  # Schwab MARK
+        "bid": row.bid,
+        "ask": row.ask,
+        "bid_text": price_text(row.bid),
+        "ask_text": price_text(row.ask),
+        "bid_size": row.bid_size,
+        "ask_size": row.ask_size,
+        "mark": row.mark,  # Schwab MARK
         "quote_ts": quote_ts,  # Schwab QUOTE_TIME (epoch s)
         "quote_time_ct": ct_label(quote_ts) if quote_ts is not None else None,
-        "last_size": field("last_size"),
-        "total_volume": field("total_volume"),
-        "last_size_text": count_text(field("last_size")),
-        "total_volume_text": count_text(field("total_volume")),
+        "last_size": row.last_size,
+        "total_volume": row.total_volume,
+        "last_size_text": count_text(row.last_size),
+        "total_volume_text": count_text(row.total_volume),
         # Schwab's own percent changes vs the prior close: NET_CHANGE_PERCENT (extended hours
         # included) and REGULAR_MARKET_CHANGE_PERCENT
-        "chg_pct": field("chg_pct"),
-        "chg_pct_regular": field("chg_pct_regular"),
+        "chg_pct": row.chg_pct,
+        "chg_pct_regular": row.chg_pct_regular,
         # each as the screen shows it, signed with two decimals
-        "chg_pct_text": change_percent_text(field("chg_pct")),
-        "chg_pct_regular_text": change_percent_text(field("chg_pct_regular")),
-        "net_change": field("net_change"),
-        "open_price": field("open_price"),
-        "high_price": field("high_price"),
-        "low_price": field("low_price"),
+        "chg_pct_text": change_percent_text(row.chg_pct),
+        "chg_pct_regular_text": change_percent_text(row.chg_pct_regular),
+        "net_change": row.net_change,
+        "open_price": row.open_price,
+        "high_price": row.high_price,
+        "low_price": row.low_price,
         "trade_ts": trade_ts,  # Schwab TRADE_TIME (epoch s)
         "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
         "trade_age_text": _trade_age_text(trade_ts, now),
-        "ts_recv": field("server_received_ts"),
+        "ts_recv": row.server_received_ts,
     }

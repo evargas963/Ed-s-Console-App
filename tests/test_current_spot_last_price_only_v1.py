@@ -56,7 +56,7 @@ def test_plane_mark_only_tick_never_creates_current_spot() -> None:
             "AMZN", _AMZN_MARK_ONLY["item"], received_ts=_AMZN_MARK_ONLY["ts_recv"]
         )
         assert ok is True  # the quote Schwab sent is published
-        assert L.get_quote("AMZN")["spot"] is None  # MARK never stands in for the spot
+        assert L.get_quote("AMZN").spot is None  # MARK never stands in for the spot
         spot, source, _ts = server.resolve_spot("AMZN", now=RTH_INSTANT)
     finally:
         L._by_ticker.pop("AMZN", None)
@@ -76,7 +76,7 @@ def test_plane_mark_cannot_replace_prior_last_price() -> None:
         row = L.get_quote("SPY")
     finally:
         L._by_ticker.pop("SPY", None)
-    assert row is not None
-    assert row["spot"] == _SPY_LAST["item"]["LAST_PRICE"] == 735.89
+    assert row is not L.NO_QUOTE
+    assert row.spot == _SPY_LAST["item"]["LAST_PRICE"] == 735.89
     # Schwab's MARK is its own field, never the price
-    assert row["mark"] == _SPY_MARK_ONLY["item"]["MARK"] == 735.86
+    assert row.mark == _SPY_MARK_ONLY["item"]["MARK"] == 735.86
