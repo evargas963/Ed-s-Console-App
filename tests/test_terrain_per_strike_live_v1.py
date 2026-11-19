@@ -34,7 +34,9 @@ def test_unknown_dte_belongs_to_neither_near_nor_far_f8():
     del rows[1]["daysToExpiration"]
     rows[2]["daysToExpiration"] = float("inf")
     contracts = read_chain(rows)
-    assert [c.days_to_expiry for c in contracts[:3]] == [None, None, None]
+    assert contracts[0].days_to_expiry is None
+    assert contracts[1].days_to_expiry is None
+    assert contracts[2].days_to_expiry is None
     # the exact near/far split the endpoint now performs, on the daysToExpiration Schwab sent
     near = {c.symbol for c in contracts if (d := c.days_to_expiry) is not None and d <= 7}
     far = {c.symbol for c in contracts if (d := c.days_to_expiry) is not None and d > 7}
