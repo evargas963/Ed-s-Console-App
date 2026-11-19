@@ -58,9 +58,9 @@ def test_the_price_row_and_the_tape_hold_the_same_last_trade_as_schwab_sent_it()
         for tk in tickers:
             row, last = lmp.get_quote(tk), sent[tk]
             millis = last.get("TRADE_TIME_MILLIS")
-            assert row["spot"] == last.get("LAST_PRICE")
-            assert row["last_size"] == last.get("LAST_SIZE")
-            assert row["trade_ts"] == (None if millis is None else millis / 1000)
+            assert row.spot == last.get("LAST_PRICE")
+            assert row.last_size == last.get("LAST_SIZE")
+            assert row.trade_ts == (None if millis is None else millis / 1000)
             tape = live.prints(tk)
             assert [(p["time_millis"], p["price"], p["size"]) for p in tape] == prints[tk]
         assert any(prints.values())
