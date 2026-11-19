@@ -1623,7 +1623,9 @@ def _forces_from_captures(
                     side_total([d for k, d in dex1.items() if k < spot1]),
                     side_total([d for k, d in dex1.items() if k > spot1]),
                 ),
-                _charm_sides(tk, charm_by_strike, (c1, spot1, clock1, held, product)),
+                _charm_sides(
+                    tk, charm_by_strike, c1, spot1, now=clock1, sessions=held, product=product
+                ),
             )
     except Exception as e:
         log.warning("forces for %s failed (%s)", tk, e, exc_info=True)
@@ -1634,18 +1636,22 @@ def _forces_from_captures(
 def _charm_sides(
     tk: str,
     charm_by_strike: dict[float, CharmBucket] | None,
-    capture: tuple[list[OptionContract], float, datetime, Mapping[str, Session], str],
+    contracts: list[OptionContract],
+    spot: float,
+    *,
+    now: datetime,
+    sessions: Mapping[str, Session],
+    product: str,
 ) -> tuple[float | None, float | None]:
-    """Return the dealer-signed net charm below and above the newer capture's spot.
+    """Return the dealer-signed net charm below and above the newer capture's `spot`.
 
-    From `charm_by_strike` when this publication priced that capture, else computed once on it
-    (`capture`: its contracts, spot, valuation instant, sessions and product). Net charm is
-    call_charm - put_charm per strike, over the full book. A failure leaves both unknown, logged.
+    From `charm_by_strike` when this publication priced that capture, else computed once on its
+    `contracts` at its valuation instant `now`. Net charm is call_charm - put_charm per strike,
+    over the full book. A failure leaves both unknown, logged.
     """
-    contracts, spot, clock, held, product = capture
     try:
         per_ch = (
-            compute_charm_by_strike(contracts, spot, now=clock, sessions=held, product=product)
+            compute_charm_by_strike(contracts, spot, now=now, sessions=sessions, product=product)
             if charm_by_strike is None
             else charm_by_strike
         )
