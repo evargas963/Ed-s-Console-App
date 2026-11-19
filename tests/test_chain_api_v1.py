@@ -31,6 +31,7 @@ from push import chain as push_chain
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
 from tests.feed_live_helper import daemon_status
+from tests.page_on_socket import Pages
 from time_et import ET
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -347,6 +348,40 @@ def test_every_option_quote_sends_the_chain_panel_of_its_ticker():
     finally:
         ofs.FEED.on_flow = None
     assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "chain" in srv.FLOW_PANELS
+
+
+def test_a_quote_taken_on_the_loop_marks_the_pages_at_once_with_no_wake_up_write():
+    """The bus intake runs on the loop; each option quote marks the pages there and then.
+
+    Handed to its own loop (call_soon_threadsafe) each quote wrote the loop's wake-up socket, a
+    system call per message: measured 2026-11-19 at the open, the option intake fell a minute
+    behind Schwab. On the loop's own thread the page's chain panel is marked before the call
+    returns; handed to the loop, it was not marked until the loop ran the hand-off.
+    """
+    _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
+    sym = _TSLA_CONTRACTS[0]["symbol"]
+    pages = Pages()
+    page = pages.open("TSLA", "chain:ladder")
+    ofs.FEED.on_flow = srv.flow_changed
+    try:
+
+        async def take() -> set[str]:
+            ofs._ingest_pushed(
+                f"optquote.{sym}",
+                verbatim_msg(
+                    symbol=sym,
+                    content={"key": sym, "BID_PRICE": _TSLA_CONTRACTS[0]["bid"]},
+                    src="schwab_options_l1",
+                    ts_recv=_AT.timestamp(),
+                ),
+            )
+            return set(page.panels)  # before the loop runs anything else
+
+        marked = pages.loop.run_until_complete(take())
+    finally:
+        ofs.FEED.on_flow = None
+        pages.stop()
+    assert marked == {"chain:ladder"}
 
 
 def test_every_option_book_sends_the_flow_panel_of_its_ticker():
