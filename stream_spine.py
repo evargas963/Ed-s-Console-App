@@ -19,6 +19,7 @@ feed health, and the database writer.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import os
@@ -402,6 +403,13 @@ class Subscription:
                     return entry
             self.wake.clear()
             await self.wake.wait()
+
+    def taken(self, most: int) -> list[tuple[str, Any]]:
+        """LATEST: up to `most` changed topics' current records, in the order they changed, now."""
+        keys = list(itertools.islice(self.changed, most))
+        for key in keys:
+            del self.changed[key]
+        return [entry for key in keys if (entry := self.current.get(key)) is not None]
 
 
 async def _end_at(stop: asyncio.Event, sub: Subscription) -> None:
