@@ -1461,10 +1461,12 @@ def test_each_chain_reader_gets_its_own_expiry_at_once_with_no_get():
             front, second = seen["chain:ladder"], seen["chain:detail"]
             assert front["ticker"] == B and front["status"] == "ok" and front["expiry"] == exps[0]
             assert second["status"] == "ok" and second["expiry"] == exps[1]
-            assert front["contracts"] and second["contracts"]
-            assert {c["symbol"] for c in front["contracts"]}.isdisjoint(
-                c["symbol"] for c in second["contracts"]
-            )
+
+            def served(frame):
+                return {c["symbol"] for r in frame["ladder"] for c in (r["call"], r["put"]) if c}
+
+            assert served(front) and served(second)
+            assert served(front).isdisjoint(served(second))
             await _select(ws, B, {"chain:ladder": {}})  # a reader that names no expiry
             assert (await _next(ws, "chain:ladder"))["status"] == "unavailable"
 
@@ -1478,7 +1480,7 @@ def test_before_the_tickers_chain_the_chain_says_why_with_no_contract():
         async with connect(url) as ws:
             await _select(ws, A, {"chain:ladder": {"expiry": None}})
             frame = await _next(ws, "chain:ladder")
-            assert frame["status"] == "unavailable" and frame["contracts"] == []
+            assert frame["status"] == "unavailable" and frame["ladder"] == []
             assert frame["scope"]["reason"] == push_chain.NO_CHAIN_YET
 
     asyncio.run(_serve_panels(body))

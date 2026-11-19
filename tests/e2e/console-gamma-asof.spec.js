@@ -26,6 +26,28 @@ const BARS = {
   // push.bars' newest minute, labelled by time_et.ct_label
   last_bar: { t: 1757000180, label: "Thu 09/04 10:36 AM CT" },
 };
+const CONTRACTS = [
+  {
+    putCall: "CALL",
+    strikePrice: 100,
+    openInterest: 1200,
+    totalVolume: 540,
+    gamma: 0.021,
+    delta: 0.52,
+    volatility: 12.3,
+    expirationDate: "2026-09-11",
+  },
+  {
+    putCall: "PUT",
+    strikePrice: 100,
+    openInterest: 980,
+    totalVolume: 410,
+    gamma: 0.019,
+    delta: -0.48,
+    volatility: 12.6,
+    expirationDate: "2026-09-11",
+  },
+];
 const CHAIN = {
   ticker: "SPY",
   spot: 100,
@@ -34,31 +56,9 @@ const CHAIN = {
   status: "ok",
   adjusted_deliverable_symbols: [],
   scope: { kind: "complete_single_expiry" },
-  contracts: [
-    {
-      putCall: "CALL",
-      strikePrice: 100,
-      openInterest: 1200,
-      totalVolume: 540,
-      gamma: 0.021,
-      delta: 0.52,
-      volatility: 12.3,
-      expirationDate: "2026-09-11",
-    },
-    {
-      putCall: "PUT",
-      strikePrice: 100,
-      openInterest: 980,
-      totalVolume: 410,
-      gamma: 0.019,
-      delta: -0.48,
-      volatility: 12.6,
-      expirationDate: "2026-09-11",
-    },
-  ],
+  // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
+  ladder: [{ strike: 100, call: CONTRACTS[0], put: CONTRACTS[1], net_gex: null }],
 };
-// push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
-CHAIN.ladder = [{ strike: 100, call: CHAIN.contracts[0], put: CHAIN.contracts[1], net_gex: null }];
 function routes(over = {}) {
   return async (page) => {
     await routeWatchlist(page, ["SPY"]);

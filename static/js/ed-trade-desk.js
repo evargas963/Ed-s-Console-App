@@ -696,6 +696,7 @@
   "use strict";
 
   var esc = window.EdShell.esc,
+    orDash = window.EdShell.orDash,
     ticker = window.EdShell.ticker;
   function isExperimental() {
     var s = window.EdShell.getState();

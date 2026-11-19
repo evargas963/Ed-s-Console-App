@@ -361,7 +361,7 @@ def held_option_symbols(
     if not opts:
         return []
     # each of `listed` looked up in the beat's set, never the beat's thousands in `listed`, which
-    # a caller may pass as a list (measured 2026-11-19: 26% of the program's time in this line)
+    # a caller may pass as a list
     return [sym for sym in listed if sym in opts]
 
 

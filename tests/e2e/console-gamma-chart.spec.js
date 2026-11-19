@@ -72,45 +72,41 @@ const CHAIN = {
   status: "ok",
   scope: { kind: "complete_single_expiry" },
   adjusted_deliverable_symbols: [],
-  contracts: [
+  // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
+  ladder: [
     {
-      symbol: CALL_SYM,
-      putCall: "CALL",
-      strikePrice: K,
-      openInterest: 1200,
-      totalVolume: 540,
-      gamma: 0.021,
-      delta: 0.5,
-      volatility: 12,
-      oi_text: "1,200",
-      volume_text: "540",
-      iv_text: "12.00",
-    },
-    {
-      symbol: PUT_SYM,
-      putCall: "PUT",
-      strikePrice: K,
-      openInterest: 980,
-      totalVolume: 410,
-      gamma: 0.019,
-      delta: -0.5,
-      volatility: 12,
-      oi_text: "980",
-      volume_text: "410",
-      iv_text: "12.00",
+      strike: K,
+      strike_text: String(K),
+      net_gex: null,
+      call: {
+        symbol: CALL_SYM,
+        putCall: "CALL",
+        strikePrice: K,
+        openInterest: 1200,
+        totalVolume: 540,
+        gamma: 0.021,
+        delta: 0.5,
+        volatility: 12,
+        oi_text: "1,200",
+        volume_text: "540",
+        iv_text: "12.00",
+      },
+      put: {
+        symbol: PUT_SYM,
+        putCall: "PUT",
+        strikePrice: K,
+        openInterest: 980,
+        totalVolume: 410,
+        gamma: 0.019,
+        delta: -0.5,
+        volatility: 12,
+        oi_text: "980",
+        volume_text: "410",
+        iv_text: "12.00",
+      },
     },
   ],
 };
-// push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
-CHAIN.ladder = [
-  {
-    strike: K,
-    strike_text: String(K),
-    call: CHAIN.contracts[0],
-    put: CHAIN.contracts[1],
-    net_gex: null,
-  },
-];
 
 // the page's socket sends `terrain` (the flip and the walls), `strikes` (the profile) and `bars`
 // as the panels' bodies; returns those `panels`, read at each send

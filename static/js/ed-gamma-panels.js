@@ -436,8 +436,7 @@
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
-    var cs = d.contracts;
-    if (!cs.length) {
+    if (!d.ladder.length) {
       host.innerHTML =
         '<div class="placeholder"><div class="sm">' +
         esc(window.EdShell.chainEmptyText(d)) +

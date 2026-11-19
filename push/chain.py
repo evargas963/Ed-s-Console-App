@@ -127,7 +127,8 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     The `chain` panel: the Chain ladder, Strike Detail and Structures, each its own reader with
     its own `expiry` (the selected expiry, or None for the chain's front one, the levels' first
     listed). Every contract Schwab listed, as the chain screens show it (option_contract.chain_row:
-    a value Schwab did not send is null) -- from the chain the daemon delivered
+    a value Schwab did not send is null), once: in its `ladder` row -- from the chain the daemon
+    delivered
     (strike_range=ALL), with each live streamed contract's streamed fields as its values (the
     stream owns them), by the levels' own rule on the same inputs (the chain's listed contracts,
     its fetch time). Every watchlist ticker's chain is kept. Answers `status: unavailable` with a
@@ -146,7 +147,6 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             "ticker": t,
             "spot": None,
             "expiry": resolved_expiry,
-            "contracts": [],
             "ladder": [],
             "status": "unavailable",
             **verdict,
@@ -190,7 +190,6 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         ),
         **_listing(response_contracts),
         **verdict,
-        "contracts": shown,
         "status": "ok",
         "ladder": served,
         "n_strikes": len({r["strike"] for r in ladder}),

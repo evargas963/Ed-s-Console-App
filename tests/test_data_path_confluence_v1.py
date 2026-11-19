@@ -1211,7 +1211,12 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
         panel = push_chain.chain(
             tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
         )
-        shown = {row["symbol"]: row.get("totalVolume") for row in panel["contracts"]}
+        shown = {
+            c["symbol"]: c.get("totalVolume")
+            for r in panel["ladder"]
+            for c in (r["call"], r["put"])
+            if c
+        }
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
@@ -1331,7 +1336,8 @@ def test_the_close_values_stand_until_the_next_open():
     older, newer = _SPY_TWO_CLOSES["older"], _SPY_TWO_CLOSES["newer"]
     tk = "SPYBAL"
     after = datetime(2026, 10, 21, 18, 0, tzinfo=ET)
-    before = datetime(2026, 10, 22, 8, 0, tzinfo=ET)
+    # before 07:30 ET, the option pre-market Schwab answered on 2026-10-22 itself
+    before = datetime(2026, 10, 22, 7, 0, tzinfo=ET)
     later = {ct["symbol"]: ct["totalVolume"] for ct in newer["chain"]}
     try:
         spot = _chain_spot(tk, _SPY_TWO_CLOSES["quote_at_older"])
