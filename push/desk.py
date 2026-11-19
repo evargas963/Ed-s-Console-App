@@ -93,7 +93,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
 
 
 def _cross_items(in_window: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The window's level crosses, numbered oldest first (cross_store's records, oldest first).
+    """Return the window's level crosses, numbered oldest first (cross_store's, oldest first).
 
     The newest cross at each level, for the newest DESK_MARKERS levels, is flagged for the chart.
     """
@@ -123,7 +123,7 @@ def _cross_items(in_window: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
-    """A wall the live price is through, and stale levels: the terrain panel's own words."""
+    """Return a wall the live price is through, and stale levels: the terrain panel's words."""
     items: list[dict[str, Any]] = []
     t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
     tts = t.get("levels_ts_utc")
@@ -158,7 +158,7 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
 
 
 def _book_wall_items(tk: str, venue: str, now: datetime) -> list[dict[str, Any]]:
-    """The book's size walls, stamped with the book's own time (BOOK_TIME).
+    """Return the book's size walls, stamped with the book's own time (BOOK_TIME).
 
     A book that is not live is a past observation and says so.
     """
