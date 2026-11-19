@@ -626,13 +626,15 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
 def test_the_page_is_told_the_market_context_with_its_display_names():
     """The header's market context is served in the page with each symbol's display name.
 
-    The daemon streams it whatever the watchlist holds.
+    The daemon streams it whatever the watchlist holds. The one the Volatility card shows is
+    marked, so the page picks no symbol by its name.
     """
     page = Path(server.__file__).parent / "static" / "index.html"
     html = server._with_page_settings(page.read_text(encoding="utf-8"))
     assert (
-        '[{"key": "$SPX", "display": "SPX"}, {"key": "$NDX", "display": "NDX"}, '
-        '{"key": "$VIX", "display": "VIX"}]' in html.replace("&quot;", '"')
+        '[{"key": "$SPX", "display": "SPX", "volatility": false}, '
+        '{"key": "$NDX", "display": "NDX", "volatility": false}, '
+        '{"key": "$VIX", "display": "VIX", "volatility": true}]' in html.replace("&quot;", '"')
     )
 
 

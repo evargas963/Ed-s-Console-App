@@ -681,7 +681,7 @@
     c = $("tdmCardVol");
     if (c) {
       var vixC = window.EdShell.marketContext().filter(function (c) {
-        return c.display === "VIX";
+        return c.volatility; // served: the index this card shows
       })[0];
       var im = t && t.implied_1d_move,
         vix = vixC && S.quotes[vixC.key];
@@ -701,7 +701,7 @@
         row("ATR daily", orDash(t && t.atr_daily_text)) +
         row("ATR weekly", orDash(t && t.atr_weekly_text)) +
         row("ATR monthly", orDash(t && t.atr_monthly_text)) +
-        row("VIX", vixText(vix));
+        row(vixC.display, vixText(vix, vixC.display));
     }
     paintCardCharts();
   }
@@ -1196,8 +1196,8 @@
   }
   // The shell header already carries the symbol, price, change and CT clock; this page adds
   // the index context and the data-trust row beside it.
-  function vixText(vix) {
-    if (!vix || vix.spot == null) return "waiting for the VIX stream";
+  function vixText(vix, name) {
+    if (!vix || vix.spot == null) return "waiting for the " + esc(name) + " stream";
     var txt =
       esc(vix.spot_disp) + (vix.chg_pct_text != null ? " (" + esc(vix.chg_pct_text) + ")" : ""); // served
     return vix.trade_time_ct != null ? txt + " · last trade " + esc(vix.trade_time_ct) : txt;
