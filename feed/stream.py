@@ -11,6 +11,7 @@ import enum
 from collections.abc import Callable
 from typing import Any, override
 
+from schwab.client.base import BaseClient
 from schwab.streaming import StreamClient
 
 from numeric_contract import schwab_number
@@ -42,9 +43,11 @@ def label(d: dict[str, Any]) -> dict[str, Any]:
         for item in d["content"]:
             FIELD_NAMES[d["service"]].relabel_message(item, item)
             for side, level_fields, venue_fields in BOOK_SIDES:
-                for level in item[side] if side in item else []:
+                levels: list[dict[str, Any]] = item[side] if side in item else []
+                for level in levels:
                     level_fields.relabel_message(level, level)
-                    for venue in level[side] if side in level else []:
+                    venues: list[dict[str, Any]] = level[side] if side in level else []
+                    for venue in venues:
                         venue_fields.relabel_message(venue, venue)
     return d
 
@@ -86,7 +89,7 @@ class TimedStream(StreamClient):
     Schwab's stream has been read).
     """
 
-    def __init__(self, client: object, clock: Callable[[], float]) -> None:
+    def __init__(self, client: BaseClient, clock: Callable[[], float]) -> None:
         super().__init__(client)
         self.clock = clock
         self.last_frame_ts = clock()
@@ -106,6 +109,10 @@ class TimedStream(StreamClient):
             await self._socket.close()
         else:
             self._socket.transport.abort()
+
+    async def receive(self) -> dict[str, Any]:
+        """Return the next frame Schwab sends, timed as every frame is (_receive)."""
+        return await self._receive()
 
     @override
     async def _receive(self) -> dict[str, Any]:
