@@ -27,8 +27,8 @@ from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow.state import (
     get_stream_greeks,
-    option_top,
     rest_quotes,
+    streamed_values,
 )
 from app.options.order_flow.streaming import (
     price_state,
@@ -460,23 +460,6 @@ def _next_gamma_surface_seq(tk: str, now: float) -> int:
     return n
 
 
-def _streamed_greeks_for_ticker(
-    listed: Collection[str], now: float, feed: lmp.FeedNow | None = None
-) -> dict[str, dict[str, Any]]:
-    """Return the newest streamed Greeks, volume, bid and ask of the ticker's held contracts.
-
-    The contracts are every one the daemon's latest beat holds of the ticker's chain (`listed`,
-    the symbols Schwab listed in it). A missing beat keeps that set. `feed` is one read of that
-    heartbeat; omitted, this call reads it.
-    """
-    out: dict[str, dict[str, Any]] = {}
-    for sym in lmp.held_option_symbols(listed, now, feed):
-        held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
-        if held:
-            out[sym] = {k: v for r in held for k, v in r.items()}
-    return out
-
-
 def _overlaid_symbols(pre: list[OptionContract], post: list[OptionContract]) -> list[str]:
     """Return the contracts `post` holds as new records of `pre`'s.
 
@@ -545,7 +528,7 @@ def _stamp_gamma_surface_cell_stream_state(
     computation); it says whether a streamed Schwab value backs it now.
 
     `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
-    ticker (_streamed_greeks_for_ticker); `overlay_symbols`: those the feed is delivering now
+    ticker (order_flow.state.streamed_values); `overlay_symbols`: those the feed is delivering now
     (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
     beat, ticked or not (live_market_plane.held_option_symbols). A missing beat is not live: those
     cells keep the last streamed value and are not live. Each leg carries the time it was last
@@ -673,8 +656,13 @@ def _levels_changed(tk: str) -> None:
 
 
 def flow_changed(sym: str) -> None:
-    """Tell the pages on Schwab's symbol `sym` that its quote or book changed (FLOW_PANELS)."""
-    live_ui.changed(app.state, ticker_storage_key(sym), *FLOW_PANELS)
+    """Tell the pages on `sym`'s ticker that its quote or book changed (FLOW_PANELS).
+
+    `sym` is Schwab's symbol: the equity, or an option contract of a chain the console holds.
+    """
+    tk = _tick_ticker(sym)
+    if tk:
+        live_ui.changed(app.state, tk, *FLOW_PANELS)
 
 
 def _surface_symbols(surface: dict[str, Any]) -> list[str]:
@@ -837,9 +825,9 @@ def _price_chain_values(
     """
     # one read of the heartbeat: pricing and the cell stamp share it
     feed = lmp.feed_now(now.timestamp())
-    streamed = _streamed_greeks_for_ticker(listed, now.timestamp(), feed)
-    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     held = set(lmp.held_option_symbols(listed, now.timestamp(), feed))
+    streamed = streamed_values(held)
+    feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     quoted = rest_quotes(listed, fetched_ts)
     priced, n_live = (
         overlay_streamed_contract_fields(chain, streamed, held, quoted)
@@ -1902,7 +1890,8 @@ def _publish_missing_price_levels(tickers: Iterable[str], now: datetime) -> None
 #: (live_ui.LiveUiServer): each kind's producer, given what it reads of what the page asked.
 #: Each is sent at once and again when its inputs change: CHAIN_PANELS on a new chain
 #: (_publish_levels), LEVELS_PANELS on each publication of the levels (_levels_changed),
-#: BARS_PANELS on a new bar and FLOW_PANELS on a streamed equity quote or book (flow_changed)
+#: BARS_PANELS on a new bar and FLOW_PANELS on each streamed quote, an equity's or an option's,
+#: and each equity book (flow_changed)
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
@@ -1933,7 +1922,8 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
 }
 CHAIN_PANELS = ("expiries",)
 BARS_PANELS = ("bars", "liquidity", "desk")
-FLOW_PANELS = ("book", "bookmap", "tape", "contract")
+#: the chain screens show each contract's newest streamed values (push.chain), and the live price
+FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
 #: they are measured from; today's gap and open): the socket sends them again with each of its
 #: price rows

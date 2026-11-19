@@ -375,7 +375,8 @@ def _apply_option_quote(
 ) -> None:
     """Apply a LEVELONE_OPTIONS message: the contract's top of book, then its state and tape.
 
-    The top first: a print is kept with the bid and ask its own message brought. A tick when the
+    The top first: a print is kept with the bid and ask its own message brought. Every message
+    sends the chain screens its values (the flow callback); a tick when the
     newest message carried a value the levels use (a merged record holds the last of each field;
     only one this message brought is new).
     """
@@ -384,6 +385,7 @@ def _apply_option_quote(
         return
     push_option_top(sym, content)
     push_level_one(sym, content, ts_recv=ts, field_received=received)
+    _flow(sym)
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
         _tick(sym)
 
