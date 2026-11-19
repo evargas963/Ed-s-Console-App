@@ -1363,16 +1363,19 @@ class CaptureWriter:
                 self.unrecorded += 1
             elif not standalone:
                 self._q.put(kept)
-        if not standalone:
-            return
+        if standalone:
+            self._write_alone(kept)
+
+    def _write_alone(self, item: Item) -> None:
+        """Write `item` on a connection of its own: the writer's thread is not running."""
         own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
         try:
             with own:  # commits, or rolls back on an error
-                self._keep(own, kept)
+                out = self._store(own, item)
         finally:
             own.close()
         with self._lock:
-            self._committed([(kept, kept)])
+            self._committed([(item, out)])
 
     def store_capture(self, msg: dict[str, Any], wait_sec: float) -> str:
         """Write a chain capture (capture_message) and wait up to `wait_sec` for its commit.
@@ -1395,14 +1398,7 @@ class CaptureWriter:
             if not standalone:
                 self._q.put(item)
         if standalone:
-            own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
-            try:
-                with own:  # commits, or rolls back on an error
-                    out = self.insert(*item, conn=own)
-            finally:
-                own.close()
-            with self._lock:
-                self._committed([(item, out)])
+            self._write_alone(item)
         return result[0] if done.wait(wait_sec) else CAPTURE_HELD
 
     def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
