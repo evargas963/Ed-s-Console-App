@@ -24,6 +24,8 @@ from stream_spine import Payload
 #: The market context every page's header shows beside the selected ticker (Trade Desk): the
 #: daemon streams it whatever the watchlist holds.
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
+#: the market-context index the Volatility card shows beside the implied move
+VOLATILITY_INDEX = "$VIX"
 
 #: topic prefix -> the only `src` forwarded for it
 _FORWARDED = {
