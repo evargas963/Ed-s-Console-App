@@ -25,7 +25,7 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import read_book
 from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, on_the_bus
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -85,7 +85,11 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
             for m in rows:
                 daemon.bus.publish(*_message(m))
             deadline = time_et.elapsed() + 30
-            while any(top(s) != t for s, t in want.items()) and time_et.elapsed() < deadline:
+            book = read_book(newest_book, "OPTIONS_BOOK")
+            while (
+                any(top(s) != t for s, t in want.items())
+                or ofls.newest_book(BOOK_CONTRACT, "OPTIONS_BOOK") != book
+            ) and time_et.elapsed() < deadline:
                 await asyncio.sleep(0.05)
             return {s: top(s) for s in want}, ofls.newest_book(BOOK_CONTRACT, "OPTIONS_BOOK")
         finally:
@@ -117,7 +121,9 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
                 held={"LEVELONE_OPTIONS": [sym], "OPTIONS_BOOK": []},
             )
         )
-        ofs._ingest_pushed(*_message(m))
+        bus = MessageBus()
+        ofls.bind_bus(bus.current)
+        ofs._ingest_pushed(*on_the_bus(bus, "LEVELONE_OPTIONS", m["item"], m["ts_recv"]))
         held = ofls.option_top(sym)
         lmp.record_feed_heartbeat(
             daemon_status(

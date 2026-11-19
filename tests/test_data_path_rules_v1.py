@@ -31,7 +31,7 @@ import time_et
 from app.market_data.schwab.streaming import capture, live_push
 from app.market_data.schwab.streaming.live_ui import Asked
 from app.options.order_flow import live_payload
-from app.options.order_flow.state import push_option_top
+from app.options.order_flow.state import bind_bus
 from calc.liquidity_value_engine import bars_from_candles
 from db import get_db
 from feed import connection
@@ -64,6 +64,7 @@ from tests.feed_live_helper import (
     forget_bars,
     hold_schwab_daily,
     newest_bars,
+    on_the_bus,
     price_history,
     stream_daemon_bars,
 )
@@ -363,7 +364,9 @@ def _served_at(now: float, feed_live: bool) -> dict:
         },
         received_ts=then,
     )
-    push_option_top(_CONTRACT, _EVENTS[0]["content"])
+    bus = MessageBus()
+    bind_bus(bus.current)
+    on_the_bus(bus, "LEVELONE_OPTIONS", {**_EVENTS[0]["content"], "key": _CONTRACT}, then)
     if feed_live:
         lmp.record_feed_heartbeat(
             daemon_status(

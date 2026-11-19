@@ -38,12 +38,12 @@ import pytest
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server as srv
-from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
+from tests.feed_live_helper import pushed
 from time_et import ET
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
@@ -77,7 +77,7 @@ def build_flow_e2e_fixture_response() -> dict:
         )
         for e in sorted(events, key=lambda e: e["ts_recv"]):
             if e["kind"] == "book":
-                ofs._ingest_pushed(
+                pushed(
                     f"book.{FLOW_CONTRACT}",
                     book_msg(
                         symbol=FLOW_CONTRACT,
@@ -88,7 +88,7 @@ def build_flow_e2e_fixture_response() -> dict:
                     ),
                 )
             else:
-                ofs._ingest_pushed(
+                pushed(
                     f"optquote.{FLOW_CONTRACT}",
                     verbatim_msg(
                         symbol=FLOW_CONTRACT,
@@ -135,9 +135,14 @@ def build_side_e2e_fixture_response() -> dict:
                 {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}
             )
             for m in msgs:
-                ofs._ingest_pushed(
+                pushed(
                     f"optquote.{sym}",
-                    verbatim_msg(symbol=sym, content=m["item"], src="schwab", ts_recv=m["ts_recv"]),
+                    verbatim_msg(
+                        symbol=sym,
+                        content=m["item"],
+                        src="schwab_options_l1",
+                        ts_recv=m["ts_recv"],
+                    ),
                 )
             out[sym] = push_contract.options_microstructure(sym, at)
         return out

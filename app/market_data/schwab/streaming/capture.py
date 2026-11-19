@@ -78,16 +78,17 @@ from app.options.order_flow import streaming as console_feed
 from calc.terrain_engine import nearest_position
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
-from feed.connection import SERVICES, Connection, held_key
+from feed.connection import SERVICES, Connection
 from feed.schwab_client import SchwabClientState, build_client_from_token, check_ticker
 from instrument_identity import ticker_storage_key
-from option_contract import OptionContract
+from option_contract import GREEK_FIELDS, OptionContract
 from stream_spine import (
     LATEST,
     LOG,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    held_key,
 )
 from time_et import (
     ET,
@@ -596,13 +597,19 @@ class Daemon:
     def option_record(self, symbol: str) -> tuple[str, dict[str, Any]] | None:
         """Return `symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record).
 
-        It is returned while this connection holds it on LEVELONE_OPTIONS; None otherwise (the
-        chain sweep reads each
-        contract's Greeks from it, and asks the quotes endpoint for every contract it returns None
-        for: a record left from a connection that ended is not held).
+        It is returned while this connection holds the contract on LEVELONE_OPTIONS and every
+        Greek the record carries was received in this hold; None otherwise. The chain sweep reads
+        each contract's Greeks from it, and asks the quotes endpoint for every contract it returns
+        None for: an ended hold's record stands on the bus (its last values, D5), but its Greeks
+        are never taken as this hold's.
         """
-        held = symbol in self.connection.held["LEVELONE_OPTIONS"]
-        return self.bus.current.get(held_key("LEVELONE_OPTIONS", symbol)) if held else None
+        since = self.connection.held_since("LEVELONE_OPTIONS", symbol)
+        record = self.bus.current.get(held_key("LEVELONE_OPTIONS", symbol))
+        if since is None or record is None:
+            return None
+        received = record[1]["field_ts"]
+        greeks = [received[f.upper()][1] for f in GREEK_FIELDS if f.upper() in received]
+        return record if all(t >= since for t in greeks) else None
 
     def status(self, now: float) -> dict[str, Any]:
         """Return what the console and browsers are told every second (live_ui's beat).

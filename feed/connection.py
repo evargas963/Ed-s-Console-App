@@ -34,15 +34,14 @@ from typing import Any
 
 from schwab.streaming import UnparsableMessage
 
-import live_market_plane as lmp
 import time_et
 from feed.stream import TimedStream, label
 from stream_spine import (
+    SERVICE_TOPIC,
     HealthRegistry,
     MessageBus,
     bar_msg,
     book_msg,
-    current_key,
     quote_msg,
     subscription_msg,
     verbatim_msg,
@@ -114,17 +113,6 @@ HIGHEST_FIELD = {
 }
 FIELDS = {svc: ",".join(str(f) for f in range(top + 1)) for svc, top in HIGHEST_FIELD.items()}
 
-#: each Schwab service's bus topic kind and the source its messages carry
-SERVICE_TOPIC = {
-    "LEVELONE_EQUITIES": ("quote", "schwab_l1"),
-    "CHART_EQUITY": ("bar1m", "schwab_chart"),
-    "LEVELONE_OPTIONS": ("optquote", "schwab_options_l1"),
-    "NEWS_HEADLINE": ("news", "schwab_news"),
-    "NYSE_BOOK": ("book", "schwab_book"),
-    "NASDAQ_BOOK": ("book", "schwab_book"),
-    "OPTIONS_BOOK": ("book", "schwab_book"),
-}
-
 #: why Schwab is not connected while no attempt has failed since the stream last logged in: it is
 #: logging in, or its connection has just ended and the reason is on its way
 SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection has just ended"
@@ -145,12 +133,6 @@ def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> lis
     if cur:
         chunks.append(cur)
     return chunks
-
-
-def held_key(service: str, sym: str) -> str:
-    """Return the bus's current-record key of `sym` on `service` (stream_spine.current_key)."""
-    kind, src = SERVICE_TOPIC[service]
-    return current_key(f"{kind}.{sym}", {"service": service, "src": src})
 
 
 def _message(
@@ -250,6 +232,9 @@ class Connection:
         #: limit Schwab stated for the service in a refusal (code 19), None until it states one
         self.asked: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
         self.held: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
+        #: when Schwab's answer began each held symbol's hold: a record's field received before
+        #: it is of an ended hold (held_since)
+        self.since: dict[str, dict[str, float]] = {s: {} for s in SERVICES}
         self.limit: dict[str, int | None] = dict.fromkeys(SERVICES)
         #: requests waiting to be sent, and every request sent on this connection by requestid
         self._requests: list[tuple[str, str, list[str]]] = []
@@ -363,9 +348,13 @@ class Connection:
         # API, Command Name); what Schwab refuses it does not confirm, so a refused SUBS holds none
         held, new = self.held[svc], frozenset(sent.symbols if code == 0 else ())
         kept = {"SUBS": new, "ADD": held | new, "UNSUBS": held - new}[sent.command]
-        for sym in (held | new) - kept:  # no longer held: no longer current
-            self.bus.forget(held_key(svc, sym))
+        now = self.clock()
+        self.since[svc] = {sym: self.since[svc].get(sym, now) for sym in kept}
         self.held[svc] = kept
+
+    def held_since(self, service: str, symbol: str) -> float | None:
+        """Return when `symbol`'s hold on `service` began (its answer's time); None: not held."""
+        return self.since[service].get(symbol)
 
     async def connect(self, client: object) -> TimedStream:
         stream = TimedStream(client, self.clock)
@@ -380,12 +369,10 @@ class Connection:
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
-        for svc in lmp.OPTION_SERVICES:  # an option contract's hold ends with its connection
-            for sym in self.held[svc]:
-                self.bus.forget(held_key(svc, sym))
         # the next connection has asked for nothing, holds nothing and has been told no limit
         self.asked = {k: frozenset() for k in SERVICES}
         self.held = {k: frozenset() for k in SERVICES}
+        self.since = {k: {} for k in SERVICES}
         self.limit = dict.fromkeys(SERVICES)
         if s is not None:
             logged_out = False

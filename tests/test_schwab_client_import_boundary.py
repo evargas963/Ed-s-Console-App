@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import select
 import socket
 import subprocess
 import sys
@@ -128,18 +129,16 @@ def test_the_console_makes_no_schwab_call(tmp_path: Path) -> None:
     proxy = socket.socket()
     proxy.bind(("127.0.0.1", 0))
     proxy.listen()
-    proxy.settimeout(0.2)
     reached: list = []
     done = threading.Event()
 
     def record():
         while not done.is_set():
-            try:
+            ready, _w, _x = select.select([proxy], [], [], 0.2)
+            if ready:
                 conn, _addr = proxy.accept()
-            except TimeoutError:
-                continue
-            reached.append(conn.recv(200))
-            conn.close()
+                reached.append(conn.recv(200))
+                conn.close()
 
     recorder = threading.Thread(target=record, daemon=True)
     recorder.start()

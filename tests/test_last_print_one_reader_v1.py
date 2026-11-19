@@ -15,8 +15,11 @@ from pathlib import Path
 import calc.l1_trade_observation as l1
 import live_market_plane as lmp
 from app.options.order_flow import state
+from stream_spine import MessageBus
+from tests.feed_live_helper import apply_record, on_the_bus
 from tools.check_one_reader import fields_read
 
+EQ = "LEVELONE_EQUITIES"
 ROOT = Path(__file__).resolve().parent.parent
 PRINT_FIELDS = {"LAST_PRICE", "LAST_SIZE", "TRADE_TIME_MILLIS"}
 MESSAGES = [
@@ -44,15 +47,19 @@ def test_the_price_row_and_the_tape_hold_the_same_last_trade_as_schwab_sent_it()
     sent: dict[str, dict] = {tk: {} for tk in tickers}
     prints: dict[str, list] = {tk: [] for tk in tickers}
     assert len(MESSAGES) > 100
-    live = state.OrderFlowState()
+    bus, live = MessageBus(), state.OrderFlowState()
+    live.current = bus.current
     try:
         for m in MESSAGES:
             item, tk = m["item"], m["item"]["key"]
             lmp.record_from_level_one_equity(tk, item, received_ts=m["ts_recv"])
-            live.push_level_one(tk, item, ts_recv=m["ts_recv"])
+            apply_record(live, EQ, on_the_bus(bus, EQ, item, m["ts_recv"]))
             sent[tk].update({f: item[f] for f in PRINT_FIELDS if f in item})
-            if "LAST_PRICE" in item:
-                triple = (item.get("TRADE_TIME_MILLIS"), item["LAST_PRICE"], item.get("LAST_SIZE"))
+            # Change delivery (Schwab Streamer API §1.5): a field not sent is unchanged, so the
+            # last trade is the newest of each of its fields sent, a print whenever it changes
+            if "LAST_PRICE" in sent[tk]:
+                last = sent[tk]
+                triple = (last.get("TRADE_TIME_MILLIS"), last["LAST_PRICE"], last.get("LAST_SIZE"))
                 if prints[tk][-1:] != [triple]:
                     prints[tk].append(triple)
         for tk in tickers:

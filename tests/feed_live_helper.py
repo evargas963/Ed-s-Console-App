@@ -15,10 +15,13 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
+from app.options.order_flow import streaming as ofs
+from app.options.order_flow.state import OrderFlowState, bind_bus
 from calibration.complete_chain_capture import StoredCapture
+from feed import connection
 from option_contract import read_chain
 from state import bar_store, price_level_store
-from stream_spine import HealthRegistry, MessageBus
+from stream_spine import FIELD_DELTA, HealthRegistry, MessageBus, current_key, held_key
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -30,6 +33,56 @@ def daemon_status(now: float, **staged) -> dict:
     set: the socket, the symbols held, the watchlist.
     """
     return {**capture.Daemon(MessageBus(), HealthRegistry(), []).status(now), **staged}
+
+
+#: the bus the console reads in this test: tests/conftest.py binds a new one for every test
+BUS = MessageBus()
+bind_bus(BUS.current)
+
+
+def pushed(topic: str, msg: dict) -> None:
+    """Publish a bus message as the daemon does, and apply its topic's record as the console does.
+
+    The message goes on BUS, the test's bus, which merges it into its topic's current record;
+    the console's intake (streaming._ingest_pushed) takes that record, as its loop takes it.
+    """
+    BUS.publish(topic, msg)
+    ofs._ingest_pushed(*BUS.current[current_key(topic, msg)])
+
+
+def forget_streamed() -> None:
+    """Empty BUS, the test's bus: the console holds no record of anything streamed."""
+    BUS.current.clear()
+
+
+def on_the_bus(
+    bus: MessageBus, service: str, item: dict, ts_recv: float, schwab_ts: int | None = None
+) -> tuple[str, dict]:
+    """Put one Schwab LEVELONE `item` on `bus` as the daemon's stream handler does.
+
+    The item goes in a frame Schwab stamped `schwab_ts`, received at `ts_recv`
+    (feed.connection._publisher); the bus merges it into its symbol's record. Returns that record,
+    (topic, record), as the console takes it.
+    """
+    frame = {"timestamp": schwab_ts, "content": [item]}
+    connection._publisher(service, bus, HealthRegistry(), lambda: ts_recv)(frame)
+    return bus.current[held_key(service, item["key"].upper())]
+
+
+def apply_record(state: OrderFlowState, service: str, record: tuple[str, dict]) -> None:
+    """Apply a symbol's record on the bus (on_the_bus) to `state`, as the console applies it.
+
+    That is app.options.order_flow.streaming._ingest_pushed, for an OrderFlowState of a test's
+    own (its `current` the bus's records).
+    """
+    topic, rec = record
+    state.push_level_one(
+        service,
+        rec["symbol"],
+        rec[FIELD_DELTA[topic.split(".", 1)[0]]],
+        ts_recv=rec["ts_recv"],
+        field_received={f: stamp[1] for f, stamp in rec["field_ts"].items()},
+    )
 
 
 def daemon_bars(name: str, *symbols: str) -> list[dict]:

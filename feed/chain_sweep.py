@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import time_et
-from app.options.order_flow.state import streamed_volume
+from app.options.order_flow.state import streamed_record
 from calibration.complete_chain_capture import capture_message
 from feed.schwab_client import (
     QUOTES_BATCH_MAX,
@@ -45,8 +45,7 @@ from option_contract import (
     GREEK_FIELDS,
     read_chain,
     streamed_greek_set,
-    streamed_greeks,
-    streamed_top,
+    streamed_quote,
 )
 from state import capture_store
 from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter
@@ -734,19 +733,12 @@ class ChainSweep:
         for ct in chain.contracts():
             ct["totalVolume"] = None  # the stream's or the quote's
             entry = self.streamed(ct["symbol"])
-            if (
-                entry is not None
-                and (greeks := streamed_greek_set(streamed_greeks(entry[1]["content"]))) is not None
-            ):
-                top = streamed_top(entry[1]["content"])
+            sent = streamed_record(entry)
+            greeks = streamed_greek_set(sent.greeks.values())
+            if entry is not None and greeks is not None:
                 ct.update(greeks)
                 ct["greeksTime"] = {g: entry[1]["field_ts"][g.upper()][0] for g in GREEK_FIELDS}
-                ct["streamed"] = {
-                    "bid": top.get("bid"),
-                    "ask": top.get("ask"),
-                    "money_intrinsic": top.get("money_intrinsic"),
-                    "volume": streamed_volume(entry[1]["content"]),
-                }
+                ct["streamed"] = streamed_quote(sent)
                 chain.pushed += 1
             else:
                 ct.update(dict.fromkeys(GREEK_FIELDS))
