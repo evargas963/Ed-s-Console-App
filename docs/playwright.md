@@ -1,6 +1,6 @@
 # Running the tests
 
-## The full suite: `npm run test:all` (or `make test-all`)
+## The full suite: `npm run test:all`
 
 1. `npm run test:e2e` — validates Node, npm and `@playwright/test` (fail-fast, never a skip),
    installs Chromium if needed, and runs `tests/e2e/*.spec.js` against `uvicorn server:app`
@@ -31,7 +31,7 @@ it only for narrow runs you are watching.
 
 | Command                                                        | Purpose                                                                                             |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `npm run test:e2e` / `make test-e2e`                           | Playwright only                                                                                     |
+| `npm run test:e2e`                                             | Playwright only                                                                                     |
 | `python tests/playwright_ready.py` (`npm run test:e2e:verify`) | Node, npm, `@playwright/test` and Chromium present (`ensure_playwright_ready`; raises, never skips) |
 
 Requirements: Node.js LTS, npm, `npm install` once at the repo root; the browsers are installed by
