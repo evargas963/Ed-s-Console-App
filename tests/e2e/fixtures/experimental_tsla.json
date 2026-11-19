@@ -1,0 +1,131 @@
+{
+  "type": "experimental",
+  "ticker": "TSLA",
+  "today": {
+    "label": "Today's gap · at the open",
+    "gap_text": "▼ -0.58%",
+    "gap_up": false,
+    "when_text": "vs. prior close · Schwab's 5-minute bars",
+    "results": [
+      {
+        "label": "Today 09:30–09:35 ET",
+        "five_text": "▲ +0.35%",
+        "five_up": true,
+        "called": false,
+        "called_text": "✗ the gap pointed down, the open went up"
+      }
+    ]
+  },
+  "records": [
+    {
+      "main": {
+        "title": "When the gap was down, the first 5 minutes went down",
+        "share_text": "65%",
+        "count_text": "42 of 65 opens",
+        "range_text": "95% range 52%-75%",
+        "line": "Down gaps, for reference: down 42 of 65 (65%, range 52%-75%)",
+        "band_left": 52.47510601023302,
+        "band_width": 22.64943552548122,
+        "mark": 64.61538461538461,
+        "above_half": true
+      },
+      "others": [
+        {
+          "title": "When the gap was up, the first 5 minutes went up",
+          "share_text": "58%",
+          "count_text": "43 of 74 opens",
+          "range_text": "95% range 47%-69%",
+          "line": "Up gaps, for reference: up 43 of 74 (58%, range 47%-69%)",
+          "band_left": 46.740284450779704,
+          "band_width": 21.93538062174243,
+          "mark": 58.108108108108105,
+          "above_half": false
+        }
+      ],
+      "last": [
+        {
+          "day_text": "Fri Nov 13",
+          "gap_text": "▲ +1.10%",
+          "gap_up": true,
+          "five_text": "▼ -1.11%",
+          "five_up": false,
+          "called": false
+        },
+        {
+          "day_text": "Thu Nov 12",
+          "gap_text": "▼ -1.17%",
+          "gap_up": false,
+          "five_text": "▲ +1.49%",
+          "five_up": true,
+          "called": false
+        },
+        {
+          "day_text": "Wed Nov 11",
+          "gap_text": "▲ +1.80%",
+          "gap_up": true,
+          "five_text": "▲ +1.14%",
+          "five_up": true,
+          "called": true
+        },
+        {
+          "day_text": "Tue Nov 10",
+          "gap_text": "▼ -1.97%",
+          "gap_up": false,
+          "five_text": "▲ +1.64%",
+          "five_up": true,
+          "called": false
+        },
+        {
+          "day_text": "Mon Nov 09",
+          "gap_text": "▲ +0.52%",
+          "gap_up": true,
+          "five_text": "▲ +2.06%",
+          "five_up": true,
+          "called": true
+        },
+        {
+          "day_text": "Fri Nov 06",
+          "gap_text": "▲ +1.65%",
+          "gap_up": true,
+          "five_text": "▼ -0.06%",
+          "five_up": false,
+          "called": false
+        },
+        {
+          "day_text": "Thu Nov 05",
+          "gap_text": "▼ -2.94%",
+          "gap_up": false,
+          "five_text": "▼ -2.37%",
+          "five_up": false,
+          "called": true
+        },
+        {
+          "day_text": "Wed Nov 04",
+          "gap_text": "▼ -4.57%",
+          "gap_up": false,
+          "five_text": "▼ -0.85%",
+          "five_up": false,
+          "called": true
+        },
+        {
+          "day_text": "Tue Nov 03",
+          "gap_text": "▲ +0.60%",
+          "gap_up": true,
+          "five_text": "▼ -0.94%",
+          "five_up": false,
+          "called": false
+        },
+        {
+          "day_text": "Mon Nov 02",
+          "gap_text": "▲ +1.22%",
+          "gap_up": true,
+          "five_text": "▲ +0.96%",
+          "five_up": true,
+          "called": true
+        }
+      ],
+      "last_title": "Last 10 opens · the gap called 5 of 10",
+      "footer": "Schwab's 5-minute bars, Apr 29 – Nov 13 (139 opens). Says how often the gap called the open, not where today's will go."
+    }
+  ]
+}
