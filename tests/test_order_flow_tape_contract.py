@@ -63,7 +63,7 @@ def _data(messages: list[dict]) -> dict:
 
 
 def _tape(messages: list[dict]) -> list[dict]:
-    """The tape the engine reads from `messages` (OrderFlowEngine.compute's prints)."""
+    """Return the tape the engine reads from `messages` (OrderFlowEngine.compute's prints)."""
     return _data(messages)["prints"]
 
 

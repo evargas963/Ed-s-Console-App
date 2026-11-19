@@ -229,8 +229,10 @@ def _stored_chain(tmp_path) -> bytes:
 
 
 def test_the_history_is_written_once_a_day_at_the_close_and_never_in_the_session(tmp_path, schwab):
-    """Chains in the session are live and never stored; the first after the close is (operator
-    2026-11-18: "only keep what is absolutely needed")."""
+    """Chains in the session are live and never stored; the first after the close is.
+
+    Operator 2026-11-18: "only keep what is absolutely needed".
+    """
     clock = {"now": 0.0}
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     for at in (

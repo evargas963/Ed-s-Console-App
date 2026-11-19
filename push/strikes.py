@@ -87,7 +87,7 @@ def _side_sums(rows: list[StrikeRow], spot: float | None) -> dict[str, Any] | No
 def _scale_with_prior(
     window: tuple[Sequence[BarRow], dict[str, Any]], migration: PositioningMigration
 ) -> float | None:
-    """The largest |value| the migration panel draws: today's and the prior day's, on screen.
+    """Return the largest |value| the migration panel draws: today's and the prior day's.
 
     Of the strikes in today's window; None when none of them has a value on either day.
     """

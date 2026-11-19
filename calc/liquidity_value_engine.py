@@ -1216,7 +1216,7 @@ def hold_counts(
 
 
 def hold_window(bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]) -> list[Bar]:
-    """The bars hold_counts reads at `now`: each before a regular close at or before `now`.
+    """Return the bars hold_counts reads at `now`: each before a regular close at or before `now`.
 
     Every closed session's bars and everything before them; no bar of a session still open. The
     closes are tried newest first, so a bar before the newest is decided by one comparison.

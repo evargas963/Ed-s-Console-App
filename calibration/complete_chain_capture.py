@@ -242,7 +242,7 @@ class StoredCapture:
         contracts: list[OptionContract],
         basis: str = CAPTURE_BASIS,
     ) -> StoredCapture:
-        """The capture of a chain begun at `ts_utc`, on its ET date; `spot` (price, trade time)."""
+        """Return the capture of a chain begun at `ts_utc`, on its ET date; `spot` (price, time)."""
         return cls(
             et_date=datetime.fromtimestamp(ts_utc, ET).date().isoformat(),
             ts_utc=ts_utc,
