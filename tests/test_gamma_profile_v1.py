@@ -107,7 +107,9 @@ def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
     assert snap.grc is not None and snap.grc > CRWD.spot * 1.15
     assert round(snap.grc, 2) == 337.68
     assert round(snap.gamma_flip, 1) == 238.1
-    # the flip worked out from the raw chain outside the program (Black-Scholes-Merton gamma)
+    # the flip worked out from the raw chain outside the program (Black-Scholes-Merton gamma); the
+    # program's curve is computed again between the two strikes it changes sign between, so its
+    # crossing is within a few hundred-thousandths of the price of the true one
     assert snap.gamma_flip == pytest.approx(gamma_flip_worked_out(CRWD), rel=5e-5)
 
 
