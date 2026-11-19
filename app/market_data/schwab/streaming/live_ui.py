@@ -50,6 +50,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -112,6 +113,11 @@ class PageSocket(WebSocketsSansIOProtocol):
         self.transport.abort()
 
 
+def _json(frame: dict[str, Any]) -> str:
+    """Return a frame as the page reads it: compact JSON, a value JSON cannot hold as its text."""
+    return json.dumps(frame, separators=(",", ":"), default=str)
+
+
 def kind_of(name: str) -> str:
     """Return the kind of panel `name`: its kind, or "<kind>:<reader>" for one of several readers.
 
@@ -150,8 +156,10 @@ class _Client:
 
 
 class LiveUiServer:
-    #: the event loop it serves on (serve_live_ui), where a producer's change is marked (changed)
+    #: the event loop it serves on (serve_live_ui), where a producer's change is marked (changed),
+    #: and the thread that loop runs on
     loop: asyncio.AbstractEventLoop
+    loop_thread: int
 
     def __init__(
         self,
@@ -188,15 +196,14 @@ class LiveUiServer:
             if ticker in c.symbols:
                 c.pending.add(ticker)
                 c.wake.set()
-        for kind in self.priced:
-            self.mark_changed(ticker, kind)
+        self.mark_all(ticker, self.priced)
 
-    def mark_changed(self, ticker: str, kind: str) -> None:
-        """Mark each panel of `kind` changed for every browser showing it for its `ticker`."""
+    def mark_all(self, ticker: str, kinds: tuple[str, ...]) -> None:
+        """Mark each panel of the `kinds` changed for every browser showing it for its `ticker`."""
         for c in self.clients:
             if c.view is None or c.view[0] != ticker:
                 continue
-            names = {n for n in c.view[1] if kind_of(n) == kind}
+            names = {n for n in c.view[1] if kind_of(n) in kinds}
             if names:
                 c.panels.update(names)
                 c.wake.set()
@@ -214,7 +221,7 @@ class LiveUiServer:
     # -- browser side -----------------------------------------------------------------
 
     async def _send(self, c: _Client, payload: dict[str, Any]) -> None:
-        await c.ws.send_text(json.dumps(payload, separators=(",", ":"), default=str))
+        await c.ws.send_text(_json(payload))
         if "rows" in payload:  # a symbols frame carries none
             self.stats["rows_sent"] += len(payload["rows"])
 
@@ -233,22 +240,26 @@ class LiveUiServer:
             ticker, shown = c.view
             for name in sorted(kinds & shown.keys()):
                 asked = Asked(ticker, self.clock(), shown[name])
-                body = await self._produce(name, asked)
-                await self._send(c, {"type": name, "ticker": asked.ticker, **body})
+                await c.ws.send_text(await asyncio.to_thread(self._frame, name, asked))
 
-    async def _produce(self, name: str, asked: Asked) -> Mapping[str, Any]:
-        """Return panel `name`'s body: its kind's producer, given what the page asked.
+    def _frame(self, name: str, asked: Asked) -> str:
+        """Return panel `name`'s frame as the page reads it: its producer's body, as JSON text.
 
         On a worker thread, as a route's read ran: a producer that waits on a lock the pricing
-        thread holds, or works a while, never holds the beat or another page. A producer that
-        raises is this panel's failure alone, said in words (`failed`), its traceback logged, as
-        a route's 500 was; the page's other panels and its prices keep coming.
+        thread holds, or works a while, never holds the beat or another page, and the frame's
+        JSON (a chain's runs to hundreds of kilobytes) is written there too, never on the loop
+        that takes Schwab's stream (measured 2026-11-19 at the open: encoding on the loop took
+        about a fifth of it). A producer that raises is this panel's failure alone, said in words
+        (`failed`), its traceback logged, as a route's 500 was; the page's other panels and its
+        prices keep coming.
         """
         try:
-            return await asyncio.to_thread(self.panels[kind_of(name)], asked)
+            body = self.panels[kind_of(name)](asked)
+            return _json({"type": name, "ticker": asked.ticker, **body})
         except Exception as e:
             log.exception("live ui: panel %s of %s not produced", name, asked.ticker)
-            return {"failed": f"the program could not produce this panel: {type(e).__name__}: {e}"}
+            failed = f"the program could not produce this panel: {type(e).__name__}: {e}"
+            return _json({"type": name, "ticker": asked.ticker, "failed": failed})
 
     async def _read(self, c: _Client) -> None:
         while (msg := await c.ws.receive())["type"] == "websocket.receive":
@@ -368,12 +379,19 @@ def changed(state: State, ticker: str, *kinds: str) -> None:
     """Mark panels `kinds` of `ticker` (its key) changed for the pages showing them.
 
     While the program serves the pages (`state.prices`, the web server's app state); callable
-    from any thread: the pricing thread's producer calls it.
+    from any thread. On the loop's own thread (the bus intake, for every quote and book Schwab
+    streams) they are marked at once: a hand-off to its own loop would write its wake-up socket
+    for each one, a system call per message the intake cannot spare (measured 2026-11-19 at the
+    open: the option intake a minute behind Schwab). From another thread (the pricing thread's
+    producer) the loop is handed one call for them all.
     """
     prices = state.prices
-    if prices is not None:
-        for kind in kinds:
-            prices.loop.call_soon_threadsafe(prices.mark_changed, ticker, kind)
+    if prices is None:
+        return
+    if threading.get_ident() == prices.loop_thread:
+        prices.mark_all(ticker, kinds)
+    else:
+        prices.loop.call_soon_threadsafe(prices.mark_all, ticker, kinds)
 
 
 def selected(state: State) -> set[str]:
@@ -432,7 +450,7 @@ async def serve_live_ui(
     )
     lmp.add_row_listener(srv.on_row)
     beats = asyncio.create_task(srv.beat_loop())
-    srv.loop = asyncio.get_running_loop()
+    srv.loop, srv.loop_thread = asyncio.get_running_loop(), threading.get_ident()
     state.prices = srv
     log.info("live ui: serving price rows to the pages on /ws")
     try:

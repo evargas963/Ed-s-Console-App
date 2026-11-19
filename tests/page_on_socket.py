@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -26,6 +27,7 @@ class Pages:
             on_select=server.ticker_selected,
         )
         self.server.loop = self.loop
+        self.server.loop_thread = threading.get_ident()  # the test runs the loop on its thread
         self.before = server.app.state.prices
         server.app.state.prices = self.server
 
