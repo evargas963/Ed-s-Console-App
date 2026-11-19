@@ -541,7 +541,7 @@ both, and the window restarts the program.
   `CaptureWriter.store_capture`), so a read on its arrival finds that capture, whole
   (`tests/test_data_path_capture_whole_v1.py`). A capture the database has not taken within
   `chain_sweep.CAPTURE_WAIT_SEC` is held by the Recorder and written once it takes writes, its
-  chain going to the console as no capture (`tests/test_capture_recorder_v1.py`); a stored capture is never replaced (a second write
+  chain going to the console as no capture (the same file); a stored capture is never replaced (a second write
   of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a history write
   that fails (that refusal included) is a write failure, never the chain's: the chain as the sweep
