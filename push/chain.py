@@ -1,7 +1,9 @@
 """The `chain` panel: one expiry of a ticker's full chain, as the chain screens show it.
 
-Read from State: the published levels' priced chain and heatmap (state.level_store) and the live
-price. The Chain ladder, Strike Detail and Structures each ask it with their own expiry.
+Read from State: the published levels' priced chain and heatmap (state.level_store), each
+contract's newest streamed values (app.options.order_flow.state) and the live price. Sent again on
+each streamed quote of the ticker (server.FLOW_PANELS). The Chain ladder, Strike Detail and
+Structures each ask it with their own expiry.
 """
 
 from __future__ import annotations
@@ -9,6 +11,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import live_market_plane as lmp
+from app.options.order_flow.state import rest_quotes, streamed_values
+from calc.math_exposure_core import overlay_streamed_contract_fields
 from calc.terrain_engine import LadderRow, chain_ladder, nearest_strike
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
 from option_contract import OptionContract, chain_row
@@ -39,6 +44,27 @@ def _net_gex_at(column: dict[float, float | None] | None, strike: float) -> floa
     if column is None:
         return None
     return column.get(strike)
+
+
+def _newest(contracts: list[OptionContract], since: float, now: float) -> list[OptionContract]:
+    """Return `contracts` (as the levels priced them) with the newest values Schwab sent by `now`.
+
+    A contract live on LEVELONE_OPTIONS by the one live rule takes its newest streamed record,
+    and one Schwab does not stream its newest /quotes answer received at or after `since` (the
+    chain's start), as the levels' pricing gives them (overlay_streamed_contract_fields). Every
+    other contract keeps the values the levels priced: the last value stands.
+    """
+    syms = [c.symbol for c in contracts if c.symbol]
+    feed = lmp.feed_now(now)
+    streamed = streamed_values(lmp.held_option_symbols(syms, now, feed))
+    live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
+    newest, _ = overlay_streamed_contract_fields(
+        contracts,
+        {s: streamed[s] for s in live},
+        live,
+        rest_quotes([s for s in syms if s not in streamed], since),
+    )
+    return newest
 
 
 def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:
@@ -135,11 +161,12 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         return _unavailable(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
     if resolved_expiry is None:
         return _unavailable("no listed expiry for this ticker")
-    # the contracts as the levels priced them (_publish_levels, each with its newest values):
-    # one computation, the screen's
-    response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
-    if not response_contracts:
+    # the contracts as the levels priced them (_publish_levels), each with the newest values
+    # Schwab sent since: the screen shows Schwab's value when it arrives, not at the next pricing
+    priced = [c for c in held.priced_chain if c.expiry == resolved_expiry]
+    if not priced:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
+    response_contracts = _newest(priced, held.computed_ts_utc, now)
     shown = _shown(response_contracts)
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)

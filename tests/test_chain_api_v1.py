@@ -269,6 +269,86 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
 
 
+#: inside a window Schwab sent for the option markets (tests/conftest.MARKETS_ANSWERS: 2026-10-07)
+_OPEN = datetime(2026, 10, 7, 11, 0, tzinfo=ET)
+
+
+def _stream_after_pricing(contract, fields, socket_open=True):
+    """Price TSLA's chain with `contract` streamed, then stream `fields` of it at _OPEN.
+
+    No pricing runs after: the panel at _OPEN is all that can show the newer values. The daemon's
+    status at _OPEN holds the contract, its socket open or not (`socket_open`).
+    """
+    sym = contract["symbol"]
+    first = {"BID_PRICE": contract["bid"], "ASK_PRICE": contract["ask"], "TOTAL_VOLUME": 1}
+    _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0, [(sym, first, _AT.timestamp())])
+    held = {"LEVELONE_EQUITIES": ["TSLA"], "LEVELONE_OPTIONS": [sym]}
+    status = daemon_status(_OPEN.timestamp(), schwab_socket_open=socket_open, held=held)
+    lmp.record_feed_heartbeat(status)
+    ofs._ingest_pushed(
+        f"optquote.{sym}",
+        verbatim_msg(
+            symbol=sym,
+            content={"key": sym, **fields},
+            src="schwab_options_l1",
+            ts_recv=_OPEN.timestamp(),
+        ),
+    )
+    body = push_chain.chain("TSLA", _OPEN.timestamp(), {"expiry": None})
+    return next(c for c in body["contracts"] if c["symbol"] == sym)
+
+
+def test_a_quote_streamed_after_the_last_pricing_is_shown_when_it_arrives():
+    """A live contract's bid, ask and volume on screen are Schwab's newest, not the last pricing's.
+
+    The levels price the chain at most once a second and a pricing takes seconds (measured
+    2026-11-18 on SPY: the ladder a median 4.4 s behind Schwab while marked live); the chain
+    screens show each value as Schwab sends it (operator 2026-11-19: the screen always live).
+    """
+    target = _TSLA_CONTRACTS[0]
+    bid, ask, volume = target["bid"] + 0.07, target["ask"] + 0.11, target["totalVolume"] + 99
+    shown = _stream_after_pricing(
+        target, {"BID_PRICE": bid, "ASK_PRICE": ask, "TOTAL_VOLUME": volume}
+    )
+    assert (shown["bid"], shown["ask"], shown["totalVolume"]) == (bid, ask, volume)
+    assert shown["volume_text"] == f"{volume:,.0f}" and shown["bid_text"] == f"{bid:.2f}"
+    assert shown["openInterest"] == target["openInterest"]  # the chain's (rule 3)
+
+
+def test_a_contract_not_live_keeps_the_values_last_priced():
+    """Schwab's socket closed: the contract is not live, and the values last priced stand."""
+    target = _TSLA_CONTRACTS[0]
+    shown = _stream_after_pricing(
+        target, {"BID_PRICE": target["bid"] + 0.07, "TOTAL_VOLUME": 5}, socket_open=False
+    )
+    assert (shown["bid"], shown["ask"], shown["totalVolume"]) == (
+        target["bid"],
+        target["ask"],
+        1,
+    )
+
+
+def test_every_option_quote_sends_the_chain_panel_of_its_ticker():
+    """Each LEVELONE_OPTIONS message, Greeks or not, tells the chain screens of its ticker."""
+    _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
+    sym = _TSLA_CONTRACTS[0]["symbol"]
+    told: list[str] = []
+    ofs.FEED.on_flow = told.append
+    try:
+        ofs._ingest_pushed(
+            f"optquote.{sym}",
+            verbatim_msg(
+                symbol=sym,
+                content={"key": sym, "BID_PRICE": 1.0},
+                src="schwab_options_l1",
+                ts_recv=_AT.timestamp(),
+            ),
+        )
+    finally:
+        ofs.FEED.on_flow = None
+    assert told == [sym] and srv._tick_ticker(sym) == "TSLA" and "chain" in srv.FLOW_PANELS
+
+
 def test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it():
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     body = _get(ticker="TSLA")
