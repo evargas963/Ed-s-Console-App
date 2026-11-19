@@ -278,24 +278,29 @@ def test_an_expirys_held_contracts_are_found_by_lookup_not_by_walking_every_held
 
     The chain panel asks for one expiry's contracts as a list on every quote it is sent for. Each
     is looked up in the beat's set: measured 2026-11-19 at the open, walking the thousands held
-    and testing each in the list was 26% of the program's time. 100 asks of the front expiry's
-    330 against 12,904 held: about 33,000 lookups, far under a second; the walk was about 430
-    million comparisons.
+    and testing each in the list was 26% of the program's time (100 asks took 8.4 s). The asked
+    list is never searched: each of its 330 is one lookup in the beat's set.
     """
+
+    class Searched(list[str]):
+        """The asked list, counting each time it is searched."""
+
+        searches = 0
+
+        def __contains__(self, item: object) -> bool:
+            self.searches += 1
+            return super().__contains__(item)
+
     held = [c["symbol"] for c in SPY_FULL.chain]
     front = min(c["expirationDate"][:10] for c in SPY_FULL.chain)
-    asked = [c["symbol"] for c in SPY_FULL.chain if c["expirationDate"][:10] == front]
-    now = time_et.now()
+    asked = Searched(c["symbol"] for c in SPY_FULL.chain if c["expirationDate"][:10] == front)
+    now = RTH_INSTANT
     lmp.record_feed_heartbeat(
         daemon_status(now, schwab_socket_open=True, held={"LEVELONE_OPTIONS": held})
     )
     try:
-        feed = lmp.feed_now(now)
-        start = time_et.elapsed()
-        for _ in range(100):
-            found = lmp.held_option_symbols(asked, now, feed)
-        took = time_et.elapsed() - start
+        found = lmp.held_option_symbols(asked, now, lmp.feed_now(now))
     finally:
         lmp.record_feed_down()
-    assert took < 0.5, f"100 asks took {took:.2f} s"
-    assert found == asked  # every one held, in the order asked
+    assert asked.searches == 0  # was once for each of the 12,904 held
+    assert found == list(asked)  # every one held, in the order asked
