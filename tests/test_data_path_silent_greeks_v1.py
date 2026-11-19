@@ -31,6 +31,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         lmp._feed["held"] = {}
     try:
         _daemon(held=[_A], socket_open=True, at=_T)
+        # INDUCED: a volume CRWD's chain does not carry, so the levels show it only from the stream
         _streamed(_A, {"TOTAL_VOLUME": 999999}, _T - 60.0)
         records = read_chain(_CONTRACTS)
         server._publish_levels(TK, records, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
