@@ -30,7 +30,8 @@ def test_total_volume_is_captured_alongside_the_greeks():
     st = LiveOrderFlowState()
     st.push_level_one("SPY   260116C00580000", {"TOTAL_VOLUME": 12345}, ts_recv=500.0)
     g = st.get_stream_greeks("SPY   260116C00580000")
-    assert g.total_volume == Received(12345.0, 500.0)
+    assert g.total_volume.value == 12345.0
+    assert g.total_volume.ts_recv == 500.0
 
 
 def test_a_volume_only_tick_alone_is_captured_without_any_greek_present():
