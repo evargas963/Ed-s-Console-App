@@ -42,6 +42,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
     for at in (datetime(2026, 10, 7, 11, 0, tzinfo=ET), datetime(2026, 10, 7, 22, 0, tzinfo=ET)):
         ofls.clear_all_live_state()
         _daemon(held=[_A], socket_open=False, at=at.timestamp())
+        # INDUCED: a volume CRWD's chain does not carry, so the levels show it only from the stream
         _streamed(_A, {"TOTAL_VOLUME": 999999}, at.timestamp() - 60.0)
         server._publish_levels(
             TK, read_chain(_CONTRACTS), at.timestamp() - 120.0, chain_spot=(_SPOT, _T), now=at
