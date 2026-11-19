@@ -28,6 +28,7 @@ from stream_spine import (
     MessageBus,
     quote_msg,
 )
+from tests.test_data_path_writer_failures_v1 import _Defect
 from time_et import ET
 
 #: after MRVL's option close (16:00 ET): the day's close capture
@@ -187,15 +188,6 @@ def test_a_capture_the_database_does_not_take_in_time_is_held_and_written_after(
     assert outcome == CAPTURE_HELD
     assert _symbols(db) == sorted(c["symbol"] for c in _MRVL)
     assert writer.status()["rows_written"] == 1, "the capture, written once"
-
-
-class _Defect(dict):
-    """STAND-IN for a defect in the writer: a row builder that raises what no row raises."""
-
-    def __getitem__(self, key):
-        if key == "native":
-            raise RuntimeError("a defect in the writer")
-        return dict.__getitem__(self, key)
 
 
 def test_a_dead_writer_refuses_the_capture_and_counts_it_not_recorded(tmp_path):
