@@ -12,7 +12,7 @@ import pytest
 
 from calc.terrain_read import CROSSED_UP
 from db import ColumnInventory, EdDB, LevelCrossEvent, inventory
-from stream_spine import RECEIPT_TIME_INDEXES, STREAM_SCHEMA_SQL, CaptureWriter
+from stream_spine import CAPTURE_TABLE, RECEIPT_TIME_INDEXES, STREAM_SCHEMA_SQL, CaptureWriter
 from tests.real_chains import SPY_PRINT_A_STRIKE_AWAY
 
 CREATED = re.findall(r"CREATE TABLE IF NOT EXISTS (\w+) \(", STREAM_SCHEMA_SQL)
@@ -28,7 +28,8 @@ def test_every_stream_table_the_writer_creates_is_counted_with_its_columns(tmp_p
 
     tables = {t.name: t for t in inventory(path)}
 
-    assert set(tables) == set(CREATED)
+    # the stream's tables and the chain history's, which the writer writes too (store_capture)
+    assert set(tables) == {*CREATED, CAPTURE_TABLE}
     assert all(t.rows == 0 for t in tables.values())
     quotes = [c.name for c in tables["stream_quotes_raw"].columns]
     # Schwab's item as sent, nothing copied out of it beside it (every row checked, ONE-DB)

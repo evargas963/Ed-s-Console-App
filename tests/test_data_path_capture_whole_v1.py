@@ -46,7 +46,7 @@ def _sweep(tmp_path, publish) -> cs.ChainSweep:
         ["MRVL"],
         publish,
         clock=lambda: _BEGUN,
-        failures=CaptureWriter(tmp_path / "stream_capture.db"),
+        failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
         streamed=lambda _symbol: None,
     )
 
@@ -70,7 +70,7 @@ def _refuse(db, expiry: str) -> None:
 def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_stored(tmp_path):
     """The expiries before the refused one are not left standing as the day's capture.
 
-    And the chain still reaches the console and the failure log.
+    And the chain still reaches the console, and the Recorder keeps the capture as sent.
     """
     db = tmp_path / "ed_console.db"
     published: list = []
@@ -81,10 +81,10 @@ def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_store
     assert published
     assert cch.last_capture_per_day(db, "MRVL", 1) == []
     assert cch.newest_capture_ts(db, "MRVL") is None
-    with closing(sqlite3.connect(tmp_path / "stream_capture.db")) as read, read:
+    with closing(sqlite3.connect(db)) as read, read:
         kept = read.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall()
-    assert [topic for topic, _msg in kept] == ["chain_history.MRVL"]
-    assert json.loads(kept[0][1])["started"] == _BEGUN
+    assert [topic for topic, _msg in kept] == ["capture.MRVL"]
+    assert json.loads(kept[0][1])["ts_utc"] == _BEGUN
 
 
 def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):

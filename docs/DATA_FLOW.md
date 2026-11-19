@@ -536,9 +536,12 @@ both, and the window restarts the program.
   its socket to the console drops, every ticker's levels go stale with that reason
   (`terrain_staleness`, judged against two of the sweep's delivered rounds, carried on the
   heartbeat). The first chain of each ticker whose fetch began in a capture window is also written
-  to the chain history (§4.2, `capture_slot`), in one transaction before the console hears of the
-  chain (operator 2026-11-01), so a read on its arrival finds that capture, whole
-  (`tests/test_data_path_capture_whole_v1.py`); a stored capture is never replaced (a second write
+  to the chain history (§4.2, `capture_slot`): the Recorder, the database's one writer, commits it
+  in one transaction before the console hears of the chain (operator 2026-11-01, "store first";
+  `CaptureWriter.store_capture`), so a read on its arrival finds that capture, whole
+  (`tests/test_data_path_capture_whole_v1.py`). A capture the database has not taken within
+  `chain_sweep.CAPTURE_WAIT_SEC` is held by the Recorder and written once it takes writes, its
+  chain going to the console as no capture (`tests/test_capture_recorder_v1.py`); a stored capture is never replaced (a second write
   of its ticker, expiry and time is refused,
   `test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key`); a history write
   that fails (that refusal included) is a write failure, never the chain's: the chain as the sweep
@@ -1007,8 +1010,8 @@ that builds its check (AGENTS.md).
    carries every value (§1). Enforced by: no machine check — ENF-12.
 5. **One database** (operator 2026-11-15: "is there a way to get to one db that has all the data we
    need", "yes build it"; replacing his two databases of 2026-10-09/10): `ed.db` holds the stream's
-   tables for five sessions (§2 D4), the chain history (decision 7, written by the daemon's chain
-   sweep) and the level crosses (the console's one write today; under SHAPE the Recorder writes it
+   tables for five sessions (§2 D4), the chain history (decision 7, taken by the daemon's chain
+   sweep and written by the Recorder, `CaptureWriter.store_capture`) and the level crosses (the console's one write today; under SHAPE the Recorder writes it
    and nothing else does, P2-DB5). The stored chain is the chain history of decision 7, not every
    5-second chain; no table without a job. Enforced by: `tests/test_one_database_v1.py` (the one
    path; the three tables in one file, the stream never held back by a chain's history); the one

@@ -66,7 +66,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
             [TK],
             lambda topic, msg: published.append((topic, msg)),
             clock=lambda: at,
-            failures=CaptureWriter(tmp_path / "stream_capture.db"),
+            failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
             streamed=lambda _symbol: None,
         )
         chain = cs._Chain(

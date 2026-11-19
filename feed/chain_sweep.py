@@ -6,8 +6,9 @@ full chain (every expiry, every strike) in turn with every other such ticker of 
 (the daemon's one list, capture.Daemon.watchlist), without end (ChainSweep); once that session
 closes, once more (the close values), and then nothing until the next one. Each chain is handed
 to the console for the levels. The first chain of each ticker begun in each capture window --
-every 30 minutes from its option market's open, and at its close -- is stored first, through the
-Recorder's capture table (calibration/complete_chain_capture.py), before the console hears of it.
+every 30 minutes from its option market's open, and at its close -- is stored first: the
+Recorder (stream_spine.CaptureWriter.store_capture) commits it to the capture table
+(calibration/complete_chain_capture.py) before the console hears of it.
 Nothing is stored outside those windows (weekend chains blank open interest).
 """
 
@@ -25,12 +26,7 @@ from typing import Any
 
 import time_et
 from app.options.order_flow.state import streamed_volume
-from calibration.complete_chain_capture import (
-    CAPTURE_BASIS,
-    capture_transaction,
-    newest_capture_ts,
-    persist_complete_chain_capture,
-)
+from calibration.complete_chain_capture import capture_message
 from feed.schwab_client import (
     QUOTES_BATCH_MAX,
     REQUESTS_AT_ONCE,
@@ -51,7 +47,8 @@ from option_contract import (
     streamed_greeks,
     streamed_top,
 )
-from stream_spine import CaptureWriter
+from state import capture_store
+from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter
 from time_et import (
     CLOSED,
     ET,
@@ -65,6 +62,11 @@ from time_et import (
 log = logging.getLogger("chain_history")
 
 CAPTURE_EVERY_MIN = 30
+#: seconds a chain waits for the Recorder to commit its capture before the console hears of it
+#: (store first); a capture not committed by then is held by the Recorder and written later, and
+#: the chain goes to the console as no capture. The Recorder commits every 0.25 s
+#: (CaptureWriter.batch_sec), so only a database refusing writes reaches it.
+CAPTURE_WAIT_SEC = 10.0
 #: seconds a ticker's /chains answers are taken again before they are asked for again (the
 #: operator's setting)
 CHAINS_AGAIN_SEC = 300
@@ -931,30 +933,26 @@ class ChainSweep:
         """
         ticker = chain.ticker
         if ticker not in self._written:
-            self._written[ticker] = newest_capture_ts(self.db_path, ticker)
+            self._written[ticker] = capture_store.newest_ts(self.db_path, ticker)
         before = self._written[ticker]
         if before is not None and before >= slot:
             return False
         self._written[ticker] = slot  # claim the window for this ticker
-        try:
-            with capture_transaction(self.db_path) as conn:
-                written = [
-                    persist_complete_chain_capture(
-                        conn,
-                        ticker=ticker,
-                        expiry=expiry,
-                        contracts=cts,
-                        spot=chain.spots[expiry],
-                        completeness_basis=CAPTURE_BASIS,
-                        ts_utc=chain.started,
-                        chain_spot=chain.spot,
-                        chain_spot_ts=chain.spot_ts,
-                        chains_answer=chain.bodies.get(expiry),  # absent: not recorded
-                    )["status"]
-                    == "written"
-                    for expiry, cts in chain.by_expiry.items()
-                ]
-        except Exception:
-            self._written[ticker] = before  # unwritten: the window's next chain, if any, tries
-            raise
-        return any(written)
+        capture = capture_message(
+            ticker,
+            chain.started,
+            (chain.spot, chain.spot_ts),
+            [
+                {
+                    "expiry": expiry,
+                    "spot": chain.spots[expiry],
+                    "contracts": cts,
+                    "chains_answer": chain.bodies.get(expiry),  # absent: not recorded
+                }
+                for expiry, cts in chain.by_expiry.items()
+            ],
+        )
+        outcome = self.failures.store_capture(capture, CAPTURE_WAIT_SEC)
+        if outcome == CAPTURE_REFUSED:
+            self._written[ticker] = before  # not stored: the window's next chain, if any, tries
+        return outcome == CAPTURE_STORED
