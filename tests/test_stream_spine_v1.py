@@ -185,7 +185,7 @@ def test_book_content_stored_verbatim_never_flattened(tmp_path):
 def test_book_msg_with_no_content_is_not_inserted(tmp_path):
     """insert() on kind 'book' with no content must not write a row.
 
-    get_content_for_symbol would then treat such a row as a valid empty book snapshot.
+    The order-flow state would then hold such a row as a valid empty book snapshot.
     """
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=1, batch_sec=10.0)

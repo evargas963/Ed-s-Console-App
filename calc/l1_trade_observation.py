@@ -16,7 +16,6 @@ are not native trade identity.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -100,16 +99,6 @@ def extract_vendor_print(item: dict[str, Any]) -> TradePrint | None:
     return TradePrint(
         price=price, size=sent.get(VENDOR_LAST_SIZE), time_millis=sent.get(VENDOR_TRADE_TIME)
     )
-
-
-def canonical_tape_prints(content_items: Sequence[Any]) -> list[dict[str, Any]]:
-    """Return the tape's prints among `content_items`, in receive order.
-
-    Each one is what the live state recorded: a genuinely new print, an adjacent restatement
-    never recorded. Never sorts by TRADE_TIME_MILLIS: out-of-order vendor clocks stay in
-    receive order.
-    """
-    return [item for item in content_items if isinstance(item, dict)]
 
 
 def tick_rule_sign(prev_price: float | None, price: float | None, last: int | None) -> int | None:

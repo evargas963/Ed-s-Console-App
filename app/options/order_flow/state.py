@@ -110,7 +110,7 @@ class OrderFlowState:
     """The one state-transition owner for live and isolated historical replay."""
 
     def __init__(self) -> None:
-        # RLock: get_content_for_symbol holds the lock and calls the tape's accessor.
+        # RLock: prints holds the lock and calls the tape's accessor.
         self._lock = threading.RLock()
         # each symbol's newest book from each Schwab service, the newest arrival last: a book
         # Schwab has not changed stands, however many the other service sends
@@ -214,25 +214,11 @@ class OrderFlowState:
                 }
             )
 
-    def get_content_for_symbol(
-        self, symbol: str, venue: str | None = None
-    ) -> list[Book | dict[str, Any]]:
-        """Return the engine's input for one symbol.
-
-        That is its newest book of each Schwab service (engine.Book) then its tape's prints
-        (dicts), in receive order; with `venue`, only that Schwab book service's book (an equity
-        has two: NYSE_BOOK and NASDAQ_BOOK).
-        """
+    def prints(self, symbol: str) -> list[dict[str, Any]]:
+        """Return the symbol's tape: each print it kept, in receive order."""
         sym = ticker_storage_key(symbol)
-        if not sym:
-            return []
-        out: list[Book | dict[str, Any]] = []
         with self._lock:
-            out.extend(
-                book for book in self._book[sym].values() if venue is None or book.service == venue
-            )
-            out.extend(self._get_tape(sym))  # a kept print is never changed: no copy
-        return out
+            return list(self._get_tape(sym))  # a kept print is never changed: no copy of it
 
     def newest_book(self, symbol: str, venue: str) -> Book | None:
         """Return the newest book held for `symbol` from Schwab service `venue`; None: none held."""
@@ -361,9 +347,9 @@ def push_level_one(
     _LIVE_STATE.push_level_one(symbol, content_item, ts_recv=ts_recv, field_received=field_received)
 
 
-def get_content_for_symbol(symbol: str, venue: str | None = None) -> list[Book | dict[str, Any]]:
-    """Return canonical engine content from the live singleton."""
-    return _LIVE_STATE.get_content_for_symbol(symbol, venue)
+def prints(symbol: str) -> list[dict[str, Any]]:
+    """Return the live singleton's tape of `symbol`: each print it kept, in receive order."""
+    return _LIVE_STATE.prints(symbol)
 
 
 def newest_book(symbol: str, venue: str) -> Book | None:

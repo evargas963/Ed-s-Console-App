@@ -1,7 +1,7 @@
 """The `book` panel: a ticker's quote and one Schwab book, and the Desk Liquidity card's readout.
 
-Read from State: the venue's newest book and the ticker's prints (the order-flow state), the
-price row, and the readouts the intake kept (history.LEAN).
+Read from State: the venue's newest book (the order-flow state), the price row, and the readouts
+the intake kept (history.LEAN).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 
 import live_market_plane as lmp
 from app.options.order_flow.history import LEAN
-from app.options.order_flow.state import get_content_for_symbol
+from app.options.order_flow.state import newest_book
 from app.options.order_flow.streaming import price_row, price_state
 from calc.order_flow import (
     BOOK_VENUES,
@@ -72,8 +72,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     composite (liquidity_readout).
     """
     t = ticker_storage_key(ticker)
-    # the venue's newest book and the ticker's prints, as the order-flow state holds them
-    data: dict[str, Any] = {"content": get_content_for_symbol(t, venue)}
+    # the venue's newest book, as the order-flow state holds it
+    data: dict[str, Any] = {"book": newest_book(t, venue)}
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
     top_label, top_outage = price_state(t, now)

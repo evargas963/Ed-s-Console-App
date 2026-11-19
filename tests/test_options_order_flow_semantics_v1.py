@@ -23,7 +23,6 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import read_book
-from calc.order_flow import Book
 from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
 from tests.feed_live_helper import daemon_status
 
@@ -87,10 +86,7 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
             deadline = time_et.elapsed() + 30
             while any(top(s) != t for s, t in want.items()) and time_et.elapsed() < deadline:
                 await asyncio.sleep(0.05)
-            books = ofls.get_content_for_symbol(BOOK_CONTRACT)
-            return {s: top(s) for s in want}, next(
-                i for i in reversed(books) if isinstance(i, Book)
-            )
+            return {s: top(s) for s in want}, ofls.newest_book(BOOK_CONTRACT, "OPTIONS_BOOK")
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)

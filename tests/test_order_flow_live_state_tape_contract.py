@@ -35,7 +35,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     live_state.clear_symbol(sym)
     try:
         live_state.push_level_one(sym, first["item"], ts_recv=first["ts_recv"])
-        content = live_state.get_content_for_symbol(sym)
+        content = live_state.prints(sym)
     finally:
         live_state.clear_symbol(sym)
     tape = [item for item in content if item["time_millis"] == first["item"]["TRADE_TIME_MILLIS"]]
@@ -46,7 +46,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     assert tape[0]["time_millis"] == first["item"]["TRADE_TIME_MILLIS"]
     assert tape[0]["completeness"] == live_state.TAPE_COMPLETENESS
     assert tape[0]["receive_seq"] == 1
-    assert l1.compute_cum_delta_proxy(l1.canonical_tape_prints(content)) is None
+    assert l1.compute_cum_delta_proxy(content) is None
 
 
 def test_live_state_present_last_size_reaches_order_flow_consumers():
@@ -67,12 +67,12 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
     try:
         for m in sent(_MIX, sym):
             live_state.push_level_one(sym, m["item"], ts_recv=m["ts_recv"])
-        content = live_state.get_content_for_symbol(sym)
+        content = live_state.prints(sym)
     finally:
         live_state.clear_symbol(sym)
 
-    assert [size for _x, size, _s in l1._signed_walk(l1.canonical_tape_prints(content), None)] == [
+    assert [size for _x, size, _s in l1._signed_walk(content, None)] == [
         40,
         49,
     ]
-    assert l1.compute_cum_delta_proxy(l1.canonical_tape_prints(content)) is None
+    assert l1.compute_cum_delta_proxy(content) is None

@@ -2,8 +2,9 @@
 
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
-Input: dict `data` with ``content`` (the streamed book and tape items), ``top`` (the top of
-book as Schwab last sent it) and ``book_live`` (whether the feed delivers the book now).
+Input: dict `data` with ``book`` (the newest book of its Schwab service, None with none),
+``prints`` (the tape, in receive order), ``top`` (the top of book as Schwab last sent it) and
+``book_live`` (whether the feed delivers the book now).
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from typing import Any, TypedDict
 import numpy as np
 
 from calc.l1_trade_observation import (
-    canonical_tape_prints,
     compute_cum_delta_proxy,
     compute_tape_pressure,
     cum_delta_window,
@@ -98,17 +98,6 @@ class Book:
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOK METRICS
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def _latest_book_snapshot(items: list[Book | dict[str, Any]]) -> Book | None:
-    """Return the most recent book.
-
-    A one-sided book included: the side Schwab sent no levels for is empty.
-    """
-    for item in reversed(items):
-        if isinstance(item, Book):
-            return item
-    return None
 
 
 def _book_side_depth_total(levels: list[tuple[float, float]], depth: int) -> float | None:
@@ -210,11 +199,12 @@ def _sorted_valid_levels(
 def _extract_canonical_book(data: dict[str, Any]) -> dict[str, Any]:
     """Extract and normalize the live book: THE single extraction/normalization.
 
-    Walks the content ONCE, validates and sorts both sides, and carries the live top of book
-    (``data["top"]``). Every downstream metric reads this result; nothing else re-walks the raw
-    book.
+    Reads the book (``data["book"]``, the newest of its Schwab service; a one-sided one included:
+    the side Schwab sent no levels for is empty) ONCE, validates and sorts both sides, and
+    carries the live top of book (``data["top"]``). Every downstream metric reads this result;
+    nothing else re-walks the raw book.
     """
-    snapshot = _latest_book_snapshot(data["content"])
+    snapshot: Book | None = data["book"]
     bid, ask = _resolve_bid_ask_prices(data)
     t = _top(data)
     bid_size = schwab_count(t.get("bid_size"))
@@ -430,9 +420,8 @@ def compute_book_microstructure(data: dict[str, Any], *, now_ts: float) -> dict[
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
     The ONE producer the engine and the book panel (`push.book.book`) both read.
-    `data.content`
-    carries the live streaming book + top-of-book
-    (app.options.order_flow.state.get_content_for_symbol); `data.exchange_quote_ts` (optional) is
+    `data.book` is the newest book of its Schwab service (app.options.order_flow.state
+    .newest_book) and `data.top` the top of book; `data.exchange_quote_ts` (optional) is
     the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
     service (absent: not live). Pure: computed from the book given on every call (about 90 us on
     a real book). Only the age fields depend on `now`. Fail-closed: no book snapshot -> status
@@ -908,7 +897,7 @@ class OrderFlowEngine:
         """
         # the book, by its one producer (the book panel calls the same one)
         book_micro = compute_book_microstructure(data, now_ts=now)
-        prints = canonical_tape_prints(data["content"])  # the tape, read once
+        prints = data["prints"]  # the tape, in receive order
         cum_first, cum_last = cum_delta_window(prints)
         ms = now * 1000.0
         # each flow number and the decimals the screen shows it with: the pressures, each

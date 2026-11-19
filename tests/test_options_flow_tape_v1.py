@@ -69,7 +69,7 @@ def _fed(contract: str, rows: list[tuple[float, dict]]) -> OrderFlowState:
 
 def _tape(contract: str, rows: list[tuple[float, dict]], limit: int = 50) -> list[dict]:
     """Return the tape's newest `limit` prints of `contract` after `rows`, newest first."""
-    return recent_prints(contract, _fed(contract, rows).get_content_for_symbol(contract), limit)
+    return recent_prints(contract, _fed(contract, rows).prints(contract), limit)
 
 
 def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
@@ -324,9 +324,9 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     (at, first), (later, second) = _sent(CALL)[:2]
     live = _fed(CALL, [(at, first)])
     live.push_level_one("", second, ts_recv=later)
-    assert recent_prints(PUT, live.get_content_for_symbol(PUT), 50) == []
-    assert recent_prints("", live.get_content_for_symbol(""), 50) == []
-    assert len(recent_prints(CALL, live.get_content_for_symbol(CALL), 50)) == 1
+    assert recent_prints(PUT, live.prints(PUT), 50) == []
+    assert recent_prints("", live.prints(""), 50) == []
+    assert len(recent_prints(CALL, live.prints(CALL), 50)) == 1
 
 
 def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
@@ -339,9 +339,9 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     _ingest_pushed(f"optquote.{CALL}", {"symbol": CALL, "ts_recv": at, "content": first})
     book = fixture_json("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
     history.BOOKS.record("SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"))
-    kept = recent_prints(CALL, state.get_content_for_symbol(CALL), 50)
+    kept = recent_prints(CALL, state.prints(CALL), 50)
     assert len(kept) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
     state.clear_symbol(CALL)
     state.clear_symbol("SPY")
-    gone = recent_prints(CALL, state.get_content_for_symbol(CALL), 50)
+    gone = recent_prints(CALL, state.prints(CALL), 50)
     assert gone == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []

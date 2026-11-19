@@ -46,19 +46,32 @@ def _book_snapshot() -> dict:
     }
 
 
-def _read(data: dict) -> dict:
-    """Return `data` with each book message of its content read by the one reader.
+def _is_book(c) -> bool:
+    return isinstance(c, ofe.Book) or "BIDS" in c or "ASKS" in c
 
-    The one reader is State's read_book, as the live state reads it (a NASDAQ_BOOK); a book the
-    state already read stays.
+
+def _read(data: dict) -> dict:
+    """Return the engine's input for `data`'s Schwab messages, as the live state holds them.
+
+    Its newest book, read by State's one reader (read_book, a NASDAQ_BOOK; a book the state
+    already read stays), and its prints in the order given.
     """
-    content = [
-        ofls.read_book(c, "NASDAQ_BOOK")
-        if isinstance(c, dict) and ("BIDS" in c or "ASKS" in c)
-        else c
-        for c in data["content"]
+    items = data["content"]
+    books = [
+        b
+        for b in (
+            c if isinstance(c, ofe.Book) else ofls.read_book(c, "NASDAQ_BOOK")
+            for c in items
+            if _is_book(c)
+        )
+        if b is not None
     ]
-    return {**data, "content": content}
+    rest = {k: v for k, v in data.items() if k != "content"}
+    return {
+        **rest,
+        "book": books[-1] if books else None,
+        "prints": [c for c in items if not _is_book(c)],
+    }
 
 
 def _micro(data: dict, **kw) -> dict:
@@ -346,7 +359,7 @@ def test_a_one_sided_book_schwab_sent_is_the_latest_book_never_the_older_two_sid
         {"ASKS": [{"ASK_PRICE": 713.10, "TOTAL_VOLUME": 77}], "BOOK_TIME": snap["BOOK_TIME"] + 1},
         "NASDAQ_BOOK",
     )
-    m = _micro({"content": st.get_content_for_symbol("ONESIDE")}, now_ts=2.0)
+    m = _micro({"content": [st.newest_book("ONESIDE", "NASDAQ_BOOK")]}, now_ts=2.0)
     assert m["status"] == "ok"
     assert m["depth"]["1"]["ask_total"] == 77.0 and m["depth"]["1"]["bid_total"] is None
     assert m["crossed"] is None  # no bid: whether the book is crossed is unknown, not "no"
@@ -440,7 +453,7 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 
 def test_top_prices_and_sizes_are_carried_exactly():
-    data = {"content": [], "top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}}
+    data = _read({"content": [], "top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}})
     bid, ask = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
     assert ofe._extract_canonical_book(data)["mark"] is None
@@ -454,15 +467,15 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
         "content": [_book_snapshot()],
         "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5},
     }
-    assert ofe._compute_top_book_pressure(data) == (0 - 5) / (0 + 5), (
+    assert ofe._compute_top_book_pressure(_read(data)) == (0 - 5) / (0 + 5), (
         "a real BID_SIZE=0 is not missing"
     )
-    assert ofe._extract_canonical_book(data)["bid_size"] == 0
+    assert ofe._extract_canonical_book(_read(data))["bid_size"] == 0
     assert _micro(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
 
 
 def test_no_top_resolves_to_none():
-    data = {"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None}  # tape print only
+    data = _read({"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None})  # print only
     assert ofe._resolve_bid_ask_prices(data) == (None, None)
     assert ofe._compute_top_book_pressure(data) is None
 
@@ -532,8 +545,8 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
             },
             ts_recv=1_000.0,
         )
-        content = ofls.get_content_for_symbol("O01EQ")
-        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in content)
+        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in ofls.prints("O01EQ"))
+        assert ofls.newest_book("O01EQ", "OPTIONS_BOOK") is None
         assert ofls.option_top("O01EQ") is None
     finally:
         ofls.clear_symbol("O01EQ")
@@ -589,7 +602,7 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
             "BOOK_TIME": 1,
         }
     ]
-    bid, ask = ofe._resolve_bid_ask_prices({"content": items, "top": {"ask_size": 12}})
+    bid, ask = ofe._resolve_bid_ask_prices(_read({"content": items, "top": {"ask_size": 12}}))
     assert (bid, ask) == (None, None)
 
 

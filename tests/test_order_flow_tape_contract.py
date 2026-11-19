@@ -59,12 +59,12 @@ def _data(messages: list[dict]) -> dict:
         state.push_option_top(m["item"]["key"], m["item"])
         state.push_level_one(m["item"]["key"], m["item"], ts_recv=m["ts_recv"])
     (key,) = {m["item"]["key"] for m in messages}
-    return {"content": state.get_content_for_symbol(key)}
+    return {"book": None, "prints": state.prints(key)}  # LEVELONE messages: no book
 
 
 def _tape(messages: list[dict]) -> list[dict]:
     """The tape the engine reads from `messages` (OrderFlowEngine.compute's prints)."""
-    return l1.canonical_tape_prints(_data(messages)["content"])
+    return _data(messages)["prints"]
 
 
 def test_cum_delta_proxy_skips_missing_print_size():
@@ -88,7 +88,7 @@ def test_a_tape_of_zero_size_prints_sums_to_zero_and_serves_its_window():
     """
     t0 = _NVDA_ZERO["item"]["TRADE_TIME_MILLIS"]
     data = _data([_NVDA_ZERO])
-    assert l1.compute_cum_delta_proxy(l1.canonical_tape_prints(data["content"])) == 0.0
+    assert l1.compute_cum_delta_proxy(data["prints"]) == 0.0
     flow = ofe.OrderFlowEngine().compute(data, now=t0 / 1000 + 61)
     assert flow["cum_delta_proxy"] == 0.0
     assert flow["cum_delta_window"] == "prints Mon 10/19 03:00 AM CT to Mon 10/19 03:00 AM CT"

@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 import live_market_plane as lmp
-from app.options.order_flow.state import get_content_for_symbol, option_top
+from app.options.order_flow.state import newest_book, option_top, prints
 from calc.l1_trade_observation import TAPE_NOTE
 from calc.order_flow import OrderFlowEngine
 
@@ -37,7 +37,6 @@ def flow_block(of: dict[str, Any]) -> dict[str, Any]:
 
 def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     """Book microstructure + labeled PROXY flow for one option contract at `now`."""
-    items = get_content_for_symbol(contract)
     # the contract's top of book stands when it is not live; top_outage says why and
     # top_feed_label is the page's word for it. book_live is whether the book feed delivers now
     # (docs/DATA_FLOW.md §2 D5).
@@ -47,7 +46,8 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now)
     of = OrderFlowEngine().compute(
         {
-            "content": items,
+            "book": newest_book(contract, "OPTIONS_BOOK"),
+            "prints": prints(contract),
             "top": top,
             "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now),
             "exchange_quote_ts": quote_ms / 1000.0 if quote_ms is not None else None,
