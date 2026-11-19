@@ -52,11 +52,11 @@ def _is_book(c) -> bool:
     return isinstance(c, ofe.Book) or "BIDS" in c or "ASKS" in c
 
 
-def _read(data: dict) -> dict:
+def _read(data: dict) -> ofe.FlowInput:
     """Return the engine's input for `data`'s Schwab messages, as the live state holds them.
 
     Its newest book, read by State's one reader (read_book, a NASDAQ_BOOK; a book the state
-    already read stays), and its prints in the order given.
+    already read stays), its prints in the order given, and `data`'s other fields as given.
     """
     items = data["content"]
     books = [
@@ -68,12 +68,11 @@ def _read(data: dict) -> dict:
         )
         if b is not None
     ]
-    rest = {k: v for k, v in data.items() if k != "content"}
-    return {
-        **rest,
-        "book": books[-1] if books else None,
-        "prints": [c for c in items if not _is_book(c)],
-    }
+    return ofe.FlowInput(
+        book=books[-1] if books else None,
+        prints=[c for c in items if not _is_book(c)],
+        **{k: v for k, v in data.items() if k != "content"},
+    )
 
 
 def _micro(data: dict, **kw) -> dict:
@@ -477,7 +476,7 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
 
 
 def test_no_top_resolves_to_none():
-    data = _read({"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": None})  # print only
+    data = _read({"content": [{"LAST_PRICE": 0.55, "LAST_SIZE": 3}], "top": NO_TOP})  # print only
     assert ofe._resolve_bid_ask_prices(data) == (None, None)
     assert ofe._compute_top_book_pressure(data) is None
 
@@ -602,7 +601,9 @@ def test_book_top_never_stands_in_for_a_missing_l1_price():
             "BOOK_TIME": 1,
         }
     ]
-    bid, ask = ofe._resolve_bid_ask_prices(_read({"content": items, "top": {"ask_size": 12}}))
+    bid, ask = ofe._resolve_bid_ask_prices(
+        _read({"content": items, "top": StreamedTop(ask_size=12)})
+    )
     assert (bid, ask) == (None, None)
 
 

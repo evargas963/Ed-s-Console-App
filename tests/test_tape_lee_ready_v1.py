@@ -134,7 +134,9 @@ def test_the_cumulative_delta_and_its_unsigned_share_are_served():
     signed = [s for _sz, s in want if s is not None]
     total = sum(sz for sz, _s in want)
     unsigned = sum(sz for sz, s in want if s is None)
-    out = ofe.OrderFlowEngine().compute({"book": None, "prints": content}, now=_MSGS[-1]["ts_recv"])
+    out = ofe.OrderFlowEngine().compute(
+        ofe.FlowInput(book=None, prints=content), now=_MSGS[-1]["ts_recv"]
+    )
     assert out["cum_delta_proxy"] == sum(signed)
     assert out["cum_delta_unsigned"] == unsigned / total
 
