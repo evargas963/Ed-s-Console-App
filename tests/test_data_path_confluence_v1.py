@@ -38,7 +38,7 @@ from push import confluence as push_confluence
 from push import levels as push_levels
 from push import strike_rows
 from push import verdict as push_verdict
-from state import level_store
+from state import capture_store, level_store
 from stream_spine import verbatim_msg
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
@@ -1024,8 +1024,9 @@ def _first_chain_keeps_the_capture(now, capture_at):
         first = push_confluence.confluence_payload(tk, expiry, now)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
-        with level_store._lock:
+        with level_store._lock:  # a restart: no levels and no captures held
             level_store._levels.pop(tk, None)
+        capture_store.clear()
         _store_by_expiry(tk, fresh, held.spot, capture_at)
         server._publish_levels(
             tk, read_chain(_zero_counts(fresh)), now.timestamp(), chain_spot=spot, now=now
@@ -1150,8 +1151,9 @@ def test_a_closed_day_zero_book_keeps_the_last_count_through_the_next_open():
         first = push_confluence.confluence_payload(tk, expiry, before)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
         kept = shown["pc_vol_text"]
-        with level_store._lock:
+        with level_store._lock:  # a restart: no levels and no captures held
             level_store._levels.pop(tk, None)
+        capture_store.clear()
         _store_by_expiry(tk, fresh, held.spot, datetime(2026, 10, 2, 16, 0, tzinfo=ET))
         closed = datetime(2026, 10, 4, 12, 0, tzinfo=ET)
         server._publish_levels(

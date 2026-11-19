@@ -297,7 +297,7 @@ async def _chains_then_console(contracts, fetched) -> list[dict]:
     bus = MessageBus()
     sub = bus.subscribe("", policy=LATEST)
     for ts in fetched:
-        for topic, msg in chain_messages("SPY", contracts, ts, None, None):
+        for topic, msg in chain_messages("SPY", contracts, ts, None, None, False):
             bus.publish(topic, msg)
     return await _console_reads(bus, sub, 3.0)
 
