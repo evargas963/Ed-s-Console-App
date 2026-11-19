@@ -28,6 +28,7 @@ from app.market_data.schwab.streaming.live_ui import Asked
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import GREEKS, LISTED, read_chain
 from push import chain as push_chain
+from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
 from tests.feed_live_helper import daemon_status
@@ -315,17 +316,21 @@ def test_a_quote_streamed_after_the_last_pricing_is_shown_when_it_arrives():
     assert shown["openInterest"] == target["openInterest"]  # the chain's (rule 3)
 
 
-def test_a_contract_not_live_keeps_the_values_last_priced():
-    """Schwab's socket closed: the contract is not live, and the values last priced stand."""
+def test_a_contract_not_live_shows_the_last_value_schwab_sent_as_the_flow_panel_does():
+    """Schwab's socket closed: the contract is not live, and the last value Schwab sent stands.
+
+    That is the stream's newest, the bid the Flow panel shows for the contract: two screens, one
+    value (measured 2026-11-19 09:25 ET, in the gap between Schwab's option windows: the ladder
+    held the last priced 3.10 while the Flow panel showed Schwab's 3.07). Whether it is live is
+    its label (the Flow panel's outage), never a filter.
+    """
     target = _TSLA_CONTRACTS[0]
-    shown = _stream_after_pricing(
-        target, {"BID_PRICE": target["bid"] + 0.07, "TOTAL_VOLUME": 5}, socket_open=False
-    )
-    assert (shown["bid"], shown["ask"], shown["totalVolume"]) == (
-        target["bid"],
-        target["ask"],
-        1,
-    )
+    bid = target["bid"] + 0.07
+    shown = _stream_after_pricing(target, {"BID_PRICE": bid, "TOTAL_VOLUME": 5}, socket_open=False)
+    assert (shown["bid"], shown["totalVolume"]) == (bid, 5)
+    flow = push_contract.options_microstructure(target["symbol"], _OPEN.timestamp())
+    assert flow["top_of_book"]["bid"] == shown["bid"]
+    assert flow["top_outage"] is not None  # not live, said so
 
 
 def test_every_option_quote_sends_the_chain_panel_of_its_ticker():

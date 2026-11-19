@@ -49,20 +49,16 @@ def _net_gex_at(column: dict[float, float | None] | None, strike: float) -> floa
 def _newest(contracts: list[OptionContract], since: float, now: float) -> list[OptionContract]:
     """Return `contracts` (as the levels priced them) with the newest values Schwab sent by `now`.
 
-    A contract live on LEVELONE_OPTIONS by the one live rule takes its newest streamed record,
-    and one Schwab does not stream its newest /quotes answer received at or after `since` (the
-    chain's start), as the levels' pricing gives them (overlay_streamed_contract_fields). Every
-    other contract keeps the values the levels priced: the last value stands.
+    By the levels' own rule (server._price_chain_values): a contract the daemon holds on
+    LEVELONE_OPTIONS takes its newest streamed record, and one it does not its newest /quotes
+    answer received at or after `since` (the chain's start) (overlay_streamed_contract_fields).
+    Whether that value is live is its label, never a filter: off the stream's hours the last
+    value Schwab sent stands, as the Flow panel shows it.
     """
     syms = [c.symbol for c in contracts if c.symbol]
-    feed = lmp.feed_now(now)
-    streamed = streamed_values(lmp.held_option_symbols(syms, now, feed))
-    live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
+    held = set(lmp.held_option_symbols(syms, now))
     newest, _ = overlay_streamed_contract_fields(
-        contracts,
-        {s: streamed[s] for s in live},
-        live,
-        rest_quotes([s for s in syms if s not in streamed], since),
+        contracts, streamed_values(held), held, rest_quotes(syms, since)
     )
     return newest
 
