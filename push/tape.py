@@ -21,7 +21,7 @@ def tape(ticker: str, now: float) -> dict[str, Any]:
     The prints the console builds from Schwab's LEVELONE_OPTIONS as the daemon pushes them
     (the live state's prints, history.recent_prints), of every contract of `ticker` the daemon
     streams (live_market_plane.held_option_symbols), merged newest trade first by Schwab's own
-    trade time (TRADE_TIME_MILLIS; operator 2026-11-12: "yes we should use schwab's data"),
+    trade time (TRADE_TIME_MILLIS, Schwab's data, not our receive order),
     prints of one trade time in the order received, a print Schwab sent no trade time with after
     every one that has one; capped at TAPE_ROWS across the merge, each with its contract's terms
     and open interest from the chain record and its premium (history.tape_row). No aggressor

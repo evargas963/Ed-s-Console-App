@@ -354,7 +354,7 @@ class Daemon:
         self.pick_options()
 
     def pick_options(self) -> None:
-        """Run the option rule: the ticker on a page first (operator 2026-11-11).
+        """Run the option rule: the ticker on a page first (AGENTS.md rule 7).
 
         It runs when a ticker's chain is put in the rule's order (_rank), on a watchlist change,
         on the Flow panel's selection and when a page selects a ticker. The contract selected on

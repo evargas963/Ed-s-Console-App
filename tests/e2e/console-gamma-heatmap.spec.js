@@ -265,7 +265,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   test("a burst of pushes faster than the round trip converges the display live, not only once the pushes stop (2026-09-13 controlled reproduction)", async ({
     page,
   }) => {
-    // the program's surface sent six times, 40 ms apart: each frame is drawn as it lands, and
+    // the program's surface sent six times back to back: each frame is drawn as it lands, and
     // the last one stands. The mid-burst read below is a single instantaneous DOM snapshot
     // (`textContent()`, no auto-retry) taken while frames are still arriving: it tells "frozen
     // through the whole burst" from "kept converging".
@@ -286,7 +286,6 @@ test.describe("Ed Console shell + gamma heatmap", () => {
           "display must already be tracking updates mid-burst, not frozen at its starting value",
         ).not.toBe("$1.00K");
       }
-      await page.waitForTimeout(40);
     }
     await expect(cell).toHaveText("$" + call + ".00K"); // the last frame's served text stands
     const finalText = await cell.textContent();

@@ -709,7 +709,7 @@ def _closed_since(now: datetime, product: str) -> datetime | None:
     """Return the ticker's last option close while its option market is closed at `now`.
 
     None while it is open: in its regular window, or in an option window Schwab sent before its
-    market has closed that day (the pre-market, operator 2026-11-12: "Yes, make them live"). None
+    market has closed that day (the pre-market, whose values are live). None
     too while Schwab's /markets answer for today is not held.
     """
     if option_market_open(now, product) is not False:
