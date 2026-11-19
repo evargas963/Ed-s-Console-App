@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import live_market_plane as lmp
 import time_et
-from calc.order_flow import _resolve_quote_mark
+from calc.order_flow import FlowInput, _resolve_quote_mark
 from option_contract import StreamedTop
 
 
@@ -56,5 +56,7 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
 
 
 def test_mark_is_the_streamed_mark_only():
-    assert _resolve_quote_mark({"top": StreamedTop(mark=10.05, bid_size=5)}) == 10.05
-    assert _resolve_quote_mark({"quote": {"mark": 10.05}}) is None
+    assert (
+        _resolve_quote_mark(FlowInput(book=None, top=StreamedTop(mark=10.05, bid_size=5))) == 10.05
+    )
+    assert _resolve_quote_mark(FlowInput(book=None)) is None, "no top of book: no mark"

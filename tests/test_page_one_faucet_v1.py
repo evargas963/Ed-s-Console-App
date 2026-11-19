@@ -27,7 +27,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
-from calc.order_flow import compute_book_microstructure
+from calc.order_flow import FlowInput, compute_book_microstructure
 from instrument_identity import ticker_storage_key
 from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
@@ -203,7 +203,7 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
 
 def test_a_book_with_no_age_is_not_reported_fresh():
     """LIVE badges read book_stale: an unknown book age is unknown (None), never False (fresh)."""
-    out = compute_book_microstructure({"book": None}, now_ts=1_800_000_000.0)
+    out = compute_book_microstructure(FlowInput(book=None), now_ts=1_800_000_000.0)
     assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
 
 

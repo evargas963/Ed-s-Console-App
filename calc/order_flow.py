@@ -2,16 +2,15 @@
 
 The book microstructure and the tape flow of one symbol, from Schwab streaming fields.
 
-Input: dict `data` with ``book`` (the newest book of its Schwab service, None with none),
-``prints`` (the tape, in receive order), ``top`` (the top of book as Schwab last sent it) and
-``book_live`` (whether the feed delivers the book now).
+Input: a FlowInput, the newest book of its Schwab service, the top of book as Schwab last sent
+it, the tape in receive order and whether the feed delivers the book now.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
 import numpy as np
@@ -96,6 +95,22 @@ class Book:
         return [(p, v) for p, v, _ in self.levels(side)]
 
 
+@dataclass(frozen=True)
+class FlowInput:
+    """What the engine reads of one symbol.
+
+    The newest book of its Schwab service (None: none held), its top of book as Schwab last sent
+    each field, its tape in receive order, whether the feed delivers the book now (None: no
+    book), and the exchange's quote clock (QUOTE_TIME_MILLIS, in seconds; None: not sent).
+    """
+
+    book: Book | None
+    top: StreamedTop = NO_TOP
+    prints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    book_live: bool | None = None
+    exchange_quote_ts: float | None = None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BOOK METRICS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -129,31 +144,19 @@ def _book_imbalance_from_totals(bid_total: float | None, ask_total: float | None
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _top(data: dict[str, Any]) -> StreamedTop:
-    """Return the top of book the caller supplies as ``data["top"]`` (NO_TOP: none supplied).
-
-    Its bid, ask, bid_size, ask_size and mark are each the last value Schwab sent; None when
-    Schwab has sent none.
-    """
-    t = data.get("top")
-    return t if isinstance(t, StreamedTop) else NO_TOP
-
-
-def _compute_top_book_pressure(data: dict[str, Any]) -> float | None:
+def _compute_top_book_pressure(data: FlowInput) -> float | None:
     """Top-of-book pressure: (bid_size - ask_size) / (bid_size + ask_size), streamed sizes."""
-    t = _top(data)
-    return _book_imbalance_from_totals(t.bid_size, t.ask_size)
+    return _book_imbalance_from_totals(data.top.bid_size, data.top.ask_size)
 
 
-def _resolve_bid_ask_prices(data: dict[str, Any]) -> tuple[float | None, float | None]:
+def _resolve_bid_ask_prices(data: FlowInput) -> tuple[float | None, float | None]:
     """Level-one BID_PRICE / ASK_PRICE as Schwab sent them."""
-    t = _top(data)
-    return t.bid, t.ask
+    return data.top.bid, data.top.ask
 
 
-def _resolve_quote_mark(data: dict[str, Any]) -> float | None:
+def _resolve_quote_mark(data: FlowInput) -> float | None:
     """Level-one MARK as Schwab sent it, a ticker's or a contract's; a reported 0 is 0."""
-    return _top(data).mark
+    return data.top.mark
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -197,19 +200,18 @@ def _sorted_valid_levels(
     return valid
 
 
-def _extract_canonical_book(data: dict[str, Any]) -> dict[str, Any]:
+def _extract_canonical_book(data: FlowInput) -> dict[str, Any]:
     """Extract and normalize the live book: THE single extraction/normalization.
 
-    Reads the book (``data["book"]``, the newest of its Schwab service; a one-sided one included:
+    Reads the book (``data.book``, the newest of its Schwab service; a one-sided one included:
     the side Schwab sent no levels for is empty) ONCE, validates and sorts both sides, and
-    carries the live top of book (``data["top"]``). Every downstream metric reads this result;
+    carries the live top of book (``data.top``). Every downstream metric reads this result;
     nothing else re-walks the raw book.
     """
-    snapshot: Book | None = data["book"]
+    snapshot = data.book
     bid, ask = _resolve_bid_ask_prices(data)
-    t = _top(data)
-    bid_size = schwab_count(t.bid_size)
-    ask_size = schwab_count(t.ask_size)
+    bid_size = schwab_count(data.top.bid_size)
+    ask_size = schwab_count(data.top.ask_size)
 
     bid_levels = _sorted_valid_levels(snapshot.pairs("BIDS"), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(snapshot.pairs("ASKS"), descending=False) if snapshot else []
@@ -417,7 +419,7 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
     return None if book_time_ms is None else now - book_time_ms / 1000.0
 
 
-def compute_book_microstructure(data: dict[str, Any], *, now_ts: float) -> dict[str, Any]:
+def compute_book_microstructure(data: FlowInput, *, now_ts: float) -> dict[str, Any]:
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
     The ONE producer the engine and the book panel (`push.book.book`) both read.
@@ -434,7 +436,7 @@ def compute_book_microstructure(data: dict[str, Any], *, now_ts: float) -> dict[
     structural = _microstructure_structural(cb)
 
     # Ages + per-serialization stamps are the only wall-clock-dependent fields.
-    exch_ts = float_finite_or_none(data.get("exchange_quote_ts"))
+    exch_ts = float_finite_or_none(data.exchange_quote_ts)
     payload = dict(structural)
     prov = dict(structural["provenance_structural"])
     prov["exchange_quote_ts"] = exch_ts  # NATIVE (plane quote clock)
@@ -446,8 +448,8 @@ def compute_book_microstructure(data: dict[str, Any], *, now_ts: float) -> dict[
         "book_age_sec": age,
         "quote_age_sec": None if exch_ts is None else now - exch_ts,
         # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
-        # passes as data["book_live"]; None with no book
-        "book_stale": None if age is None else data.get("book_live") is not True,
+        # passes as data.book_live; None with no book
+        "book_stale": None if age is None else data.book_live is not True,
     }
     return payload
 
@@ -891,14 +893,14 @@ def _compute_cum_delta_slope(
 class OrderFlowEngine:
     """Order Flow Engine: computes metrics from Schwab data using only identified field paths."""
 
-    def compute(self, data: dict[str, Any], *, now: float) -> dict[str, Any]:
+    def compute(self, data: FlowInput, *, now: float) -> dict[str, Any]:
         """Compute the book microstructure and the tape flow of one symbol at `now`.
 
         `now` is in epoch seconds; missing data yields None.
         """
         # the book, by its one producer (the book panel calls the same one)
         book_micro = compute_book_microstructure(data, now_ts=now)
-        prints = data["prints"]  # the tape, in receive order
+        prints = data.prints  # the tape, in receive order
         cum_first, cum_last = cum_delta_window(prints)
         ms = now * 1000.0
         # each flow number and the decimals the screen shows it with: the pressures, each

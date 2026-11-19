@@ -11,7 +11,7 @@ through the live state's one reader of a contract's top (OrderFlowState.push_opt
 from __future__ import annotations
 
 from app.options.order_flow.state import OrderFlowState, read_book
-from calc.order_flow import _compute_top_book_pressure
+from calc.order_flow import FlowInput, _compute_top_book_pressure
 from tests.shared_helpers import fixture_json
 
 _REST_QUOTE = next(
@@ -42,11 +42,10 @@ def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
     """
     assert {"bidSize", "askSize", "bidPrice", "askPrice", "mark"} <= set(_REST_QUOTE["quote"])
     assert {"bidSize", "askSize", "bid", "ask"} <= set(_CHAIN_UNDERLYING)
-    rest = {
-        **_REST_QUOTE,
-        "underlying": _CHAIN_UNDERLYING,
-        "book": read_book(_BOOK, "NYSE_BOOK"),  # the book, as the console's intake reads it
-    }
+    rest = FlowInput(
+        book=read_book(_BOOK, "NYSE_BOOK"),  # the book, as the console's intake reads it
+        prints=[_REST_QUOTE["quote"], _CHAIN_UNDERLYING],
+    )
     assert _BOOK["BIDS"] and _BOOK["ASKS"]
     assert _compute_top_book_pressure(rest) is None
 
@@ -57,9 +56,9 @@ def test_top_book_pressure_streaming_uses_bid_ask_size_leaves_only():
     bid, ask = _OPTION_TOP["BID_SIZE"], _OPTION_TOP["ASK_SIZE"]
     assert (bid, ask) == (250, 149)
     top = state.option_top(_OPTION_TOP["key"])
-    assert _compute_top_book_pressure({"top": top}) == (bid - ask) / (bid + ask)
+    assert _compute_top_book_pressure(FlowInput(book=None, top=top)) == (bid - ask) / (bid + ask)
 
 
 def test_top_book_pressure_ignores_non_canonical_streaming_bid_ask_size_keys():
     """Streaming CSV leaves are BID_SIZE/ASK_SIZE — not REST quote.bidSize/askSize."""
-    assert _compute_top_book_pressure({"prints": [_REST_QUOTE["quote"]]}) is None
+    assert _compute_top_book_pressure(FlowInput(book=None, prints=[_REST_QUOTE["quote"]])) is None

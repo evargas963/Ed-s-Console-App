@@ -12,7 +12,7 @@ from typing import Any
 import live_market_plane as lmp
 from app.options.order_flow.state import newest_book, option_top, prints
 from calc.l1_trade_observation import TAPE_NOTE
-from calc.order_flow import OrderFlowEngine
+from calc.order_flow import FlowInput, OrderFlowEngine
 
 
 def flow_block(of: dict[str, Any]) -> dict[str, Any]:
@@ -45,13 +45,13 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
     quote_ms = top.quote_time_ms
     top_label, top_outage = lmp.live_state(contract, "LEVELONE_OPTIONS", now)
     of = OrderFlowEngine().compute(
-        {
-            "book": newest_book(contract, "OPTIONS_BOOK"),
-            "prints": prints(contract),
-            "top": top,
-            "book_live": lmp.feed_live_for(contract, "OPTIONS_BOOK", now),
-            "exchange_quote_ts": quote_ms / 1000.0 if quote_ms is not None else None,
-        },
+        FlowInput(
+            book=newest_book(contract, "OPTIONS_BOOK"),
+            top=top,
+            prints=prints(contract),
+            book_live=lmp.feed_live_for(contract, "OPTIONS_BOOK", now),
+            exchange_quote_ts=quote_ms / 1000.0 if quote_ms is not None else None,
+        ),
         now=now,
     )
     book = dict(of["book_microstructure"])
