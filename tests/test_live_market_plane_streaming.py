@@ -10,7 +10,8 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 import time_et
-from tests.feed_live_helper import RTH_INSTANT, mark_feed_down, mark_feed_live
+from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down, mark_feed_live
+from tests.real_chains import SPY_FULL
 
 
 def _rec(ticker, item, received_ts=None):
@@ -270,3 +271,36 @@ def test_last_price_is_carried_forward_only_from_a_streamed_row():
     assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
     row = lmp.get_quote("STREAMROW")
     assert row["spot"] == 50.0 and row["bid"] == 49.9
+
+
+def test_an_expirys_held_contracts_are_found_by_lookup_not_by_walking_every_held_one():
+    """SPY's whole 2026-11-09 chain held on LEVELONE_OPTIONS; one expiry's symbols asked as a list.
+
+    The chain panel asks for one expiry's contracts as a list on every quote it is sent for. Each
+    is looked up in the beat's set: measured 2026-11-19 at the open, walking the thousands held
+    and testing each in the list was 26% of the program's time (100 asks took 8.4 s). The asked
+    list is never searched: each of its 330 is one lookup in the beat's set.
+    """
+
+    class Searched(list[str]):
+        """The asked list, counting each time it is searched."""
+
+        searches = 0
+
+        def __contains__(self, item: object) -> bool:
+            self.searches += 1
+            return super().__contains__(item)
+
+    held = [c["symbol"] for c in SPY_FULL.chain]
+    front = min(c["expirationDate"][:10] for c in SPY_FULL.chain)
+    asked = Searched(c["symbol"] for c in SPY_FULL.chain if c["expirationDate"][:10] == front)
+    now = RTH_INSTANT
+    lmp.record_feed_heartbeat(
+        daemon_status(now, schwab_socket_open=True, held={"LEVELONE_OPTIONS": held})
+    )
+    try:
+        found = lmp.held_option_symbols(asked, now, lmp.feed_now(now))
+    finally:
+        lmp.record_feed_down()
+    assert asked.searches == 0  # was once for each of the 12,904 held
+    assert found == list(asked)  # every one held, in the order asked
