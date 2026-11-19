@@ -4,6 +4,11 @@ The price history is /pricehistory, which the capture daemon asks for each ET da
 bars the daemon records (stream_capture.db stream_bars_raw) and forwards. The console keeps them
 in memory (state.bar_store: the history, each pushed bar on top); every live reader reads memory.
 Only completed bars are served. A minute Schwab sent neither way stays missing.
+
+Real data: SPY's CHART_EQUITY bars as the daemon received them on 2026-10-01, from 06:00 CT
+(tests/fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json), each under the stand-in ticker
+ZZBARS so no other test's SPY is touched. INDUCED CONDITIONS, each named where it is set: a field
+missing, not a number, or a reported 0.
 """
 
 from __future__ import annotations
@@ -19,26 +24,19 @@ import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from push import bars as push_bars
 from state import bar_store
-from stream_spine import bar_msg
-from tests.feed_live_helper import price_history
+from tests.feed_live_helper import daemon_bars, newest_bars, price_history
 from time_et import ET, ct_label
 
 TK = "ZZBARS"
-T0 = 1_790_000_040.0  # a minute boundary
+_SPY = newest_bars(daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY"), "SPY")
+#: the first minute: 06:00 CT on 2026-10-01; the next minutes follow it, each Schwab's
+T0 = _SPY[0]["bar_start_ms"] / 1000
 
 
-def _bar(start: float, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0) -> dict:
-    return bar_msg(
-        symbol=TK,
-        bar_start_ms=int(start * 1000),
-        open=o,
-        high=h,
-        low=lo,
-        close=c,
-        volume=v,
-        src="schwab_chart",
-        ts_recv=start + 60.0,
-    )
+def _bar(start: float, **induced) -> dict:
+    """SPY's bar for the minute at `start` as the daemon received it, under TK; `induced` set."""
+    sent = next(b for b in _SPY if b["bar_start_ms"] == int(start * 1000))
+    return {**sent, "symbol": TK, **induced}
 
 
 def _clear():
@@ -66,33 +64,41 @@ def test_the_feed_hands_each_streamed_bar_to_the_writer():
 
 
 def test_a_streamed_bar_is_written_and_read_back_exactly():
-    assert server._write_streamed_bar(_bar(T0, o=10.0, h=11.0, lo=9.5, c=10.5, v=100.0))
+    assert server._write_streamed_bar(_bar(T0))
     (b,) = bar_store.bars_1m(TK)
-    assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (T0, 10.0, 11.0, 9.5, 10.5, 100.0)
+    # Schwab's 06:00 CT bar: 765.635 / 765.71 / 765.44 / 765.45, 4,629 shares
+    assert (b.ts, b.open, b.high, b.low, b.close, b.volume) == (
+        T0,
+        765.635,
+        765.71,
+        765.44,
+        765.45,
+        4629,
+    )
 
 
 def test_a_bar_missing_a_field_is_not_written():
-    assert not server._write_streamed_bar(dict(_bar(T0), close=None))
+    assert not server._write_streamed_bar(_bar(T0, close=None))  # INDUCED: no close sent
     assert bar_store.bars_1m(TK) == []
 
 
 def test_a_bar_without_its_volume_is_written_with_its_volume_absent():
     """A missing volume is absent, never 0; the price levels take the bar as written."""
-    assert server._write_streamed_bar(dict(_bar(T0), volume=None))
+    assert server._write_streamed_bar(_bar(T0, volume=None))  # INDUCED: no volume sent
     (b,) = bar_store.bars_1m(TK)
-    assert b.volume is None and (b.open, b.close) == (10.0, 10.5)
+    assert b.volume is None and (b.open, b.close) == (765.635, 765.45)
 
 
 def test_a_price_that_is_not_a_number_is_not_written():
     """AGENTS.md rule 2: -999, text, NaN and infinity are not numbers."""
-    for bad in (-999, "10.0", float("nan"), float("inf")):
-        assert not server._write_streamed_bar(dict(_bar(T0), low=bad)), bad
+    for bad in (-999, "765.44", float("nan"), float("inf")):  # INDUCED: each as the low
+        assert not server._write_streamed_bar(_bar(T0, low=bad)), bad
     assert bar_store.bars_1m(TK) == []
 
 
 def test_a_reported_zero_is_written_as_sent():
     """Operator ruling 2026-09-27: take what Schwab sends; a 0 price or volume is 0."""
-    assert server._write_streamed_bar(_bar(T0, lo=0.0, v=0.0))
+    assert server._write_streamed_bar(_bar(T0, low=0.0, volume=0.0))  # INDUCED: 0 reported
     (b,) = bar_store.bars_1m(TK)
     assert (b.low, b.volume) == (0.0, 0.0)
 
@@ -196,13 +202,13 @@ def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute
     assert [b["t"] for b in body["bars"]] == [T0, T0 + 60]
     # each bar's start as the chart's readout shows it, served
     assert [b["time_ct"] for b in body["bars"]] == [
-        "Mon 09/21 09:14 AM CT",
-        "Mon 09/21 09:15 AM CT",
+        "Thu 10/01 06:00 AM CT",
+        "Thu 10/01 06:01 AM CT",
     ]
     # and as the chart's time axis marks it: year, month, day, time of day (Central Time)
     assert [b["ticks"] for b in body["bars"]] == [
-        ["2026", "Sep", "Sep 21", "09:14"],
-        ["2026", "Sep", "Sep 21", "09:15"],
+        ["2026", "Oct", "Oct 1", "06:00"],
+        ["2026", "Oct", "Oct 1", "06:01"],
     ]
     assert not any("forming" in b for b in body["bars"])
     assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}
