@@ -23,6 +23,7 @@ from feed import schwab_client as sc
 from push import bars as push_bars
 from tests.feed_live_helper import RTH_INSTANT, mark_feed_live, spy_minutes
 from tests.page_on_socket import Pages
+from tests.test_live_push_channel_v1 import SPY_SENT
 
 # ── PR B: drop counts per consumer; atomic token refresh ─────────────────────────────────
 
@@ -154,13 +155,13 @@ def test_daily_roll_up_is_keyed_on_the_et_trading_date():
 def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():
     now = RTH_INSTANT  # regular hours: the market trades
     mark_feed_live("ZZQF", now=now)
-    lmp.record_from_level_one_equity(
-        "ZZQF", {"LAST_PRICE": 42.0, "TRADE_TIME_MILLIS": int((now - 7) * 1000)}, received_ts=now
-    )
+    # SPY's real message under ZZQF; INDUCED: its trade 7 s before `now`
+    sent = {**SPY_SENT, "key": "ZZQF", "TRADE_TIME_MILLIS": int((now - 7) * 1000)}
+    lmp.record_from_level_one_equity("ZZQF", sent, received_ts=now)
     ev = live_price_rows.price_row("ZZQF", now)
     assert (
         ev["feed_live"] is True
-        and ev["spot"] == 42.0
+        and ev["spot"] == SPY_SENT["LAST_PRICE"]
         and ev["spot_source"] == srv.SPOT_SOURCE_PLANE
     )
     assert ev["trade_age_text"] == "7s"  # the trade 7 s before `now`, by the one age formatter
