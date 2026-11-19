@@ -25,7 +25,7 @@ from numeric_contract import (
     price_text,
     strike_text,
 )
-from option_contract import OptionContract
+from option_contract import OptionContract, StreamedTop
 from time_et import ct_clock, ct_label, ct_ticks
 
 log = logging.getLogger(__name__)
@@ -144,13 +144,13 @@ class BookHeatmap(TypedDict):
     method: str
 
 
-def quoted(trade: float, top: dict[str, Any] | None, streamed: dict[str, Any] | None) -> Quoted:
+def quoted(trade: float, top: StreamedTop, streamed: dict[str, Any] | None) -> Quoted:
     """Return what the live state held as a print at `trade` was received, kept with the print.
 
     Its top of book (`top`), its streamed volume, volatility and delta (`streamed`), and
     `landed`: only where the trade landed against that bid and ask (no aggressor side).
     """
-    bid, ask = _held(top, "bid"), _held(top, "ask")
+    bid, ask = top.bid, top.ask
     landed = "unknown"
     if bid is not None and ask is not None:
         if trade <= bid:
@@ -161,9 +161,9 @@ def quoted(trade: float, top: dict[str, Any] | None, streamed: dict[str, Any] | 
             landed = "inside_spread"
     return {
         "bid": bid,
-        "bid_size": _held(top, "bid_size"),
+        "bid_size": top.bid_size,
         "ask": ask,
-        "ask_size": _held(top, "ask_size"),
+        "ask_size": top.ask_size,
         "volume": _held(streamed, "total_volume"),
         "iv": _held(streamed, "volatility"),
         "delta": _held(streamed, "delta"),

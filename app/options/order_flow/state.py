@@ -11,7 +11,7 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from app.options.order_flow import history
@@ -28,7 +28,7 @@ from calc.l1_trade_observation import (
 from calc.order_flow import Book, Exchanges, Json, Level
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
-from option_contract import quote_values, streamed_greeks, streamed_top
+from option_contract import NO_TOP, StreamedTop, quote_values, streamed_greeks, streamed_top
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -116,7 +116,7 @@ class OrderFlowState:
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque[dict[str, Any]]] = {}
-        self._top: dict[str, dict[str, Any]] = {}
+        self._top: dict[str, StreamedTop] = {}
         self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
         self._receive_seq: dict[str, int] = {}
         self._stream_greeks: dict[str, dict[str, Any]] = {}
@@ -210,7 +210,9 @@ class OrderFlowState:
                     ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    **history.quoted(trade.price, self._top.get(sym), self._stream_greeks.get(sym)),
+                    **history.quoted(
+                        trade.price, self._top.get(sym, NO_TOP), self._stream_greeks.get(sym)
+                    ),
                 }
             )
 
@@ -235,8 +237,7 @@ class OrderFlowState:
         """Drop session state. Caller holds ``self._lock``."""
         for values in self._tape.values():
             values.clear()
-        for key in list(self._top):
-            self._top[key] = {}
+        self._top.clear()
         for values in self._book.values():
             values.clear()
         self._prev_trade.clear()
@@ -266,18 +267,13 @@ class OrderFlowState:
         if not sym:
             return
         with self._lock:
-            top = self._top.setdefault(sym, {})
-            for name, v in streamed_top(content_item).items():
-                if v is None:
-                    top.pop(name, None)
-                else:
-                    top[name] = v
+            self._top[sym] = replace(self._top.get(sym, NO_TOP), **streamed_top(content_item))
 
-    def option_top(self, symbol: str) -> dict[str, Any] | None:
+    def option_top(self, symbol: str) -> StreamedTop:
+        """Return the symbol's top of book as Schwab last sent each field (NO_TOP: none yet)."""
         sym = ticker_storage_key(symbol)
         with self._lock:
-            t = self._top.get(sym)
-            return dict(t) if t else None
+            return self._top.get(sym, NO_TOP)
 
     def get_stream_greeks(self, symbol: str) -> dict[str, Any] | None:
         """Return the latest streamed Greeks, OPEN_INTEREST and TOTAL_VOLUME for one contract.
@@ -328,7 +324,7 @@ def push_option_top(symbol: str, content_item: dict[str, Any]) -> None:
     _LIVE_STATE.push_option_top(symbol, content_item)
 
 
-def option_top(symbol: str) -> dict[str, Any] | None:
+def option_top(symbol: str) -> StreamedTop:
     return _LIVE_STATE.option_top(symbol)
 
 
@@ -384,7 +380,10 @@ def streamed_values(symbols: Iterable[str]) -> dict[str, dict[str, Any]]:
     """Return each of `symbols`' newest streamed Greeks, volume, bid and ask; none: left out."""
     out: dict[str, dict[str, Any]] = {}
     for sym in symbols:
-        held = [r for r in (get_stream_greeks(sym), option_top(sym)) if r is not None]
-        if held:
-            out[sym] = {k: v for r in held for k, v in r.items()}
+        greeks, top = get_stream_greeks(sym), option_top(sym)
+        if greeks is None and top is NO_TOP:
+            continue
+        out[sym] = asdict(top)
+        if greeks is not None:
+            out[sym].update(greeks)
     return out

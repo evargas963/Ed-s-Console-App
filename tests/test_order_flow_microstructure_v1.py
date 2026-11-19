@@ -10,6 +10,7 @@ every output, fail-closed on no book, and that temporal PROXY metrics are NOT pr
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
@@ -19,6 +20,7 @@ from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState
 from calc import order_flow as ofe
 from calc.order_flow import OrderFlowEngine
+from option_contract import NO_TOP, StreamedTop
 from push import book as push_book
 from stream_spine import quote_msg, verbatim_msg
 from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_live
@@ -79,8 +81,8 @@ def _micro(data: dict, **kw) -> dict:
     return ofe.compute_book_microstructure(_read(data), **kw)
 
 
-def _l1_top() -> dict:
-    return {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500}
+def _l1_top() -> StreamedTop:
+    return StreamedTop(bid=712.47, ask=712.49, bid_size=300, ask_size=500)
 
 
 def _data() -> dict:
@@ -117,7 +119,7 @@ def test_derived_scalars():
 
 def test_a_mark_of_zero_schwab_sent_is_zero():
     """A reported 0 is 0 (AGENTS.md rule 2): the MARK is served as 0, never "-"."""
-    m = _micro({**_data(), "top": {**_l1_top(), "mark": 0.0}}, now_ts=1787233772.0)
+    m = _micro({**_data(), "top": replace(_l1_top(), mark=0.0)}, now_ts=1787233772.0)
     assert m["mark"] == 0.0
 
 
@@ -252,7 +254,7 @@ def _unsorted_data() -> dict:
                 "BOOK_TIME": 1,
             }
         ],
-        "top": {"bid": 712.47, "ask": 712.49, "bid_size": 300, "ask_size": 500},
+        "top": StreamedTop(bid=712.47, ask=712.49, bid_size=300, ask_size=500),
     }
 
 
@@ -320,7 +322,7 @@ def test_a_crossed_book_computes_microprice_and_says_it_is_crossed():
                 "BOOK_TIME": 1,
             }
         ],
-        "top": {"bid": 712.60, "ask": 712.49, "bid_size": 300, "ask_size": 500},
+        "top": StreamedTop(bid=712.60, ask=712.49, bid_size=300, ask_size=500),
     }
     m = _micro(crossed, now_ts=2.0)
     assert m["crossed"] is True
@@ -338,7 +340,7 @@ def test_one_sided_book_fails_closed():
         "content": [
             {"BIDS": [], "ASKS": [{"ASK_PRICE": 712.49, "TOTAL_VOLUME": 960}], "BOOK_TIME": 1}
         ],
-        "top": {"ask": 712.49, "ask_size": 500},
+        "top": StreamedTop(ask=712.49, ask_size=500),
     }
     m = _micro(one, now_ts=2.0)
     for n in ("1", "3", "5"):
@@ -399,7 +401,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
                     "BOOK_TIME": BT,
                 }
             ],
-            "top": {"bid": bids[0][0], "ask": asks[0][0], "bid_size": 100, "ask_size": 100},
+            "top": StreamedTop(bid=bids[0][0], ask=asks[0][0], bid_size=100, ask_size=100),
         }
 
     # v1: heavy bid book with a bid-side size wall at the touch.
@@ -453,7 +455,7 @@ def test_engine_and_route_read_the_same_canonical_state():
 
 
 def test_top_prices_and_sizes_are_carried_exactly():
-    data = _read({"content": [], "top": {"bid": 0.58, "ask": 0.59, "bid_size": 11, "ask_size": 23}})
+    data = _read({"content": [], "top": StreamedTop(bid=0.58, ask=0.59, bid_size=11, ask_size=23)})
     bid, ask = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
     assert ofe._extract_canonical_book(data)["mark"] is None
@@ -465,7 +467,7 @@ def test_top_prices_and_sizes_are_carried_exactly():
 def test_zero_size_is_a_real_value_not_a_fallback_trigger():
     data = {
         "content": [_book_snapshot()],
-        "top": {"bid": 0.10, "ask": 0.12, "bid_size": 0, "ask_size": 5},
+        "top": StreamedTop(bid=0.10, ask=0.12, bid_size=0, ask_size=5),
     }
     assert ofe._compute_top_book_pressure(_read(data)) == (0 - 5) / (0 + 5), (
         "a real BID_SIZE=0 is not missing"
@@ -496,32 +498,30 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
     for tick in tsla_l1[:4]:
         st.push_option_top(tsla["symbol"], tick)
     assert "BID_PRICE" not in tsla_l1[3] and "ASK_PRICE" not in tsla_l1[3]
-    assert st.option_top(tsla["symbol"]) == {
-        "bid": 0.56,
-        "ask": 0.59,
-        "bid_size": 83,
-        "ask_size": 57,
-        "mark": 0.575,
-        "quote_time_ms": tsla_l1[3]["QUOTE_TIME_MILLIS"],
-        "money_intrinsic": tsla_l1[3]["MONEY_INTRINSIC_VALUE"],
-    }
+    assert st.option_top(tsla["symbol"]) == StreamedTop(
+        bid=0.56,
+        ask=0.59,
+        bid_size=83,
+        ask_size=57,
+        mark=0.575,
+        quote_time_ms=tsla_l1[3]["QUOTE_TIME_MILLIS"],
+        money_intrinsic=tsla_l1[3]["MONEY_INTRINSIC_VALUE"],
+    )
     assert tsla_l1[3]["MONEY_INTRINSIC_VALUE"] == -1.65
 
     st.push_option_top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0))
-    assert st.option_top(tsla["symbol"])["bid_size"] == 0
+    assert st.option_top(tsla["symbol"]).bid_size == 0
 
     st.push_option_top(tsla["symbol"], {"key": tsla["symbol"], "ASK_PRICE": -999})
     top = st.option_top(tsla["symbol"])
-    assert "ask" not in top and top["bid"] == 0.56
+    assert top.ask is None and top.bid == 0.56
 
     qqq_first = next(e["content"] for e in qqq["events"] if e["kind"] == "l1")
     st.push_option_top(qqq["symbol"], qqq_first)
-    assert st.option_top(qqq["symbol"]) == {
-        "bid_size": 272,
-        "ask_size": 29,
-        "quote_time_ms": qqq_first["QUOTE_TIME_MILLIS"],
-    }
-    assert st.option_top(tsla["symbol"])["bid"] == 0.56
+    assert st.option_top(qqq["symbol"]) == StreamedTop(
+        bid_size=272, ask_size=29, quote_time_ms=qqq_first["QUOTE_TIME_MILLIS"]
+    )
+    assert st.option_top(tsla["symbol"]).bid == 0.56
 
 
 def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
@@ -547,7 +547,7 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         )
         assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in ofls.prints("O01EQ"))
         assert ofls.newest_book("O01EQ", "OPTIONS_BOOK") is None
-        assert ofls.option_top("O01EQ") is None
+        assert ofls.option_top("O01EQ") is NO_TOP
     finally:
         ofls.clear_symbol("O01EQ")
 

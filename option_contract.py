@@ -127,6 +127,27 @@ STREAMED_TOP = (
 )
 
 
+@dataclass(frozen=True)
+class StreamedTop:
+    """A contract's or an equity's top of book as Schwab's LEVELONE stream last sent each field.
+
+    Each field the newest value Schwab sent for it (STREAMED_TOP's readers): None until Schwab
+    sends one, and when the one it sent is not a number.
+    """
+
+    bid: float | None = None
+    ask: float | None = None
+    bid_size: float | None = None
+    ask_size: float | None = None
+    mark: float | None = None
+    quote_time_ms: float | None = None
+    money_intrinsic: float | None = None
+
+
+#: a symbol with no top of book received: every field unknown
+NO_TOP = StreamedTop()
+
+
 def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
     """Return the top of book a contract's LEVELONE_OPTIONS record carries, under our names.
 
