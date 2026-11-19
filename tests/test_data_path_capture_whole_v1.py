@@ -65,7 +65,7 @@ def _sweep(tmp_path, publish) -> cs.ChainSweep:
 
 
 def _stored(db) -> list:
-    return [c for capture in cch.last_capture_per_day(db, "MRVL", 1) for c in capture["contracts"]]
+    return [c for capture in cch.last_capture_per_day(db, "MRVL", 1) for c in capture.contracts]
 
 
 def _refuse(db, expiry: str) -> None:

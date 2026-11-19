@@ -314,13 +314,29 @@ def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
     return out
 
 
-def window_rows(matrix: dict[str, Any], shown: list[float]) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class Matrix:
+    """The ranking of one expiry's book (build_matrix).
+
+    Its preset and score scale, its notes, every strike's ranking, each shaded column's peak, and
+    the listed strikes, ascending.
+    """
+
+    preset: str
+    scale_text: str
+    ceiling: float
+    notes: list[str]
+    ranked: dict[float, RankedStrike]
+    peaks: dict[str, float | None]
+    strikes: list[float]
+
+
+def window_rows(matrix: Matrix, shown: list[float]) -> list[dict[str, Any]]:
     """Return the rows of the ranked strikes `shown`, highest strike first.
 
     Each cell shades against its whole expiry's peak (the matrix's `peaks`).
     """
-    ranked = matrix["ranked"]
-    return [_row(strike, ranked[strike]) for strike in sorted(shown, reverse=True)]
+    return [_row(strike, matrix.ranked[strike]) for strike in sorted(shown, reverse=True)]
 
 
 def under_strike(price: float, strikes: list[float]) -> float | None:
@@ -452,7 +468,7 @@ def build_matrix(
     ivs: dict[float, float | None],
     spot: float,
     dte: float,
-) -> dict[str, Any]:
+) -> Matrix:
     """Build the ranking of one expiry's book.
 
     Every strike's factors and score and the expiry's colour scales. The rows the page shows are
@@ -483,15 +499,15 @@ def build_matrix(
         notes.append("Thin book: fewer than " + str(THIN_BOOK) + " strikes.")
     if flat_labels:
         notes.append(", ".join(flat_labels) + " does not vary, so it adds nothing.")
-    return {
-        "preset": name,
-        "scale_text": "0–" + f"{cap:g}",
-        "ceiling": cap,
-        "notes": notes,
-        "ranked": {strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},
-        "peaks": peaks,
-        "strikes": strikes,
-    }
+    return Matrix(
+        preset=name,
+        scale_text="0–" + f"{cap:g}",
+        ceiling=cap,
+        notes=notes,
+        ranked={strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},
+        peaks=peaks,
+        strikes=strikes,
+    )
 
 
 def _row(strike: float, ranked: RankedStrike) -> dict[str, Any]:

@@ -111,5 +111,5 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
         "level_crosses": 1,
     }
     (got,) = last_capture_per_day(db, "SPY", 1)
-    assert len(got["contracts"]) == len(SPY["chain"])
+    assert len(got.contracts) == len(SPY["chain"])
     assert edb.get_recent_crosses("SPY")[0]["spot_at_cross"] == SPY["spot"]
