@@ -1185,6 +1185,39 @@ class _Keep:
     removed: Counter[str] = field(default_factory=Counter[str])
 
 
+def _prepared(p: Path) -> list[_Spill]:
+    """Prepare the database at `p` for the writer, and return the spill files found beside it.
+
+    WAL, its size limit, the tables (the chain history's captures among them) and the receipt
+    time indexes of tables new here. Spill files an earlier writer left beside the database
+    (named in the order they began) hold the oldest messages there are: the writer thread writes
+    them back first, each from after its committed parts, and deletes one whose every record is
+    committed (ended between its last part and its deletion) without writing it again; new
+    messages go after the newest. They are returned oldest first. No message is written here: a
+    database that refuses writes at the start never stops the daemon starting.
+    """
+    conn = sqlite3.connect(str(p))
+    try:
+        conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+        conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
+        tables = {
+            name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        conn.executescript(STREAM_SCHEMA_SQL)
+        ensure_schema(conn)  # the chain history's captures (store_capture)
+        for table, index in RECEIPT_TIME_INDEXES.items():
+            if table not in tables:
+                conn.execute(index)
+        conn.commit()
+        progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
+        return [
+            _Spill.found(f, progress[f.name] if f.name in progress else 0)
+            for f in sorted(p.parent.glob(f"{p.stem}.*.spill"), key=_spill_order)
+        ]
+    finally:
+        conn.close()
+
+
 class CaptureWriter:
     """Writes every bus message to the one database from its own thread, in batches.
 
@@ -1232,8 +1265,6 @@ class CaptureWriter:
         self._batch_spilled = False  # the open batch is spill records (they stay in the file)
         self._waiting: list[Item] = []  # messages held while the database refuses writes
         self._waiting_bytes = 0
-        #: spill files, oldest first: the first is written back, new messages go to the last
-        self._spills: list[_Spill] = []
         self.lost = 0
         self.lost_first_ts: float | None = None
         self.lost_last_ts: float | None = None
@@ -1259,33 +1290,8 @@ class CaptureWriter:
         #: (Daemon.saves: option quotes and option books of the contracts it keeps)
         self.saves: Callable[[str, Any], bool] = _every_message
         self._keeping: _Keep | None = None  # the daily keep in progress (prune)
-        conn = sqlite3.connect(str(p))
-        try:
-            conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-            conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
-            tables = {
-                name
-                for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            }
-            conn.executescript(STREAM_SCHEMA_SQL)
-            ensure_schema(conn)  # the chain history's captures (store_capture)
-            for table, index in RECEIPT_TIME_INDEXES.items():
-                if table not in tables:
-                    conn.execute(index)
-            conn.commit()
-            progress = dict(conn.execute("SELECT spill, written_back FROM stream_spill_progress"))
-            # spill files an earlier writer left beside the database (named in the order they
-            # began) hold the oldest messages there are: the writer thread writes them back first,
-            # each from after its committed parts, and deletes one whose every record is committed
-            # (ended between its last part and its deletion) without writing it again; new messages
-            # go after the newest. Nothing is written here: a database that refuses writes at the
-            # start never stops the daemon starting.
-            self._spills = [
-                _Spill.found(f, progress[f.name] if f.name in progress else 0)
-                for f in sorted(p.parent.glob(f"{p.stem}.*.spill"), key=_spill_order)
-            ]
-        finally:
-            conn.close()
+        #: spill files, oldest first: the first is written back, new messages go to the last
+        self._spills = _prepared(p)
 
     def insert(
         self, topic: str, msg: Payload, *, conn: sqlite3.Connection | None = None
