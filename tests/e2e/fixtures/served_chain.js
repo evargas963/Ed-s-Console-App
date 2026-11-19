@@ -1,5 +1,6 @@
-// The chain panel's fields the program derives from `contracts` (terrain_engine.chain_ladder): a
-// mock carries them as the real panel does. Mirrors the producer; tests/test_chain_ladder_v1.py holds
+// The chain panel's fields the program derives from the expiry's contracts
+// (terrain_engine.chain_ladder): a mock lists its `contracts` and is served, as the real panel
+// is, with each one once, in its `ladder` row. Mirrors the producer; tests/test_chain_ladder_v1.py holds
 // the producer itself to real data, and tests/test_served_numbers_v1.py its texts: a strike as
 // listed (numeric_contract.strike_text), the spot two decimals (price_text).
 function strikeText(k) {
@@ -9,9 +10,9 @@ function strikeText(k) {
 function itm(c) {
   return c == null || c.moneyIntrinsicValue == null ? null : c.moneyIntrinsicValue > 0;
 }
-function served(d) {
+function served({ contracts, ...d }) {
   const byK = new Map();
-  for (const c of d.contracts) {
+  for (const c of contracts) {
     const k = Number(c.strikePrice);
     if (!byK.has(k)) byK.set(k, { call: [], put: [] });
     byK.get(k)[String(c.putCall).toUpperCase() === "PUT" ? "put" : "call"].push(c);

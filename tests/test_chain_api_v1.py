@@ -136,9 +136,18 @@ def _get(ticker, expiry=None):
     return push_chain.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
 
 
+def _served(body):
+    """Each contract the panel serves, once, in its ladder row: symbol -> the contract."""
+    return {c["symbol"]: c for r in body["ladder"] for c in (r["call"], r["put"]) if c}
+
+
+def _by_symbol(rows):
+    return {c["symbol"]: c for c in rows}
+
+
 def test_no_held_chain_is_unavailable_with_its_reason():
     body = _get(ticker="ZZNOCHAIN")
-    assert body["status"] == "unavailable" and body["contracts"] == []
+    assert body["status"] == "unavailable" and "contracts" not in body  # served once: the ladder
     assert body["ladder"] == []  # the page draws the ladder it is sent: no rows, not no key
     assert body["scope"]["reason"]
     assert set(body["scope"]) == {"kind", "reason"}
@@ -150,8 +159,8 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     assert body["status"] == "ok" and body["expiry"] == _TSLA_EXPIRY
     # the expiry is served once (`expiry`), and no label of ours rides with the chain
     assert body["scope"] == {"kind": "complete_single_expiry"}
-    assert body["contracts"] == _as_shown(_TSLA_CONTRACTS)
-    fractional = [c for c in body["contracts"] if c["strikePrice"] != int(c["strikePrice"])]
+    assert _served(body) == _by_symbol(_as_shown(_TSLA_CONTRACTS))
+    fractional = [c for c in _served(body).values() if c["strikePrice"] != int(c["strikePrice"])]
     assert len(fractional) == _TSLA["n_fractional_strikes"]
 
 
@@ -188,8 +197,8 @@ def test_only_the_requested_expiry_is_served():
     missing = _get(ticker="MRVL", expiry="2031-01-17")
     assert len(expiries) == 21 and first["expiry"] == expiries[0]
     for body, expiry in ((first, expiries[0]), (last, expiries[-1])):
-        assert body["contracts"] == _as_shown(
-            [c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)]
+        assert _served(body) == _by_symbol(
+            _as_shown([c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)])
         )
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
 
@@ -206,7 +215,7 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
         [(target["symbol"], {"TOTAL_VOLUME": streamed}, _AT.timestamp())],
     )
     body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
+    overlaid = _served(body)[target["symbol"]]
     assert overlaid["totalVolume"] == streamed
     assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
     assert overlaid["volume_text"] == f"{streamed:,.0f}"  # the streamed volume, as shown
@@ -215,9 +224,8 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
         for k, v in _as_shown([target])[0].items()
         if k not in ("totalVolume", "volume_text")
     )
-    assert [c for c in body["contracts"] if c["symbol"] != target["symbol"]] == _as_shown(
-        _TSLA_CONTRACTS[1:]
-    )
+    others = {s: c for s, c in _served(body).items() if s != target["symbol"]}
+    assert others == _by_symbol(_as_shown(_TSLA_CONTRACTS[1:]))
 
 
 def test_a_streamed_contracts_bid_and_ask_are_the_streams_never_the_chains():
@@ -238,7 +246,7 @@ def test_a_streamed_contracts_bid_and_ask_are_the_streams_never_the_chains():
             (silent["symbol"], {"TOTAL_VOLUME": silent["totalVolume"]}, _AT.timestamp()),
         ],
     )
-    shown = {c["symbol"]: c for c in _get(ticker="TSLA")["contracts"]}
+    shown = _served(_get(ticker="TSLA"))
     assert (shown[pushed["symbol"]]["bid"], shown[pushed["symbol"]]["ask"]) == (bid, ask)
     assert (shown[silent["symbol"]]["bid"], shown[silent["symbol"]]["ask"]) == (None, None)
 
@@ -263,7 +271,7 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
         ],
     )
     body = _get(ticker="TSLA")
-    overlaid = next(c for c in body["contracts"] if c["symbol"] == target["symbol"])
+    overlaid = _served(body)[target["symbol"]]
     assert overlaid["totalVolume"] == volume and overlaid["gamma"] == target["gamma"]
     assert overlaid["gamma"] != gamma
     assert overlaid["openInterest"] == target["openInterest"]  # the chain's
@@ -296,7 +304,7 @@ def _stream_after_pricing(contract, fields, socket_open=True):
         ),
     )
     body = push_chain.chain("TSLA", _OPEN.timestamp(), {"expiry": None})
-    return next(c for c in body["contracts"] if c["symbol"] == sym)
+    return _served(body)[sym]
 
 
 def test_a_quote_streamed_after_the_last_pricing_is_shown_when_it_arrives():

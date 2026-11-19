@@ -84,11 +84,13 @@ def _markets_answers_held():
     """Every process holds what the daemon has asked Schwab's /markets.
 
     The console takes each answer as the daemon publishes it: each 200 answer captured
-    2026-10-07 is held through the one intake, time_et.record_markets.
+    2026-10-07 is held through the one intake, time_et.record_markets. Returns the held set
+    (replaced on each answer, never mutated), which every test starts from.
     """
     for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
         if a["status"] == 200:
             record_markets(json.loads(a["body"]))
+    return time_et.HELD.sessions
 
 
 @pytest.fixture(autouse=True)
@@ -111,7 +113,7 @@ def _local_schwab_closed():
 
 
 @pytest.fixture(autouse=True)
-def _live_feed_starts_down():
+def _live_feed_starts_down(_markets_answers_held):
     """live_market_plane's feed state (the daemon heartbeat) is process-global.
 
     Every test starts with NO live feed and no remembered held set or watchlist, so a heartbeat
@@ -121,8 +123,11 @@ def _live_feed_starts_down():
     is process-global too: every test starts with none. So is when each ticker's ticks last
     queued a reprice (server._repriced_at, once a second): every test starts with none, and
     with no timer of an earlier test's. And so are the chain captures the console holds
-    (state.capture_store): every test's first ask reads its own database.
+    (state.capture_store): every test's first ask reads its own database. And so are the
+    /markets answers held (time_et.record_markets): every test starts with the 2026-10-07 set,
+    whatever answers an earlier test recorded.
     """
+    time_et.HELD.sessions = _markets_answers_held
     time_et.HELD.first_trade = {}
     capture_store.clear()
     server = sys.modules.get("server")

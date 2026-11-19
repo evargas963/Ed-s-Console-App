@@ -68,7 +68,7 @@ async function intercept(page, tapeBody) {
       ticker: "SPY",
       spot: 100,
       expiry: null,
-      contracts: [],
+      ladder: [],
       status: "unavailable",
       scope: { kind: "unavailable", reason: "no listed expiry for this ticker" },
     },
