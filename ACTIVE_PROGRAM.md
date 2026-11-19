@@ -193,7 +193,6 @@ forms ENF-13 lists are open. `git branch --list` and `--contains` aimed at produ
 
 #### app/options/order_flow/, live_price_rows.py, live_market_plane.py
 
-- O-02 equity TOTAL_VOLUME is written into `_stream_greeks` (read only for options).
 - O-13 malformed push messages and bad frames are dropped uncounted.
 - O-17 the book heatmap's `method` text says "both venues merged".
 - O-18 `history`: an invented 0.01 axis width; read failures return [] with no reason.

@@ -34,8 +34,8 @@ from push import book as push_book
 from push import spot as push_spot
 from push import surface as push_surface
 from state import level_store
-from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status
+from stream_spine import MessageBus
+from tests.feed_live_helper import daemon_status, on_the_bus
 from tests.page_on_socket import pages
 from tests.real_chains import CRWD, TSLA
 from time_et import ET
@@ -124,12 +124,9 @@ def _priced_when_the_status_was_sent(offset: float) -> datetime:
     _beat(_AT + offset)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     row = ofs.price_row(TK, _AT)
-    ofs._ingest_pushed(
-        f"optquote.{SYM}",
-        verbatim_msg(
-            symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
-        ),
-    )
+    bus = MessageBus()
+    ofls.bind_bus(bus.current)
+    ofs._ingest_pushed(*on_the_bus(bus, "LEVELONE_OPTIONS", _MSG["item"], _MSG["ts_recv"]))
     at = datetime.fromtimestamp(_AT, ET)
     server._publish_levels(
         TK,
@@ -195,7 +192,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     """
     at = _priced_when_the_status_was_sent(-0.5)
     gex = [cell["gex"] for cell in level_store.published_levels(TK).gamma_surface["cells"]]
-    kept = ofls.get_stream_greeks(SYM)
+    kept = ofls.streamed_values([SYM])
     _beat(_AT, socket_open=False, options=[])
     server.restamp_open_surfaces(_AT)
     body = push_surface.gamma_surface_payload(TK, "all", None, 0, None, None, at, requested=False)
@@ -206,7 +203,7 @@ def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
         if col and (pair.get("call") == SYM or pair.get("put") == SYM)
     ]
     after = [cell["gex"] for cell in level_store.published_levels(TK).gamma_surface["cells"]]
-    assert kept and ofls.get_stream_greeks(SYM) == kept
+    assert kept and ofls.streamed_values([SYM]) == kept
     assert after == gex
     assert cells and all(col["state"] == "stale" for col in cells)
     title = cells[0]["title"]
@@ -498,12 +495,9 @@ def _publish_chain(at: float) -> None:
 
 def _push() -> None:
     """Schwab's LEVELONE_OPTIONS message for SYM, as the daemon pushes it to the console."""
-    ofs._ingest_pushed(
-        f"optquote.{SYM}",
-        verbatim_msg(
-            symbol=SYM, content=_MSG["item"], src="schwab_options_l1", ts_recv=_MSG["ts_recv"]
-        ),
-    )
+    bus = MessageBus()
+    ofls.bind_bus(bus.current)
+    ofs._ingest_pushed(*on_the_bus(bus, "LEVELONE_OPTIONS", _MSG["item"], _MSG["ts_recv"]))
 
 
 def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():

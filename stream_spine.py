@@ -349,7 +349,7 @@ LOG, LATEST = "log", "latest"
 LOG_END: tuple[str, Any] = ("", None)
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
 #: by the key of the Schwab item in the message: their current record merges field by field
-_FIELD_DELTA = {"quote": "native", "optquote": "content"}
+FIELD_DELTA = {"quote": "native", "optquote": "content"}
 
 
 def current_key(topic: str, msg: Payload) -> str:
@@ -363,6 +363,24 @@ def current_key(topic: str, msg: Payload) -> str:
     if topic.startswith("book."):
         return f"{topic}@{msg.get('service')}#{msg.get('src')}"
     return f"{topic}#{msg.get('src')}"
+
+
+#: each Schwab service's bus topic kind and the source its messages carry
+SERVICE_TOPIC = {
+    "LEVELONE_EQUITIES": ("quote", "schwab_l1"),
+    "CHART_EQUITY": ("bar1m", "schwab_chart"),
+    "LEVELONE_OPTIONS": ("optquote", "schwab_options_l1"),
+    "NEWS_HEADLINE": ("news", "schwab_news"),
+    "NYSE_BOOK": ("book", "schwab_book"),
+    "NASDAQ_BOOK": ("book", "schwab_book"),
+    "OPTIONS_BOOK": ("book", "schwab_book"),
+}
+
+
+def held_key(service: str, sym: str) -> str:
+    """Return the current-record key of `sym` streamed on Schwab `service` (current_key)."""
+    kind, src = SERVICE_TOPIC[service]
+    return current_key(f"{kind}.{sym}", {"service": service, "src": src})
 
 
 def _older(t: float | None, than: float | None) -> bool:
@@ -465,13 +483,6 @@ class MessageBus:
             if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
                 sub.deliver(key, topic, msg)
 
-    def forget(self, key: str) -> None:
-        """Forget what `key` (current_key) names: the daemon is about to hold it anew.
-
-        The ended hold's record is never handed out again (D5); the new hold's starts empty.
-        """
-        self.current.pop(key, None)
-
     def _newest(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's time.
 
@@ -479,7 +490,7 @@ class MessageBus:
         """
         held = self.current.get(key)
         t: int | None = msg.get("schwab_ts")
-        body_key = _FIELD_DELTA.get(topic.split(".", 1)[0])
+        body_key = FIELD_DELTA.get(topic.split(".", 1)[0])
         body: Payload = msg.get(body_key) if body_key is not None else None
         if body_key is None or not isinstance(body, dict):  # a whole record: replaced whole
             if held is not None and _older(t, held[1].get("schwab_ts")):

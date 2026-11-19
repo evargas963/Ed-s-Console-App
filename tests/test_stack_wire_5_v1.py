@@ -22,5 +22,5 @@ _BOOK = json.loads(
 def test_a_book_sent_before_the_open_is_kept_through_the_open():
     st = ofls.OrderFlowState()
     st.push_book("SPY", _BOOK, "NASDAQ_BOOK")
-    st.push_level_one("SPY", {"key": "SPY", "LAST_PRICE": 660.0}, ts_recv=1.0)
+    st.push_level_one("LEVELONE_EQUITIES", "SPY", {"key": "SPY", "LAST_PRICE": 660.0}, ts_recv=1.0)
     assert st.newest_book("SPY", "NASDAQ_BOOK").bids

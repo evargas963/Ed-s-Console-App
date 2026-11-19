@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypedDict, get_args
 import numpy as np
 
 from numeric_contract import float_finite_or_none
-from option_contract import OptionContract, Streamed, streamed_greek_set
+from option_contract import OptionContract, Streamed, streamed_greek_set, streamed_quote
 from time_et import Session, time_to_expiry_years
 
 if TYPE_CHECKING:
@@ -731,12 +731,7 @@ def overlay_streamed_contract_fields(
             out.append(replace(c, **quoted[c.symbol][1]) if c.symbol in quoted else c)
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
-            pushed: dict[str, float | None] = {
-                "volume": sent.greeks.total_volume.value,
-                "bid": sent.top.bid,
-                "ask": sent.top.ask,
-                "money_intrinsic": sent.top.money_intrinsic,
-            }
+            pushed = streamed_quote(sent)
             greeks = streamed_greek_set(sent.greeks.values())
             if greeks is not None:
                 pushed.update(greeks)

@@ -17,13 +17,21 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 from app.options.order_flow.live_payload import options_live_payload
-from app.options.order_flow.state import OrderFlowState
+from app.options.order_flow.state import OrderFlowState, streamed_record
 from calc import order_flow as ofe
 from calc.order_flow import OrderFlowEngine
 from option_contract import NO_TOP, StreamedTop
 from push import book as push_book
-from stream_spine import quote_msg, verbatim_msg
-from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_live
+from stream_spine import MessageBus, held_key
+from tests.feed_live_helper import (
+    RTH_INSTANT,
+    apply_record,
+    daemon_status,
+    mark_feed_live,
+    on_the_bus,
+)
+
+EQ, OPT = "LEVELONE_EQUITIES", "LEVELONE_OPTIONS"
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
 
@@ -278,12 +286,11 @@ def test_invalid_sizes_are_rejected():
     """Negative or non-finite displayed sizes are not real quantities.
 
     They must be dropped from level totals, and an invalid L1 size must not be published as a
-    real top-of-book size. The L1 size is read where it is stored (OrderFlowState.push_option_top).
+    real top-of-book size. The L1 size is read from the contract's record on the bus
+    (state.streamed_record).
     """
-    l1 = OrderFlowState()
-    l1.push_option_top(
-        "BADSIZE", {"BID_PRICE": 712.47, "ASK_PRICE": 712.49, "BID_SIZE": -5, "ASK_SIZE": 500}
-    )
+    sent = {"key": "BADSIZE", "BID_PRICE": 712.47, "ASK_PRICE": 712.49}
+    record = on_the_bus(MessageBus(), OPT, {**sent, "BID_SIZE": -5, "ASK_SIZE": 500}, 1.0)
     bad = {
         "content": [
             {
@@ -297,7 +304,7 @@ def test_invalid_sizes_are_rejected():
                 "BOOK_TIME": 1,
             }
         ],
-        "top": l1.option_top("BADSIZE"),
+        "top": streamed_record(record).top,
     }
     m = _micro(bad, now_ts=2.0)
     # only the two valid bid levels (1000 + 80) survive into the depth total
@@ -447,8 +454,8 @@ def test_engine_and_route_read_the_same_canonical_state():
 # ─────────────────────────────────────────────────────────────────────────────
 # Top of book is carried, not resolved: the engine reads data["top"] (bid, ask, bid_size,
 # ask_size, mark), supplied by the caller as Schwab last sent it -- the equity's price row, or
-# an option contract's OrderFlowState.option_top. Per-field merge of Schwab's
-# changed-fields-only ticks is the store's job (push_option_top below; live_market_plane for
+# an option contract's record on the bus (state.option_top). Per-field merge of Schwab's
+# changed-fields-only ticks is the bus's job (the contract's record below; live_market_plane for
 # equities).
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -481,8 +488,8 @@ def test_no_top_resolves_to_none():
     assert ofe._compute_top_book_pressure(data) is None
 
 
-def test_push_option_top_merges_real_partial_ticks_per_field():
-    """Real LEVELONE_OPTIONS ticks (tests/fixtures, TSLA 260831C00367500).
+def test_a_contracts_record_merges_real_partial_ticks_per_field():
+    """Real LEVELONE_OPTIONS ticks (tests/fixtures, TSLA 260831C00367500), on the bus.
 
     Schwab sends changed fields only -- the 4th tick carries BID_SIZE/ASK_SIZE and no price. The
     prices from earlier ticks stand, the sizes update. Stand-ins (named): the BID_SIZE 0 and
@@ -493,11 +500,17 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
     tsla = next(c for c in samples if c["symbol"] == "TSLA  260831C00367500")
     qqq = next(c for c in samples if c["symbol"] == "QQQ   260904C00712500")
     tsla_l1 = [e["content"] for e in tsla["events"] if e["kind"] == "l1"]
-    st = OrderFlowState()
+    bus = MessageBus()
+
+    def top(sym: str, tick: dict | None = None) -> StreamedTop:
+        if tick is not None:
+            on_the_bus(bus, OPT, {**tick, "key": sym}, 1.0)
+        return streamed_record(bus.current.get(held_key(OPT, sym))).top
+
     for tick in tsla_l1[:4]:
-        st.push_option_top(tsla["symbol"], tick)
+        top(tsla["symbol"], tick)
     assert "BID_PRICE" not in tsla_l1[3] and "ASK_PRICE" not in tsla_l1[3]
-    assert st.option_top(tsla["symbol"]) == StreamedTop(
+    assert top(tsla["symbol"]) == StreamedTop(
         bid=0.56,
         ask=0.59,
         bid_size=83,
@@ -508,19 +521,16 @@ def test_push_option_top_merges_real_partial_ticks_per_field():
     )
     assert tsla_l1[3]["MONEY_INTRINSIC_VALUE"] == -1.65
 
-    st.push_option_top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0))
-    assert st.option_top(tsla["symbol"]).bid_size == 0
+    assert top(tsla["symbol"], dict(tsla_l1[3], BID_SIZE=0)).bid_size == 0
 
-    st.push_option_top(tsla["symbol"], {"key": tsla["symbol"], "ASK_PRICE": -999})
-    top = st.option_top(tsla["symbol"])
-    assert top.ask is None and top.bid == 0.56
+    cleared = top(tsla["symbol"], {"ASK_PRICE": -999})
+    assert cleared.ask is None and cleared.bid == 0.56
 
     qqq_first = next(e["content"] for e in qqq["events"] if e["kind"] == "l1")
-    st.push_option_top(qqq["symbol"], qqq_first)
-    assert st.option_top(qqq["symbol"]) == StreamedTop(
+    assert top(qqq["symbol"], qqq_first) == StreamedTop(
         bid_size=272, ask_size=29, quote_time_ms=qqq_first["QUOTE_TIME_MILLIS"]
     )
-    assert st.option_top(tsla["symbol"]).bid == 0.56
+    assert top(tsla["symbol"]).bid == 0.56
 
 
 def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
@@ -531,19 +541,12 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
     LEVELONE_EQUITIES tick.
     """
     ofls.clear_symbol("O01EQ")
+    bus = MessageBus()
+    ofls.bind_bus(bus.current)
     try:
-        ofls.push_level_one(
-            "O01EQ",
-            {
-                "key": "O01EQ",
-                "BID_PRICE": 100.0,
-                "ASK_PRICE": 100.02,
-                "BID_SIZE": 3,
-                "ASK_SIZE": 4,
-                "MARK": 100.01,
-            },
-            ts_recv=1_000.0,
-        )
+        sent = {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02, "BID_SIZE": 3}
+        record = on_the_bus(bus, EQ, {**sent, "ASK_SIZE": 4, "MARK": 100.01}, 1_000.0)
+        apply_record(ofls._LIVE_STATE, EQ, record)
         assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in ofls.prints("O01EQ"))
         assert ofls.newest_book("O01EQ", "OPTIONS_BOOK") is None
         assert ofls.option_top("O01EQ") is NO_TOP
@@ -552,13 +555,13 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
 
 
 def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one():
-    """The production seam must hand push_level_one the MESSAGE's own ts_recv.
+    """Each streamed field carries the receive time of the MESSAGE that brought it.
 
-    The seam is order_flow_streaming._ingest_pushed, fed by the daemon's live push; for both
-    equity
-    (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages -- never the time the console
-    processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's GAMMA as Schwab
-    sent them 2026-10-05 14:00 CT (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json).
+    For both equity (LEVELONE_EQUITIES) and option (LEVELONE_OPTIONS) messages, put on the bus by
+    the daemon's stream handler and taken by the console's intake (_ingest_pushed) -- never the
+    time the console processed it. Real data: GOOGL's TOTAL_VOLUME and SPY 2026-10-30 910 call's
+    GAMMA as Schwab sent them 2026-10-05 14:00 CT
+    (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json).
     """
     mix = json.loads(
         (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -570,19 +573,14 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     eq_sym, opt_sym = eq["item"]["key"], opt["item"]["key"]
     ofls.clear_symbol(eq_sym)
     ofls.clear_symbol(opt_sym)
+    bus = MessageBus()
+    ofls.bind_bus(bus.current)
     try:
-        ofs._ingest_pushed(
-            f"quote.{eq_sym}",
-            quote_msg(symbol=eq_sym, src="schwab_l1", ts_recv=eq["ts_recv"], native=eq["item"]),
-        )
-        ofs._ingest_pushed(
-            f"optquote.{opt_sym}",
-            verbatim_msg(
-                symbol=opt_sym, content=opt["item"], src="schwab_options_l1", ts_recv=opt["ts_recv"]
-            ),
-        )
-        assert ofls.get_stream_greeks(eq_sym).total_volume.ts_recv == eq["ts_recv"]
-        assert ofls.get_stream_greeks(opt_sym).gamma.ts_recv == opt["ts_recv"]
+        ofs._ingest_pushed(*on_the_bus(bus, EQ, eq["item"], eq["ts_recv"]))
+        ofs._ingest_pushed(*on_the_bus(bus, OPT, opt["item"], opt["ts_recv"]))
+        live = ofls._LIVE_STATE
+        assert live.streamed(EQ, eq_sym).greeks.total_volume.ts_recv == eq["ts_recv"]
+        assert live.streamed(OPT, opt_sym).greeks.gamma.ts_recv == opt["ts_recv"]
     finally:
         ofls.clear_symbol(eq_sym)
         ofls.clear_symbol(opt_sym)
@@ -616,9 +614,11 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
     """
     c = json.loads(FIXTURE.read_text(encoding="utf-8"))["contracts"][0]
     sym = c["symbol"]
+    bus = MessageBus()
+    ofls.bind_bus(bus.current)
     for ev in c["events"][:4]:
         if ev["kind"] == "l1":
-            ofls.push_option_top(sym, ev["content"])
+            on_the_bus(bus, OPT, {**ev["content"], "key": sym}, ev["ts_recv"])
     try:
         lmp.record_feed_heartbeat(
             daemon_status(RTH_INSTANT, schwab_socket_open=True, held={"LEVELONE_OPTIONS": [sym]})

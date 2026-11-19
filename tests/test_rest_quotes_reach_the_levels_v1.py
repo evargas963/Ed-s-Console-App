@@ -36,7 +36,7 @@ from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
 from state import level_store
 from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, pushed
 from tests.page_on_socket import pages
 from tests.schwab_rest_standin import FX, SPY
 from time_et import ET
@@ -107,7 +107,7 @@ def _put_chain() -> None:
 
 def _answered(answer: dict, received: float) -> None:
     """Take the daemon's message of one /quotes answer (ChainSweep.send_quotes publishes it)."""
-    ofs._ingest_pushed("optquotes", {"src": "schwab_quotes", "ts_recv": received, "answer": answer})
+    pushed("optquotes", {"src": "schwab_quotes", "ts_recv": received, "answer": answer})
 
 
 def _cached() -> level_store.PublishedLevels:
@@ -226,7 +226,7 @@ def test_a_contract_the_stream_holds_takes_the_streams_values_and_time_not_the_a
     _put_chain()
     _daemon(_PUSHED, held=[HELD])
     for content in _L1:
-        ofs._ingest_pushed(
+        pushed(
             f"optquote.{HELD}",
             verbatim_msg(
                 symbol=HELD,

@@ -22,14 +22,13 @@ from datetime import datetime
 import pytest
 
 import app.options.order_flow.state as ofls
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server
 from option_contract import read_chain
 from push import surface as push_surface
 from state import level_store
 from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, forget_streamed, pushed
 from tests.real_chains import CRWD, MRVL
 from time_et import ET
 
@@ -75,7 +74,7 @@ def _publish(held, ticked, *, at=_AT, socket_open=True):
         received_ts=at.timestamp(),
     )
     for sym in ticked:
-        ofs._ingest_pushed(
+        pushed(
             f"optquote.{sym}",
             verbatim_msg(
                 symbol=sym,
@@ -127,6 +126,7 @@ def test_every_cell_streaming_reads_all_streaming_and_one_cell_short_never_does(
         len(CALLS),
     )
     ofls.clear_all_live_state()
+    forget_streamed()
     cov, surface = _publish(every, every[:-1])
     assert _legs(surface, every[-1])[0]["state"] == "pending"
     assert cov["live"] == len(CALLS) - 1 and cov["partial"] == 1

@@ -15,9 +15,9 @@ from pathlib import Path
 import live_market_plane as lmp
 import time_et
 from app.options.order_flow import state as of_state
-from app.options.order_flow import streaming as ofs
 from push import contract as push_contract
 from stream_spine import book_msg, verbatim_msg
+from tests.feed_live_helper import pushed
 
 _SAMPLES = json.loads(
     (Path(__file__).parent / "fixtures" / "real_options_stream_history_samples.json").read_text(
@@ -46,12 +46,12 @@ def test_a_down_feed_keeps_the_contracts_quote_time_and_book_time():
                     src="schwab_book",
                     ts_recv=e["ts_recv"],
                 )
-                ofs._ingest_pushed(f"book.{_SYM}", msg)
+                pushed(f"book.{_SYM}", msg)
             else:
                 msg = verbatim_msg(
                     symbol=_SYM, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]
                 )
-                ofs._ingest_pushed(f"optquote.{_SYM}", msg)
+                pushed(f"optquote.{_SYM}", msg)
         lmp.record_feed_down()
         body = push_contract.options_microstructure(_SYM, time_et.now())
     finally:

@@ -15,7 +15,11 @@ from pathlib import Path
 
 import app.options.order_flow.state as live_state
 import calc.l1_trade_observation as l1
+from stream_spine import MessageBus
+from tests.feed_live_helper import apply_record, on_the_bus
 from tests.shared_helpers import sent
+
+EQ = "LEVELONE_EQUITIES"
 
 _MIX = [
     m
@@ -33,8 +37,11 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     first = next(m for m in sent(_MIX, sym) if "LAST_PRICE" in m["item"])
     assert "LAST_SIZE" not in first["item"]
     live_state.clear_symbol(sym)
+    bus = MessageBus()
+    live_state.bind_bus(bus.current)
     try:
-        live_state.push_level_one(sym, first["item"], ts_recv=first["ts_recv"])
+        record = on_the_bus(bus, EQ, first["item"], first["ts_recv"])
+        apply_record(live_state._LIVE_STATE, EQ, record)
         content = live_state.prints(sym)
     finally:
         live_state.clear_symbol(sym)
@@ -50,11 +57,13 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
 
 
 def test_live_state_present_last_size_reaches_order_flow_consumers():
-    """SPY: 775.565 x 40, then 775.57 with no size, then 775.565 x 49.
+    """SPY: 775.565 x 40, then 775.57 with no LAST_SIZE, then 775.565 x 49, then 250 with no price.
 
-    The first and third prints' sizes reach the consumers; the second has no size and counts for
-    nothing. These messages carry no bid or ask, so Lee and Ready signs none of them: the sized
-    prints' whole size is unsigned and the cumulative delta is no value, never 0.
+    LEVELONE_EQUITIES is delivered on Change (Schwab Streamer API §1.5): a field not sent is
+    unchanged, so the second print's size is the first's, 40, and the fourth (a new trade time) is
+    a trade of 250 at the unchanged price; SPY's record on the bus holds them so. Every print's
+    size reaches the consumers. These messages carry no bid or ask, so Lee and Ready signs none
+    of them: the whole size is unsigned and the cumulative delta is no value, never 0.
     """
     sym = "SPY"
     prints = [
@@ -64,15 +73,14 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
     ]
     assert prints == [(775.565, 40), (775.57, None), (775.565, 49)]
     live_state.clear_symbol(sym)
+    bus = MessageBus()
+    live_state.bind_bus(bus.current)
     try:
         for m in sent(_MIX, sym):
-            live_state.push_level_one(sym, m["item"], ts_recv=m["ts_recv"])
+            apply_record(live_state._LIVE_STATE, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
         content = live_state.prints(sym)
     finally:
         live_state.clear_symbol(sym)
 
-    assert [size for _x, size, _s in l1._signed_walk(content, None)] == [
-        40,
-        49,
-    ]
+    assert [size for _x, size, _s in l1._signed_walk(content, None)] == [40, 40, 49, 250]
     assert l1.compute_cum_delta_proxy(content) is None

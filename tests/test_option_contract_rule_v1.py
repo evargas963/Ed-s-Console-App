@@ -36,11 +36,11 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calc.terrain_engine import strike_window
 from feed.chain_sweep import chain_messages
-from feed.connection import held_key
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
 from state import level_store
-from stream_spine import HealthRegistry, MessageBus, quote_msg, verbatim_msg
+from stream_spine import HealthRegistry, MessageBus, held_key, quote_msg
+from tests.feed_live_helper import on_the_bus
 from tests.real_chains import CRWD, MRVL, SPY_FULL, TSLA
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
@@ -503,13 +503,13 @@ _STREAMED = next(
 _HELD = "SPY   261120C00875000"
 
 
-def test_a_released_contracts_record_stands_until_it_is_asked_for_again(tmp_path):
+def test_a_released_contracts_record_stands_and_a_new_hold_takes_none_of_it(tmp_path):
     """SPY removed from the watchlist, then added again and its next chain arrives.
 
     While Schwab holds _HELD, its record on the bus is the sweep's. Released, its record stands
-    on the bus (its last values, D5), and the sweep takes it no more. Asked for again, the record
-    is forgotten before the request goes: Schwab has sent nothing of the new hold (the stand-in
-    sends no data), so the bus holds nothing of it, and nothing of the ended hold is taken.
+    on the bus (its last values, D5), and the sweep takes it no more. Held again, the record
+    still stands for the screen, but Schwab has sent nothing of the new hold (the stand-in sends
+    no data), so the sweep takes none of the ended hold's Greeks and asks /quotes instead.
     """
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     both = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
@@ -522,17 +522,9 @@ def test_a_released_contracts_record_stands_until_it_is_asked_for_again(tmp_path
             m.price(tk, PRICES[tk])
         await _until(lambda: m.holds(both))
         for e in _STREAMED["events"]:
-            if e["kind"] == "l1":
-                m.bus.publish(
-                    f"optquote.{_HELD}",
-                    verbatim_msg(
-                        symbol=_HELD,
-                        content={**e["content"], "key": _HELD},
-                        src="schwab_options_l1",
-                        ts_recv=e["ts_recv"],
-                        schwab_ts=int(e["ts_recv"] * 1000),
-                    ),
-                )
+            if e["kind"] == "l1":  # received now, in this hold, as the daemon's handler stamps it
+                sent = {**e["content"], "key": _HELD}
+                on_the_bus(m.bus, L1, sent, time_et.now(), int(e["ts_recv"] * 1000))
         seen["held"] = m.daemon.option_record(_HELD)
         m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL"])))
@@ -548,7 +540,7 @@ def test_a_released_contracts_record_stands_until_it_is_asked_for_again(tmp_path
     assert seen["held"] is not None and seen["held"][1]["content"]["key"] == _HELD
     record, taken = seen["released"]
     assert record == seen["held"] and taken is None, "the last values stand; the sweep takes none"
-    assert seen["held_again"] == (None, None), "the new hold starts with nothing of the old one"
+    assert seen["held_again"] == (record, None), "the record stands; the new hold takes none of it"
 
 
 def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(tmp_path):

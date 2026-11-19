@@ -32,8 +32,7 @@ from calc.math_exposure_core import compute_exposures_by_strike, put_call_volume
 from calibration.complete_chain_capture import last_capture_per_day
 from feed import schwab_client as sc
 from feed.chain_sweep import ChainSweep
-from feed.connection import held_key
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
+from stream_spine import CaptureWriter, HealthRegistry, MessageBus, held_key, verbatim_msg
 from tests.schwab_rest_standin import (
     CHAIN,
     CHAINS,
@@ -68,8 +67,10 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
     """
     client = schwab.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "TSLA"])
-    # Schwab accepted it on this connection
+    # Schwab accepted it on this connection, its hold beginning before its first message came
     daemon.connection.held["LEVELONE_OPTIONS"] = frozenset({HELD})
+    first = min(e["ts_recv"] for e in _STREAM["events"] if e["kind"] == "l1")
+    daemon.connection.since["LEVELONE_OPTIONS"] = {HELD: first}
     for e in _STREAM["events"]:
         if e["kind"] == "l1":
             daemon.bus.publish(
@@ -375,8 +376,9 @@ def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
 
     Its last values stand on the bus (D5), but the sweep takes no record of a contract the
     stream does not hold, so HELD is asked of the quotes endpoint rather than priced on the
-    ended connection's Greeks. A new hold starts with nothing of this one
-    (test_option_contract_rule_v1: a released contract's record stands until it is asked for).
+    ended connection's Greeks. A new hold takes none of this one's Greeks
+    (test_option_contract_rule_v1: a released contract's record stands and a new hold takes
+    none of it).
     """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
@@ -398,7 +400,7 @@ def test_a_contract_the_stream_no_longer_holds_takes_its_quotes_greeks(tmp_path)
     """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
-    daemon.connection.held["LEVELONE_OPTIONS"] = frozenset()  # as Connection.disconnect leaves it
+    asyncio.run(daemon.connection.disconnect())
     try:
         assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}
     finally:

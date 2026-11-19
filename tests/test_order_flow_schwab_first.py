@@ -4,14 +4,17 @@ Real data, each as Schwab sent it: SPY's /quotes answer of 2026-10-07 13:41 UTC
 (real_schwab_quotes_watchlist_check_2026_10_07.json, its quote block), SPY's /chains underlying of
 2026-10-08 (real_schwab_chain_top_level_spy_tsla_2026_10_08.json), SPY's first NYSE_BOOK of
 2026-11-02 10:00 ET (real_spy_books_2026_11_02.json), and the LEVELONE_OPTIONS message of SPY's
-2026-10-16 780 put of 2026-10-05 14:00:02 CT (real_stream_mix_2026_10_05_1400ct.json), taken
-through the live state's one reader of a contract's top (OrderFlowState.push_option_top).
+2026-10-16 780 put of 2026-10-05 14:00:02 CT (real_stream_mix_2026_10_05_1400ct.json), put on
+the bus as the daemon puts it and read as the console reads a contract's top
+(state.streamed_record).
 """
 
 from __future__ import annotations
 
-from app.options.order_flow.state import OrderFlowState, read_book
+from app.options.order_flow.state import read_book, streamed_record
 from calc.order_flow import FlowInput, _compute_top_book_pressure
+from stream_spine import MessageBus
+from tests.feed_live_helper import on_the_bus
 from tests.shared_helpers import fixture_json
 
 _REST_QUOTE = next(
@@ -51,11 +54,10 @@ def test_rest_quote_blocks_never_stand_in_for_streamed_l1():
 
 
 def test_top_book_pressure_streaming_uses_bid_ask_size_leaves_only():
-    state = OrderFlowState()
-    state.push_option_top(_OPTION_TOP["key"], _OPTION_TOP)
+    record = on_the_bus(MessageBus(), "LEVELONE_OPTIONS", _OPTION_TOP, 1.0)
     bid, ask = _OPTION_TOP["BID_SIZE"], _OPTION_TOP["ASK_SIZE"]
     assert (bid, ask) == (250, 149)
-    top = state.option_top(_OPTION_TOP["key"])
+    top = streamed_record(record).top
     assert _compute_top_book_pressure(FlowInput(book=None, top=top)) == (bid - ask) / (bid + ask)
 
 
