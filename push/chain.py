@@ -78,6 +78,23 @@ def _ladder_with_gex(
     return served
 
 
+def _listing(contracts: list[OptionContract]) -> dict[str, Any]:
+    """Return what Schwab's listing says of an expiry's contracts, as the chain panel serves it."""
+    return {
+        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
+        "adjusted_deliverable_symbols": [c.symbol for c in contracts if c.non_standard],
+        # Schwab's lastTradingDay, an instant in epoch milliseconds, as its date on the market's
+        # clock (ET); a contract Schwab sent none for has no entry
+        "last_trading_day_et": {
+            c.symbol: et_date_str_from_ts_utc(ms / 1000.0)
+            for c in contracts
+            if isinstance(ms := c.listing.get("lastTradingDay"), float)
+        },
+        # two contracts listed at one (strike, side): the chain is not strike-unique
+        "has_duplicate_contracts": len({(c.strike, c.side) for c in contracts}) < len(contracts),
+    }
+
+
 def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return one expiry of the ticker's full chain at `now`, from the chain the daemon delivered.
 
@@ -144,18 +161,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         "spot_strike": nearest_strike(
             {c.strike for c in response_contracts if c.strike is not None}, live_spot
         ),
-        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
-        "adjusted_deliverable_symbols": [c.symbol for c in response_contracts if c.non_standard],
-        # Schwab's lastTradingDay, an instant in epoch milliseconds, as its date on the market's
-        # clock (ET); a contract Schwab sent none for has no entry
-        "last_trading_day_et": {
-            c.symbol: et_date_str_from_ts_utc(ms / 1000.0)
-            for c in response_contracts
-            if isinstance(ms := c.listing.get("lastTradingDay"), float)
-        },
-        # two contracts listed at one (strike, side): the chain is not strike-unique
-        "has_duplicate_contracts": len({(c.strike, c.side) for c in response_contracts})
-        < len(response_contracts),
+        **_listing(response_contracts),
         **verdict,
         "contracts": shown,
         "status": "ok",
