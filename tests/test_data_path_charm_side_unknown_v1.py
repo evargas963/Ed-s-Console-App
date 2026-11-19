@@ -31,8 +31,10 @@ def _forces(
     prior_spot: float,
     prior_now: datetime,
 ) -> Forces:
-    """The forces as the server makes them: the chain now against the prior day's close capture,
-    each priced by the one producer (compute_terrain) at its own spot and time."""
+    """Return the forces as the server makes them: the chain now against the prior day's close.
+
+    Each is priced by the one producer (compute_terrain) at its own spot and time.
+    """
     snap = compute_terrain(tk, read_chain(now_chain), now_spot, now=now, sessions=sessions())
     prior = compute_terrain(
         tk, read_chain(prior_chain), prior_spot, now=prior_now, sessions=sessions()

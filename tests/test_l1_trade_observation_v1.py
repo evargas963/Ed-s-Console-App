@@ -40,7 +40,7 @@ def _tape(sym: str, *rows, state=None) -> list:
 
 
 def _cvd(content: list) -> float | None:
-    """The cumulative delta of the tape `content`, as the engine computes it."""
+    """Return the cumulative delta of the tape `content`, as the engine computes it."""
     return l1.compute_cum_delta_proxy(content)
 
 
