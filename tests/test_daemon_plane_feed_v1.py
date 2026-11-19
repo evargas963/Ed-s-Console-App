@@ -96,7 +96,7 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     _push_l1("SPY", native, ts_recv=time_et.now())
 
     assert any(item["price"] == 450.0 for item in ofls.prints("SPY"))
-    assert lmp.get_quote("SPY") is None  # the price is the daemon's row, not a copy here
+    assert lmp.get_quote("SPY") is lmp.NO_QUOTE  # the price is the daemon's row, not a copy here
 
 
 def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):

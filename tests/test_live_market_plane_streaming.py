@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import asdict
 
 import pytest
 
@@ -29,11 +30,11 @@ def test_record_from_level_one_equity_updates_plane():
     )
     assert ok is True
     row = lmp.get_quote("ZZZ")
-    assert row is not None
-    assert row["exchange_quote_ts"] is None  # no QUOTE_TIME_MILLIS sent: none filled in
-    assert abs(row["spot"] - 101.0) < 1e-6
-    assert row["mark"] is None  # no MARK sent: the bid/ask midpoint never stands in
-    assert row["bid"] == 100.9 and row["ask"] == 101.1
+    assert row is not lmp.NO_QUOTE
+    assert row.exchange_quote_ts is None  # no QUOTE_TIME_MILLIS sent: none filled in
+    assert abs(row.spot - 101.0) < 1e-6
+    assert row.mark is None  # no MARK sent: the bid/ask midpoint never stands in
+    assert row.bid == 100.9 and row.ask == 101.1
 
 
 def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
@@ -50,13 +51,13 @@ def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
 
     assert ok is True
     row = lmp.get_quote("TIMEAUTH")
-    assert row is not None
-    assert row["exchange_quote_ts"] == 1_778_018_399.0
-    assert row["trade_ts"] is None  # no TRADE_TIME_MILLIS sent
-    assert isinstance(row["server_received_ts"], float)
+    assert row is not lmp.NO_QUOTE
+    assert row.exchange_quote_ts == 1_778_018_399.0
+    assert row.trade_ts is None  # no TRADE_TIME_MILLIS sent
+    assert isinstance(row.server_received_ts, float)
     # exchange_quote_ts is the exchange QUOTE clock; server_received_ts is the distinct wall clock
-    assert row["spot"] == 101.0
-    assert row["exchange_quote_ts"] != row["server_received_ts"]
+    assert row.spot == 101.0
+    assert row.exchange_quote_ts != row.server_received_ts
 
 
 def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
@@ -77,8 +78,8 @@ def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
     )
     assert ok is True
     row = lmp.get_quote("TRADEPROXY")
-    assert row["exchange_quote_ts"] is None
-    assert row["trade_ts"] == 1_778_018_500.0  # the trade's own clock, kept as the trade's
+    assert row.exchange_quote_ts is None
+    assert row.trade_ts == 1_778_018_500.0  # the trade's own clock, kept as the trade's
 
 
 def test_received_ts_is_required_and_is_what_freshness_judges():
@@ -89,7 +90,7 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     old = time_et.now() - 100.0
     assert _rec("RQD", {"key": "RQD", "LAST_PRICE": 1.0}, received_ts=old)
     row = lmp.get_quote("RQD")
-    assert row["server_received_ts"] == old
+    assert row.server_received_ts == old
 
 
 def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
@@ -108,7 +109,7 @@ def test_a_carried_last_price_is_the_current_price_on_a_live_feed():
     )
     _rec("CARRY", {"key": "CARRY", "BID_PRICE": 9.95, "ASK_PRICE": 10.05}, received_ts=now)
     row = lmp.get_quote("CARRY")
-    assert row["spot"] == 10.0
+    assert row.spot == 10.0
     mark_feed_live("CARRY", now=now)
     try:
         price = live_price_rows.price_row("CARRY", now)
@@ -138,7 +139,7 @@ def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():
     _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
     assert _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": -999.0, "BID_PRICE": 9.8}) is True
     row = lmp.get_quote("NOLAST")
-    assert (row["spot"], row["bid"], row["ask"]) == (None, 9.8, 10.1)
+    assert (row.spot, row.bid, row.ask) == (None, 9.8, 10.1)
 
 
 def test_a_quote_before_the_first_trade_is_published():
@@ -148,7 +149,7 @@ def test_a_quote_before_the_first_trade_is_published():
         is True
     )
     row = lmp.get_quote("PRETRADE")
-    assert (row["spot"], row["bid"], row["ask"], row["bid_size"]) == (None, 4.9, 5.1, 0.0)
+    assert (row.spot, row.bid, row.ask, row.bid_size) == (None, 4.9, 5.1, 0.0)
 
 
 def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate():
@@ -176,7 +177,7 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
 
     assert ok is True
     row = lmp.get_quote("TIMEDUP")
-    assert row["exchange_quote_ts"] == 1_778_018_400.0
+    assert row.exchange_quote_ts == 1_778_018_400.0
 
 
 def test_unchanged_bid_ask_stand_with_their_own_age():
@@ -194,7 +195,7 @@ def test_unchanged_bid_ask_stand_with_their_own_age():
     )
     assert _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 11.0}) is True
     row = lmp.get_quote("NOCARRY")
-    assert row["spot"] == 11.0 and row["bid"] == 9.9 and row["ask"] == 10.1
+    assert row.spot == 11.0 and row.bid == 9.9 and row.ask == 10.1
 
 
 def test_a_zero_price_is_taken_as_sent():
@@ -202,7 +203,7 @@ def test_a_zero_price_is_taken_as_sent():
     _rec("ZRO", {"key": "ZRO", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
     _rec("ZRO", {"key": "ZRO", "BID_PRICE": 0})
     row = lmp.get_quote("ZRO")
-    assert row["bid"] == 0.0 and row["ask"] == 10.1
+    assert row.bid == 0.0 and row.ask == 10.1
 
 
 def test_a_value_that_is_not_a_number_clears_the_field():
@@ -211,7 +212,7 @@ def test_a_value_that_is_not_a_number_clears_the_field():
         _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
         _rec("CLR", {"key": "CLR", "BID_PRICE": bad})
         row = lmp.get_quote("CLR")
-        assert row["bid"] is None and row["ask"] == 10.1, bad
+        assert row.bid is None and row.ask == 10.1, bad
 
 
 def test_record_from_level_one_rejects_mark_as_current_spot():
@@ -223,7 +224,7 @@ def test_record_from_level_one_rejects_mark_as_current_spot():
 
     assert ok is True
     row = lmp.get_quote("MARKONLY")
-    assert (row["spot"], row["mark"], row["bid"], row["ask"]) == (None, 20.95, 20.9, 21.1)
+    assert (row.spot, row.mark, row.bid, row.ask) == (None, 20.95, 20.9, 21.1)
 
 
 def test_record_from_level_one_rejects_midpoint_spot_fabrication():
@@ -233,7 +234,7 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
     )
 
     assert ok is True
-    assert lmp.get_quote("MIDONLY")["spot"] is None
+    assert lmp.get_quote("MIDONLY").spot is None
 
 
 def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
@@ -247,11 +248,11 @@ def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
     )
     assert ok is True
     row = lmp.get_quote("NOCANON")
-    assert row is not None
-    assert row["bid"] is None
-    assert row["ask"] is None
-    assert "BID" not in row and "ASK" not in row
-    assert row["spot"] == 100.0
+    assert row is not lmp.NO_QUOTE
+    assert row.bid is None
+    assert row.ask is None
+    assert "BID" not in asdict(row) and "ASK" not in asdict(row)
+    assert row.spot == 100.0
 
 
 def test_last_price_is_carried_forward_only_from_a_streamed_row():
@@ -263,14 +264,14 @@ def test_last_price_is_carried_forward_only_from_a_streamed_row():
     """
     assert not hasattr(lmp, "record_quote"), "the plane has ONE writer: the stream"
     with lmp._lock:
-        lmp._by_ticker["RESTROW"] = {"ticker": "RESTROW", "spot": 50.0}
+        lmp._by_ticker["RESTROW"] = lmp.QuoteRow(ticker="RESTROW", spot=50.0)
     assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is True
     row = lmp.get_quote("RESTROW")  # the streamed fields only: a price not streamed never carries
-    assert (row["spot"], row["bid"]) == (None, 49.9)
+    assert (row.spot, row.bid) == (None, 49.9)
     _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0})
     assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
     row = lmp.get_quote("STREAMROW")
-    assert row["spot"] == 50.0 and row["bid"] == 49.9
+    assert row.spot == 50.0 and row.bid == 49.9
 
 
 def test_an_expirys_held_contracts_are_found_by_lookup_not_by_walking_every_held_one():
