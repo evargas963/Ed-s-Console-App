@@ -301,6 +301,25 @@ test.describe("D — Gamma Chain subview", () => {
     expect(after).toBe(before);
   });
 
+  test("a quote that moves a value is written into the drawn ladder: the same table, its cell's new text", async ({
+    page,
+  }) => {
+    let vol = 10;
+    panels.chain = () => served(bigChain(vol));
+    await toChain(page);
+    const first = page.locator("#chainBody tbody tr").first().locator("td").nth(1);
+    await expect(first).toHaveText("10");
+    await page.evaluate(() => {
+      document.querySelector("#chainBody table.chn-bodytbl").dataset.drawn = "first";
+    });
+    // the next frame: the same rows, one value moved (as each streamed quote sends it)
+    vol = 25;
+    sock.changed("chain");
+    await expect(first).toHaveText("25");
+    const table = page.locator("#chainBody table.chn-bodytbl");
+    await expect(table).toHaveAttribute("data-drawn", "first"); // written in place, not rebuilt
+  });
+
   // V01 (test-quality review, 2026-09-13): this file's own CHAIN fixture returns the SAME
   // contracts for every requested expiry, so nothing here could ever tell a correct re-fetch
   // apart from a frozen/stale display on an expiry switch. Closed with a mock that returns
