@@ -21,6 +21,15 @@
 
   // auto-scroll to spot only the first time a ticker+expiry is rendered
   var _lastScrollContext = null;
+  // the rows the drawn ladder holds (render's `shape`)
+  var _shape = null;
+
+  // a cell's text: the served value, or '-' when none is served; written only when it changed
+  function write(td, c, k) {
+    var v = c ? c[k] : null;
+    var text = v == null ? "-" : String(v);
+    if (td.textContent !== text) td.textContent = text;
+  }
 
   function curExpiry() {
     return window.EdShell.getExpiry();
@@ -130,6 +139,36 @@
     // open interest, volume, IV, bid and ask: the served texts; delta and gamma as Schwab sent them
     var CALL = ["oi_text", "volume_text", "iv_text", "delta", "gamma", "bid_text", "ask_text"];
     var PUT = ["bid_text", "ask_text", "gamma", "delta", "iv_text", "volume_text", "oi_text"];
+    // The ladder comes again with each quote Schwab streams. While its rows are the ones drawn
+    // (the same strikes, contracts, spot row, in-the-money sides and selected contract), only
+    // the texts that changed are written, in place: the table, its scroll and its rows' clicks
+    // stay, and a quote costs the cells it moved, not a new table.
+    var shape =
+      d.expiry +
+      "|" +
+      desired +
+      "|" +
+      rows
+        .map(function (r) {
+          return [r.strike, r.first, r.spot, sym(r.call), sym(r.put), r.call_itm, r.put_itm];
+        })
+        .join(";");
+    var drawn = host.querySelector(".chn-bodytbl");
+    if (shape === _shape && drawn) {
+      host.querySelector(".chn-head").outerHTML = head;
+      var trs = drawn.tBodies[0].rows;
+      rows.forEach(function (r, i) {
+        var tds = trs[i].cells;
+        CALL.forEach(function (f, j) {
+          write(tds[j], r.call, f);
+        });
+        PUT.forEach(function (f, j) {
+          write(tds[8 + j], r.put, f);
+        });
+      });
+      return;
+    }
+    _shape = shape;
     function side(c, cls, itm, cols) {
       // itm: served per row, Schwab's (its money intrinsic value positive)
       var klass =
