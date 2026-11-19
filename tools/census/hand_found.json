@@ -19,11 +19,11 @@
     },
     {
       "category": "tests not trusted",
-      "item": "the prior-day test that passed on our close now checks Schwab's official daily close (tests/test_liquidity_value_engine_p1d_prev_trading_day.py); the other tests' expected values are not yet each checked against a source document"
+      "item": "tests' expected values checked against a source (2026-11-18): the prior day against Schwab's official close; the level strikes, charm walls and CRWD's flip worked out from the raw captured chain (#1172, #1174, tests/real_chains.py); the format tests pin a fixture's value only. Left: the tests built on hand-typed Level One and book messages (STAND-INS, the operator's decision)"
     },
     {
       "category": "slow screen",
-      "item": "/api/health over 1 s in 103 of 677 samples"
+      "item": "/api/health over 1 s in 1 of 60 live requests (2026-11-18 14:37 CT, after #1169; 7 of 60 before): what is left holding the GIL is the pricing thread, 90% busy (the chain-lag decision)"
     },
     {
       "category": "Schwab sends it twice",
@@ -31,11 +31,11 @@
     },
     {
       "category": "needs market",
-      "item": "every watchlist ticker's screen values against Schwab's own numbers"
+      "item": "every watchlist ticker's screen values against Schwab's own numbers: the watchlist's prices and changes matched Schwab's exactly (2026-11-18 13:34 CT, all 9); the chain ladder's Schwab fields lag (next item); the levels and Greeks of every ticker against Schwab still to check"
     },
     {
       "category": "needs market",
-      "item": "live update speed, full chain reprice on unchanged inputs"
+      "item": "live update speed: the chain ladder showed SPY's 730 call a median 4.4 s (max 8.8 s) behind Schwab, 23 changes measured 2026-11-18 13:55 CT, marked LIVE; its fields are Schwab's own but served from the last reprice, and a full SPY reprice takes 1.4-2.7 s on a pricing thread 90% busy. The fix (serve them from the stream as received) is the operator's decision"
     },
     {
       "category": "contradiction: rule vs hook",
