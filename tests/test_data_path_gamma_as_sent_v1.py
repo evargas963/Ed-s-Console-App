@@ -68,10 +68,15 @@ def published():
         level_store._levels.pop("NVDA", None)
 
 
+def _on_ladder(body):
+    """Each contract the chain panel serves, once, in its ladder row."""
+    return [c for r in body["ladder"] for c in (r["call"], r["put"]) if c]
+
+
 @pytest.mark.usefixtures("published")
 def test_the_chain_serves_every_gamma_as_schwab_sent_it():
     body = push_chain.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
-    served = {c["symbol"]: c["gamma"] for c in body["contracts"]}
+    served = {c["symbol"]: c["gamma"] for c in _on_ladder(body)}
     sent = {k["symbol"]: k["gamma"] for k in NVDA["contracts"]}
     assert served[LARGE] == sent[LARGE] > 16
     assert served == sent
@@ -148,7 +153,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
         for c in NFLX.chain
         if c["expirationDate"].startswith(expiry) and c["volatility"] == -999
     }
-    served = {c["symbol"]: c for c in body["contracts"]}
+    served = {c["symbol"]: c for c in _on_ladder(body)}
     assert no_value
     for s in no_value:
         assert (served[s]["volatility"], served[s]["gamma"], served[s]["delta"]) == (

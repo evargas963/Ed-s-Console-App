@@ -362,10 +362,8 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
         lmp._fields_by_ticker.pop("$SPX", None)
         lmp.record_feed_down()
     assert {c["nonStandard"] for c in fx["contracts"]} == {False}
-    assert (
-        len(body["contracts"]) == len(fx["contracts"])
-        and body["adjusted_deliverable_symbols"] == []
-    )
+    served = [c for r in body["ladder"] for c in (r["call"], r["put"]) if c]
+    assert len(served) == len(fx["contracts"]) and body["adjusted_deliverable_symbols"] == []
 
 
 def test_the_largest_gex_strike_is_served(held):
