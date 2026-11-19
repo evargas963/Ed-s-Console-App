@@ -12,11 +12,16 @@ states has the installed class's members, each name with its value, aliases incl
 
 import ast
 import enum
-import importlib
+import sys
 from pathlib import Path
 from typing import Any
 
+import feed.schwab_client
+import feed.stream
+
 TYPINGS = Path(__file__).resolve().parent.parent / "typings"
+#: Feed's modules that load schwab-py and authlib, as the daemon does
+FEED = (feed.schwab_client, feed.stream)
 
 
 def _enums(body: list[ast.stmt], path: list[str]) -> list[tuple[list[str], dict[str, Any]]]:
@@ -38,11 +43,16 @@ def _enums(body: list[ast.stmt], path: list[str]) -> list[tuple[list[str], dict[
 
 
 def _stated(body: list[ast.stmt]) -> set[str]:
-    """The names a stub states at its top: its classes, functions, variables and re-exports."""
+    """The names a stub states at its top: its classes, functions, variables and re-exports.
+
+    A class marked @type_check_only exists for the type checker alone, as its name says.
+    """
     names: set[str] = set()
     for node in body:
         if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
-            names.add(node.name)
+            marks = [d.id for d in node.decorator_list if isinstance(d, ast.Name)]
+            if "type_check_only" not in marks:
+                names.add(node.name)
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names.add(node.target.id)
         elif isinstance(node, ast.Import | ast.ImportFrom):
@@ -51,12 +61,13 @@ def _stated(body: list[ast.stmt]) -> set[str]:
 
 
 def _stubs() -> list[tuple[Path, Any, ast.Module]]:
-    """Each stub, the installed module it states, and its parsed text."""
+    """Each stub, the installed module it states as Feed loaded it, and its parsed text."""
     found: list[tuple[Path, Any, ast.Module]] = []
     for stub in sorted(TYPINGS.rglob("*.pyi")):
         parts = stub.relative_to(TYPINGS).with_suffix("").parts
-        module = importlib.import_module(".".join(p for p in parts if p != "__init__"))
-        found.append((stub, module, ast.parse(stub.read_text(encoding="utf-8"))))
+        name = ".".join(p for p in parts if p != "__init__")
+        assert name in sys.modules, f"{name}: a stub of a module Feed does not load"
+        found.append((stub, sys.modules[name], ast.parse(stub.read_text(encoding="utf-8"))))
     return found
 
 

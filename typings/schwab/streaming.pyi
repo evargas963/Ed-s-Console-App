@@ -1,11 +1,18 @@
+import asyncio
 import json
 import ssl
 from enum import Enum
-from typing import Any, Self
+from typing import Any, Protocol, Self, type_check_only
 
 from schwab.client.base import BaseClient
 from schwab.utils import EnumEnforcer
-from websockets.legacy.client import WebSocketClientProtocol
+
+# the parts Feed uses of the socket schwab-py opens, websockets' legacy WebSocketClientProtocol
+# (websockets/legacy/protocol.py: close, and the transport connection_made sets)
+@type_check_only
+class _Socket(Protocol):
+    transport: asyncio.Transport
+    async def close(self, code: int = 1000, reason: str = "") -> None: ...
 
 # schwab-py's base of every field enum has no members, as an enum subclassed must not (typing
 # spec, Enums); mypy's own check refuses a member-less enum in a stub (mypy/checker.py check_enum)
@@ -27,7 +34,7 @@ class UnparsableMessage(Exception):
     ) -> None: ...
 
 class StreamClient(EnumEnforcer):
-    _socket: WebSocketClientProtocol | None
+    _socket: _Socket | None
     def __init__(
         self,
         client: BaseClient,
