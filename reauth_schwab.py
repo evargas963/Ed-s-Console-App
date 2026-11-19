@@ -64,6 +64,45 @@ def _print_post_reauth_validation(token_path: str) -> None:
         sys.exit(1)
 
 
+def _redirect_flow(
+    redirect_url: str, api_key: str, app_secret: str, callback_url: str, token_path: str
+) -> None:
+    """Exchange a pasted callback URL for the token file; exit 1 when Schwab refuses it."""
+    print("Using REDIRECT-URL flow — exchanging pasted callback for token file.")
+    print()
+    try:
+        ok, msg = complete_oauth_from_redirect_url(
+            redirect_url,
+            api_key=api_key,
+            app_secret=app_secret,
+            callback_url=callback_url,
+            token_path=token_path,
+        )
+        if ok:
+            _print_post_reauth_validation(token_path)
+            return
+        print(f"\nFAILURE: {msg}")
+        print("\nIf the code was already used, run a fresh login:")
+        print("  python reauth_schwab.py --manual")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\nFAILURE: {e}")
+        log.exception("reauth failed")
+        sys.exit(1)
+
+
+def _remove_old_token(token_path: str) -> None:
+    """Delete the old token file, if any; one held or locked past its wait is left for the save."""
+    if os.path.exists(token_path):
+        try:
+            with token_file_lock(token_path):  # no writer of the token file meanwhile
+                os.remove(token_path)
+            print("Removed existing token file.")
+        except OSError as e:  # held or locked past its wait: the save replaces it
+            print(f"Could not remove old token: {e!r}")
+            print("Continuing — login flow will overwrite it.")
+
+
 def reauth() -> None:
     redirect_url = _redirect_url_arg()
     manual = "--manual" in sys.argv or "-m" in sys.argv
@@ -83,27 +122,8 @@ def reauth() -> None:
     print()
 
     if redirect_url:
-        print("Using REDIRECT-URL flow — exchanging pasted callback for token file.")
-        print()
-        try:
-            ok, msg = complete_oauth_from_redirect_url(
-                redirect_url,
-                api_key=api_key,
-                app_secret=app_secret,
-                callback_url=cfg.callback_url,
-                token_path=token_path,
-            )
-            if ok:
-                _print_post_reauth_validation(token_path)
-                return
-            print(f"\nFAILURE: {msg}")
-            print("\nIf the code was already used, run a fresh login:")
-            print("  python reauth_schwab.py --manual")
-            sys.exit(1)
-        except Exception as e:
-            print(f"\nFAILURE: {e}")
-            log.exception("reauth failed")
-            sys.exit(1)
+        _redirect_flow(redirect_url, api_key, app_secret, cfg.callback_url, token_path)
+        return
 
     if manual:
         print("Using MANUAL flow — you will copy/paste URLs (no local server, no cert warning).")
@@ -114,15 +134,7 @@ def reauth() -> None:
         print("  for the token to be saved. If the token isn't created, run:")
         print("    python reauth_schwab.py --manual")
     print()
-
-    if os.path.exists(token_path):
-        try:
-            with token_file_lock(token_path):  # no writer of the token file meanwhile
-                os.remove(token_path)
-            print("Removed existing token file.")
-        except OSError as e:  # held or locked past its wait: the save replaces it
-            print(f"Could not remove old token: {e!r}")
-            print("Continuing — login flow will overwrite it.")
+    _remove_old_token(token_path)
 
     flow_fn = run_manual_flow if manual else run_login_flow
     print(

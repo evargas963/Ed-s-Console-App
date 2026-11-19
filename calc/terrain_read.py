@@ -107,13 +107,19 @@ FLIP_CURVE_DISAGREES = (
 )
 
 
-def flip_note(curve_agrees: bool | None) -> str | None:
+def flip_note(gamma_at_spot: float | None, curve_at_spot: float | None) -> str | None:
     """Return the note shown beside the gamma flip, or None when there is nothing to say.
 
-    FLIP_CURVE_DISAGREES when the flip's curve and Schwab's gamma are both known at the chain's
-    price and their signs differ (`curve_agrees` False); None when they agree or one is unknown.
+    FLIP_CURVE_DISAGREES when Schwab's gamma (`gamma_at_spot`) and the flip's curve
+    (`curve_at_spot`) are both known at the chain's price and their signs differ; None when they
+    agree or one is unknown.
     """
-    return FLIP_CURVE_DISAGREES if curve_agrees is False else None
+    differ = (
+        gamma_at_spot is not None
+        and curve_at_spot is not None
+        and (gamma_at_spot > 0) != (curve_at_spot > 0)
+    )
+    return FLIP_CURVE_DISAGREES if differ else None
 
 
 @dataclass(frozen=True)
