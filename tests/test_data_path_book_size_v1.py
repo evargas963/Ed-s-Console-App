@@ -34,10 +34,9 @@ def test_the_book_top_is_the_size_schwab_sent():
     bid_size, ask_size = held["BID_SIZE"], held["ASK_SIZE"]
     assert (bid, ask, bid_size, ask_size) == (754.3, 754.32, 600, 40)
     m = ofe.compute_book_microstructure(
-        {
-            "book": None,
-            "top": StreamedTop(bid=bid, ask=ask, bid_size=bid_size, ask_size=ask_size),
-        },
+        ofe.FlowInput(
+            book=None, top=StreamedTop(bid=bid, ask=ask, bid_size=bid_size, ask_size=ask_size)
+        ),
         now_ts=1.0,
     )
     top = m["top_of_book"]

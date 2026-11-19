@@ -21,6 +21,7 @@ from app.options.order_flow import streaming as ofs
 from calc.liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from calc.micro_structure import Candle
 from calc.order_flow import (
+    FlowInput,
     _zone,
     book_readout,
     compute_book_microstructure,
@@ -63,7 +64,7 @@ def test_the_book_side_is_served_from_the_real_book():
     bid5 = sum(r["TOTAL_VOLUME"] for r in nat["BIDS"][:5])
     ask5 = sum(r["TOTAL_VOLUME"] for r in nat["ASKS"][:5])
     book = ofls.read_book(nat, "NYSE_BOOK")  # the one reader, as the console's intake reads it
-    m = compute_book_microstructure({"book": book}, now_ts=fx["book"]["ts_recv"])
+    m = compute_book_microstructure(FlowInput(book=book), now_ts=fx["book"]["ts_recv"])
     assert (m["depth"]["5"]["bid_total"], m["depth"]["5"]["ask_total"]) == (bid5, ask5)
     # the book's lean, a word, is the Liquidity readout's (the one producer): this book's top five
     # (440 bid, 1,840 ask: -61.4%) is OFFER_HEAVY
