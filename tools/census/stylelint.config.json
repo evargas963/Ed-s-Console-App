@@ -1,1 +1,15 @@
-{ "extends": ["stylelint-config-standard"] }
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "selector-id-pattern": [
+      "^[a-z][a-zA-Z0-9]*$",
+      { "message": "Expected id selector \"%s\" to be camelCase, as the page's ids are" }
+    ],
+    "selector-class-pattern": [
+      "^([a-z][a-z0-9]*(-[a-z0-9]+)*(-[a-z0-9]+(_[a-z0-9]+)+)?|[A-Z][A-Z0-9]*(_[A-Z0-9]+)*)$",
+      {
+        "message": "Expected class selector \"%s\" to be kebab-case, ending in a served key (snake_case) or being a Schwab service name (NYSE_BOOK)"
+      }
+    ]
+  }
+}
