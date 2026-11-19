@@ -78,13 +78,14 @@ def _surface(chain: list[OptionContract], spot: float) -> dict:
     )
 
 
+def _column(surface, expiry) -> dict:
+    """Return the expiry's cells by strike, one for each row the surface holds."""
+    (col,) = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == expiry]
+    return {r["strike"]: r["gex"][col] for r in surface["cells"]}
+
+
 def _cell(surface, strike, expiry):
-    try:
-        col = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == expiry][0]
-        row = [r for r in surface["cells"] if r["strike"] == strike][0]
-    except IndexError:
-        return None
-    return row["gex"][col]
+    return _column(surface, expiry)[strike]
 
 
 def test_fixture_preconditions_are_real_two_expiry_input():
@@ -154,12 +155,13 @@ def test_C_expiry_isolation():
     base = _surface(chain, SPOT)
     kept_e2 = _slice(chain, E2)[::2]
     after = _surface(_slice(chain, E1) + kept_e2, SPOT)
-    e1_strikes = [k for k in base["strikes"] if _cell(base, k, E1) is not None]
-    assert e1_strikes
-    for k in e1_strikes:
-        assert _cell(base, k, E1) == _cell(after, k, E1)
-    # the mutation was material to E2 (otherwise isolation would be proven vacuously)
-    assert any(_cell(base, k, E2) != _cell(after, k, E2) for k in base["strikes"])
+    e1 = {k: v for k, v in _column(base, E1).items() if v is not None}
+    assert e1
+    for k, v in e1.items():
+        assert _cell(after, k, E1) == v
+    # the mutation was material to E2 (otherwise isolation would be proven vacuously): a cell
+    # changed, or a strike's row left with the rows removed
+    assert _column(base, E2) != _column(after, E2)
 
 
 # F. INPUT-PROJECTION COVERAGE — every OI-bearing expiry/strike IN THE SUPPLIED CHAIN is projected.
