@@ -31,9 +31,46 @@ OPTION_SERVICES = ("LEVELONE_OPTIONS", "OPTIONS_BOOK")
 LIVE, OFFLINE, NOT_LIVE = "LIVE", "OFFLINE", "NOT LIVE"
 
 
+@dataclass(frozen=True)
+class QuoteRow:
+    """A symbol's LEVELONE_EQUITIES row: each field the last value Schwab sent for it.
+
+    None until Schwab sends one, and when the one it sent is not a number (rule 2). `spot` is
+    LAST_PRICE; `regular_last` the regular session's last trade; `chg_pct` and
+    `chg_pct_regular` Schwab's NET_CHANGE_PERCENT and REGULAR_MARKET_CHANGE_PERCENT;
+    `exchange_quote_ts` and `trade_ts` QUOTE_TIME and TRADE_TIME (epoch s);
+    `server_received_ts` the daemon's receive time of the row's newest message.
+    """
+
+    ticker: str = ""
+    spot: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    mark: float | None = None
+    bid_size: float | None = None
+    ask_size: float | None = None
+    last_size: float | None = None
+    total_volume: float | None = None
+    open_price: float | None = None
+    high_price: float | None = None
+    low_price: float | None = None
+    regular_last: float | None = None
+    chg_pct: float | None = None
+    chg_pct_regular: float | None = None
+    net_change: float | None = None
+    exchange_quote_ts: float | None = None
+    trade_ts: float | None = None
+    security_status: str | None = None
+    server_received_ts: float | None = None
+
+
+#: a symbol no LEVELONE_EQUITIES message has reached: every field unknown
+NO_QUOTE = QuoteRow()
+
+
 _lock = threading.RLock()
-# ticker UPPER -> last plane payload (streaming and/or REST fast quote)
-_by_ticker: dict[str, dict[str, Any]] = {}
+# ticker UPPER -> its row
+_by_ticker: dict[str, QuoteRow] = {}
 
 
 #: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
@@ -130,51 +167,47 @@ def record_from_level_one_equity(
 
 def _plane_row(
     t: str, snapshot: dict[str, tuple[float | str, float]], rts: float
-) -> tuple[dict[str, float | str | None], float | None]:
+) -> tuple[QuoteRow, float | None]:
     """Return the plane's row of `t` and its trade time (epoch s; None: none held).
 
     Each field of the row is the last one Schwab sent (`snapshot`).
     """
 
-    def val(name: str) -> float | str | None:
-        return snapshot[name][0] if name in snapshot else None
-
     def number(name: str) -> float | None:
         """Return a number field's value (a price, a count, a clock); None when not held."""
-        v = val(name)
-        return None if isinstance(v, str) else v
+        v = snapshot[name][0] if name in snapshot else None
+        return v if isinstance(v, float | int) else None
 
     trade_ms = number(VENDOR_TRADE_TIME)
     trade_ts = None if trade_ms is None else trade_ms / 1000.0
-    quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
-    row: dict[str, float | str | None] = {
-        "ticker": t,
-        "spot": val(VENDOR_LAST_PRICE),
-        "bid": val("BID_PRICE"),
-        "ask": val("ASK_PRICE"),
-        "mark": val("MARK"),
-        "bid_size": val("BID_SIZE"),
-        "ask_size": val("ASK_SIZE"),
-        "last_size": val(VENDOR_LAST_SIZE),
-        "total_volume": val("TOTAL_VOLUME"),
-        "open_price": val("OPEN_PRICE"),
-        "high_price": val("HIGH_PRICE"),
-        "low_price": val("LOW_PRICE"),
+    status = snapshot["SECURITY_STATUS"][0] if "SECURITY_STATUS" in snapshot else None
+    row = QuoteRow(
+        ticker=t,
+        spot=number(VENDOR_LAST_PRICE),
+        bid=number("BID_PRICE"),
+        ask=number("ASK_PRICE"),
+        mark=number("MARK"),
+        bid_size=number("BID_SIZE"),
+        ask_size=number("ASK_SIZE"),
+        last_size=number(VENDOR_LAST_SIZE),
+        total_volume=number("TOTAL_VOLUME"),
+        open_price=number("OPEN_PRICE"),
+        high_price=number("HIGH_PRICE"),
+        low_price=number("LOW_PRICE"),
         # the regular session's last trade: it stands from that session's close, while LAST_PRICE
         # goes on with the extended hours' trades (today's daily candle closes on it)
-        "regular_last": val("REGULAR_MARKET_LAST_PRICE"),
+        regular_last=number("REGULAR_MARKET_LAST_PRICE"),
         # Schwab's own change vs the prior close (0 hops): NET_CHANGE_PERCENT is the last price's,
         # extended hours included; REGULAR_MARKET_CHANGE_PERCENT is the regular session's
-        "chg_pct": val("NET_CHANGE_PERCENT"),
-        "chg_pct_regular": val("REGULAR_MARKET_CHANGE_PERCENT"),
-        "net_change": val("NET_CHANGE"),
-        "exchange_quote_ts": quote_ts,
-        #: TRADE_TIME_MILLIS (epoch s): the exchange time of the last trade -- the clock a
-        #: LAST_PRICE tick belongs to (candles); never used as the quote time.
-        "trade_ts": trade_ts,
-        "security_status": val("SECURITY_STATUS"),
-        "server_received_ts": rts,
-    }
+        chg_pct=number("NET_CHANGE_PERCENT"),
+        chg_pct_regular=number("REGULAR_MARKET_CHANGE_PERCENT"),
+        net_change=number("NET_CHANGE"),
+        exchange_quote_ts=number("QUOTE_TIME_MILLIS"),  # TRADE_TIME never stands in
+        # the exchange time of the last trade: the clock a LAST_PRICE tick belongs to (candles)
+        trade_ts=trade_ts,
+        security_status=status if isinstance(status, str) else None,
+        server_received_ts=rts,
+    )
     return row, trade_ts
 
 
@@ -193,12 +226,11 @@ def remove_row_listener(fn: Callable[[str], object]) -> None:
         _row_listeners.remove(fn)
 
 
-def get_quote(ticker: str) -> dict[str, Any] | None:
-    """Copy of latest plane row for ticker, or None."""
+def get_quote(ticker: str) -> QuoteRow:
+    """Return the ticker's row (NO_QUOTE: no LEVELONE_EQUITIES message has reached it)."""
     t = ticker_storage_key(ticker)  # the plane's key, the same as the write's
     with _lock:
-        row = _by_ticker.get(t)
-        return dict(row) if row else None
+        return _by_ticker.get(t, NO_QUOTE)
 
 
 #: The daemon sends its status every second; the daemon, and everything it streams, is live
@@ -326,8 +358,7 @@ def not_trading(symbol: str, service: str, now: float) -> str | None:
     if service in OPTION_SERVICES:
         return None if options_open(at) else "outside Schwab's option market hours"
     t = ticker_storage_key(symbol)
-    row = get_quote(t) if t else None
-    status = row.get("security_status") if row is not None else None
+    status = get_quote(t).security_status
     return f"Schwab marks {t} {status}" if status in ("Closed", "Halted") else None
 
 
