@@ -34,7 +34,7 @@ def test_the_book_top_is_the_size_schwab_sent():
     assert (bid, ask, bid_size, ask_size) == (754.3, 754.32, 600, 40)
     m = ofe.compute_book_microstructure(
         {
-            "content": [],
+            "book": None,
             "top": {"bid": bid, "ask": ask, "bid_size": bid_size, "ask_size": ask_size},
         },
         now_ts=1.0,

@@ -177,9 +177,7 @@ def _received(ts):
 
     It is on SPY's tape with that receive time.
     """
-    return lambda: any(
-        r.get("server_received_ts") == ts for r in ofls.get_content_for_symbol("SPY")
-    )
+    return lambda: any(r["server_received_ts"] == ts for r in ofls.prints("SPY"))
 
 
 @pytest.mark.usefixtures("feed")
@@ -300,8 +298,7 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
         bus.publish("quote.SPY", _spy_trade(502.0, ts))
         assert await _until(_received(ts))
         assert not any(
-            "CLOSE_PRICE" in item or item.get("LAST_PRICE") == 1.05
-            for item in ofls.get_content_for_symbol("SPY")
+            "CLOSE_PRICE" in item or item.get("LAST_PRICE") == 1.05 for item in ofls.prints("SPY")
         ), "the console applied a non-Schwab value"
         sub = bus.subscribe("", policy=LATEST)  # a second reader, as the console's _bus_loop
         try:
@@ -396,7 +393,7 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
         bus.publish("quote.SPY", _spy_trade(504.0, time_et.now()))
         # nothing runs on this loop but this test that could apply it
         assert asyncio.all_tasks() == {asyncio.current_task()}
-        assert ofls.get_content_for_symbol("SPY") == []
+        assert ofls.prints("SPY") == []
         ofs.bind_daemon(capture.Daemon(bus, HealthRegistry(), []))
         assert ofs.start_order_flow_stream() is True
         try:
@@ -420,10 +417,7 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
     msg["symbol"] = "ZZZNOPE"
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
-    assert (
-        ofls.get_content_for_symbol("ZZZNOTS") == []
-        and ofls.get_content_for_symbol("ZZZNOPE") == []
-    )
+    assert ofls.prints("ZZZNOTS") == [] and ofls.prints("ZZZNOPE") == []
 
 
 @pytest.mark.usefixtures("feed")

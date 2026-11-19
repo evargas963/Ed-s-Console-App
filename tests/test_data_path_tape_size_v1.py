@@ -32,7 +32,5 @@ def test_a_print_keeps_the_size_schwab_sent():
     for m in _MSGS[:3]:
         state.push_option_top("SPY", m["item"])
         state.push_level_one("SPY", m["item"], ts_recv=m["ts_recv"])
-    points = l1.iter_signed_cum_points(
-        l1.canonical_tape_prints(state.get_content_for_symbol("SPY"))
-    )
+    points = l1.iter_signed_cum_points(state.prints("SPY"))
     assert points[-1][1] == -92

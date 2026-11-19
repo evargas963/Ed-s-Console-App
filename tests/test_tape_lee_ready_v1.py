@@ -96,13 +96,13 @@ def _tape() -> list:
                 quote_msg(symbol="SPY", src=src, native=m["item"], ts_recv=m["ts_recv"]),
             )
             ofs._ingest_pushed("quote.SPY", bus.current[key][1])
-        return state.get_content_for_symbol("SPY")
+        return state.prints("SPY")
     finally:
         state.clear_all_live_state()
 
 
 def test_every_trade_is_a_print_received_when_its_message_was():
-    prints = l1.canonical_tape_prints(_tape())
+    prints = _tape()
     want = _expected_prints()
     got = [(p["server_received_ts"], p["price"], p["size"], p["time_millis"]) for p in prints]
     assert got == want[-state.MAX_TAPE_PRINTS :]
@@ -117,8 +117,7 @@ def test_every_trade_is_a_print_received_when_its_message_was():
 
 
 def test_each_print_is_signed_against_the_quote_its_record_held():
-    content = _tape()
-    prints = l1.canonical_tape_prints(content)
+    prints = _tape()
     want = _expected()
     assert len(prints) <= state.MAX_TAPE_PRINTS  # the tape kept every print of the two minutes
     got = [(size, signed) for _x, size, signed in l1._signed_walk(prints, None)]
@@ -135,7 +134,7 @@ def test_the_cumulative_delta_and_its_unsigned_share_are_served():
     signed = [s for _sz, s in want if s is not None]
     total = sum(sz for sz, _s in want)
     unsigned = sum(sz for sz, s in want if s is None)
-    out = ofe.OrderFlowEngine().compute({"content": content}, now=_MSGS[-1]["ts_recv"])
+    out = ofe.OrderFlowEngine().compute({"book": None, "prints": content}, now=_MSGS[-1]["ts_recv"])
     assert out["cum_delta_proxy"] == sum(signed)
     assert out["cum_delta_unsigned"] == unsigned / total
 

@@ -203,7 +203,7 @@ def test_oi_and_volume_cells_carry_the_served_total(held):
 
 def test_a_book_with_no_age_is_not_reported_fresh():
     """LIVE badges read book_stale: an unknown book age is unknown (None), never False (fresh)."""
-    out = compute_book_microstructure({"content": {}}, now_ts=1_800_000_000.0)
+    out = compute_book_microstructure({"book": None}, now_ts=1_800_000_000.0)
     assert out["ages"]["book_age_sec"] is None and out["ages"]["book_stale"] is None
 
 

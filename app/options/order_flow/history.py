@@ -15,7 +15,6 @@ from collections import defaultdict, deque
 from collections.abc import Sequence
 from typing import Any, Literal, TypedDict
 
-from calc.l1_trade_observation import canonical_tape_prints
 from calc.order_flow import OF_LEAN_KEPT_SEC, Book
 from instrument_identity import ticker_storage_key
 from numeric_contract import (
@@ -172,11 +171,11 @@ def quoted(trade: float, top: dict[str, Any] | None, streamed: dict[str, Any] | 
     }
 
 
-def recent_prints(contract: str, content: Sequence[Any], limit: int) -> list[TapePrint]:
+def recent_prints(contract: str, kept: Sequence[dict[str, Any]], limit: int) -> list[TapePrint]:
     """Return the newest `limit` prints of `contract` as the tape names them, newest first.
 
-    `content` is the live state's for the contract (state.get_content_for_symbol): each print it
-    kept, a genuinely new (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE), with what it held then.
+    `kept` is the live state's tape of the contract (state.prints), in receive order: each print
+    it kept, a genuinely new (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE), with what it held then.
     `trade_time_ms` is Schwab's TRADE_TIME_MILLIS as sent (None: the message carried none);
     `ts_recv`, when the message arrived, is not shown; the tape orders prints by Schwab's trade
     time (server.tape).
@@ -199,7 +198,7 @@ def recent_prints(contract: str, content: Sequence[Any], limit: int) -> list[Tap
             "delta": p["delta"],
             "classification": p["landed"],
         }
-        for p in canonical_tape_prints(content)[::-1][: max(0, int(limit))]
+        for p in kept[::-1][: max(0, int(limit))]
     ]
 
 

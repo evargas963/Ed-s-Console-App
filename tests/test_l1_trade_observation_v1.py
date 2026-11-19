@@ -36,17 +36,17 @@ def _tape(sym: str, *rows, state=None) -> list:
         }
         st.push_option_top(sym, msg)
         st.push_level_one(sym, msg, ts_recv=1000.0 + i)
-    return st.get_content_for_symbol(sym)
+    return st.prints(sym)
 
 
 def _cvd(content: list) -> float | None:
-    """The cumulative delta of `content`'s tape, as the engine computes it."""
-    return l1.compute_cum_delta_proxy(l1.canonical_tape_prints(content))
+    """The cumulative delta of the tape `content`, as the engine computes it."""
+    return l1.compute_cum_delta_proxy(content)
 
 
 def test_distinct_same_ms_price_change_retained():
     content = _tape("L1A", (500.0, 10, 1000), (500.1, 10, 1000))
-    out = l1.canonical_tape_prints(content)
+    out = content
     assert len(out) == 2
     assert [p["price"] for p in out] == [500.0, 500.1]
     assert _cvd(content) == 10
@@ -54,26 +54,26 @@ def test_distinct_same_ms_price_change_retained():
 
 def test_distinct_same_ms_size_change_retained():
     content = _tape("L1B", (500.0, 10, 1000), (500.0, 4, 1000))
-    out = l1.canonical_tape_prints(content)
+    out = content
     assert len(out) == 2
     assert [p["size"] for p in out] == [10, 4]
 
 
 def test_adjacent_identical_restatement_suppressed():
     content = _tape("L1C", (500.0, 10, 1000), (500.1, 10, 2000), (500.1, 10, 2000))
-    assert len(l1.canonical_tape_prints(content)) == 2
+    assert len(content) == 2
     assert _cvd(content) == 10
 
 
 def test_non_adjacent_identical_triple_retained():
     content = _tape("L1D", (500.0, 10, 1000), (500.1, 4, 1000), (500.0, 10, 1000))
-    out = l1.canonical_tape_prints(content)
+    out = content
     assert len(out) == 3
 
 
 def test_out_of_order_vendor_timestamps_preserve_receive_order():
     content = _tape("L1E", (500.0, 10, 2000), (500.2, 5, 1000))
-    prints = l1.canonical_tape_prints(content)
+    prints = content
     assert [p["time_millis"] for p in prints] == [2000, 1000]
     assert _cvd(content) == 5
 
@@ -98,7 +98,7 @@ def test_a_zero_tick_is_signed_by_the_last_price_change():
         (500.0, 2, 4000),
         (500.0, 3, 5000),
     )
-    prints = l1.canonical_tape_prints(content)
+    prints = content
     assert [c for _t, c in l1.iter_signed_cum_points(prints)] == [0.0, 4.0, 10.0, 8.0, 5.0]
     # the first print is unsigned (no change seen): pressure is over the signed size, and the
     # unsigned share is served beside it
@@ -126,7 +126,7 @@ def test_reconnect_clear_resets_restatement_identity():
         {"key": sym, "LAST_PRICE": 10.0, "LAST_SIZE": 1, "TRADE_TIME_MILLIS": 5},
         ts_recv=time_et.now(),
     )
-    tape = l1.canonical_tape_prints(live_state.get_content_for_symbol(sym))
+    tape = live_state.prints(sym)
     assert len(tape) == 1
     assert tape[0]["receive_seq"] == 1
     assert tape[0]["classification"] == l1.TAPE_CLASSIFICATION
@@ -141,7 +141,7 @@ def test_live_state_equals_replay_of_same_receive_order_observations():
 
 def test_mutation_first_per_ms_fails_current_keep():
     content = _tape("L1F", (500.0, 10, 1000), (500.1, 4, 1000))
-    current = l1.canonical_tape_prints(content)
+    current = content
     seen: set[int] = set()
     old = []
     for p in current:
@@ -167,7 +167,7 @@ def test_mutation_vendor_time_sort_fails_receive_order():
 
 def test_slope_uses_same_signed_size_walk():
     content = _tape("L1I", (500.0, 10, 1000), (500.1, 4, 2000), (499.9, 6, 3000))
-    prints = l1.canonical_tape_prints(content)
+    prints = content
     points = l1.iter_signed_cum_points(prints)
     assert points[-1][1] == l1.compute_cum_delta_proxy(prints) == 4 - 6
     assert [(round(t, 6), c) for t, c in points] == [(1.0, 0.0), (2.0, 4.0), (3.0, -2.0)]
@@ -179,7 +179,7 @@ def test_slope_uses_same_signed_size_walk():
 def test_a_window_keeps_only_the_prints_traded_at_or_after_its_start():
     """A 1.5 s window ending at 3 s: the print at 1 s is left out; its tick still signs the next."""
     content = _tape("L1W", (500.0, 10, 1000), (500.1, 4, 2000), (499.9, 6, 3000))
-    prints = l1.canonical_tape_prints(content)
+    prints = content
     assert [(round(t, 6), c) for t, c in l1.iter_signed_cum_points(prints, 1500.0)] == [
         (2.0, 4.0),
         (3.0, -2.0),

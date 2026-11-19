@@ -7,8 +7,7 @@ from typing import Any
 
 import live_market_plane as lmp
 from app.options.order_flow.history import recent_prints, tape_row
-from app.options.order_flow.state import get_content_for_symbol
-from calc.l1_trade_observation import canonical_tape_prints
+from app.options.order_flow.state import prints
 from push.answers import unavailable
 from state.level_store import published_levels
 
@@ -38,11 +37,7 @@ def tape(ticker: str, now: float) -> dict[str, Any]:
     # made rows: each contract's last TAPE_ROWS received are the ones looked at
     newest = heapq.nlargest(
         TAPE_ROWS,
-        (
-            (p, sym)
-            for sym in symbols
-            for p in reversed(canonical_tape_prints(get_content_for_symbol(sym))[-TAPE_ROWS:])
-        ),
+        ((p, sym) for sym in symbols for p in reversed(prints(sym)[-TAPE_ROWS:])),
         key=lambda kept: (
             kept[0]["time_millis"] is not None,
             kept[0]["time_millis"],

@@ -95,8 +95,7 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     }
     _push_l1("SPY", native, ts_recv=time_et.now())
 
-    top = ofls.get_content_for_symbol("SPY")
-    assert any(isinstance(item, dict) and item["price"] == 450.0 for item in top)
+    assert any(item["price"] == 450.0 for item in ofls.prints("SPY"))
     assert lmp.get_quote("SPY") is None  # the price is the daemon's row, not a copy here
 
 
@@ -111,9 +110,8 @@ def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
     content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
     _push_book("SPY", content, ts_recv=time_et.now())
 
-    items = ofls.get_content_for_symbol("SPY")
     held = read_book(content, "NASDAQ_BOOK")
-    assert held in items
+    assert ofls.newest_book("SPY", "NASDAQ_BOOK") == held
     assert [p for p, _v in held.pairs("BIDS")] == [lv["BID_PRICE"] for lv in content["BIDS"]]
 
 
@@ -169,7 +167,7 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
 
     def prices(sym: str) -> list:
-        return [i["price"] for i in ofls.get_content_for_symbol(sym) if isinstance(i, dict)]
+        return [i["price"] for i in ofls.prints(sym)]
 
     assert 380.0 not in prices("SPY")
     assert 380.0 in prices("QQQ")
