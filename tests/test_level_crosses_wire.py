@@ -15,6 +15,7 @@ import json
 import sqlite3
 import threading
 import warnings
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
@@ -25,7 +26,7 @@ import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from calc.terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
-from db import EdDB, LevelCrossEvent
+from db import EdDB, LevelCrossEvent, StoredCross
 from option_contract import read_chain
 from push import confluence as push_confluence
 from push import levels as push_levels
@@ -81,7 +82,7 @@ def _print(msg: dict, tk: str = "SPY") -> list:
     pricing thread).
     """
     lmp.record_from_level_one_equity(tk, msg["native"], received_ts=msg["ts_recv"])
-    before = {c["cross_id"] for c in _stored(tk)}
+    before = {c.cross_id for c in _stored(tk)}
     gate = threading.Event()
     server.chain_pricing.submit(gate.wait, 10)  # the queued reprice waits to be taken here
     try:
@@ -94,7 +95,7 @@ def _print(msg: dict, tk: str = "SPY") -> list:
     if job is not None:
         server.chain_pricing.submit(server._price_chain, tk, *job, at).result()
     server.chain_pricing.submit(lambda: None).result()
-    return [c for c in _stored(tk) if c["cross_id"] not in before]
+    return [c for c in _stored(tk) if c.cross_id not in before]
 
 
 def _forget(tk: str = "SPY") -> None:
@@ -110,7 +111,7 @@ def _forget(tk: str = "SPY") -> None:
 
 
 def _named(rows: list) -> dict:
-    return {c["level_name"]: (c["direction"], c["level_value"], c["spot_at_cross"]) for c in rows}
+    return {c.level_name: (c.direction, c.level_value, c.spot_at_cross) for c in rows}
 
 
 def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prints():
@@ -140,9 +141,7 @@ def test_each_cross_is_found_at_the_live_price_in_the_order_schwab_sent_the_prin
     assert _named(down) == {n: (CROSSED_DOWN, levels[n], AFTER_HOURS) for n in BETWEEN}
     # each stored cross is held for the live readers, newest last
     stored = up + down
-    assert sorted(c["cross_id"] for c in held[-len(stored) :]) == sorted(
-        c["cross_id"] for c in stored
-    )
+    assert sorted(c.cross_id for c in held[-len(stored) :]) == sorted(c.cross_id for c in stored)
 
 
 def test_only_the_four_watched_levels_are_crossed_each_under_its_listed_name():
@@ -203,14 +202,14 @@ def test_a_level_crossed_again_is_stored_again():
         back = _print(SPY_PRINT_ON_A_STRIKE, tk)
         again = _print(SPY_PRINT_A_STRIKE_AWAY, tk)
         with cross_store._lock:
-            held = {c["cross_id"] for c in cross_store._crosses[tk]}
+            held = {c.cross_id for c in cross_store._crosses[tk]}
     finally:
         _forget(tk)
     assert set(_named(first)) == BETWEEN
     assert set(_named(back)) >= BETWEEN
-    assert {c["direction"] for c in back} == {CROSSED_DOWN}
+    assert {c.direction for c in back} == {CROSSED_DOWN}
     assert _named(again) == _named(first)
-    ids = [c["cross_id"] for c in first + back + again]
+    ids = [c.cross_id for c in first + back + again]
     assert len(set(ids)) == len(ids) and set(ids) <= held
 
 
@@ -431,9 +430,9 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
         timeframe="1m",
     )
     stored = edb.record_level_crosses([event])
-    assert [
-        (c["level_name"], c["level_value"], c["direction"], c["spot_at_cross"]) for c in stored
-    ] == [("Call wall", 765.0, CROSSED_UP, STRIKE_AWAY)]
+    assert [(c.level_name, c.level_value, c.direction, c.spot_at_cross) for c in stored] == [
+        ("Call wall", 765.0, CROSSED_UP, STRIKE_AWAY)
+    ]
     # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
     assert edb.get_recent_crosses("SPY", n=10) == stored
 
@@ -513,12 +512,15 @@ def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
     )["rows"]
     assert len(rows) == 400
     tk = "ZZRC88"
+    stored = {f.name for f in fields(StoredCross)}  # each row as get_recent_crosses reads it
     with cross_store._lock:
-        cross_store._crosses[tk] = rows[::-1]
+        cross_store._crosses[tk] = [
+            StoredCross(**{k: v for k, v in r.items() if k in stored}) for r in rows[::-1]
+        ]
     try:
         events = cross_store.merged_recent(tk, 400)
     finally:
         with cross_store._lock:
             cross_store._crosses.pop(tk, None)
     assert len(events) == 243
-    assert max(len(e["level_names"]) for e in events) == 6
+    assert max(len(e.level_names) for e in events) == 6

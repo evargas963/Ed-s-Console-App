@@ -14,6 +14,7 @@ from push.book import order_flow_microstructure
 from push.terrain import terrain
 from push.verdict import LEVELS_STALE
 from state import cross_store
+from state.cross_store import MergedCross
 from time_et import ct_label, last_open
 
 #: a cross's direction as the queue words it
@@ -66,8 +67,7 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     start = _desk_window_start(tf, now)
     crosses = cross_store.merged_recent(tk, 200)
     in_window = sorted(
-        (c for c in crosses if c["ts_utc"] >= start),
-        key=lambda c: c["ts_utc"],
+        (c for c in crosses if c.cross.ts_utc >= start), key=lambda c: c.cross.ts_utc
     )
     items = [
         *_cross_items(in_window),
@@ -87,31 +87,31 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
         "window_label": DESK_LOOKBACK[tf][1],
         "items": items,
         "cross_counts": {
-            d: sum(1 for c in in_window if c["direction"] == d) for d in ("up", "down")
+            d: sum(1 for c in in_window if c.cross.direction == d) for d in ("up", "down")
         },
     }
 
 
-def _cross_items(in_window: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
     """Return the window's level crosses, numbered oldest first (cross_store's, oldest first).
 
     The newest cross at each level, for the newest DESK_MARKERS levels, is flagged for the chart.
     """
     items: list[dict[str, Any]] = []
-    for i, c in enumerate(in_window):
-        names = " + ".join(c["level_names"])
+    for i, merged in enumerate(in_window):
+        c = merged.cross
         items.append(
             {
-                "key": f"x{c['cross_id']}",
+                "key": f"x{c.cross_id}",
                 "n": i + 1,
-                "ts": c["ts_utc"],
+                "ts": c.ts_utc,
                 "dom": "LEVELS",
-                "price": c["level_value"],
-                "dir": c["direction"],
+                "price": c.level_value,
+                "dir": c.direction,
                 "marker": False,
-                "title": f"Crossed {_CROSS_WORD[c['direction']]} {names}",
-                "detail": f"{price_text(c['level_value'])} · spot "
-                f"{price_text(c['spot_at_cross'])} at the cross",
+                "title": f"Crossed {_CROSS_WORD[c.direction]} {' + '.join(merged.level_names)}",
+                "detail": f"{price_text(c.level_value)} · spot "
+                f"{price_text(c.spot_at_cross)} at the cross",
                 "src": "level_crosses",
             }
         )

@@ -9,7 +9,6 @@ import threading
 from contextlib import closing
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
-from typing import Any
 
 from db_authority import (
     canonical_db_path,
@@ -88,6 +87,13 @@ class LevelCrossEvent:
     zone_before: str | None
     zone_after: str | None
     timeframe: str
+
+
+@dataclass
+class StoredCross(LevelCrossEvent):
+    """A level cross as stored: the event and the id the database gave its row."""
+
+    cross_id: int
 
 
 @dataclass(frozen=True)
@@ -215,7 +221,7 @@ class EdDB:
     # LEVEL CROSS OPERATIONS
     # ════════════════════════════════════════════════════════════════════════
 
-    def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[dict[str, Any]]:
+    def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[StoredCross]:
         """Store the level crosses of one price, all in one transaction.
 
         server._log_level_crosses decides them. Every one is stored, or none is and the error is
@@ -226,16 +232,16 @@ class EdDB:
             f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
             " RETURNING cross_id"
         )
-        logged: list[dict[str, Any]] = []
+        logged: list[StoredCross] = []
         # the connection is the transaction (commit, or roll back on an error) and is closed
         with closing(self._connect()) as conn, conn:
             for event in events:
                 d = asdict(event)
                 (cross_id,) = conn.execute(sql, [d[c] for c in cols]).fetchone()
-                logged.append({**d, "cross_id": cross_id})  # the stored row
+                logged.append(StoredCross(**d, cross_id=cross_id))  # the stored row
         return logged
 
-    def get_recent_crosses(self, ticker: str, n: int = 20) -> list[dict[str, Any]]:
+    def get_recent_crosses(self, ticker: str, n: int = 20) -> list[StoredCross]:
         """Return the most recent level crosses, each the row record_level_crosses returns."""
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
         with closing(self._connect()) as conn, conn:
@@ -248,7 +254,7 @@ class EdDB:
             """,
                 (ticker, n),
             ).fetchall()
-        return [dict(r) for r in rows]
+        return [StoredCross(**dict(r)) for r in rows]
 
 
 @functools.cache
