@@ -81,6 +81,7 @@ omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
 [tool.pyright]
 pythonVersion = "3.13"
 include = [
+  "app",
   "calc",
   "live_market_plane.py",
   "live_price_rows.py",

@@ -287,7 +287,8 @@ required job too.
 12. **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose
     states are named constants. Enforced by: pyright 1.1.414 (`requirements-dev.txt`, the census's
     own pin), strict over the files `pyproject.toml` `[tool.pyright]` lists, in `hardening` (in
-    force on the Calculators and State); Push joins as its slice lands (step 6)
+    force on the Calculators, State, Push and `app/`: the page socket, the daemon and the
+    order-flow State); Feed and the root modules join as each reaches 0
 13. **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20
     as the shape. Imports at the top, with no exception: the daemon runs under `python` in its
     window, so an error while it loads shows there, and `capture_main` imports it at the top
