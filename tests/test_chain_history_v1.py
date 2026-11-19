@@ -132,14 +132,15 @@ def _parts(ts: float):
 
     At no spot (a daemon holding no price).
     """
-    return cs.chain_messages("MRVL", _MRVL, ts, None, None)
+    return cs.chain_messages("MRVL", _MRVL, ts, None, None, False)
 
 
 def test_a_chain_reaches_the_console_whole_in_parts():
     published = _parts(et_ts("2026-09-30 15:31:57"))
     assert [m["part"] for _t, m in published] == [0, 1, 2, 3, 4]  # 2,432 contracts
-    ((tk, contracts, ts, reason, spot),) = _assembled(published)
+    ((tk, contracts, ts, reason, spot, capture),) = _assembled(published)
     assert (tk, ts, reason, spot) == ("MRVL", et_ts("2026-09-30 15:31:57"), None, (None, None))
+    assert capture is False  # as published (_parts): not a capture
     assert sorted(c.symbol for c in contracts) == sorted(c["symbol"] for c in _MRVL)
     assert contracts == read_chain(_MRVL), "each contract as read once, in order"
 
@@ -160,7 +161,7 @@ def test_a_chain_missing_a_part_is_reported_even_when_the_next_chain_is_one_part
     """
     early = _parts(et_ts("2026-09-30 15:31:57"))[:2]  # two of five parts arrived
     one_part = cs.chain_messages(
-        "MRVL", _MRVL[: cs.CHAIN_PART_CONTRACTS], et_ts("2026-09-30 15:35:57"), None, None
+        "MRVL", _MRVL[: cs.CHAIN_PART_CONTRACTS], et_ts("2026-09-30 15:35:57"), None, None, False
     )
     first, second = _assembled(early + one_part)
     assert first[1] is None and "arrived with 2 of its 5 parts" in first[3]
@@ -174,7 +175,7 @@ def test_a_chain_begun_before_the_console_connected_is_no_failure():
     """
     published = _parts(et_ts("2026-09-30 15:31:57"))[2:]  # the console connected after part 1
     published += _parts(et_ts("2026-09-30 15:35:57"))
-    ((tk, contracts, _ts_, reason, _spot),) = _assembled(published)
+    ((tk, contracts, _ts_, reason, _spot, _capture),) = _assembled(published)
     assert contracts is not None and reason is None and len(contracts) == len(_MRVL)
 
 
@@ -182,12 +183,13 @@ def test_a_refused_chain_reaches_the_console_as_schwabs_answer(tmp_path, schwab)
     schwab.refuse_chain = {"SPY"}
     sweep, published, client = _sweep(tmp_path, schwab, lambda: et_ts("2026-09-30 15:31:57"))
     assert _rotate(sweep, client) == set()
-    ((tk, contracts, _ts_, reason, spot),) = _assembled(published)
+    ((tk, contracts, _ts_, reason, spot, capture),) = _assembled(published)
     assert (
         tk == "SPY"
         and contracts is None
         and spot is None
         and reason == "chain for 2026-11-20 returned HTTP 502"
+        and capture is False
     )
 
 
@@ -383,8 +385,9 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     assert _rotate(sweep, client) == {"SPY"}
     assert all("failed" not in m for _t, m in published)
-    ((tk, contracts, _t, reason, _spot),) = _assembled(published)
+    ((tk, contracts, _t, reason, _spot, capture),) = _assembled(published)
     assert contracts is not None and reason is None
+    assert capture is False, "a chain whose history was not stored is no capture"
     with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("DROP TABLE complete_chain_captures")
     clock["now"] += 120  # the same window's next chain
@@ -394,6 +397,7 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
             c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0]
             == 1
         )
+    assert _assembled(published)[-1][5] is True, "the stored one is marked the capture"
 
 
 def test_a_round_is_timed_only_when_it_asked_for_the_whole_watchlist(tmp_path, schwab):
@@ -491,7 +495,9 @@ def test_the_daemons_chain_is_the_current_record_whole_once_all_parts_are_in():
     assert topic == late_topic == "chain.MRVL"
     assert [m["part"] for m in record] == list(range(record[0]["parts"])) and len(record) > 1
     assert [m["part"] for m in late_record] == list(range(late_record[0]["parts"]))
-    ((tk, contracts, _ts_, reason, _spot),) = _assembled([(late_topic, m) for m in late_record])
+    ((tk, contracts, _ts_, reason, _spot, _capture),) = _assembled(
+        [(late_topic, m) for m in late_record]
+    )
     assert tk == "MRVL" and reason is None
     assert sorted(c.symbol for c in contracts) == sorted(c["symbol"] for c in _MRVL)
 

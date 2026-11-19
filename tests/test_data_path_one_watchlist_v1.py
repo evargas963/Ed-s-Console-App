@@ -90,7 +90,7 @@ def _market(bus, ticker: str, contracts: list[dict], price: float, ts: float) ->
 
     As the chain sweep and the stream publish them.
     """
-    for topic, msg in chain_messages(ticker, contracts, ts, price, ts):
+    for topic, msg in chain_messages(ticker, contracts, ts, price, ts, False):
         bus.publish(topic, msg)
     bus.publish(
         f"quote.{ticker}",
@@ -599,7 +599,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
                 False,
                 "no chain is fetched for this ticker: it is not on the watchlist",
             )
-            server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None)
+            server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None, False)
             assert _surface(on)["reason"] == (
                 "no terrain snapshot has been computed yet — "
                 "chain fetch failed (full chain returned HTTP 400)"

@@ -588,7 +588,7 @@ def test_a_push_on_a_ticker_no_page_shows_is_priced_with_its_next_chain():
         _streamed(_A, _PUSHED_SET, _T)
         with server._chains_waiting_lock:
             after_push = dict(server._chains_waiting)
-        server._on_chain(TK, _RECORDS, _T - 1.0, None, (_SPOT, _T))
+        server._on_chain(TK, _RECORDS, _T - 1.0, None, (_SPOT, _T), False)
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:
@@ -610,7 +610,7 @@ def test_chains_waiting_to_be_priced_keep_only_the_newest_of_each_ticker():
     gate = _busy()
     try:
         for i in range(3):
-            server._on_chain(TK, _RECORDS, _T + i, None, (_SPOT, _T))
+            server._on_chain(TK, _RECORDS, _T + i, None, (_SPOT, _T), False)
         with server._chains_waiting_lock:
             waiting = server._chains_waiting[TK]
     finally:
@@ -692,11 +692,13 @@ def test_a_stored_capture_never_replaces_a_delivered_chain(delivered_first):
     gate = _busy()
     try:
         if delivered_first:
-            server._on_chain(tk, _RECORDS, _T, None, (_SPOT, _T))
+            server._on_chain(tk, _RECORDS, _T, None, (_SPOT, _T), False)
             queued = server._load_stored_levels([tk])
         else:
             queued = server._load_stored_levels([tk])
-            server._on_chain(tk, _RECORDS, _T, None, (_SPOT, _T))  # arrives while the capture waits
+            server._on_chain(
+                tk, _RECORDS, _T, None, (_SPOT, _T), False
+            )  # arrives while the capture waits
     finally:
         gate.set()
         _drain()
@@ -722,7 +724,7 @@ def test_a_delivered_chain_is_priced_before_the_stored_ones_waiting():
     gate = _busy()
     try:
         assert server._load_stored_levels(list(stored)) == 2
-        server._on_chain(TK, _RECORDS, _T, None, (_SPOT, _T))
+        server._on_chain(TK, _RECORDS, _T, None, (_SPOT, _T), False)
     finally:
         gate.set()
         _drain()

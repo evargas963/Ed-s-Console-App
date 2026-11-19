@@ -27,6 +27,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane
 import time_et
 from db_authority import canonical_db_path
+from state import capture_store
 from time_et import ET, now, record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
@@ -119,9 +120,11 @@ def _live_feed_starts_down():
     price mark it (tests/feed_live_helper.py). The day's first streamed trade (time_et.record_trade)
     is process-global too: every test starts with none. So is when each ticker's ticks last
     queued a reprice (server._repriced_at, once a second): every test starts with none, and
-    with no timer of an earlier test's.
+    with no timer of an earlier test's. And so are the chain captures the console holds
+    (state.capture_store): every test's first ask reads its own database.
     """
     time_et.HELD.first_trade = {}
+    capture_store.clear()
     server = sys.modules.get("server")
     if server is not None:
         with server._reprice_lock:

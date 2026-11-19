@@ -138,7 +138,7 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
                 ),
             )
             delivered = await asyncio.to_thread(
-                chain_messages, tk, [dict(c) for c in MRVL.chain], now, MRVL.spot, now
+                chain_messages, tk, [dict(c) for c in MRVL.chain], now, MRVL.spot, now, False
             )
             for topic, msg in delivered:
                 bus.publish(topic, msg)
@@ -307,6 +307,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                 SPY["capture_ts_utc"],
                 SPY["spot"],
                 SPY["capture_ts_utc"],
+                False,
             )
             for topic, msg in delivered:  # each its own callback, as the sweep's publish puts it
                 loop.call_soon(bus.publish, topic, msg)
