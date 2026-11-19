@@ -96,8 +96,8 @@ def _in_first_round(
 def _current_at(computed_ts_utc: float, close: float, stale_after: float | None) -> bool:
     """Whether levels computed at `computed_ts_utc` were current at the option `close`.
 
-    Its last values while it was open are the close values (operator 2026-11-15: "keep the last
-    known data on the screen until we get new data"): current when computed at or after the
+    Its last values while it was open are the close values, which stand on the screen until new
+    data comes (AGENTS.md rule 5): current when computed at or after the
     close, or within two of the daemon's rounds (`stale_after`) before it; with no round
     reported, only at or after it.
     """

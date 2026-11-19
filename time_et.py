@@ -70,7 +70,7 @@ def now() -> float:
 
     Every time of day the program uses (a value's age, whether it is live, a token's expiry, when
     a chain is due) comes from here, read at an entry point and passed on as `now`; Schwab's own
-    times travel with its values as data (operator 2026-11-05: one clock, repo wide).
+    times travel with its values as data (one clock, repo wide: AGENTS.md rule 11).
     """
     return time.time()
 
@@ -273,7 +273,7 @@ def session_label(now: datetime) -> str:
     PRE_MARKET, RTH or AFTER_HOURS inside the window Schwab's /markets sent for today. Before
     its first window, PRE_MARKET from the first stock trade Schwab streamed that was made today
     (record_trade): /markets starts the pre-market at 07:00 ET and Schwab streams the trades
-    made from 04:00 (operator 2026-11-11). CLOSED otherwise (and on a day Schwab says is
+    made from 04:00 (AGENTS.md rule 8). CLOSED otherwise (and on a day Schwab says is
     closed), UNKNOWN when Schwab's answer for today is not held. A valid session is live; with
     none the last values stand. What Schwab streams is shown and recorded whatever it says.
     """
@@ -493,12 +493,11 @@ def time_to_expiry_years(
     Validated against Schwab-reported gamma on real chains: intraday-to-close matches
     Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
 
-    The time left as it is, to the second, however short (operator 2026-11-15: "yes the formula
-    needs to account for time"): the near-expiry gamma, vanna and charm are the formula's own;
-    0.0 at and after settlement, no time left, which every greek takes as no value. None when the
-    time left is not known: an AM-settled contract within the year /markets answers whose date it
-    has not, a date it answers with no regular option session, and an expirationDate without its
-    time.
+    The time left as it is, to the second, however short: the near-expiry gamma, vanna and
+    charm are the formula's own; 0.0 at and after settlement, no time left, which every greek
+    takes as no value. None when the time left is not known: an AM-settled contract within the
+    year /markets answers whose date it has not, a date it answers with no regular option
+    session, and an expirationDate without its time.
     """
     s = sessions.get(str(expiration_date)[:10])
     if s is None:
