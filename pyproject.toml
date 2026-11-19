@@ -80,14 +80,9 @@ omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
 # by pyright's strict mode over the Calculators and State (the Push files join as their slice lands)
 [tool.pyright]
 pythonVersion = "3.13"
-include = [
-  "app",
-  "calc",
-  "live_market_plane.py",
-  "live_price_rows.py",
-  "state",
-  "push",
-]
+# every product module but Feed's, whose calls into schwab-py (untyped) wait for its typed edge
+include = ["."]
+exclude = ["feed", "tests", "tools", "**/node_modules", "**/__pycache__", "**/.*"]
 typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
