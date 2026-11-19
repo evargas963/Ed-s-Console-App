@@ -50,6 +50,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -150,8 +151,10 @@ class _Client:
 
 
 class LiveUiServer:
-    #: the event loop it serves on (serve_live_ui), where a producer's change is marked (changed)
+    #: the event loop it serves on (serve_live_ui), where a producer's change is marked (changed),
+    #: and the thread that loop runs on
     loop: asyncio.AbstractEventLoop
+    loop_thread: int
 
     def __init__(
         self,
@@ -376,18 +379,10 @@ def changed(state: State, ticker: str, *kinds: str) -> None:
     prices = state.prices
     if prices is None:
         return
-    if _on_loop(prices.loop):
+    if threading.get_ident() == prices.loop_thread:
         prices.mark_all(ticker, kinds)
     else:
         prices.loop.call_soon_threadsafe(prices.mark_all, ticker, kinds)
-
-
-def _on_loop(loop: asyncio.AbstractEventLoop) -> bool:
-    """Tell whether the caller runs on `loop`'s own thread."""
-    try:
-        return asyncio.get_running_loop() is loop
-    except RuntimeError:  # no loop runs on this thread
-        return False
 
 
 def selected(state: State) -> set[str]:
@@ -446,7 +441,7 @@ async def serve_live_ui(
     )
     lmp.add_row_listener(srv.on_row)
     beats = asyncio.create_task(srv.beat_loop())
-    srv.loop = asyncio.get_running_loop()
+    srv.loop, srv.loop_thread = asyncio.get_running_loop(), threading.get_ident()
     state.prices = srv
     log.info("live ui: serving price rows to the pages on /ws")
     try:
