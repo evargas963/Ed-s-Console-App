@@ -34,6 +34,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push, live_ui
+from feed import connection
 from feed.chain_sweep import chain_messages
 from stream_spine import (
     LATEST,
@@ -438,6 +439,66 @@ def test_a_message_missing_its_receive_time_is_dropped_whole():
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
     assert ofls.prints("ZZZNOTS") == [] and ofls.prints("ZZZNOPE") == []
+
+
+#: production's stream of 2026-10-05 14:00:00-14:00:03 CT (RTH): every LEVELONE_OPTIONS item
+#: Schwab sent, in receive order, as stored, as the daemon publishes each
+_OPTION_BURST = [
+    connection._message(m["service"], m["item"]["key"], m["item"], m["schwab_ts"], m["ts_recv"])
+    for m in json.loads(
+        (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
+            encoding="utf-8"
+        )
+    )["messages"]
+    if m["service"] == "LEVELONE_OPTIONS"
+]
+
+
+@pytest.mark.usefixtures("feed")
+def test_the_console_takes_its_records_many_to_a_turn_of_its_loop():
+    """Each turn of the loop waits to take back the interpreter lock from the program's threads.
+
+    Up to 5 ms each while one is busy, so a turn per record left a contract behind a pass of
+    every other one changed: the chain ladder showed Schwab's bids a median 4.2 s late
+    (2026-11-19). Three seconds of production's option stream, every contract's newest record on
+    the daemon's bus when the console starts, are all applied in a turn per RECORDS_PER_TURN
+    records, not one per contract: each contract's bid is the last Schwab sent for it.
+    """
+    newest: dict[str, float] = {}
+    for _kind, msg in _OPTION_BURST:
+        if "BID_PRICE" in msg["content"]:
+            newest[msg["symbol"]] = msg["content"]["BID_PRICE"]
+
+    async def run():
+        bus = MessageBus()
+        ofs.bind_daemon(capture.Daemon(bus, HealthRegistry(), []))
+        for kind, msg in _OPTION_BURST:
+            bus.publish(f"{kind}.{msg['symbol']}", msg)
+        turns = 0
+
+        async def count():
+            nonlocal turns
+            while True:
+                turns += 1
+                await asyncio.sleep(0)
+
+        counting = asyncio.create_task(count())
+        assert ofs.start_order_flow_stream()
+        try:
+            while any((ofls.option_top(s) or {}).get("bid") != b for s, b in newest.items()):
+                await asyncio.sleep(0)
+        finally:
+            counting.cancel()
+            ofs.stop_order_flow_stream()
+            ofs.bind_daemon(None)
+        return turns
+
+    turns = asyncio.run(run())
+    contracts = len({msg["symbol"] for _kind, msg in _OPTION_BURST})
+    assert len(newest) > 2 * ofs.RECORDS_PER_TURN, "a burst of several turns' records"
+    assert turns <= 2 * (contracts // ofs.RECORDS_PER_TURN + 1), (
+        f"{turns} turns of the loop for {contracts} contracts' records"
+    )
 
 
 @pytest.mark.usefixtures("feed")
