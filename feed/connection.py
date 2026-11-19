@@ -232,7 +232,7 @@ class _Sent:
 class Connection:
     """The one Schwab stream connection, asking for what `wanted` returns per service, in order.
 
-    `clock` is the program's clock (time_et.now), handed in by the daemon that runs it: a
+    `clock` is the program's one clock (time_et's), handed in by the daemon that runs it: a
     request's send time, the silence check and the backoff are read on it.
     """
 

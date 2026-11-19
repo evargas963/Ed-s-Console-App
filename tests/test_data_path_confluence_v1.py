@@ -1423,7 +1423,7 @@ def _two_day_captures(chain: list) -> list[StoredCapture]:
 
 
 def _published(caps: list[StoredCapture], now: datetime) -> level_store.PublishedLevels:
-    """The levels published from stored captures `caps` (newest first) at `now`."""
+    """Return the levels published from stored captures `caps` (newest first) at `now`."""
     tk = "SPYFORCES"
     try:
         server._publish_levels(tk, captures=caps, now=now)

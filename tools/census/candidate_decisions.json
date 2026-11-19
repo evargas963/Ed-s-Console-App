@@ -22,7 +22,7 @@
     {
       "verdict": "ok",
       "category": "clock taken",
-      "pattern": "in (_terrain_loop|run|main|_beat_loop|run_connection|serve_live_ui|_write|beat)\\b",
+      "pattern": "in (_terrain_loop|run|main|_beat_loop|run_connection|serve_live_ui|_write|beat|_bar_writer)\\b",
       "reason": "a loop is an entry point (rule 11)"
     },
     {
@@ -34,13 +34,25 @@
     {
       "verdict": "ok",
       "category": "clock taken",
-      "pattern": "in (read_for|_wait_for|unhealthy_for|_wait_for_callback_port)\\b",
+      "pattern": "in (_reprice_from_tick|_reprice_due|_price_waiting_chain|restamp_off_the_loop)\\b",
+      "reason": "an entry point (rule 11): the stream handler's own once-a-second gate (called by _on_stream_tick alone), a timer's callback, a job the pricing thread runs, the feed's callback"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "in (request_sent|log_request)\\b",
+      "reason": "httpx's request and response event hooks: httpx calls each as the request leaves and as its answer arrives, so each is that event's entry point and no caller of ours could pass now (rule 11)"
+    },
+    {
+      "verdict": "ok",
+      "category": "clock taken",
+      "pattern": "in (read_for|_wait_for|unhealthy_for|_wait_for_callback_port|wait_for_pages|_take_round)\\b",
       "reason": "a wait loop's own timer (time_et.elapsed)"
     },
     {
       "verdict": "ok",
       "category": "clock taken",
-      "pattern": "clock(: callable)? ?= ?time_et\\.now,? in __init__",
+      "pattern": "(clock(: Callable\\[\\[\\], float\\])? ?= ?time_et\\.now,?|, time_et\\.now\\)) in __init__",
       "reason": "passes the clock in (clock=time_et.now), the rule's own pattern"
     },
     {
@@ -64,7 +76,7 @@
     {
       "verdict": "issue",
       "category": "clock taken",
-      "pattern": "in (watchlist_message|record_feed_status|log_request|request_sent|inspect_token_file)\\b",
+      "pattern": "in (watchlist_message|record_feed_status|inspect_token_file)\\b",
       "reason": "a helper reads the clock; take now from its caller"
     },
     {

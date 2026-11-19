@@ -62,11 +62,12 @@ _TSLA = json.loads(
 
 
 def test_a_refusal_is_read_from_the_engines_code_and_an_error_without_one_is_a_refusal(tmp_path):
-    """INDUCED CONDITIONS: SQLite itself full (its page limit on the test's own connection), a
-    statement SQLite rejects, and an error Python's sqlite3 raises with no engine code.
+    """INDUCED CONDITIONS: SQLite full, a statement it rejects, and an error with no engine code.
 
-    Full refuses every write; a rejected statement is that row's own; an error with no code is
-    read as a refusal, never an AttributeError that would end the writer.
+    SQLite is full by its page limit on the test's own connection; the error with no engine code
+    is one Python's sqlite3 raises. Full refuses every write; a rejected statement is that row's
+    own; an error with no code is read as a refusal, never an AttributeError that would end the
+    writer.
     """
     with closing(sqlite3.connect(tmp_path / "t.db")) as conn:
         conn.execute("CREATE TABLE t (x)")

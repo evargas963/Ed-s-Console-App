@@ -339,7 +339,7 @@ def stop_services() -> None:
 
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI) -> AsyncGenerator[None]:
-    """The daemon's feed while the pages are served.
+    """Run the daemon's feed while the pages are served.
 
     The live feed from the capture daemon (the only Schwab client): every streamed equity quote
     and option greeks/OI/volume quote -> _on_stream_tick, which reprices a viewed ticker; every
