@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from calc.terrain_engine import chain_ladder, nearest_strike
+from calc.terrain_engine import LadderRow, chain_ladder, nearest_strike
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
-from option_contract import chain_row
+from option_contract import OptionContract, chain_row
 from push.spot import resolve_spot
 from push.verdict import terrain_cache_get
 from state import level_store
@@ -39,6 +39,43 @@ def _net_gex_at(column: dict[float, float | None] | None, strike: float) -> floa
     if column is None:
         return None
     return column.get(strike)
+
+
+def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:
+    """Each contract as the chain screens show it, with its counts, IV, bid and ask as text."""
+    return [
+        {
+            **chain_row(c),
+            "oi_text": count_text(c.open_interest),
+            "volume_text": count_text(c.volume),
+            "iv_text": iv_text(c.volatility),
+            "bid_text": price_text(c.bid),
+            "ask_text": price_text(c.ask),
+        }
+        for c in contracts
+    ]
+
+
+def _ladder_with_gex(
+    ladder: list[LadderRow], column: dict[float, float | None] | None
+) -> list[dict[str, Any]]:
+    """Each ladder strike with its net GEX in this expiry, as the heatmap publishes it.
+
+    The expiry's column of the surface (_net_gex_column): Strike Detail shows it beside this
+    expiry's contracts -- one value, one producer.
+    """
+    served: list[dict[str, Any]] = []
+    for row in ladder:
+        gex = _net_gex_at(column, row["strike"])
+        served.append(
+            {
+                **row,
+                "strike_text": strike_text(row["strike"]),
+                "net_gex": gex,
+                "net_gex_text": dollars_text(gex),
+            }
+        )
+    return served
 
 
 def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
@@ -86,18 +123,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     response_contracts = [c for c in held.priced_chain if c.expiry == resolved_expiry]
     if not response_contracts:
         return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    # each contract with its open interest, volume, IV, bid and ask as the screen shows them
-    shown = [
-        {
-            **chain_row(c),
-            "oi_text": count_text(c.open_interest),
-            "volume_text": count_text(c.volume),
-            "iv_text": iv_text(c.volatility),
-            "bid_text": price_text(c.bid),
-            "ask_text": price_text(c.ask),
-        }
-        for c in response_contracts
-    ]
+    shown = _shown(response_contracts)
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
     if not_on_ladder:
@@ -108,20 +134,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             resolved_expiry,
             not_on_ladder,
         )
-    # each ladder strike's net GEX in this expiry, as the heatmap publishes it (its column of the
-    # surface): Strike Detail shows it beside this expiry's contracts -- one value, one producer
-    column = _net_gex_column(held.gamma_surface, resolved_expiry)
-    served: list[dict[str, Any]] = []
-    for row in ladder:
-        gex = _net_gex_at(column, row["strike"])
-        served.append(
-            {
-                **row,
-                "strike_text": strike_text(row["strike"]),
-                "net_gex": gex,
-                "net_gex_text": dollars_text(gex),
-            }
-        )
+    served = _ladder_with_gex(ladder, _net_gex_column(held.gamma_surface, resolved_expiry))
     return {
         "ticker": t,
         "spot": live_spot,
