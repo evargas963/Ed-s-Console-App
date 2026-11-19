@@ -23,9 +23,10 @@ from calc.micro_structure import Candle
 from open_gap import open_gap_record, today_open
 from push import experimental as push_experimental
 from state import bar_store
+from tests.conftest import MARKETS_ANSWERS
 from tests.page_on_socket import pages
 from tests.shared_helpers import et_ts
-from time_et import session
+from time_et import record_markets, session
 
 TSLA = json.loads(
     (Path(__file__).parent / "fixtures" / "real_tsla_5m365_answers_2026_11_15.json").read_text(
@@ -85,19 +86,73 @@ def test_today_s_open_from_schwab_s_bars_is_the_record_s_own_once_its_bar_has_cl
     assert today_open(candles, today, prior, et_ts("2026-10-07 09:33")) is None, "bar not closed"
 
 
-def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_designed():
-    def answer(series: str, candles: list) -> dict:
-        return {
-            "src": "schwab_pricehistory",
-            "symbol": "TSLA",
-            "series": series,
-            "ts_recv": 1794806000.0,
-            "answer": {"candles": candles},
-        }
+def answer(series: str, candles: list) -> dict:
+    """TSLA's /pricehistory answer of `series` as the daemon publishes it."""
+    return {
+        "src": "schwab_pricehistory",
+        "symbol": "TSLA",
+        "series": series,
+        "ts_recv": 1794806000.0,
+        "answer": {"candles": candles},
+    }
 
+
+def _forget_tsla() -> None:
     for key in [k for k in bar_store._open_gap_answers if k[0] == "TSLA"]:
         del bar_store._open_gap_answers[key]
     bar_store._open_gap.pop("TSLA", None)
+    bar_store._series.pop(("TSLA", "5m"), None)
+
+
+#: the Trade Desk's Experimental view's browser fixture: the panel as the server answers it
+E2E_EXPERIMENTAL = Path(__file__).parent / "e2e" / "fixtures" / "experimental_tsla.json"
+
+
+def experimental_after_the_open() -> dict:
+    """TSLA's Experimental panel at 2026-10-07 09:40 ET: its record and its open's bar closed."""
+    _forget_tsla()
+    try:
+        server._write_price_history(answer("5m365", TSLA["extended"]))
+        server._write_price_history(answer("5m365r", TSLA["regular"]))
+        bar_store.put_series(
+            "TSLA",
+            "5m",
+            [
+                Candle(
+                    c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"]
+                )
+                for c in TSLA["extended"]
+            ],
+        )
+        return push_experimental.experimental("TSLA", et_ts("2026-10-07 09:40"))
+    finally:
+        _forget_tsla()
+
+
+def write_experimental_e2e() -> None:
+    """Regeneration utility (never called by a test).
+
+    python -c "import tests.conftest, tests.test_open_gap_v1 as t; t.write_experimental_e2e()"
+
+    Schwab's /markets answers held as the tests hold them (tests/conftest.py) first.
+    """
+    for a in json.loads(MARKETS_ANSWERS.read_text(encoding="utf-8"))["answers"].values():
+        if a["status"] == 200:
+            record_markets(json.loads(a["body"]))
+    body = {"type": "experimental", **experimental_after_the_open()}
+    E2E_EXPERIMENTAL.write_text(json.dumps(body, indent=2, ensure_ascii=False) + "\n", "utf-8")
+
+
+def test_the_browser_tests_experimental_panel_is_the_producers_own():
+    stored = json.loads(E2E_EXPERIMENTAL.read_text(encoding="utf-8"))
+    assert stored == {"type": "experimental", **experimental_after_the_open()}, (
+        "the browser test's file drifted from the server; regenerate with write_experimental_e2e()"
+    )
+    assert stored["today"]["gap_text"] == "▼ -0.58%" and len(stored["records"]) == 1
+
+
+def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_designed():
+    _forget_tsla()
     try:
         with pages() as on_socket:
             page = on_socket.open("TSLA", "experimental")
@@ -114,9 +169,7 @@ def test_a_record_is_pushed_to_the_pages_showing_its_ticker_and_served_as_design
         before_open = push_experimental.experimental("TSLA", et_ts("2026-10-07 09:00"))
         spy = push_experimental.experimental("SPY", et_ts("2026-10-07 09:00"))
     finally:
-        for key in [k for k in bar_store._open_gap_answers if k[0] == "TSLA"]:
-            del bar_store._open_gap_answers[key]
-        bar_store._open_gap.pop("TSLA", None)
+        _forget_tsla()
     assert server.PAGE_PANELS["experimental"]
     assert weekend["today"]["when_text"] == "no regular session today in Schwab's market hours"
     assert before_open["today"]["label"] == "Today's gap · before the open"
