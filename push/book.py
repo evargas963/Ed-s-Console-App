@@ -16,13 +16,14 @@ from app.options.order_flow.streaming import price_row, price_state
 from calc.order_flow import (
     BOOK_VENUES,
     COMPOSITE,
+    FlowInput,
     book_age_sec,
     book_readout,
     compute_book_microstructure,
     readout_card,
 )
 from instrument_identity import ticker_storage_key
-from option_contract import StreamedTop
+from option_contract import NO_TOP, StreamedTop
 from push.asked import venue_asked
 from time_et import CLOSE_AUCTION, ET, OPEN_AUCTION, age_text, auction, ct_label
 
@@ -74,27 +75,28 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     """
     t = ticker_storage_key(ticker)
     # the venue's newest book, as the order-flow state holds it
-    data: dict[str, Any] = {"book": newest_book(t, venue)}
     # top of book: the daemon's price row. The last bid and ask stand when it is not live;
     # top_outage says why and top_feed_label is the page's word for it (docs/DATA_FLOW.md §2 D5)
     top_label, top_outage = price_state(t, now)
     _row = price_row(t, now)
-    if _row["quote_ts"] is not None:
-        data["exchange_quote_ts"] = _row["quote_ts"]
-    data["top"] = (
-        StreamedTop(
-            bid=_row["bid"],
-            ask=_row["ask"],
-            bid_size=_row["bid_size"],
-            ask_size=_row["ask_size"],
-            mark=_row["mark"],
-        )
-        if _row["bid"] is not None or _row["ask"] is not None
-        else None
-    )
     # the venue's book: the same verdict on its own service (price_state), its word served
     book_label = price_state(t, now, venue)[0]
-    data["book_live"] = book_label == lmp.LIVE
+    data = FlowInput(
+        book=newest_book(t, venue),
+        top=(
+            StreamedTop(
+                bid=_row["bid"],
+                ask=_row["ask"],
+                bid_size=_row["bid_size"],
+                ask_size=_row["ask_size"],
+                mark=_row["mark"],
+            )
+            if _row["bid"] is not None or _row["ask"] is not None
+            else NO_TOP
+        ),
+        book_live=book_label == lmp.LIVE,
+        exchange_quote_ts=_row["quote_ts"],
+    )
     payload = compute_book_microstructure(data, now_ts=now)
     payload["top_outage"], payload["top_feed_label"], payload["book_feed_label"] = (
         top_outage,
