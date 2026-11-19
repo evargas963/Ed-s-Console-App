@@ -1191,6 +1191,7 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
         (FX / "real_console_store_vs_daemon_spy_tsla_2026_09_24.json").read_text(encoding="utf-8")
     )
     store, daemon = fx["console_store"], fx["daemon"]
+    CaptureWriter(server.get_db().db_path)  # the database as the Recorder makes it at its start
     con = sqlite3.connect(server.get_db().db_path)
     try:
         con.execute(_OLD_STORE_DDL)

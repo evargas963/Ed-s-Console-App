@@ -15,7 +15,8 @@ import json
 import sqlite3
 import threading
 import warnings
-from dataclasses import fields
+from contextlib import closing
+from dataclasses import asdict, fields
 from datetime import datetime
 from pathlib import Path
 
@@ -34,8 +35,16 @@ from push import strikes as push_strikes
 from push import surface as push_surface
 from push import terrain as push_terrain
 from state import cross_store, level_store
+from stream_spine import CAPTURE_REFUSED, CaptureWriter
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import clock_from, daemon_status, mark_feed_live, publish_capture
+from tests.feed_live_helper import (
+    clock_from,
+    daemon_status,
+    mark_feed_live,
+    publish_capture,
+    recorder,
+    stored_crosses,
+)
 from tests.page_on_socket import pages
 from tests.real_chains import (
     SPY_AFTER_HOURS_PRINT,
@@ -54,6 +63,14 @@ AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 #: expiry, settled at that close: no time left, so no gamma curve and no flip (operator
 #: 2026-11-15: no floor of ours on the time left; a value not known is "-")
 BETWEEN = {"Call wall", "Abs Γ"}
+
+
+@pytest.fixture(autouse=True)
+def _the_recorder():
+    """The console stores each cross through the daemon's Recorder, as capture.run binds it."""
+    recorder(server.get_db().db_path)
+    yield
+    ofs.bind_daemon(None)
 
 
 def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
@@ -416,6 +433,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
 
 
 def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
+    writer = CaptureWriter(tmp_path / "level_crosses.db")
     edb = EdDB(tmp_path / "level_crosses.db")
     event = LevelCrossEvent(
         ticker="SPY",
@@ -429,7 +447,7 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
         zone_after=None,
         timeframe="1m",
     )
-    stored = edb.record_level_crosses([event])
+    stored = stored_crosses(writer, [event])
     assert [(c.level_name, c.level_value, c.direction, c.spot_at_cross) for c in stored] == [
         ("Call wall", 765.0, CROSSED_UP, STRIKE_AWAY)
     ]
@@ -438,7 +456,7 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
 
 
 def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
-    """Opening the database, storing a cross and reading it back leave no connection open.
+    """Storing a cross through the Recorder and reading it back leave no connection open.
 
     A sqlite3 connection used as a context manager commits or rolls back and stays open (Python's
     sqlite3 documentation); one left open warns when it is freed, and on Windows holds the file.
@@ -446,8 +464,10 @@ def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
     gc.collect()  # what earlier tests left is freed before this test watches
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", ResourceWarning)
+        writer = CaptureWriter(tmp_path / "level_crosses.db")
         edb = EdDB(tmp_path / "level_crosses.db")
-        edb.record_level_crosses(
+        stored_crosses(
+            writer,
             [
                 LevelCrossEvent(
                     ticker="SPY",
@@ -461,7 +481,7 @@ def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
                     zone_after=None,
                     timeframe="1m",
                 )
-            ]
+            ],
         )
         assert len(edb.get_recent_crosses("SPY", n=10)) == 1
         gc.collect()
@@ -472,10 +492,12 @@ def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
 def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Path) -> None:
     """Induced condition: the second of the 16:39 print's crosses is refused.
 
-    It is a level value the table does not take. Neither is stored, and the refusal reaches the
-    caller, which logs it and holds neither, so the database and the console's memory stay the
-    same.
+    It is a level value the table does not take. Neither is stored: the Recorder keeps the
+    price's message as sent with its error (stream_write_failures) and tells the caller it was
+    refused, which logs it and holds neither, so the crosses table and the console's memory stay
+    the same.
     """
+    writer = CaptureWriter(tmp_path / "level_crosses.db")
     edb = EdDB(tmp_path / "level_crosses.db")
 
     def cross(name, value):
@@ -492,9 +514,13 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
             timeframe="1m",
         )
 
-    with pytest.raises(sqlite3.IntegrityError):
-        edb.record_level_crosses([cross("Call wall", 765.0), cross("Γ flip", None)])
+    sent = [asdict(cross("Call wall", 765.0)), asdict(cross("Γ flip", None))]
+    msg = {"ticker": "SPY", "ts_utc": SPY_PRINT_A_STRIKE_AWAY["ts_recv"], "crosses": sent}
+    assert writer.store_crosses(msg, 10.0) == (CAPTURE_REFUSED, ())
     assert edb.get_recent_crosses("SPY", n=10) == []
+    with closing(sqlite3.connect(tmp_path / "level_crosses.db")) as conn:
+        (kept,) = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
+    assert kept[0] == "cross.SPY" and kept[1].startswith("IntegrityError")
 
 
 def test_levels_crossed_together_are_one_event_naming_every_level() -> None:

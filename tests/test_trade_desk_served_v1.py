@@ -40,7 +40,7 @@ from option_contract import read_chain
 from push import desk as push_desk
 from push import levels as push_levels
 from state import bar_store, cross_store, level_store, price_level_store
-from tests.feed_live_helper import daemon_status, price_history
+from tests.feed_live_helper import daemon_status, price_history, recorder, stored_crosses
 from tests.real_chains import (
     SPY_0DTE,
     SPY_AFTER_HOURS_PRINT,
@@ -80,14 +80,16 @@ def _desk_events(tk, crosses, now, tf):
     has no live price either), loaded as the console's start loads them. Returns the queue and
     the rows as stored (their cross ids).
     """
-    stored = server.get_db().record_level_crosses(
+    stored = stored_crosses(
+        recorder(server.get_db().db_path),
         [
             LevelCrossEvent(
                 **{**{f.name: r[f.name] for f in fields(LevelCrossEvent)}, "ticker": tk}
             )
             for r in crosses
-        ]
+        ],
     )
+    ofs.bind_daemon(None)
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
@@ -177,14 +179,16 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     """
     tk = "ZZDESKX"
     fx = _load("real_spy_level_crosses_2026_10_06_07.json")["rows"]
-    server.get_db().record_level_crosses(
+    stored_crosses(
+        recorder(server.get_db().db_path),
         [
             LevelCrossEvent(
                 **{**{f.name: r[f.name] for f in fields(LevelCrossEvent)}, "ticker": tk}
             )
             for r in fx
-        ]
+        ],
     )
+    ofs.bind_daemon(None)
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:

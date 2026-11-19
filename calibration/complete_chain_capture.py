@@ -267,6 +267,8 @@ def last_capture_per_day(
     market day for a day-over-day view).
     """
     tk = ticker_storage_key(ticker)
+    if not Path(db_path).is_file():
+        return []  # no database yet: no capture has ever been written
     conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
     try:
         if not conn.execute(

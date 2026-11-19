@@ -8,6 +8,7 @@ exactly the symbols the daemon would hold -- through the production entry point.
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -15,12 +16,37 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
+from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import StoredCapture
+from db import LevelCrossEvent, StoredCross
 from option_contract import read_chain
 from state import bar_store, price_level_store
-from stream_spine import HealthRegistry, MessageBus
+from stream_spine import CAPTURE_STORED, CaptureWriter, HealthRegistry, MessageBus
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def recorder(db_path: Path | str) -> CaptureWriter:
+    """Bind the console to a daemon whose Recorder writes to `db_path`, as capture.run binds it.
+
+    The Recorder's thread is not started, so each store is written at once on a connection of
+    its own (CaptureWriter._write_alone).
+    """
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    daemon.writer = CaptureWriter(db_path)
+    ofs.bind_daemon(daemon)
+    return daemon.writer
+
+
+def stored_crosses(writer: CaptureWriter, events: list[LevelCrossEvent]) -> list[StoredCross]:
+    """Store `events` through the Recorder, as server._log_level_crosses stores a price's.
+
+    Returns the rows as stored, each with its cross_id.
+    """
+    msg = {"ticker": events[0].ticker, "ts_utc": events[0].ts_utc}
+    outcome, ids = writer.store_crosses({**msg, "crosses": [asdict(e) for e in events]}, 10.0)
+    assert outcome == CAPTURE_STORED, outcome
+    return [StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, ids, strict=True)]
 
 
 def daemon_status(now: float, **staged) -> dict:
