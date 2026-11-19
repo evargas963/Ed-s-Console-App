@@ -640,9 +640,10 @@ both, and the window restarts the program.
   Schwab pushes it; the weekly and monthly from Schwab's own weekly and monthly candles, as sent
   (operator 2026-11-12: "we should not be calculating anything that schwab sends us"), so the
   current week and month are as of Schwab's newest answer, asked once per ET date and after the
-  close. The day-over-day open-interest change has one producer: the forces, from the stored
-  captures (the forces panel, shown on the Trade Desk). Fewer than two market days of captures
-  leaves each forces number absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or
+  close. The day-over-day open-interest change has one producer: the forces (the forces panel,
+  shown on the Trade Desk), the chain the levels are priced from now against the prior market
+  day's close capture, with every publication (`calc.math_forces.forces`). No prior day's close
+  captured leaves each forces number absent (`calc.math_forces.forces_absent`), and a charm, DEX, ΔOI, GEX or
   volume side with a strike not known, or no strike at all, leaves that side absent (enforced by
   `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the
   screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut
@@ -934,10 +935,10 @@ both, and the window restarts the program.
    by `ACTIVE_PROGRAM.md` NUMBERS.
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-";
    operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed, a
-   same-day absolute-gamma strike with no same-day book, the forces before two capture days and a
-   forces side (charm, DEX, ΔOI) with a strike not known or no strike at all are absent
-   (`push.terrain._atr_fields`, `calc.terrain_engine.compute_terrain`,
-   `server._forces_from_captures`; the forces side by
+   same-day absolute-gamma strike with no same-day book, the forces with no prior day's close
+   captured and a forces side (charm, DEX, ΔOI) with a strike not known or no strike at all are
+   absent (`push.terrain._atr_fields`, `calc.terrain_engine.compute_terrain`,
+   `calc.math_forces`; the forces side by
    `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". The levels with no price
    and the outage words are still served with their reason (§3 above). The gamma heatmap's cells
    draw "-".

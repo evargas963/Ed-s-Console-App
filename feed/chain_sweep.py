@@ -5,11 +5,12 @@ option market (EQO for stock and ETF options, IND for index options) -- the daem
 full chain (every expiry, every strike) in turn with every other such ticker of the watchlist
 (the daemon's one list, capture.Daemon.watchlist), without end (ChainSweep); once that session
 closes, once more (the close values), and then nothing until the next one. Each chain is handed
-to the console for the levels. The first chain of each ticker begun in each capture window --
-every 30 minutes from its option market's open, and at its close -- is stored first: the
-Recorder (stream_spine.CaptureWriter.store_capture) commits it to the capture table
-(calibration/complete_chain_capture.py) before the console hears of it.
-Nothing is stored outside those windows (weekend chains blank open interest).
+to the console for the levels. The first chain of each ticker begun at or after its own option
+close each day (capture_slot) holds the day's close values, the one capture the levels read; it
+is stored first: the Recorder (stream_spine.CaptureWriter.store_capture) commits it to the
+capture table (calibration/complete_chain_capture.py) before the console hears of it. Nothing
+else is stored as a capture (weekend chains blank open interest); every /chains and /quotes
+answer is recorded as received beside it (rest_chains_raw, rest_quotes_raw).
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter
 from time_et import (
     CLOSED,
     ET,
+    option_close_product,
     options_closed_at,
     options_open,
     record_markets,
@@ -61,7 +63,6 @@ from time_et import (
 
 log = logging.getLogger("chain_history")
 
-CAPTURE_EVERY_MIN = 30
 #: seconds a chain waits for the Recorder to commit its capture before the console hears of it
 #: (store first); a capture not committed by then is held by the Recorder and written later, and
 #: the chain goes to the console as no capture. The Recorder commits every 0.25 s
@@ -72,27 +73,24 @@ CAPTURE_WAIT_SEC = 10.0
 CHAINS_AGAIN_SEC = 300
 
 
-def capture_slot(now_ts: float) -> float | None:
-    """Return the capture time a chain begun at `now_ts` is written for.
+def capture_slot(now_ts: float, ticker: str) -> float | None:
+    """Return the close a chain of `ticker` begun at `now_ts` is the capture of; None if none.
 
-    It is the latest of the option markets' open, every CAPTURE_EVERY_MIN minutes after it, and
-    their last close (the close capture) -- the regular sessions Schwab's /markets sent for the
-    day (time_et.session) -- that is at most CAPTURE_EVERY_MIN minutes before `now_ts`. None
-    outside those windows, and on a day with no regular option session or no answer: nothing is
-    written.
+    The ticker's own option close today (time_et.option_close_product: the equity options' close,
+    or the index options' for an index), as Schwab's /markets sent it (time_et.session): a chain
+    begun at or after it, that ET day, holds the day's close values, the one capture a day the
+    levels read (a closed market's balance, the next day's prior day and its forces). None before
+    it, and on a day with no regular option session or no answer: nothing is written.
     """
     today = session(datetime.fromtimestamp(now_ts, ET).date().isoformat())
     if today is None:
         return None
-    windows = [w for _p, ws in today.options for w in ws]
+    product = option_close_product(ticker)
+    windows = [w for p, ws in today.options if p == product for w in ws]
     if not windows:
         return None
-    opens, close = min(s for s, _e in windows).timestamp(), max(e for _s, e in windows).timestamp()
-    slots = [*range(int(opens), int(close), CAPTURE_EVERY_MIN * 60), close]
-    past = [s for s in slots if s <= now_ts]
-    if not past or now_ts - past[-1] >= CAPTURE_EVERY_MIN * 60:
-        return None
-    return past[-1]
+    close = max(e for _s, e in windows).timestamp()
+    return close if now_ts >= close else None
 
 
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
@@ -112,7 +110,7 @@ def chain_messages(
     """Return a fetched chain as its bus messages.
 
     Part i of n, CHAIN_PART_CONTRACTS contracts each, all with the time the chain began, the
-    chain's one spot with its trade time, and whether it is its capture window's stored capture
+    chain's one spot with its trade time, and whether it is its day's stored close capture
     (`capture`: the console keeps it, state.capture_store). Each contract is read here, once
     (read_chain, on the sweep's own thread): the console's pricing and the daemon's option rule
     both take that read. The console assembles the parts; a chain missing a part is never priced.
@@ -347,8 +345,8 @@ class ChainSweep:
     its chain asked once per ET date, to learn whether options are listed. A chain is published
     to the console in parts (chain_messages) once all its quotes are in; a ticker whose request
     fails (an answer other than 200, or none) is published as failed with the reason, and the
-    rotation goes on. The first chain of a ticker
-    begun inside a capture window (capture_slot) is also written to the chain history; a history
+    rotation goes on. The first chain of a ticker begun at or after its option close each day
+    (capture_slot) is also written to the chain history, its close capture; a history
     write that fails is a write failure, never the chain's: the chain as delivered is handed to
     `failures` (the daemon's writer) to keep.
     """
@@ -661,13 +659,13 @@ class ChainSweep:
         Schwab's /chains answers (the listed contracts, their terms and open interest, which
         Schwab says is the prior trading day's: docs/schwab/schwab_support_emails_2026_10_12.txt,
         item 5) are taken again, as sent, by each chain begun within CHAINS_AGAIN_SEC of their
-        request, at any hour: that chain asks only for what moves, its Greeks and quotes. A
-        chain that begins a capture window (capture_slot: the one the history stores, the
-        close's among them) asks for them. A series an exchange adds during the trading day
+        request, at any hour: that chain asks only for what moves, its Greeks and quotes. The
+        first chain after the ticker's option close (capture_slot: the close capture the history
+        stores) asks for them. A series an exchange adds during the trading day
         (it may: docs/SOURCES.md, sec-34-60365) is seen within CHAINS_AGAIN_SEC.
         """
         chain = _Chain(ticker, self.clock())
-        window = capture_slot(chain.started)
+        window = capture_slot(chain.started, ticker)
         held = self._answers.get(ticker)
         if held is not None and chain.started - held[1] < CHAINS_AGAIN_SEC and held[0] == window:
             chain.answers_age, chain.spots = chain.started - held[1], dict(held[2])
@@ -915,15 +913,15 @@ class ChainSweep:
             )
 
     def _write_history(self, chain: _Chain) -> bool:
-        """Write the chain history; whether the chain was stored as its window's capture.
+        """Write the chain history; whether the chain was stored as its day's close capture.
 
-        A chain begun inside a capture window of the ticker's option market,
-        the first one of the window for this ticker (a chain begun before the close is not the
-        close capture, whenever it ends), one row per expiry with the underlying price of that
-        expiry's answer, at the time the chain began, every row in one transaction. Stored when
-        at least one of its expiries' rows was written.
+        A chain begun at or after the ticker's option close, the first one that day for this
+        ticker (a chain begun before the close is not the close capture, whenever it ends), one
+        row per expiry with the underlying price of that expiry's answer, at the time the chain
+        began, every row in one transaction. Stored when at least one of its expiries' rows was
+        written.
         """
-        slot = capture_slot(chain.started)
+        slot = capture_slot(chain.started, chain.ticker)
         return slot is not None and self._write_window(chain, slot)
 
     def _write_window(self, chain: _Chain, slot: float) -> bool:

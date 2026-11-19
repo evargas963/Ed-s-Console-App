@@ -32,7 +32,6 @@ from calc.math_exposure_core import compute_exposures_by_strike, put_call_volume
 from calibration.complete_chain_capture import last_capture_per_day
 from feed import schwab_client as sc
 from feed.chain_sweep import ChainSweep
-from json_blob_codec import decode_json_blob
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
 from tests.schwab_rest_standin import (
     CHAIN,
@@ -223,9 +222,8 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     assert content["TOTAL_VOLUME"] == 486836 and not {"BID_PRICE", "ASK_PRICE"} & set(content)
     assert (spy[HELD].bid, spy[HELD].ask, spy[HELD].volume) == (None, None, 486836)
     assert all(ct.volume is not None for ct in spy.values()), "no contract without a volume"
-    (stored,) = last_capture_per_day(tmp_path / "ed_console.db", "SPY", 1)
-    kept = {ct.symbol: ct for ct in stored["contracts"]}[HELD]
-    assert (kept.bid, kept.ask, kept.volume) == (spy[HELD].bid, spy[HELD].ask, spy[HELD].volume)
+    # 10:15 ET is in the session: the chains are live and none is stored (the close capture only)
+    assert last_capture_per_day(tmp_path / "ed_console.db", "SPY", 1) == []
     # so the chain as delivered, with nothing laid over it (the close values), has a put/call
     # volume ratio: one contract without a volume leaves it unknown
     held = sessions()
@@ -249,16 +247,9 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         for f in GREEKS
     ), "a Greek Schwab did not send is absent"
 
-    # 10:15 ET: the 10:00 window
     with closing(sqlite3.connect(tmp_path / "ed_console.db")) as conn, conn:
-        rows = conn.execute(
-            "SELECT ticker, expiry, spot, chain_json FROM complete_chain_captures ORDER BY ticker"
-        ).fetchall()
-    rows = [(*r[:3], len(decode_json_blob(r[3]))) for r in rows]
-    assert rows == [
-        ("SPY", "2026-11-20", SPY["spot"], len(SPY["chain"])),
-        ("TSLA", "2026-10-09", TSLA["spot"], len(TSLA["chain"])),
-    ]
+        rows = conn.execute("SELECT ticker FROM complete_chain_captures").fetchall()
+    assert rows == [], "no ticker's chain is stored in the session"
 
 
 def test_the_one_connection_stands_through_a_pause(tmp_path):

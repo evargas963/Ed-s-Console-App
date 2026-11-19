@@ -55,7 +55,7 @@ from stream_spine import (
 from tests.schwab_rest_standin import LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
-_IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
+_IN_WINDOW = 1790885705.0  # 2026-10-01 16:15:05 ET, after SPY's option close: its close capture
 _TSLA = json.loads(
     (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
 )["quote"]
@@ -489,9 +489,10 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     """INDUCED CONDITION: the chain history table carries an extra NOT NULL column.
 
     The writer does not fill it, so SQLite refuses each row with IntegrityError, standing in for
-    the refusal of a repeated capture key. The chain is delivered and never published as
-    failed, the sweep fetches the next chain at once (no pause: a second chain is delivered),
-    and the daemon's writer, the capture's one writer, keeps the capture as it was handed.
+    the refusal of a repeated capture key. After the close, each ticker's chain is its close
+    capture: the chain is delivered and never published as failed, the sweep goes on to the next
+    ticker at once (no pause: TSLA's chain is delivered after SPY's), and the daemon's writer, the
+    capture's one writer, keeps each capture as it was handed.
     """
     db = tmp_path / "ed_console.db"
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -506,12 +507,12 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
-        daemon = capture.Daemon(bus, health, ["SPY"])
+        daemon = capture.Daemon(bus, health, ["SPY", "TSLA"])
         daemon.writer = CaptureWriter(failures_db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         sweep = ChainSweep(
             db,
-            ["SPY"],
+            ["SPY", "TSLA"],
             lambda _topic, msg: published.append(msg),
             clock=lambda: _IN_WINDOW,
             failures=daemon.writer,
@@ -542,9 +543,9 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
 
     assert published and all("failed" not in m for m in published), "a delivered chain read failed"
     assert fetched >= 2, "the sweep paused after a history write failed"
-    failures = _failures(failures_db)  # each fetch of the window tries the history again
+    failures = _failures(failures_db)  # each ticker's close capture, refused and kept
     assert len(failures) == writer["failures"] >= 2
-    assert {topic for topic, _k, _e in failures} == {"capture.SPY"}
+    assert {topic for topic, _k, _e in failures} == {"capture.SPY", "capture.TSLA"}
     (topic, kept, error) = failures[0]
     assert error.startswith(
         "IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused"
@@ -558,7 +559,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     assert read_chain([c for e in kept["expiries"] for c in e["contracts"]]) == received, (
         "kept as Schwab sent what was delivered"
     )
-    assert writer["last_failure"] == f"capture.SPY: {failures[-1][2]}"
+    assert writer["last_failure"] == f"{failures[-1][0]}: {failures[-1][2]}"
 
 
 #: STAND-IN for the production hold cap (about 2 GB of memory): 4,000 bytes, so the captured option

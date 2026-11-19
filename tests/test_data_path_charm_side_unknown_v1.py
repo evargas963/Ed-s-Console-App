@@ -10,13 +10,42 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import server
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
+from calc.math_forces import Forces, forces
 from calc.math_levels import compute_charm_by_strike
 from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
 from tests.real_chains import NFLX, SPY_0DTE
 from time_et import ET, INDEX_OPTIONS, sessions
+
+#: the prior day's close the forces' tests compare with (induced: a chain stored on a typed day)
+_PRIOR = datetime(2026, 10, 6, 16, 0, tzinfo=ET)
+
+
+def _forces(
+    tk: str,
+    now_chain: list,
+    now_spot: float,
+    now: datetime,
+    prior_chain: list,
+    prior_spot: float,
+    prior_now: datetime,
+) -> Forces:
+    """The forces as the server makes them: the chain now against the prior day's close capture,
+    each priced by the one producer (compute_terrain) at its own spot and time."""
+    snap = compute_terrain(tk, read_chain(now_chain), now_spot, now=now, sessions=sessions())
+    prior = compute_terrain(
+        tk, read_chain(prior_chain), prior_spot, now=prior_now, sessions=sessions()
+    )
+    assert snap.spot is not None
+    return forces(
+        tk,
+        snap.spot,
+        snap.books.values(),
+        snap.charm_by_strike,
+        prior.books.values(),
+        prior_now.date().isoformat(),
+    )
 
 
 def test_a_contract_schwab_sent_no_volatility_leaves_its_side_and_net_unknown():
@@ -112,27 +141,16 @@ def test_a_contract_with_no_readable_date_leaves_its_side_unknown_in_the_terrain
 def test_a_forces_side_with_a_strike_not_known_has_no_total():
     """NFLX's whole book, its $3 strike below the price not known: no total.
 
-    Never the sum of the rest. Induced test condition: one chain stored as two captures on typed
-    days.
+    Never the sum of the rest. Induced test condition: one chain, now and as the prior day's close.
     """
-    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
-    caps = [
-        {
-            "et_date": day.date().isoformat(),
-            "spot": NFLX.spot,
-            "contracts": read_chain(NFLX.chain),
-            "ts_utc": day.timestamp(),
-        }
-        for day in (NFLX.now, prior)
-    ]
     snap = compute_terrain(
         NFLX.ticker, read_chain(NFLX.chain), NFLX.spot, now=NFLX.now, sessions=sessions()
     )
     assert snap.charm_by_strike[3.0]["net_charm"] is None
     assert any(b["net_charm"] is not None for k, b in snap.charm_by_strike.items() if k < NFLX.spot)
-    forces = server._forces_from_captures(NFLX.ticker, caps, snap.charm_by_strike)
-    assert forces["available"] is True
-    assert forces["charm_below"] is None
+    got = _forces(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now, NFLX.chain, NFLX.spot, _PRIOR)
+    assert got["available"] is True
+    assert got["charm_below"] is None
 
 
 def test_a_forces_side_with_no_strike_at_all_has_no_total():
@@ -142,75 +160,39 @@ def test_a_forces_side_with_no_strike_at_all_has_no_total():
     are of other days.
     """
     spot = 787.5169
-    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
-    caps = [
-        {
-            "et_date": day.date().isoformat(),
-            "spot": spot,
-            "contracts": read_chain(SPY_0DTE.chain),
-            "ts_utc": day.timestamp(),
-        }
-        for day in (SPY_0DTE.now, prior)
-    ]
-    charm = compute_charm_by_strike(
-        read_chain(SPY_0DTE.chain),
-        spot,
-        now=SPY_0DTE.now,
-        sessions=sessions(),
-        product=INDEX_OPTIONS,
-    )
-    forces = server._forces_from_captures("SPY", caps, charm)
-    assert forces["available"] is True
-    assert forces["charm_above"] is None
-    assert forces["charm_below"] is not None
-    assert forces["doi_above"] is None
-    assert forces["dex_above_dollars"] is None
-    assert forces["dex_below_dollars"] is not None
+    got = _forces("SPY", SPY_0DTE.chain, spot, SPY_0DTE.now, SPY_0DTE.chain, spot, _PRIOR)
+    assert got["available"] is True
+    assert got["charm_above"] is None
+    assert got["charm_below"] is not None
+    assert got["doi_above"] is None
+    assert got["dex_above_dollars"] is None
+    assert got["dex_below_dollars"] is not None
 
 
 def test_a_forces_dex_side_with_a_strike_not_known_has_no_total():
     """Schwab's -999 on NFLX's strikes: no DEX known there, so no total on that side."""
-    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
-    caps = [
-        {
-            "et_date": day.date().isoformat(),
-            "spot": NFLX.spot,
-            "contracts": read_chain(NFLX.chain),
-            "ts_utc": day.timestamp(),
-        }
-        for day in (NFLX.now, prior)
-    ]
     book = compute_exposures_by_strike(
         read_chain(NFLX.chain), spot=NFLX.spot, now=NFLX.now, sessions=sessions()
     )[0]
     assert any(
         bucket_metric(b, "net_dex_dollars") is None for k, b in book.items() if k < NFLX.spot
     )
-    assert server._forces_from_captures(NFLX.ticker, caps)["dex_below_dollars"] is None
+    got = _forces(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now, NFLX.chain, NFLX.spot, _PRIOR)
+    assert got["dex_below_dollars"] is None
 
 
 def test_a_forces_oi_side_with_a_strike_not_known_has_no_total():
-    """Induced test condition: the older capture's $5 contracts with openInterest removed.
+    """Induced test condition: the prior close's $5 contracts with openInterest removed.
 
     None being captured unreported on two days.
     """
-    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     older = [
         {k: v for k, v in c.items() if k != "openInterest" or c["strikePrice"] != 5.0}
         for c in NFLX.chain
     ]
-    caps = [
-        {
-            "et_date": day.date().isoformat(),
-            "spot": NFLX.spot,
-            "contracts": read_chain(chain),
-            "ts_utc": day.timestamp(),
-        }
-        for day, chain in ((NFLX.now, NFLX.chain), (prior, older))
-    ]
-    forces = server._forces_from_captures(NFLX.ticker, caps)
-    assert forces["doi_below"] is None
-    assert forces["doi_above"] == 0
+    got = _forces(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now, older, NFLX.spot, _PRIOR)
+    assert got["doi_below"] is None
+    assert got["doi_above"] == 0
 
 
 def test_a_strike_that_left_the_chain_counts_for_what_it_held():
@@ -240,8 +222,15 @@ def test_a_strike_that_left_the_chain_counts_for_what_it_held():
             if in_side(c["strikePrice"])
         )
 
-    caps = [{**cap, "contracts": read_chain(cap["contracts"])} for cap in (newer, older)]
-    forces = server._forces_from_captures(fx["ticker"], caps)
-    assert forces["doi_below"] == change(lambda k: k < spot)
-    assert forces["doi_above"] == change(lambda k: k > spot)
-    assert not {"newer_et_date", "bucket_spot"} & set(forces)  # served to no reader
+    got = _forces(
+        fx["ticker"],
+        newer["contracts"],
+        spot,
+        datetime.fromtimestamp(newer["ts_utc"], ET),
+        older["contracts"],
+        float(older["spot"]),
+        datetime.fromtimestamp(older["ts_utc"], ET),
+    )
+    assert got["doi_below"] == change(lambda k: k < spot)
+    assert got["doi_above"] == change(lambda k: k > spot)
+    assert not {"newer_et_date", "bucket_spot"} & set(got)  # served to no reader

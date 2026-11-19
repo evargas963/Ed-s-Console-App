@@ -53,7 +53,8 @@ def _forget():
 
 
 def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_capture(tmp_path):
-    at = CRWD.now.timestamp()
+    # the day's close capture: CRWD's chain begun after its option close (16:00 ET)
+    at = CRWD.now.replace(hour=16, minute=0, second=30).timestamp()
     _forget()
     published = []
     try:

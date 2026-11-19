@@ -53,46 +53,42 @@ def _et(ts: float) -> str:
 
 
 @pytest.mark.parametrize(
-    "now, slot",
+    "ticker, now, slot",
     [
-        ("2026-10-05 08:00", None),  # Monday before the open: nothing written
-        ("2026-10-05 09:30", "2026-10-05 09:30"),
-        ("2026-10-05 09:59", "2026-10-05 09:30"),
-        ("2026-10-05 15:45", "2026-10-05 15:30"),
-        ("2026-10-05 16:05", "2026-10-05 16:00"),
-        (
-            "2026-10-05 16:20",
-            "2026-10-05 16:15",
-        ),  # the close capture: the last option market (IND) closes 16:15
-        ("2026-10-05 16:46", None),  # nothing after the close capture's window
-        ("2026-10-10 12:00", None),  # Saturday: Schwab sends no session
-        ("2026-11-26 12:00", None),  # Thanksgiving: Schwab says closed
-        ("2026-11-27 13:10", "2026-11-27 13:00"),
-        ("2026-11-27 13:20", "2026-11-27 13:15"),  # early close: Schwab's IND close 13:15
-        ("2026-11-02 09:31", "2026-11-02 09:30"),  # after the DST change, still 9:30 ET
+        ("MRVL", "2026-10-05 08:00", None),  # Monday before the open: nothing written
+        ("MRVL", "2026-10-05 09:30", None),  # in the session: the chains are live, none stored
+        ("MRVL", "2026-10-05 15:59", None),
+        ("MRVL", "2026-10-05 16:00", "2026-10-05 16:00"),  # the equity options' close
+        ("MRVL", "2026-10-05 16:05", "2026-10-05 16:00"),
+        ("MRVL", "2026-10-05 23:59", "2026-10-05 16:00"),  # still that day's close values
+        ("$SPX", "2026-10-05 16:05", None),  # index options trade to 16:15
+        ("$SPX", "2026-10-05 16:20", "2026-10-05 16:15"),  # the index options' close
+        ("MRVL", "2026-10-10 12:00", None),  # Saturday: Schwab sends no session
+        ("MRVL", "2026-11-26 12:00", None),  # Thanksgiving: Schwab says closed
+        ("MRVL", "2026-11-27 13:10", "2026-11-27 13:00"),  # early close: Schwab's EQO 13:00
+        ("$SPX", "2026-11-27 13:10", None),
+        ("$SPX", "2026-11-27 13:20", "2026-11-27 13:15"),  # and its IND close 13:15
+        ("MRVL", "2026-11-02 16:01", "2026-11-02 16:00"),  # after the DST change, still ET
     ],
 )
-def test_the_capture_window_a_fetch_is_written_for(now, slot):
-    """The windows are the regular option sessions Schwab's /markets sent for the day.
+def test_the_close_a_fetch_is_the_capture_of(ticker, now, slot):
+    """A ticker's capture is its own option close, as Schwab's /markets sent the day's session.
 
     tests/conftest.py holds the answers captured 2026-10-07.
     """
-    got = cs.capture_slot(et_ts(now))
+    got = cs.capture_slot(et_ts(now), ticker)
     assert (_et(got) if got is not None else None) == slot
 
 
-def test_every_capture_window_of_a_full_day_ends_at_the_last_option_markets_close():
+@pytest.mark.parametrize("ticker, close", [("MRVL", "16:00"), ("$SPX", "16:15")])
+def test_a_full_day_has_one_capture_its_option_close(ticker, close):
+    """Operator 2026-11-18: "only keep what is absolutely needed": the close, once a day."""
     slots = {
-        cs.capture_slot(et_ts(f"2026-10-05 {h:02d}:{m:02d}"))
+        cs.capture_slot(et_ts(f"2026-10-05 {h:02d}:{m:02d}"), ticker)
         for h in range(0, 24)
         for m in range(0, 60)
     } - {None}
-    assert sorted(_et(s)[11:] for s in slots) == [
-        f"{h:02d}:{m:02d}"
-        for h in range(9, 17)
-        for m in (0, 30)
-        if "09:30" <= f"{h:02d}:{m:02d}" <= "16:00"
-    ] + ["16:15"]
+    assert [_et(s)[11:] for s in slots] == [close]
 
 
 @pytest.fixture
@@ -201,7 +197,8 @@ def test_every_chains_and_quotes_answer_is_recorded_as_received(tmp_path, schwab
     the chain the levels took (chains_answer). Each stored body decodes to the published text
     exactly, and that text is the stand-in host's answer: its contracts are the chain's.
     """
-    sweep, published, client = _sweep(tmp_path, schwab, lambda: et_ts("2026-09-30 15:31:57"))
+    # after SPY's option close (16:15 ET): the chain is the day's close capture
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: et_ts("2026-09-30 16:16:00"))
     assert _rotate(sweep, client) == {"SPY"}
     answers = [(t, m) for t, m in published if t in ("chainanswer.SPY", "quotesanswer")]
     writer = CaptureWriter(tmp_path / "stream_capture.db")
@@ -230,15 +227,16 @@ def _stored_chain(tmp_path) -> bytes:
         return c.execute("SELECT chain_json FROM complete_chain_captures").fetchone()[0]
 
 
-def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tmp_path, schwab):
+def test_the_history_is_written_once_a_day_at_the_close_and_never_in_the_session(tmp_path, schwab):
+    """Chains in the session are live and never stored; the first after the close is (operator
+    2026-11-18: "only keep what is absolutely needed")."""
     clock = {"now": 0.0}
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     for at in (
         "2026-09-30 15:31:57",
-        "2026-09-30 15:35:00",  # the 15:30 window, twice
-        "2026-09-30 16:01:00",  # the 16:00 window
-        "2026-09-30 17:00:00",
-    ):  # after the close capture's window
+        "2026-09-30 16:01:00",
+        "2026-09-30 16:16:00",  # after SPY's option close, 16:15
+    ):
         clock["now"] = et_ts(at)
         assert _rotate(sweep, client) == {"SPY"}
     with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
@@ -247,8 +245,7 @@ def test_the_history_is_written_once_per_capture_window_and_never_outside_one(tm
         ).fetchall()
     rows = [(*r[:3], len(decode_json_blob(r[3])), r[3]) for r in rows]
     assert [(_et(r[0]), r[1], r[2], r[3]) for r in rows] == [
-        ("2026-09-30 15:31", "2026-11-20", 766.31, 442),
-        ("2026-09-30 16:01", "2026-11-20", 766.31, 442),
+        ("2026-09-30 16:16", "2026-11-20", 766.31, 442),
     ]
     assert isinstance(rows[0][4], bytes), "stored compressed"
     stored = {c["symbol"]: c for c in decode_json_blob(rows[0][4])}
@@ -300,9 +297,7 @@ def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_ever
         written = c.execute(
             "SELECT DISTINCT ts_utc FROM complete_chain_captures ORDER BY ts_utc"
         ).fetchall()
-    assert [_et(r[0]) for r in written] == ["2026-09-30 10:01"], (
-        "the history holds the capture window's first chain"
-    )
+    assert written == [], "a chain in the session is live, never stored"
 
 
 def test_before_the_open_the_chains_answers_are_asked_every_five_minutes_too(tmp_path, schwab):
@@ -349,29 +344,34 @@ def test_a_fetch_begun_before_the_close_capture_is_not_the_close_capture(tmp_pat
     """2026-10-01 audit: the capture window was judged by when a fetch finished.
 
     So an $SPX fetch begun at 16:14:30 (options still trading) and finished at 16:15:10 became
-    the 16:15 close capture. A chain is written for the window it began in.
+    the 16:15 close capture. A chain is the close capture only when it began at or after the close:
+    SPY's, begun 16:14:30 and delivered 16:15:10, is not; the next one, begun 16:16, is.
     """
     clock = {"times": iter([])}
     sweep, _published, client = _sweep(tmp_path, schwab, lambda: next(clock["times"]))
-    clock["times"] = itertools.repeat(et_ts("2026-09-30 16:00:30"))
-    _rotate(sweep, client)  # the 16:00 window's capture
     clock["times"] = itertools.chain(
         [et_ts("2026-09-30 16:14:30")] * 3,  # the rotation begins, the chain is due and begins
         itertools.repeat(et_ts("2026-09-30 16:15:10")),
     )
     _rotate(sweep, client)  # begun 16:14:30, delivered 16:15:10
-    with closing(sqlite3.connect(tmp_path / "ed_console.db")) as c, c:
+    db = tmp_path / "ed_console.db"
+    with closing(sqlite3.connect(db)) as c, c:
+        assert c.execute("SELECT COUNT(*) FROM complete_chain_captures").fetchone()[0] == 0
+    clock["times"] = itertools.repeat(et_ts("2026-09-30 16:16:00"))
+    assert _rotate(sweep, client) == {"SPY"}  # the close values, once after the close
+    with closing(sqlite3.connect(db)) as c, c:
         assert [
             _et(r[0]) for r in c.execute("SELECT DISTINCT ts_utc FROM complete_chain_captures")
-        ] == ["2026-09-30 16:00"]
+        ] == ["2026-09-30 16:16"]
 
 
-def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again(tmp_path, schwab):
+def test_a_failed_history_write_is_not_a_failed_chain_and_the_day_tries_again(tmp_path, schwab):
     """2026-10-01 audit: a failed history write after delivery was published as a failed chain.
 
     A history write that failed after the chain was delivered was published to the console as
-    a failed chain. The history table refuses the write (a NOT NULL column the
-    writer does not fill); once it takes writes, the same window's next chain is written.
+    a failed chain. The history table refuses the close capture (a NOT NULL column the writer
+    does not fill); once it takes writes, the day's next chain after the close (here, a restart's
+    first) is written.
     """
     db = tmp_path / "ed_console.db"
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -381,7 +381,7 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
             "completeness_basis TEXT NOT NULL, chain_json TEXT NOT NULL, source TEXT NOT NULL, "
             "created_at TEXT, refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
         )
-    clock = {"now": et_ts("2026-09-30 15:31:57")}
+    clock = {"now": et_ts("2026-09-30 16:16:00")}  # after SPY's option close
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     assert _rotate(sweep, client) == {"SPY"}
     assert all("failed" not in m for _t, m in published)
@@ -391,8 +391,9 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_window_tries_again
     with closing(sqlite3.connect(db)) as conn, conn:  # the table takes writes again
         conn.execute("DROP TABLE complete_chain_captures")
         cch.ensure_schema(conn)
-    clock["now"] += 120  # the same window's next chain
-    _rotate(sweep, client)
+    clock["now"] += 120  # the daemon restarts: its first chain is the day's next after the close
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    assert _rotate(sweep, client) == {"SPY"}
     with closing(sqlite3.connect(db)) as c, c:
         assert (
             c.execute("SELECT COUNT(DISTINCT ts_utc) FROM complete_chain_captures").fetchone()[0]
@@ -539,7 +540,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
 
     So the forces diffed Monday's full chain against them and every later expiry read as new open
     interest (SPY: +1.4M below and above spot in one day). Only full captures are read: with no
-    full prior day the forces numbers are absent.
+    full prior day there is no prior close for the forces, so their numbers are absent.
     """
     db = tmp_path / "ed_console.db"
     # the reader returns stored contracts verbatim; none is priced.
@@ -564,6 +565,4 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     )
     caps = cch.last_capture_per_day(db, "ZZ", 2)
     assert [(c["et_date"], c["basis"]) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
-    forces = server._forces_from_captures("ZZ", caps)
-    assert forces["available"] is False
-    assert forces["doi_below"] is None and "reason" not in forces
+    assert server._prior_capture(caps, et_ts("2026-09-28 16:20")) is None

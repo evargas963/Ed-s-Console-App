@@ -45,15 +45,12 @@ from calc.liquidity_value_engine import (
 from calc.math_exposure_core import (
     Bucket,
     bucket_metric,
-    compute_exposures_by_strike,
     merge_exposure_books,
     overlay_streamed_contract_fields,
     strike_oi_legs,
-    strike_total_oi,
     strike_volume_legs,
 )
-from calc.math_forces import Forces, forces_absent
-from calc.math_levels import CharmBucket, compute_charm_by_strike
+from calc.math_forces import Forces, forces, forces_absent
 from calc.micro_structure import Candle
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -63,7 +60,6 @@ from calc.terrain_engine import (
     StrikeValue,
     TerrainSnapshot,
     compute_terrain,
-    side_total,
 )
 from calc.terrain_read import crossed
 from calibration.complete_chain_capture import CAPTURE_BASIS
@@ -71,9 +67,6 @@ from db import LevelCrossEvent, get_db
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from numeric_contract import (
-    compact_text,
-    count_text,
-    dollars_text,
     schwab_count,
     schwab_number,
 )
@@ -111,7 +104,6 @@ from state.price_level_store import (
 )
 from time_et import (
     ET,
-    Session,
     ct_label,
     et_date_str_from_ts_utc,
     market_session_date,
@@ -875,23 +867,34 @@ def _forces_and_prior(
     snap: TerrainSnapshot,
     fetched_ts: float,
 ) -> tuple[tuple[float | None, str], Forces, TerrainSnapshot | None]:
-    """Return the key of the stored captures read, and the forces and prior day read from them.
+    """Return the key of the stored captures read, the forces now and the prior day's levels.
 
-    They change only with a new capture or a new chain day: computed then, once, for all readers.
+    The prior market day's close capture (_prior_day) changes only with a new capture or a new
+    chain day: its levels are computed then, once, for all readers. The forces are this chain
+    against it, with every publication (calc.math_forces.forces): live.
     """
     captures_key = (
         (capture_store.newest_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
         if kept is None
         else kept.captures_key
     )
-    if previous is not None and previous.captures_key == captures_key:
-        return captures_key, previous.forces, previous.prior_day
     stored = captures if captures is not None else capture_store.captures(get_db().db_path, tk)
-    # This publication priced a stored capture, so its charm map is that newer capture.
-    # A live chain is not that capture: the same function then runs once on the banked one.
-    held_charm = snap.charm_by_strike if captures and captures[0]["spot"] is not None else None
-    forces = _forces_from_captures(tk, stored, held_charm)
-    return captures_key, forces, _prior_day(tk, stored, fetched_ts)
+    prior_capture = _prior_capture(stored, fetched_ts)
+    if previous is not None and previous.captures_key == captures_key:
+        prior = previous.prior_day
+    else:
+        prior = None if prior_capture is None else _prior_day(tk, prior_capture)
+    if prior is None or prior_capture is None or snap.spot is None:
+        return captures_key, forces_absent(tk), prior
+    now_forces = forces(
+        tk,
+        snap.spot,
+        snap.books.values(),
+        snap.charm_by_strike,
+        prior.books.values(),
+        prior_capture["et_date"],
+    )
+    return captures_key, now_forces, prior
 
 
 def _published_surface(
@@ -1539,21 +1542,25 @@ def stop_terrain_loop() -> None:
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
 # capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
-def _prior_day(tk: str, captures: list[dict[str, Any]], chain_ts: float) -> TerrainSnapshot | None:
-    """Return the levels of the previous market day's close before the day of the chain's.
+def _prior_capture(captures: list[dict[str, Any]], chain_ts: float) -> dict[str, Any] | None:
+    """Return the previous market day's close capture before the day of the chain's.
 
-    The one producer (compute_terrain) on that day's stored capture, at its own spot and time:
-    its per-strike rows and its walls and flip. None with no prior day captured, or none stored
-    with its spot. On a closed market today's rows ARE the newest capture, so the day before is
-    the chain's day's, not the wall clock's (which picks that same capture and compares it with
-    itself). Run by _publish_levels when the ticker's newest capture or its chain's day changes,
-    on the same two newest market days' captures the forces read: the chain's day is today or
-    the newest capture's, so the day before it is one of those two.
+    Of the ticker's two newest market days' captures (newest first): on a closed market today's
+    rows ARE the newest capture, so the day before is the chain's day's, not the wall clock's
+    (which picks that same capture and compares it with itself). None with none captured, or
+    none stored with its spot.
     """
     chain_day = et_date_str_from_ts_utc(float(chain_ts))
     prior = next((c for c in captures if c["et_date"] < chain_day), None)
-    if prior is None or prior["spot"] is None:
-        return None
+    return prior if prior is not None and prior["spot"] is not None else None
+
+
+def _prior_day(tk: str, prior: dict[str, Any]) -> TerrainSnapshot:
+    """Return the levels of the prior day's close capture (_prior_capture).
+
+    The one producer (compute_terrain) on that capture, at its own spot and time: its per-strike
+    rows, its walls and flip, and its books, which the forces read.
+    """
     return compute_terrain(
         tk,
         prior["contracts"],
@@ -1561,140 +1568,6 @@ def _prior_day(tk: str, captures: list[dict[str, Any]], chain_ts: float) -> Terr
         now=datetime.fromtimestamp(prior["ts_utc"], ET),
         sessions=sessions(),
     )
-
-
-def _forces_from_captures(
-    tk: str,
-    captures: list[dict[str, Any]],
-    charm_by_strike: dict[float, CharmBucket] | None = None,
-) -> Forces:
-    """Build the forces rows from banked chains.
-
-    Each day's OI totalled by side of the NEWER capture's spot — bucketing each day by its own
-    spot lets the moving boundary masquerade as OI change. DEX is the newer capture's
-    net_dex_dollars side sums; CHARM the dealer-signed net_charm below and above spot on the newer
-    banked chain. `charm_by_strike` is that capture's map when this publication just priced it.
-    Otherwise the same function runs once, at that capture's valuation instant.
-    Run by _publish_levels when the ticker's newest capture changes, on `captures`: the two
-    newest market days' captures (last_capture_per_day, newest first), read once for it.
-    """
-    payload: Forces = forces_absent(tk)
-    try:
-        rows = [
-            (c["et_date"], c["spot"], c["contracts"], c["ts_utc"])
-            for c in captures
-            if c["spot"] is not None
-        ]
-        if len(rows) >= 2:
-            (_, s1, c1, t1), (d0, s0, c0, t0) = rows[0], rows[1]
-            # each capture at its own time, or at that day's option close once the capture is past
-            # it
-            product = option_close_product(tk)
-            clock1 = valuation_instant(datetime.fromtimestamp(t1, ET), product)
-            clock0 = valuation_instant(datetime.fromtimestamp(t0, ET), product)
-            held = sessions()
-            per1 = compute_exposures_by_strike(
-                c1, spot=float(s1), now=clock1, sessions=held, product=product
-            )[0]
-            per0 = compute_exposures_by_strike(
-                c0, spot=float(s0), now=clock0, sessions=held, product=product
-            )[0]
-
-            dex1 = {k: bucket_metric(v, "net_dex_dollars") for k, v in per1.items()}
-            spot1 = float(s1)
-
-            def _oi_change(in_side: Callable[[float], bool]) -> float | None:
-                """Return the side's open interest on the newer day less the older day's.
-
-                It assumes each capture is the whole chain, where a strike not listed holds no
-                contracts.
-                """
-                newer, older = (
-                    side_total([strike_total_oi(b) for k, b in per.items() if in_side(k)])
-                    for per in (per1, per0)
-                )
-                return None if newer is None or older is None else newer - older
-
-            payload = _forces_row(
-                tk,
-                d0,
-                (_oi_change(lambda k: k < spot1), _oi_change(lambda k: k > spot1)),
-                (
-                    side_total([d for k, d in dex1.items() if k < spot1]),
-                    side_total([d for k, d in dex1.items() if k > spot1]),
-                ),
-                _charm_sides(
-                    tk, charm_by_strike, c1, spot1, now=clock1, sessions=held, product=product
-                ),
-            )
-    except Exception as e:
-        log.warning("forces for %s failed (%s)", tk, e, exc_info=True)
-        payload = forces_absent(tk)
-    return payload
-
-
-def _charm_sides(
-    tk: str,
-    charm_by_strike: dict[float, CharmBucket] | None,
-    contracts: list[OptionContract],
-    spot: float,
-    *,
-    now: datetime,
-    sessions: Mapping[str, Session],
-    product: str,
-) -> tuple[float | None, float | None]:
-    """Return the dealer-signed net charm below and above the newer capture's `spot`.
-
-    From `charm_by_strike` when this publication priced that capture, else computed once on its
-    `contracts` at its valuation instant `now`. Net charm is call_charm - put_charm per strike,
-    over the full book. A failure leaves both unknown, logged.
-    """
-    try:
-        per_ch = (
-            compute_charm_by_strike(contracts, spot, now=now, sessions=sessions, product=product)
-            if charm_by_strike is None
-            else charm_by_strike
-        )
-        return (
-            side_total([v["net_charm"] for k, v in per_ch.items() if k < spot]),
-            side_total([v["net_charm"] for k, v in per_ch.items() if k > spot]),
-        )
-    except Exception as e:
-        log.warning("forces charm for %s failed (%s)", tk, e, exc_info=True)
-        return None, None
-
-
-def _forces_row(
-    tk: str,
-    older_et_date: str,
-    doi: tuple[float | None, float | None],
-    dex: tuple[float | None, float | None],
-    charm: tuple[float | None, float | None],
-) -> Forces:
-    """Return the forces row: the open interest change, DEX and charm, each below and above."""
-    (doi_below, doi_above), (dex_below, dex_above), (charm_below, charm_above) = doi, dex, charm
-    return {
-        "ticker": tk,
-        "available": True,
-        "doi_below": doi_below,
-        "doi_above": doi_above,
-        "doi_below_text": count_text(doi_below),
-        "doi_above_text": count_text(doi_above),
-        "dex_below_dollars": dex_below,
-        "dex_above_dollars": dex_above,
-        "dex_below_text": dollars_text(dex_below),
-        "dex_above_text": dollars_text(dex_above),
-        "charm_below": charm_below,
-        "charm_above": charm_above,
-        "charm_below_text": compact_text(charm_below),
-        "charm_above_text": compact_text(charm_above),
-        "older_et_date": older_et_date,
-        "method": (
-            "OI side totals of the two captures, each side by the newer capture's spot; "
-            "DEX = net_dex_dollars side sums on the newer capture; "
-            "CHARM = dealer-signed net_charm side sums on the newer capture"
-        ),
-    }
 
 
 def _legs(legs: tuple[float, float] | None) -> dict[str, float] | None:
