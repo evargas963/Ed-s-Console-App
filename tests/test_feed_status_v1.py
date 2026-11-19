@@ -53,13 +53,17 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
     assert all(r[3] is None for r in rows if r[1] != "NEWS_HEADLINE"), "no data is None, not a time"
 
 
-def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
-    db = tmp_path / "stream_capture.db"
-    now = time_et.now()
-    CaptureWriter(db).insert(
+def test_the_console_reports_the_recorders_own_line(tmp_path):
+    """The console's status line takes the Recorder's word from the heartbeat, not the database.
+
+    A writer with one row committed: the line is its own (state, rows, what it holds); with no
+    heartbeat, or a daemon with no writer, the line says nothing was reported.
+    """
+    writer = CaptureWriter(tmp_path / "ed.db")
+    writer.insert(
         "feedstatus.NEWS_HEADLINE",
         {
-            "ts": now - 600,
+            "ts": time_et.now(),
             "service": "NEWS_HEADLINE",
             "socket_open": True,
             "schwab_last_frame_ts": None,
@@ -67,7 +71,11 @@ def test_a_stopped_record_reads_stale_in_the_console(tmp_path):
             "last_data_ts": None,
         },
     )
-    assert server._feed_record_state(db, now) == "FEED RECORD STALE: last written 10 min ago"
+    status = writer.status()
+    assert server._record_state({"writer": status}) == f"record: {status['line']}"
+    assert "1 rows" in status["line"] and "held in memory: 0 messages" in status["line"]
+    assert server._record_state(None) == server._record_state({"writer": None})
+    assert server._record_state(None) == "record: NOT REPORTED"
 
 
 class _StreamFailingOnce:
