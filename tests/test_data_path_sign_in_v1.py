@@ -422,6 +422,51 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
     assert asked and all(auth == "Bearer fresh" for _path, auth in asked)
 
 
+def test_the_header_says_schwab_refused_the_sign_in_and_what_to_run(tmp_path):
+    """The daemon's status carries its Schwab sign-in for the header (capture.sign_in_line).
+
+    While Schwab refuses it, the line says REFUSED and what to run, with Schwab's own reason in
+    full; once a new sign-in is saved and taken, it says accepted. Without a chain sweep the
+    daemon has asked nothing, and the header shows '-'.
+    """
+    schwab = LocalSchwab()
+    schwab.token = "refuses"
+    try:
+        client = schwab.client(tmp_path, 100)
+        sweep = _sweep(tmp_path)
+        assert _work(sweep, lambda: client, 3)
+        daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+        assert daemon.status(1.0)["sign_in"] is None
+        daemon.chains = sweep
+        refused = daemon.status(1.0)["sign_in"]
+        _new_sign_in(tmp_path / "schwab_token.json", "fresh")
+        assert _work(sweep, lambda: client, 1)
+        accepted = daemon.status(2.0)["sign_in"]
+    finally:
+        schwab.close()
+    assert refused["line"] == "REFUSED: run python reauth_schwab.py" and refused["cls"] == "neg"
+    assert "Refresh token is invalid" in refused["why"]
+    assert accepted == {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
+
+
+#: the daemon's waiting when Schwab refused its sign-in, as production logged it at 2026-11-19
+#: 13:00:13 CT, seven days after the sign-in was saved
+REFUSED_2026_11_19 = (
+    'Schwab refused the sign-in (unsupported_token_type: 400 Bad Request: "{"error_description":'
+    '"Refresh token is invalid, expired or revoked","error":"invalid_grant"}"); nothing is sent '
+    "to Schwab until a new sign-in is saved: python reauth_schwab.py"
+)
+#: the header's sign-in lines the browser test draws
+E2E_SIGN_IN = Path(__file__).parent / "e2e" / "fixtures" / "sign_in_lines.json"
+
+
+def test_the_browser_tests_sign_in_lines_are_the_daemons_own():
+    assert json.loads(E2E_SIGN_IN.read_text(encoding="utf-8")) == {
+        "refused": capture.sign_in_line(REFUSED_2026_11_19),
+        "accepted": capture.sign_in_line(None),
+    }
+
+
 def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
     """Return the console's verdict on SPY's levels computed at `computed`, judged at `at`.
 
