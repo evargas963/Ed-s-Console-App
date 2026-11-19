@@ -964,11 +964,14 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
   Recorder.
 - **Chain:** Schwab REST, fetched by Feed → State → Calculators → State. The page is never pushed a
   whole chain.
-- **Chain history:** in each capture window of the option markets as Schwab's /markets sent them --
-  every 30 minutes from their open, and at the last close (the close capture: 16:15 ET, 13:15 on an
-  early close) -- the Recorder writes the first full chain (every expiry) Feed begins of each
-  watchlist ticker, compressed, one row per expiry, into `ed.db`. Nothing is captured outside those
-  windows. This is what research reads and what startup loads (the newest capture per ticker).
+- **Chain history:** once a day per watchlist ticker, at its own option close as Schwab's /markets
+  sent it (16:00 ET for equity options, 16:15 for index options; 13:00 and 13:15 on an early
+  close; `chain_sweep.capture_slot`), the Recorder writes the first full chain (every expiry) Feed
+  begins at or after it, compressed, one row per expiry, into `ed.db`: the close capture. Nothing
+  is captured during the session. This is what startup loads (the newest capture per ticker) and
+  what the prior day and the forces read. The intraday captures stored before this (86,155, every
+  30 minutes) were deleted on 2026-11-19 on the operator's yes ("Yes, delete them"); each ticker's
+  last capture of each day was kept.
 - **Levels:** Calculators → State → pushed to the page; not stored (decision 7).
 - **Level crosses:** Calculators → State → written by the Recorder.
 - **After a restart, a weekend or the close:** at startup the Recorder's loader reads the recorded
