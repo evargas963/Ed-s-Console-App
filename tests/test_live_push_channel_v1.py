@@ -48,13 +48,30 @@ from tests.feed_live_helper import RTH_INSTANT, clock_from
 _CONTRACT = "SPY   260918C00500000"
 
 
+#: SPY's LEVELONE_EQUITIES message of 2026-11-11 as Schwab sent it, the base of every SPY trade
+#: here (tests/fixtures/real_premarket_first_prints_2026_11_11.json)
+SPY_SENT = next(
+    m["item"]
+    for m in json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "real_premarket_first_prints_2026_11_11.json"
+        ).read_text(encoding="utf-8")
+    )["messages"]
+    if m["ticker"] == "SPY"
+)
+#: its last price: each test's trades are it and a cent or more from it
+SPY_LAST = SPY_SENT["LAST_PRICE"]
+
+
 def _spy_trade(last: float, ts: float) -> dict:
+    """SPY's real message with a trade at `last` and `ts` (INDUCED: a cent's spread round it)."""
     native = {
-        "key": "SPY",
+        **SPY_SENT,
         "BID_PRICE": last - 0.01,
         "ASK_PRICE": last + 0.01,
         "LAST_PRICE": last,
         "QUOTE_TIME_MILLIS": int(ts * 1000),
+        "TRADE_TIME_MILLIS": int(ts * 1000),
     }
     return quote_msg(
         symbol="SPY",
@@ -193,7 +210,7 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end():
     async def body(bus, web):
         assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = clock()
-        bus.publish("quote.SPY", _spy_trade(501.0, ts))
+        bus.publish("quote.SPY", _spy_trade(SPY_LAST, ts))
         assert await _until(_received(ts))
         assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         now = clock()
@@ -261,7 +278,7 @@ def test_a_closed_schwab_socket_is_not_live():
     async def body(bus, web):
         assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
-        bus.publish("quote.SPY", _spy_trade(501.0, ts))
+        bus.publish("quote.SPY", _spy_trade(SPY_LAST, ts))
         assert await _until(_received(ts))
         # a heartbeat arrived: the daemon's status, its Schwab socket closed, is recorded
         assert await _until(lambda: lmp.daemon_status(time_et.now()) is not None)
@@ -276,8 +293,8 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
 
     What the console applies, and the SPY record a second reader of the daemon's bus takes as
     the console's _bus_loop does (a LATEST subscription, Schwab's records only by
-    live_push.is_forwarded), hold only what Schwab sent (here, no CLOSE_PRICE and no 1.05 --
-    only the non-Schwab message carried them).
+    live_push.is_forwarded), hold only what Schwab sent (here, Schwab's own CLOSE_PRICE and no
+    1.05 or 1.00 -- only the non-Schwab message carried them).
     """
 
     async def body(bus, web):
@@ -295,10 +312,11 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
             ),
         )
         ts = time_et.now()
-        bus.publish("quote.SPY", _spy_trade(502.0, ts))
+        bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.01, ts))
         assert await _until(_received(ts))
         assert not any(
-            "CLOSE_PRICE" in item or item.get("LAST_PRICE") == 1.05 for item in ofls.prints("SPY")
+            item.get("CLOSE_PRICE") == 1.0 or item.get("LAST_PRICE") == 1.05
+            for item in ofls.prints("SPY")
         ), "the console applied a non-Schwab value"
         sub = bus.subscribe("", policy=LATEST)  # a second reader, as the console's _bus_loop
         try:
@@ -308,8 +326,10 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
                     break
         finally:
             bus.unsubscribe(sub)
-        assert "CLOSE_PRICE" not in record["native"], "a non-Schwab value was forwarded as Schwab's"
-        assert record["native"]["LAST_PRICE"] == 502.0
+        assert record["native"]["CLOSE_PRICE"] == SPY_SENT["CLOSE_PRICE"], (
+            "a non-Schwab value was forwarded as Schwab's"
+        )
+        assert record["native"]["LAST_PRICE"] == SPY_LAST + 0.01
 
     asyncio.run(_run(body))
 
@@ -365,7 +385,7 @@ def test_the_live_loop_never_opens_the_capture_database():
     async def body(bus, web):
         assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
-        bus.publish("quote.SPY", _spy_trade(503.0, ts))
+        bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.02, ts))
         assert await _until(_received(ts))
 
     _OPENED.clear()
@@ -390,7 +410,7 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
     async def run():
         with caplog.at_level("ERROR", logger=ofs.log.name):
             assert ofs.start_order_flow_stream() is False
-        bus.publish("quote.SPY", _spy_trade(504.0, time_et.now()))
+        bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.03, time_et.now()))
         # nothing runs on this loop but this test that could apply it
         assert asyncio.all_tasks() == {asyncio.current_task()}
         assert ofls.prints("SPY") == []
@@ -398,7 +418,7 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
         assert ofs.start_order_flow_stream() is True
         try:
             ts = time_et.now()
-            bus.publish("quote.SPY", _spy_trade(505.0, ts))
+            bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.04, ts))
             assert await _until(_received(ts))
         finally:
             ofs.stop_order_flow_stream()
@@ -413,7 +433,7 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
 
 def test_a_message_missing_its_receive_time_is_dropped_whole():
     ofs._ingest_pushed("quote.ZZZNOTS", {"symbol": "ZZZNOTS", "native": {"LAST_PRICE": 1.0}})
-    msg = _spy_trade(1.0, time_et.now())
+    msg = _spy_trade(SPY_LAST, time_et.now())
     msg["symbol"] = "ZZZNOPE"
     del msg["ts_recv"]
     ofs._ingest_pushed("quote.ZZZNOPE", msg)
@@ -442,7 +462,8 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time():
                 symbol="SPY",
                 src="schwab_l1",
                 ts_recv=t_trade,
-                native={"key": "SPY", "LAST_PRICE": 505.0, "CLOSE_PRICE": 500.0},
+                # the real message's trade fields alone, as Schwab sends a change
+                native={k: SPY_SENT[k] for k in ("key", "LAST_PRICE", "CLOSE_PRICE")},
             ),
         )
         bus.publish(
@@ -451,7 +472,7 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time():
                 symbol="SPY",
                 src="schwab_l1",
                 ts_recv=t_quote,
-                native={"key": "SPY", "BID_PRICE": 504.9, "ASK_PRICE": 505.1},
+                native={k: SPY_SENT[k] for k in ("key", "BID_PRICE", "ASK_PRICE")},
             ),
         )  # publish is synchronous: both are the bus's current record now
         assert ofs.start_order_flow_stream()
