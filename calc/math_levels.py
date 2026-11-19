@@ -302,7 +302,7 @@ def compute_gamma_profile(
 
 
 #: Candidate prices evaluated per numpy block in _gamma_profile_totals (bounds memory: a
-#: 30,000-contract chain x 32 prices is ~1M floats per temporary).
+#: 30,000-contract chain x 32 prices is ~1M floats in each intermediate array).
 _GAMMA_PROFILE_BLOCK = 32
 
 
