@@ -491,7 +491,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     The writer does not fill it, so SQLite refuses each row with IntegrityError, standing in for
     the refusal of a repeated capture key. The chain is delivered and never published as
     failed, the sweep fetches the next chain at once (no pause: a second chain is delivered),
-    and the daemon's writer keeps the chain as delivered.
+    and the daemon's writer, the capture's one writer, keeps the capture as it was handed.
     """
     db = tmp_path / "ed_console.db"
     with closing(sqlite3.connect(db)) as conn, conn:
@@ -501,7 +501,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
             "chain_json TEXT NOT NULL, chain_spot REAL, chain_spot_ts REAL, chains_answer BLOB, "
             "refused TEXT NOT NULL, PRIMARY KEY (ticker, expiry, ts_utc))"
         )
-    failures_db = tmp_path / "stream_capture.db"
+    failures_db = db  # the daemon's one database
     published: list = []
 
     async def go():
@@ -544,7 +544,7 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
     assert fetched >= 2, "the sweep paused after a history write failed"
     failures = _failures(failures_db)  # each fetch of the window tries the history again
     assert len(failures) == writer["failures"] >= 2
-    assert {topic for topic, _k, _e in failures} == {"chain_history.SPY"}
+    assert {topic for topic, _k, _e in failures} == {"capture.SPY"}
     (topic, kept, error) = failures[0]
     assert error.startswith(
         "IntegrityError: NOT NULL constraint failed: complete_chain_captures.refused"
@@ -554,9 +554,11 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         m for m in published if m["src"] == "schwab_chain"
     ]  # the chain's, not its price history
     received = [ct for msg in parts[: parts[0]["parts"]] for ct in msg["contracts"]]
-    assert kept["spots"] == {"2026-11-20": 766.31}
-    assert read_chain(kept["contracts"]) == received, "kept as Schwab sent what was delivered"
-    assert writer["last_failure"] == f"chain_history.SPY: {failures[-1][2]}"
+    assert {e["expiry"]: e["spot"] for e in kept["expiries"]} == {"2026-11-20": 766.31}
+    assert read_chain([c for e in kept["expiries"] for c in e["contracts"]]) == received, (
+        "kept as Schwab sent what was delivered"
+    )
+    assert writer["last_failure"] == f"capture.SPY: {failures[-1][2]}"
 
 
 #: STAND-IN for the production hold cap (about 2 GB of memory): 4,000 bytes, so the captured option
