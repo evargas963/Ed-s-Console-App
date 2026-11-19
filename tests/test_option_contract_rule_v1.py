@@ -36,10 +36,11 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calc.terrain_engine import strike_window
 from feed.chain_sweep import chain_messages
+from feed.connection import held_key
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
 from state import level_store
-from stream_spine import HealthRegistry, MessageBus, quote_msg
+from stream_spine import HealthRegistry, MessageBus, quote_msg, verbatim_msg
 from tests.real_chains import CRWD, MRVL, SPY_FULL, TSLA
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
@@ -488,6 +489,66 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
 
     market.run(steps)
     assert len(want[L1]) == len(CHAINS["MRVL"]) and len(want[BOOK]) == 100
+
+
+#: one contract's LEVELONE_OPTIONS messages as Schwab streamed them (SPY 2026-09-04 772 call),
+#: published below under a contract of SPY's 2026-11-20 chain, as the REST connection's tests do
+_STREAMED = next(
+    c
+    for c in json.loads(
+        (_FX / "real_options_stream_history_samples.json").read_text(encoding="utf-8")
+    )["contracts"]
+    if c["symbol"] == "SPY   260904C00772000"
+)
+_HELD = "SPY   261120C00875000"
+
+
+def test_a_released_contracts_record_stands_until_it_is_asked_for_again(tmp_path):
+    """SPY removed from the watchlist, then added again and its next chain arrives.
+
+    While Schwab holds _HELD, its record on the bus is the sweep's. Released, its record stands
+    on the bus (its last values, D5), and the sweep takes it no more. Asked for again, the record
+    is forgotten before the request goes: Schwab has sent nothing of the new hold (the stand-in
+    sends no data), so the bus holds nothing of it, and nothing of the ended hold is taken.
+    """
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    both = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    key = held_key(L1, _HELD)
+    seen: dict = {}
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(both))
+        for e in _STREAMED["events"]:
+            if e["kind"] == "l1":
+                m.bus.publish(
+                    f"optquote.{_HELD}",
+                    verbatim_msg(
+                        symbol=_HELD,
+                        content={**e["content"], "key": _HELD},
+                        src="schwab_options_l1",
+                        ts_recv=e["ts_recv"],
+                        schwab_ts=int(e["ts_recv"] * 1000),
+                    ),
+                )
+        seen["held"] = m.daemon.option_record(_HELD)
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
+        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL"])))
+        seen["released"] = (m.bus.current.get(key), m.daemon.option_record(_HELD))
+        m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2})
+        await _until(lambda: "SPY" in m.daemon.watchlist)
+        m.chain("SPY")
+        await _until(lambda: m.holds(both))
+        seen["held_again"] = (m.bus.current.get(key), m.daemon.option_record(_HELD))
+
+    market.run(steps)
+    assert _HELD in both[L1]
+    assert seen["held"] is not None and seen["held"][1]["content"]["key"] == _HELD
+    record, taken = seen["released"]
+    assert record == seen["held"] and taken is None, "the last values stand; the sweep takes none"
+    assert seen["held_again"] == (None, None), "the new hold starts with nothing of the old one"
 
 
 def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(tmp_path):

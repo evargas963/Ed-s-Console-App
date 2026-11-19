@@ -32,6 +32,7 @@ from calc.math_exposure_core import compute_exposures_by_strike, put_call_volume
 from calibration.complete_chain_capture import last_capture_per_day
 from feed import schwab_client as sc
 from feed.chain_sweep import ChainSweep
+from feed.connection import held_key
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, verbatim_msg
 from tests.schwab_rest_standin import (
     CHAIN,
@@ -370,16 +371,17 @@ def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a
 
 
 def test_a_held_contracts_record_ends_with_its_connection(tmp_path):
-    """The connection ends and the next one holds HELD again.
+    """The connection ends: HELD's record ends for the sweep with it.
 
-    Until Schwab sends HELD on the new connection, the sweep has no stream record of it, so it is
-    asked of the quotes endpoint rather than priced on the ended connection's Greeks.
+    Its last values stand on the bus (D5), but the sweep takes no record of a contract the
+    stream does not hold, so HELD is asked of the quotes endpoint rather than priced on the
+    ended connection's Greeks. A new hold starts with nothing of this one
+    (test_option_contract_rule_v1: a released contract's record stands until it is asked for).
     """
     schwab = LocalSchwab()
     daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-10-01 10:15"))
     asyncio.run(daemon.connection.disconnect())
-    # Schwab accepted it on the new one
-    daemon.connection.held["LEVELONE_OPTIONS"] = frozenset({HELD})
+    assert held_key("LEVELONE_OPTIONS", HELD) in daemon.bus.current
     assert daemon.option_record(HELD) is None
     try:
         assert sweep.rotation(client, ["SPY"], threading.Event()) == {"SPY"}

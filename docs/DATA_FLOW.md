@@ -571,9 +571,10 @@ both, and the window restarts the program.
   carries all six as values (`option_contract.streamed_greeks`, the one reader of those stream
   fields) takes the stream's, each with its field's Schwab time (`greeksTime`, {field: ms}), and is
   not asked for on `/quotes`. A contract's Greeks are one set, never some from the stream and some
-  from `/quotes` (`option_contract.streamed_greek_set`). An option record ends with its hold: the
-  daemon forgets it when Schwab drops the contract or the connection ends (`Connection.disconnect`),
-  so the next hold starts from what Schwab sends then. Every other contract (one the stream does not
+  from `/quotes` (`option_contract.streamed_greek_set`). The sweep takes a record only while the
+  contract is held (`Daemon.option_record`). A record outlives its hold, its last values standing
+  (D5), until the contract is asked for again: then the daemon forgets it before sending the
+  request (`Connection.ask`), so the next hold starts from what Schwab sends then. Every other contract (one the stream does not
   hold: past the limit Schwab stated, or not yet answered) is asked for on `/quotes`,
   comma-separated, 300 to a request across tickers (`QUOTES_BATCH_MAX`, Schwab Trader API Support
   2026-10-06: not more than 300), and takes its quote's, as sent (its `greeksTime` is None). Each

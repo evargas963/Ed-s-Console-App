@@ -466,9 +466,9 @@ class MessageBus:
                 sub.deliver(key, topic, msg)
 
     def forget(self, key: str) -> None:
-        """Forget what `key` (current_key) names: the daemon stopped holding it.
+        """Forget what `key` (current_key) names: the daemon is about to hold it anew.
 
-        Its record is no longer current and is never handed out again (D5).
+        The ended hold's record is never handed out again (D5); the new hold's starts empty.
         """
         self.current.pop(key, None)
 

@@ -34,7 +34,6 @@ from typing import Any
 
 from schwab.streaming import UnparsableMessage
 
-import live_market_plane as lmp
 import time_et
 from feed.stream import TimedStream, label
 from stream_spine import (
@@ -275,7 +274,9 @@ class Connection:
         left, then SUBS (when nothing asked stays: its first request, or the first since Schwab
         stated its limit) or ADD what came, in the service's order. What Schwab refuses is not
         asked again on this connection. Nothing is queued while no connection is open: a
-        connection asks for everything when it opens.
+        connection asks for everything when it opens. A symbol asked for that is not held has
+        its bus record forgotten first, before any of the new hold's data can arrive: a new hold
+        starts with nothing of an ended one, and an ended hold's last values stand until then.
         """
         if self.stream is None:
             return
@@ -283,6 +284,9 @@ class Connection:
             want = order[: self.limit[svc]]
             have = self.asked[svc]
             drop, add = sorted(have.difference(want)), [s for s in want if s not in have]
+            for sym in add:
+                if sym not in self.held[svc]:  # a new hold starts with nothing of an ended one
+                    self.bus.forget(held_key(svc, sym))
             if drop:
                 self._requests.append((svc, "UNSUBS", drop))
             if add:
@@ -362,10 +366,7 @@ class Connection:
         # a SUBS overwrites all the service held, an ADD adds, an UNSUBS removes (Schwab Streamer
         # API, Command Name); what Schwab refuses it does not confirm, so a refused SUBS holds none
         held, new = self.held[svc], frozenset(sent.symbols if code == 0 else ())
-        kept = {"SUBS": new, "ADD": held | new, "UNSUBS": held - new}[sent.command]
-        for sym in (held | new) - kept:  # no longer held: no longer current
-            self.bus.forget(held_key(svc, sym))
-        self.held[svc] = kept
+        self.held[svc] = {"SUBS": new, "ADD": held | new, "UNSUBS": held - new}[sent.command]
 
     async def connect(self, client: object) -> TimedStream:
         stream = TimedStream(client, self.clock)
@@ -380,9 +381,6 @@ class Connection:
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
-        for svc in lmp.OPTION_SERVICES:  # an option contract's hold ends with its connection
-            for sym in self.held[svc]:
-                self.bus.forget(held_key(svc, sym))
         # the next connection has asked for nothing, holds nothing and has been told no limit
         self.asked = {k: frozenset() for k in SERVICES}
         self.held = {k: frozenset() for k in SERVICES}
