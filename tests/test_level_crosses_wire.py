@@ -489,6 +489,31 @@ def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
     (tmp_path / "level_crosses.db").unlink()  # Windows refuses this while a connection holds it
 
 
+def test_the_console_reads_the_crosses_and_a_write_through_it_fails(tmp_path: Path) -> None:
+    """The Recorder is the database's one writer (P2-DB5): the console's EdDB opens read-only.
+
+    A cross the Recorder stored is read back through it; a write through its connection is
+    refused by SQLite itself (mode=ro), and the row stands.
+    """
+    event = LevelCrossEvent(
+        ticker="SPY",
+        ts_utc=SPY_PRINT_A_STRIKE_AWAY["ts_recv"],
+        ts_et="2026-10-22 16:39:03 ET",
+        level_name="Call wall",
+        level_value=765.0,
+        direction=CROSSED_UP,
+        spot_at_cross=STRIKE_AWAY,
+        zone_before=None,
+        zone_after=None,
+        timeframe="1m",
+    )
+    stored = stored_crosses(CaptureWriter(tmp_path / "level_crosses.db"), [event])
+    edb = EdDB(tmp_path / "level_crosses.db")
+    with closing(edb._connect()) as conn, pytest.raises(sqlite3.OperationalError, match="readonly"):
+        conn.execute("DELETE FROM level_crosses")
+    assert edb.get_recent_crosses("SPY", n=10) == stored
+
+
 def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Path) -> None:
     """Induced condition: the second of the 16:39 print's crosses is refused.
 
