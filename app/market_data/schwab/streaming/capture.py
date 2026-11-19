@@ -263,9 +263,9 @@ def sign_in_line(waiting: str | None) -> dict[str, str]:
     held: nothing is asked of Schwab's REST endpoints, so chains, /quotes answers and price
     history stop where they are).
     """
-    if waiting is None:
-        return {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
-    return {"line": "REFUSED: run python reauth_schwab.py", "why": waiting, "cls": "neg"}
+    if waiting is not None:
+        return {"line": "REFUSED: run python reauth_schwab.py", "why": waiting, "cls": "neg"}
+    return {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
 
 
 def _not_started() -> object:
