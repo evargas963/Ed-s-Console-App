@@ -20,7 +20,7 @@ from __future__ import annotations
 import gzip
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +33,7 @@ import time_et
 from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
+from db import StoredCross
 from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
@@ -200,9 +201,14 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
             + real.desk["bars"],
             now,
         )
-        # the day's level crosses as recorded, oldest first, as cross_store.load holds them
+        # the day's level crosses as recorded, oldest first, as cross_store.load holds them: each
+        # row as get_recent_crosses reads it
+        stored = {f.name for f in fields(StoredCross)}
         with cross_store._lock:
-            cross_store._crosses[tk] = list(real.desk["crosses"])
+            cross_store._crosses[tk] = [
+                StoredCross(**{k: v for k, v in r.items() if k in stored})
+                for r in real.desk["crosses"]
+            ]
         server._publish_levels(tk, captures=captures, now=now)
         return json.loads(
             json.dumps(

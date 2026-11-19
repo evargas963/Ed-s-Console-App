@@ -8,16 +8,27 @@ Loaded from level_crosses once the watchlist is known (load), then each cross as
 from __future__ import annotations
 
 import threading
-from typing import Any
+from dataclasses import dataclass
 
-from db import get_db
+from db import StoredCross, get_db
 
 CROSSES_KEPT = 1600
-_crosses: dict[str, list[dict[str, Any]]] = {}
+_crosses: dict[str, list[StoredCross]] = {}
 _lock = threading.Lock()
 
 
-def _held(tk: str) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class MergedCross:
+    """One price crossing one level value at one time, with every level named there.
+
+    `cross` is the first stored row of them (its time, value, direction, spot and id).
+    """
+
+    cross: StoredCross
+    level_names: list[str]
+
+
+def _held(tk: str) -> list[StoredCross]:
     """Return the ticker's held level crosses, oldest first.
 
     The one database read of them, the first time they are needed (the console's start, or a
@@ -35,7 +46,7 @@ def load(watchlist: list[str]) -> None:
             _held(tk)
 
 
-def add(tk: str, logged: list[dict[str, Any]]) -> None:
+def add(tk: str, logged: list[StoredCross]) -> None:
     """Hold the crosses just stored (`logged`, the rows record_level_crosses returned)."""
     with _lock:
         held = _held(tk)
@@ -43,28 +54,23 @@ def add(tk: str, logged: list[dict[str, Any]]) -> None:
         del held[:-CROSSES_KEPT]
 
 
-def merged_recent(ticker: str, n: int) -> list[dict[str, Any]]:
+def merged_recent(ticker: str, n: int) -> list[MergedCross]:
     """Return the newest `n` level crosses, each (time, value, direction) one event.
 
-    Each event carries every level named there in `level_names`. The one reader of level crosses
-    for every route. Price crossing one strike writes one stored row per named level sitting
-    there; they are merged here, at the read, so the stored history keeps its per-level rows.
+    Each event names every level there (`level_names`). The one reader of level crosses for every
+    route. Price crossing one strike writes one stored row per named level sitting there; they
+    are merged here, at the read, so the stored history keeps its per-level rows.
     """
     with _lock:
         raw = _crosses[ticker][::-1][: max(int(n) * 8, 64)] if ticker in _crosses else []
-    merged: list[dict[str, Any]] = []
-    seen: dict[tuple[Any, Any, Any], dict[str, Any]] = {}
-    # each row has every LevelCrossEvent field and its cross_id (db.get_recent_crosses, or the
-    # row record_level_crosses returned)
+    merged: list[MergedCross] = []
+    seen: dict[tuple[float, float, str], MergedCross] = {}
     for r in raw:
-        key = (r["ts_utc"], r["level_value"], r["direction"])
+        key = (r.ts_utc, r.level_value, r.direction)
         hit = seen.get(key)
         if hit is None:
-            row = dict(r)
-            row["level_names"] = [r["level_name"]]
-            seen[key] = row
-            merged.append(row)
-            continue
-        if r["level_name"] not in hit["level_names"]:
-            hit["level_names"].append(r["level_name"])
+            hit = seen[key] = MergedCross(r, [])
+            merged.append(hit)
+        if r.level_name not in hit.level_names:
+            hit.level_names.append(r.level_name)
     return merged[:n]
