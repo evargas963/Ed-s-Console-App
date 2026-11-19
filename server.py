@@ -25,11 +25,7 @@ import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
-from app.options.order_flow.state import (
-    get_stream_greeks,
-    rest_quotes,
-    streamed_values,
-)
+from app.options.order_flow.state import rest_quotes, streamed_values
 from app.options.order_flow.streaming import (
     price_state,
     select_flow_contract,
@@ -73,7 +69,7 @@ from numeric_contract import (
 from open_gap import (
     open_gap_record,
 )
-from option_contract import OptionContract
+from option_contract import NO_GREEKS, OptionContract, Streamed
 from push import bars as push_bars
 from push import book as push_book
 from push import bookmap as push_bookmap
@@ -468,21 +464,6 @@ def _overlaid_symbols(pre: list[OptionContract], post: list[OptionContract]) -> 
     return [new.symbol for orig, new in zip(pre, post) if new is not orig and new.symbol]
 
 
-def _leg_stream_ts_recv(greeks: dict[str, Any] | None) -> float | None:
-    """Return the freshest of a streamed contract's own per-field `_ts_recv` stamps.
-
-    The shape is get_stream_greeks', app.options.order_flow.state; None if `greeks` is
-    absent/empty. Any one of these
-    fields ticking is evidence the contract is actively producing observations right now, so the
-    MAX (not a single hardcoded field) is the contract's own last-observed instant.
-    """
-    if not greeks:
-        return None
-    candidates = [greeks.get(k) for k in ("gamma_ts_recv", "delta_ts_recv", "total_volume_ts_recv")]
-    candidates = [c for c in candidates if isinstance(c, (int, float))]
-    return max(candidates) if candidates else None
-
-
 _STREAM_STATE_ORDER = ("stale", "pending")
 
 
@@ -518,7 +499,7 @@ def _stream_cell_title(state: str, ts_recv: float | None) -> str | None:
 
 def _stamp_gamma_surface_cell_stream_state(
     surface: dict[str, Any],
-    streamed: dict[str, dict[str, Any]],
+    streamed: dict[str, Streamed],
     overlay_symbols: Collection[str],
     held_symbols: Collection[str],
 ) -> dict[str, Any]:
@@ -552,7 +533,7 @@ def _stamp_gamma_surface_cell_stream_state(
                 sym = pair.get(side)
                 if not sym:
                     continue
-                greeks = streamed.get(sym)
+                greeks = streamed[sym].greeks if sym in streamed else NO_GREEKS
                 if sym in overlay_symbols:
                     leg_state = "live"
                 elif sym in streamed:
@@ -565,7 +546,7 @@ def _stamp_gamma_surface_cell_stream_state(
                 legs[side] = {
                     "symbol": sym,
                     "state": leg_state,
-                    "ts_recv": _leg_stream_ts_recv(greeks),
+                    "ts_recv": greeks.newest_ts(),
                 }
             if not leg_states:  # the expiry lists no contract at this strike: nothing streams
                 state_row.append(None)
@@ -716,11 +697,7 @@ def restamp_open_surfaces(now: float) -> None:
             continue
         _last_feed_stamp[tk] = key
         held = key[1]
-        streamed: dict[str, dict[str, Any]] = {}
-        for sym in symbols:
-            greeks = get_stream_greeks(sym)
-            if greeks:
-                streamed[sym] = greeks
+        streamed = streamed_values(symbols)
         live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
         stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held)
         stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
@@ -806,7 +783,7 @@ class _Priced(NamedTuple):
     received: list[float]
     #: one read of the heartbeat, the streamed values, which of them are live, which are held
     feed: lmp.FeedNow
-    streamed: dict[str, dict[str, Any]]
+    streamed: dict[str, Streamed]
     feed_live: set[str]
     held: set[str]
 
@@ -839,7 +816,7 @@ def _price_chain_values(
     pushed_ts = [
         ts
         for s in live_syms
-        if s in streamed and (ts := _leg_stream_ts_recv(streamed[s])) is not None
+        if s in streamed and (ts := streamed[s].greeks.newest_ts()) is not None
     ]
     # a contract the stream does not hold was given its /quotes answer: that answer's receive time
     quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
