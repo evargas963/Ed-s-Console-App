@@ -30,7 +30,8 @@ from stream_spine import (
 )
 from time_et import ET
 
-_BEGUN = datetime(2026, 9, 30, 15, 31, 57, tzinfo=ET).timestamp()
+#: after MRVL's option close (16:00 ET): the day's close capture
+_BEGUN = datetime(2026, 9, 30, 16, 1, 57, tzinfo=ET).timestamp()
 _MRVL = sc.flatten_chain_contracts(
     json.loads(
         (

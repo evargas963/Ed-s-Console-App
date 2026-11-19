@@ -29,7 +29,7 @@ from calc.confluence_composite import (
 )
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
 from calc.math_levels import compute_charm_by_strike
-from calc.terrain_engine import TerrainSnapshot, compute_terrain
+from calc.terrain_engine import TerrainSnapshot
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from numeric_contract import price_text
 from option_contract import read_chain
@@ -1411,18 +1411,27 @@ def _two_day_captures(chain: list) -> list[dict]:
     prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
     return [
         {
-            "et_date": "2026-10-07",
+            "et_date": day,
             "spot": SPY_0DTE.spot,
+            "spot_ts": at.timestamp(),
+            "basis": CAPTURE_BASIS,
             "contracts": chain,
-            "ts_utc": _BANKED_AFTER_CLOSE.timestamp(),
-        },
-        {
-            "et_date": "2026-10-06",
-            "spot": SPY_0DTE.spot,
-            "contracts": chain,
-            "ts_utc": prior.timestamp(),
-        },
+            "ts_utc": at.timestamp(),
+        }
+        for day, at in (("2026-10-07", _BANKED_AFTER_CLOSE), ("2026-10-06", prior))
     ]
+
+
+def _published(caps: list[dict], now: datetime) -> level_store.PublishedLevels:
+    """The levels published from stored captures `caps` (newest first) at `now`."""
+    tk = "SPYFORCES"
+    try:
+        server._publish_levels(tk, captures=caps, now=now)
+        levels = level_store.published_levels(tk)
+        assert levels is not None
+        return levels
+    finally:
+        _forget(tk)
 
 
 def test_a_close_capture_keeps_its_charm_in_the_forces():
@@ -1431,36 +1440,30 @@ def test_a_close_capture_keeps_its_charm_in_the_forces():
     Its contracts settled at that close with no time left, so they carry no charm: the forces'
     charm sums are "-", never a charm of a made-up time left (operator 2026-11-15).
     """
-    forces = server._forces_from_captures("SPY", _two_day_captures(read_chain(SPY_0DTE.chain)))
+    caps = _two_day_captures(read_chain(SPY_0DTE.chain))
+    forces = _published(caps, _BANKED_AFTER_CLOSE).forces
+    assert forces["available"] is True
     assert forces["charm_below"] is None
     assert forces["charm_above"] is None
 
 
-def test_the_forces_read_the_charm_map_of_the_capture_just_priced():
-    """The side sums are the charm map priced with that capture.
+def test_the_forces_read_the_charm_map_of_the_chain_just_priced():
+    """The forces' charm side sums are the charm map of the chain the levels priced now.
 
-    SPY's captured chain,
-    valued at the index close, sums to the same charm either way. The same chain's charm valued
-    at its own capture instant, 12:32 ET, is a different map, and the sums are that map's.
+    SPY's captured chain valued at its own capture instant, 12:32 ET, has a charm map; the
+    forces' sums are the published chain's map, each side of its own price.
     """
     held = SPY_0DTE
-    valued = valuation_instant(_BANKED_AFTER_CLOSE, INDEX_OPTIONS)
-    chain = read_chain(held.chain)
-    on_file = sessions()
-    snap = compute_terrain("SPY", chain, held.spot, now=valued, sessions=on_file)
-    caps = _two_day_captures(chain)
-    fresh = server._forces_from_captures("SPY", caps)
-    from_book = server._forces_from_captures("SPY", caps, snap.charm_by_strike)
-    assert from_book["charm_below"] == fresh["charm_below"]
-    assert from_book["charm_above"] == fresh["charm_above"]
-    midday = compute_charm_by_strike(
-        chain, held.spot, now=held.now, sessions=on_file, product=INDEX_OPTIONS
+    caps = _two_day_captures(read_chain(held.chain))
+    caps[0].update(  # the newer capture taken at 12:32, in the session
+        ts_utc=held.now.timestamp(), spot_ts=held.now.timestamp()
     )
-    read = server._forces_from_captures("SPY", caps, midday)
-    below = sum(v["net_charm"] for k, v in midday.items() if k < held.spot)
-    above = sum(v["net_charm"] for k, v in midday.items() if k > held.spot)
-    assert (below, above) != (fresh["charm_below"], fresh["charm_above"])
-    assert (read["charm_below"], read["charm_above"]) == (below, above)
+    levels = _published(caps, held.now)
+    snap, forces = levels.snap, levels.forces
+    assert snap.spot is not None and snap.charm_by_strike
+    below = sum(v["net_charm"] for k, v in snap.charm_by_strike.items() if k < snap.spot)
+    above = sum(v["net_charm"] for k, v in snap.charm_by_strike.items() if k > snap.spot)
+    assert (forces["charm_below"], forces["charm_above"]) == (below, above)
 
 
 def test_a_chain_whose_every_expiry_has_passed_says_so():

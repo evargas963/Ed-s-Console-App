@@ -948,8 +948,8 @@ def test_d5_a_chain_in_flight_at_the_close_keeps_its_begin_time_and_the_close_ch
     assert asked and all(asked.count(e) == 2 for e in asked), (
         "each expiry: the chain in flight, then the close chain"
     )
-    assert stored == [et_ts("2026-10-07 16:10"), et_ts("2026-10-07 16:20")], (
-        "each chain stored at the time it began"
+    assert stored == [et_ts("2026-10-07 16:20")], (
+        "the close chain stored at the time it began; the one begun before the close is not"
     )
     assert writer.status()["failures"] == 0, "a chain history write failed"
 

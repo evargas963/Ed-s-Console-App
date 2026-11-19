@@ -2,10 +2,11 @@
 
 The chain history through the real code: the daemon's ChainSweep fetches Schwab's chain (the
 captured SPY 2026-11-20 chain and its quotes,
-tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json) and writes it in a capture window; the
-console's startup reader (last_capture_per_day) reads it back. STAND-INS: the host answering the
-sweep is the local stand-in for Schwab's (tests/schwab_rest_standin.py), and the chain envelope it
-serves is rebuilt from the captured contracts, not the envelope as Schwab sent it.
+tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json) and writes it as the day's close
+capture; the console's startup reader (last_capture_per_day) reads it back. STAND-INS: the host
+answering the sweep is the local stand-in for Schwab's (tests/schwab_rest_standin.py), and the
+chain envelope it serves is rebuilt from the captured contracts, not the envelope as Schwab sent
+it.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import SPY, LocalSchwab
 
-_IN_WINDOW = 1790863205.0  # 2026-10-01 10:00:05 ET, inside the 10:00 capture window
+_IN_WINDOW = 1790885705.0  # 2026-10-01 16:15:05 ET, after SPY's option close: its close capture
 
 
 def test_a_stored_chain_capture_is_never_overwritten_by_a_second_write_of_its_key(tmp_path):

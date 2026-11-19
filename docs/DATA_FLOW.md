@@ -640,9 +640,10 @@ both, and the window restarts the program.
   Schwab pushes it; the weekly and monthly from Schwab's own weekly and monthly candles, as sent
   (operator 2026-11-12: "we should not be calculating anything that schwab sends us"), so the
   current week and month are as of Schwab's newest answer, asked once per ET date and after the
-  close. The day-over-day open-interest change has one producer: the forces, from the stored
-  captures (the forces panel, shown on the Trade Desk). Fewer than two market days of captures
-  leaves each forces number absent (`server._forces_from_captures`), and a charm, DEX, ΔOI, GEX or
+  close. The day-over-day open-interest change has one producer: the forces (the forces panel,
+  shown on the Trade Desk), the chain the levels are priced from now against the prior market
+  day's close capture, with every publication (`calc.math_forces.forces`). No prior day's close
+  captured leaves each forces number absent (`calc.math_forces.forces_absent`), and a charm, DEX, ΔOI, GEX or
   volume side with a strike not known, or no strike at all, leaves that side absent (enforced by
   `tests/test_data_path_charm_side_unknown_v1.py` and `tests/test_data_path_side_volume_v1.py`); the
   screen draws "-". ΔOI is a side's total on the newer day less its total on the older day, both cut
@@ -934,10 +935,10 @@ both, and the window restarts the program.
    by `ACTIVE_PROGRAM.md` NUMBERS.
 6. **Missing values served with a reason** (D5, operator 2026-10-12: a missing value shows "-";
    operator 2026-10-16: one producer, the number or nothing). An ATR that cannot be computed, a
-   same-day absolute-gamma strike with no same-day book, the forces before two capture days and a
-   forces side (charm, DEX, ΔOI) with a strike not known or no strike at all are absent
-   (`push.terrain._atr_fields`, `calc.terrain_engine.compute_terrain`,
-   `server._forces_from_captures`; the forces side by
+   same-day absolute-gamma strike with no same-day book, the forces with no prior day's close
+   captured and a forces side (charm, DEX, ΔOI) with a strike not known or no strike at all are
+   absent (`push.terrain._atr_fields`, `calc.terrain_engine.compute_terrain`,
+   `calc.math_forces`; the forces side by
    `tests/test_data_path_charm_side_unknown_v1.py`); the screen draws "-". The levels with no price
    and the outage words are still served with their reason (§3 above). The gamma heatmap's cells
    draw "-".
@@ -963,11 +964,14 @@ The work that closes these gaps, in order, is `ACTIVE_PROGRAM.md`.
   Recorder.
 - **Chain:** Schwab REST, fetched by Feed → State → Calculators → State. The page is never pushed a
   whole chain.
-- **Chain history:** in each capture window of the option markets as Schwab's /markets sent them --
-  every 30 minutes from their open, and at the last close (the close capture: 16:15 ET, 13:15 on an
-  early close) -- the Recorder writes the first full chain (every expiry) Feed begins of each
-  watchlist ticker, compressed, one row per expiry, into `ed.db`. Nothing is captured outside those
-  windows. This is what research reads and what startup loads (the newest capture per ticker).
+- **Chain history:** once a day per watchlist ticker, at its own option close as Schwab's /markets
+  sent it (16:00 ET for equity options, 16:15 for index options; 13:00 and 13:15 on an early
+  close; `chain_sweep.capture_slot`), the Recorder writes the first full chain (every expiry) Feed
+  begins at or after it, compressed, one row per expiry, into `ed.db`: the close capture. Nothing
+  is captured during the session. This is what startup loads (the newest capture per ticker) and
+  what the prior day and the forces read. The intraday captures stored before this (86,155, every
+  30 minutes) were deleted on 2026-11-19 on the operator's yes ("Yes, delete them"); each ticker's
+  last capture of each day was kept.
 - **Levels:** Calculators → State → pushed to the page; not stored (decision 7).
 - **Level crosses:** Calculators → State → written by the Recorder.
 - **After a restart, a weekend or the close:** at startup the Recorder's loader reads the recorded

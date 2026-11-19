@@ -83176,7 +83176,7 @@
     "charm_below_text": "-141.84K",
     "charm_above_text": "-808.87K",
     "older_et_date": "2026-11-11",
-    "method": "OI side totals of the two captures, each side by the newer capture's spot; DEX = net_dex_dollars side sums on the newer capture; CHARM = dealer-signed net_charm side sums on the newer capture"
+    "method": "OI side totals of the chain now less the prior day's close capture, both split at the chain's price; DEX = net_dex_dollars side sums on the chain now; CHARM = dealer-signed net_charm side sums on the chain now"
   },
   "levels": {
     "1": {

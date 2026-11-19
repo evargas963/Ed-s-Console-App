@@ -24,6 +24,7 @@ from calc.math_exposure_core import (
 from calc.terrain_engine import compute_terrain
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from option_contract import read_chain
+from state import level_store
 from tests.capture_store import store_capture
 from tests.real_chains import CRWD, SPY_0DTE
 
@@ -92,9 +93,15 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
                 completeness_basis=CAPTURE_BASIS,
                 ts_utc=ts,
             )
-    body = server._forces_from_captures(
-        "SPY", last_capture_per_day(db, "SPY", 2)
-    )  # the producer's forces
+    later = datetime(2026, 10, 20, 20, 0, tzinfo=time_et.ET)  # after the chain's expiry
+    try:
+        server._publish_levels("SPY", captures=last_capture_per_day(db, "SPY", 2), now=later)
+        levels = level_store.published_levels("SPY")
+        assert levels is not None
+        body = levels.forces  # the producer's forces
+    finally:
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
     assert body["available"] is True
     assert body["charm_below"] is not None and body.get("charm_error") is None, body
 
