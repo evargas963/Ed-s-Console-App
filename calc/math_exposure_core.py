@@ -445,7 +445,6 @@ def compute_exposures_by_strike(
     # each contract with a strike and a side, with its strike
     rows = [(c, k) for c in contracts if (k := c.strike) is not None and c.side is not None]
     at = {k: i for i, k in enumerate(dict.fromkeys(k for _c, k in rows))}
-    empty = _EMPTY_BUCKET[spot is not None]
     if not rows:
         return {}, _diagnostics(len(contracts), 0, 0)
     # each contract's slot: its strike's call leg (2i) or put leg (2i + 1)
@@ -469,7 +468,6 @@ def compute_exposures_by_strike(
         float,
     ).T
     known = ~(np.isnan(oi) | np.isnan(mult))  # the contract's exposure terms can be known
-    counted = known & (oi > 0)  # with open interest above 0 an unknown term is unreported
     terms = {
         "oi_mult": oi * mult,
         "delta": delta * oi * mult,
@@ -495,29 +493,28 @@ def compute_exposures_by_strike(
             gex_1pct=gamma * oi * mult * spt * spt * 0.01,  # $-GEX per 1% spot move
             vanna=vanna * 0.01 * oi * mult,  # per 1 vol point
         )
-    exposures = _strike_buckets(empty, list(at), slot, known, counted, terms, volume, oi)
+    exposures = _strike_buckets(list(at), slot, known, terms, volume, oi, priced=spot is not None)
     missing = int((~known).sum() + (known & (np.isnan(delta) | np.isnan(gamma))).sum())
     return exposures, _diagnostics(len(contracts), int(known.sum()), missing)
 
 
 def _strike_buckets(
-    empty: Bucket,
     strikes: list[float],
     slot: NDArray[np.int64],
     known: NDArray[np.bool_],
-    counted: NDArray[np.bool_],
     terms: dict[str, NDArray[np.float64]],
     volume: NDArray[np.float64],
     oi: NDArray[np.float64],
+    *,
+    priced: bool,
 ) -> dict[float, Bucket]:
     """Return each strike's bucket: its contracts' terms added to its call or put leg (`slot`).
 
-    Each bucket starts as a copy of `empty`; `known`: the contracts whose exposure terms can be
-    known; `counted`: those with open interest above 0, whose unknown term is counted unreported.
-    The dollar fields and vanna are filled when they are among `terms` (priced with a spot).
+    `known`: the contracts whose exposure terms can be known; `priced`: the dollar fields and
+    vanna are among `terms` (priced with a spot).
     """
-    priced = "dex_dollars" in terms
-    exposures = {k: empty.copy() for k in strikes}
+    counted = known & (oi > 0)  # with open interest above 0 an unknown term is unreported
+    exposures = {k: _EMPTY_BUCKET[priced].copy() for k in strikes}
     slots = 2 * len(exposures)
     volume_sums = _sticky_sums(slot, volume, slots)
     oi_sums = _sticky_sums(slot, oi, slots)

@@ -117,11 +117,10 @@ def record_from_level_one_equity(
             else:
                 fs[name] = (v, rts if field_received is None else float(field_received[name]))
         snapshot = dict(fs)
-    out = _plane_row(t, snapshot, rts)
+    out, trade_ts = _plane_row(t, snapshot, rts)
     with _lock:
         _by_ticker[t] = out
-    trade_ts = out["trade_ts"]
-    if isinstance(trade_ts, float):
+    if trade_ts is not None:
         # the last trade Schwab streamed: the day's first one starts its pre-market (session_label)
         record_trade(datetime.fromtimestamp(trade_ts, ET))
     for fn in _row_listeners:
@@ -131,8 +130,11 @@ def record_from_level_one_equity(
 
 def _plane_row(
     t: str, snapshot: dict[str, tuple[float | str, float]], rts: float
-) -> dict[str, float | str | None]:
-    """Return the plane's row of `t`: each field the last one Schwab sent (`snapshot`)."""
+) -> tuple[dict[str, float | str | None], float | None]:
+    """Return the plane's row of `t` and its trade time (epoch s; None: none held).
+
+    Each field of the row is the last one Schwab sent (`snapshot`).
+    """
 
     def val(name: str) -> float | str | None:
         return snapshot[name][0] if name in snapshot else None
@@ -145,7 +147,7 @@ def _plane_row(
     trade_ms = number(VENDOR_TRADE_TIME)
     trade_ts = None if trade_ms is None else trade_ms / 1000.0
     quote_ts = val("QUOTE_TIME_MILLIS")  # exchange quote clock; TRADE_TIME never stands in
-    return {
+    row: dict[str, float | str | None] = {
         "ticker": t,
         "spot": val(VENDOR_LAST_PRICE),
         "bid": val("BID_PRICE"),
@@ -173,6 +175,7 @@ def _plane_row(
         "security_status": val("SECURITY_STATUS"),
         "server_received_ts": rts,
     }
+    return row, trade_ts
 
 
 #: callables told the ticker of every published row, in the process that owns this plane: the

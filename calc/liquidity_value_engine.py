@@ -828,31 +828,35 @@ def snapshot_input_fingerprint(
 
 
 class _Family(NamedTuple):
-    """One family's level prices as its producer found them, or why the family is absent.
+    """One family's level prices, (level id, price), as its producer found them.
 
-    `prices`: (level id, price) pairs, each with the producer, window and vendor basis it is
-    served with; `absent`: the family and the reason it has no levels (None: it has).
+    Each is served with the family's producer, window and vendor basis.
     """
 
     prices: tuple[tuple[str, float | None], ...]
     producer: str
     window: str
     vendor_basis: str
-    absent: dict[str, str] | None
 
 
-def _absent(family: str, reason: str) -> _Family:
-    """Return a family with no levels, and why."""
-    return _Family((), "", "", "", {"family": family, "reason": reason})
+class _Absent(NamedTuple):
+    """A family with no levels, and why."""
+
+    family: str
+    reason: str
 
 
-def _level_values(families: list[_Family], as_of: float | None) -> dict[str, PriceLevelValue]:
+def _level_values(
+    families: list[_Family | _Absent], as_of: float | None
+) -> dict[str, PriceLevelValue]:
     """Return each family's (level id, price) as a served level, in order.
 
     A price that is not a finite number is left out: absent stays absent.
     """
     levels: dict[str, PriceLevelValue] = {}
     for f in families:
+        if isinstance(f, _Absent):
+            continue
         for level_id, price in f.prices:
             v = float_finite_or_none(price)
             if v is None:
@@ -878,40 +882,40 @@ def _prior_day_part(
     cfg: PlaybookConfig,
     sessions: Mapping[str, Session],
     basis: str,
-) -> tuple[list[_Family], date | None, list[str]]:
+) -> tuple[list[_Family | _Absent], date | None, list[str]]:
     """Return the prior session's levels, its date and what is degraded in them.
 
     The date is None with no prior candle held; degraded, a prior session with fewer than
     LEVELS_PRIOR_SESSION_MIN_BARS RTH bars, whose POC and value area are from a partial tape.
     """
     if prior is None:
-        return [_absent("prior_day", "no Schwab daily candle held for a prior session")], None, []
+        return [_Absent("prior_day", "no Schwab daily candle held for a prior session")], None, []
     eng = get_previous_day_levels(bars_norm, prior, cfg, sessions=sessions)
     day = eng.prior_date
     producer = f"{_PRODUCER_NS}.get_previous_day_levels"
     window = f"{day.isoformat()} RTH (most recent prior RTH session)"
-    families = [
+    families: list[_Family | _Absent] = [
         _Family(
             (("PDH", eng.pdh), ("PDL", eng.pdl), ("PDC", eng.pdc)),
             producer,
             window,
             DAILY_CANDLE_BASIS,
-            None,
         ),
         _Family(
             (("PD_POC", eng.pd_poc), ("PD_VAH", eng.pd_vah), ("PD_VAL", eng.pd_val)),
             producer,
             window,
             basis,
-            None,
         ),
     ]
-    degraded = [
+    if eng.rth_bars >= LEVELS_PRIOR_SESSION_MIN_BARS:
+        return families, day, []
+    degraded = (
         f"prior_day: prior session {day} holds only {eng.rth_bars} of >= "
         f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
         "estimated from a partial tape"
-    ]
-    return families, day, degraded if eng.rth_bars < LEVELS_PRIOR_SESSION_MIN_BARS else []
+    )
+    return families, day, [degraded]
 
 
 def _opening_range_part(
@@ -920,17 +924,16 @@ def _opening_range_part(
     cfg: PlaybookConfig,
     sessions: Mapping[str, Session],
     basis: str,
-) -> _Family:
+) -> _Family | _Absent:
     """Return the session's opening range."""
     orb = compute_opening_range(bars_norm, session_date, cfg, sessions=sessions)
     if orb is None:
-        return _absent("opening_range", "no bar in the opening minutes, or no open known")
+        return _Absent("opening_range", "no bar in the opening minutes, or no open known")
     return _Family(
         (("ORB_HIGH", orb.high), ("ORB_LOW", orb.low), ("ORB_MID", orb.mid)),
         f"{_PRODUCER_NS}.compute_opening_range",
         f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH",
         basis,
-        None,
     )
 
 
@@ -940,11 +943,11 @@ def _overnight_part(
     prior_date: date | None,
     sessions: Mapping[str, Session],
     basis: str,
-) -> _Family:
+) -> _Family | _Absent:
     """Return the overnight range before the session."""
     overnight = get_overnight_levels(bars_norm, session_date, prior_date, sessions=sessions)
     if overnight is None:
-        return _absent("overnight", "no overnight-window bars in available tape")
+        return _Absent("overnight", "no overnight-window bars in available tape")
     return _Family(
         (("OVERNIGHT_HIGH", overnight.high), ("OVERNIGHT_LOW", overnight.low)),
         f"{_PRODUCER_NS}.get_overnight_levels",
@@ -954,8 +957,62 @@ def _overnight_part(
             else f"{prior_date.isoformat()} RTH close -> {session_date.isoformat()} RTH open"
         ),
         basis,
-        None,
     )
+
+
+def _vwap_part(
+    bars_norm: list[Bar],
+    session_date: date,
+    sessions: Mapping[str, Session],
+    rth_volume_bars: int,
+    *,
+    window: str,
+    basis: str,
+) -> tuple[_Family | _Absent, list[VwapPoint]]:
+    """Return the session VWAP and its bands, and its series (one accumulation for both)."""
+    vwap_series = compute_session_vwap_series(bars_norm, session_date, sessions=sessions)
+    if not vwap_series:
+        return _Absent(
+            "vwap",
+            "RTH volume bars present but session VWAP did not materialize"
+            if rth_volume_bars > 0
+            else "no RTH volume for session VWAP in available bars",
+        ), vwap_series
+    # the curve's last point IS the served level and band
+    _t, vwap, p1, m1, p2, m2 = vwap_series[-1]
+    return _Family(
+        (("VWAP", vwap), ("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)),
+        f"{_PRODUCER_NS}.compute_session_vwap_series",
+        window,
+        basis,
+    ), vwap_series
+
+
+def _value_area_part(
+    bars_norm: list[Bar],
+    session_date: date,
+    cfg: PlaybookConfig,
+    sessions: Mapping[str, Session],
+    rth_volume_bars: int,
+    *,
+    window: str,
+    basis: str,
+) -> tuple[_Family | _Absent, VolumeProfile | None]:
+    """Return the session's value area, and its volume profile (None: none materialized)."""
+    profile = compute_volume_profile_levels(bars_norm, session_date, cfg, sessions=sessions)
+    if profile is None:
+        return _Absent(
+            "value_area",
+            "no RTH volume for the volume profile in available bars"
+            if rth_volume_bars == 0
+            else "RTH volume bars present but the volume profile did not materialize",
+        ), None
+    return _Family(
+        (("TODAY_POC", profile.poc), ("TODAY_VAH", profile.vah), ("TODAY_VAL", profile.val)),
+        f"{_PRODUCER_NS}.compute_volume_profile_levels",
+        window,
+        basis,
+    ), profile
 
 
 def build_price_level_snapshot(
@@ -988,7 +1045,7 @@ def build_price_level_snapshot(
     rth_volume_bars = 0
     if not bars_norm:
         families += [
-            _absent(fam, f"no bars available (source {bar_source})")
+            _Absent(fam, f"no bars available (source {bar_source})")
             for fam in ("vwap", "opening_range", "overnight", "value_area")
         ]
     else:
@@ -997,10 +1054,10 @@ def build_price_level_snapshot(
         )
         window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
         vwap, vwap_series = _vwap_part(
-            bars_norm, session_date, sessions, rth_volume_bars, (window, basis)
+            bars_norm, session_date, sessions, rth_volume_bars, window=window, basis=basis
         )
         value_area, profile = _value_area_part(
-            bars_norm, session_date, cfg, sessions, rth_volume_bars, (window, basis)
+            bars_norm, session_date, cfg, sessions, rth_volume_bars, window=window, basis=basis
         )
         families += [
             vwap,
@@ -1016,69 +1073,12 @@ def build_price_level_snapshot(
         levels=_level_values(families, as_of),
         vwap_path=[(t, w) for t, w, _a, _b, _c, _d in vwap_series],
         vwap_series=vwap_series,
-        families_absent=[f.absent for f in families if f.absent is not None],
+        families_absent=[f._asdict() for f in families if isinstance(f, _Absent)],
         degraded=degraded,
         bars_used=len(bars_norm),
         session_rth_positive_volume_bars=rth_volume_bars,
         volume_profile=profile,
     )
-
-
-def _vwap_part(
-    bars_norm: list[Bar],
-    session_date: date,
-    sessions: Mapping[str, Session],
-    rth_volume_bars: int,
-    served: tuple[str, str],
-) -> tuple[_Family, list[VwapPoint]]:
-    """Return the session VWAP and its bands, and its series (one accumulation for both).
-
-    `served`: the window and vendor basis the levels are served with.
-    """
-    vwap_series = compute_session_vwap_series(bars_norm, session_date, sessions=sessions)
-    if not vwap_series:
-        return _absent(
-            "vwap",
-            "RTH volume bars present but session VWAP did not materialize"
-            if rth_volume_bars > 0
-            else "no RTH volume for session VWAP in available bars",
-        ), vwap_series
-    # the curve's last point IS the served level and band
-    _t, vwap, p1, m1, p2, m2 = vwap_series[-1]
-    return _Family(
-        (("VWAP", vwap), ("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)),
-        f"{_PRODUCER_NS}.compute_session_vwap_series",
-        *served,
-        None,
-    ), vwap_series
-
-
-def _value_area_part(
-    bars_norm: list[Bar],
-    session_date: date,
-    cfg: PlaybookConfig,
-    sessions: Mapping[str, Session],
-    rth_volume_bars: int,
-    served: tuple[str, str],
-) -> tuple[_Family, VolumeProfile | None]:
-    """Return the session's value area, and its volume profile (None: none materialized).
-
-    `served`: the window and vendor basis the levels are served with.
-    """
-    profile = compute_volume_profile_levels(bars_norm, session_date, cfg, sessions=sessions)
-    if profile is None:
-        return _absent(
-            "value_area",
-            "no RTH volume for the volume profile in available bars"
-            if rth_volume_bars == 0
-            else "RTH volume bars present but the volume profile did not materialize",
-        ), None
-    return _Family(
-        (("TODAY_POC", profile.poc), ("TODAY_VAH", profile.vah), ("TODAY_VAL", profile.val)),
-        f"{_PRODUCER_NS}.compute_volume_profile_levels",
-        *served,
-        None,
-    ), profile
 
 
 # ─────────────────────────────────────────────────────────────────────────────

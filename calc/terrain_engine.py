@@ -965,14 +965,14 @@ def compute_terrain(
     if not exposures:
         return _unavailable(ticker, spot, "chain produced no exposures")
     pin = pin_by_open_interest(contracts, spot, now=now, sessions=sessions, product=product)
-    flip, confidence = _flip_fields(contracts, spot, exposures, now, sessions, product)
+    # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma)
+    gamma_at_spot = book_net_gex(exposures)
+    flip, confidence = _flip_fields(contracts, spot, gamma_at_spot, now, sessions, product)
     # each expiry's ATM implied vol, once: the one-day move's and the per-expiry ATM IV's
     atm_sigma = atm_sigma_by_expiry(contracts, spot)
     expiry_rows = _expiry_rows(contracts)
     by_expiry = _by_expiry(expiry_rows, spot, now, sessions, product)
-    read = build_terrain_read(
-        spot=spot, flip_confidence=confidence, gamma_at_spot=flip["net_gex_at_spot"]
-    )
+    read = build_terrain_read(spot=spot, flip_confidence=confidence, gamma_at_spot=gamma_at_spot)
     same_day, same_day_repriced_from = same_day_levels(
         expiry_rows,
         spot,
@@ -991,7 +991,10 @@ def compute_terrain(
         headline=read.headline,
         headline_source=read.headline_source,
         **flip,
+        net_gex_at_spot=gamma_at_spot,
         **_walls(exposures),
+        pcr_all=put_call_oi_ratio(exposures),
+        pcr_volume_all=put_call_volume_ratio(exposures),
         pin_candidate=None if pin is None else pin.strike,
         pin_expected_moves=None if pin is None else pin.expected_moves,
         pin_strike_widths=None if pin is None else pin.strike_widths,
@@ -1049,10 +1052,8 @@ def _by_expiry(
 
 
 class _Walls(TypedDict):
-    """The book's walls and pockets, each a strike (None: none found), and its put/call ratios."""
+    """The book's walls and pockets, each a strike (None: none found)."""
 
-    pcr_all: float | None
-    pcr_volume_all: float | None
     call_wall: float | None
     put_wall: float | None
     absolute_gamma_strike: float | None
@@ -1072,8 +1073,6 @@ def _walls(exposures: dict[float, Bucket]) -> _Walls:
     # every operator surface until this producer computes them.
     (call_delta_wall, _cdw_str), (put_delta_wall, _pdw_str) = pick_delta_wall_strikes(exposures)
     return {
-        "pcr_all": put_call_oi_ratio(exposures),
-        "pcr_volume_all": put_call_volume_ratio(exposures),
         "call_wall": call_wall,
         "put_wall": put_wall,
         # max TOTAL gamma — the absolute-gamma concentration, full book.
@@ -1087,10 +1086,9 @@ def _walls(exposures: dict[float, Bucket]) -> _Walls:
 
 
 class _Flip(TypedDict):
-    """The gamma flip, the gamma at spot, the support and resistance levels, and the profile."""
+    """The gamma flip, its note, the support and resistance levels, and the profile."""
 
     gamma_flip: float | None
-    net_gex_at_spot: float | None
     gsf: float | None
     grc: float | None
     flip_note: str | None
@@ -1100,25 +1098,25 @@ class _Flip(TypedDict):
 def _flip_fields(
     contracts: list[OptionContract],
     spot: float,
-    exposures: dict[float, Bucket],
+    gamma_at_spot: float | None,
     now: datetime,
     sessions: Mapping[str, Session],
     product: str,
 ) -> tuple[_Flip, str]:
-    """Return the flip's fields and the flip's confidence, from one gamma profile at `now`."""
+    """Return the flip's fields and the flip's confidence, from one gamma profile at `now`.
+
+    The model curve places the flip only (Schwab sends gamma at its own price, never at other
+    prices); where the curve's sign at spot disagrees with Schwab's (`gamma_at_spot`), the flip's
+    note says so.
+    """
     # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
     parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
     profile = compute_gamma_profile(parsed, spot)
     flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
-    # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma).
-    # The model curve places the flip only (Schwab sends gamma at its own price, never at
-    # other prices); where the curve's sign at spot disagrees with Schwab's, the flip says so.
-    gamma_at_spot = book_net_gex(exposures)
     # GSF/GRC from the SAME materialized profile — no second materialization.
     gsl = compute_gamma_support_levels(profile, spot)
     fields: _Flip = {
         "gamma_flip": flip,
-        "net_gex_at_spot": gamma_at_spot,
         "gsf": gsl["gsf"],
         "grc": gsl["grc"],
         "flip_note": flip_note(gamma_at_spot, flip_diag["curve_gamma_at_spot"]),
