@@ -92,6 +92,30 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     }
 
 
+def _item(
+    key: str,
+    ts: float | None,
+    dom: str,
+    direction: str | None,
+    title: str,
+    detail: str,
+    src: str,
+    *,
+    warn: bool = False,
+) -> dict[str, Any]:
+    """Return one item of the desk's queue as the page draws it: its time, domain and words."""
+    return {
+        "key": key,
+        "ts": ts,
+        "dom": dom,
+        "dir": direction,
+        "warn": warn,
+        "title": title,
+        "detail": detail,
+        "src": src,
+    }
+
+
 def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
     """Return the window's level crosses, numbered oldest first (cross_store's, oldest first).
 
@@ -102,17 +126,19 @@ def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
         c = merged.cross
         items.append(
             {
-                "key": f"x{c.cross_id}",
+                **_item(
+                    f"x{c.cross_id}",
+                    c.ts_utc,
+                    "LEVELS",
+                    c.direction,
+                    f"Crossed {_CROSS_WORD[c.direction]} {' + '.join(merged.level_names)}",
+                    f"{price_text(c.level_value)} · spot "
+                    f"{price_text(c.spot_at_cross)} at the cross",
+                    "level_crosses",
+                ),
                 "n": i + 1,
-                "ts": c.ts_utc,
-                "dom": "LEVELS",
                 "price": c.level_value,
-                "dir": c.direction,
                 "marker": False,
-                "title": f"Crossed {_CROSS_WORD[c.direction]} {' + '.join(merged.level_names)}",
-                "detail": f"{price_text(c.level_value)} · spot "
-                f"{price_text(c.spot_at_cross)} at the cross",
-                "src": "level_crosses",
             }
         )
     # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
@@ -130,29 +156,28 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
     for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
         if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
             items.append(
-                {
-                    "key": key,
-                    "ts": t.get("spot_as_of_ts_utc"),
-                    "dom": "OPTIONS",
-                    "dir": "up" if side == "call" else "down",
-                    "title": f"Spot through the {word} wall",
-                    "detail": f"{word} wall {price_text(t[f'{side}_wall'])} · spot "
-                    f"{price_text(t['spot'])}",
-                    "src": "gamma levels",
-                }
+                _item(
+                    key,
+                    t.get("spot_as_of_ts_utc"),
+                    "OPTIONS",
+                    "up" if side == "call" else "down",
+                    f"Spot through the {word} wall",
+                    f"{word} wall {price_text(t[f'{side}_wall'])} · spot {price_text(t['spot'])}",
+                    "gamma levels",
+                )
             )
     if t.get("levels_state") == LEVELS_STALE:
         items.append(
-            {
-                "key": "ls",
-                "ts": tts,
-                "dom": "DATA",
-                "dir": None,
-                "warn": True,
-                "title": "Gamma levels are stale",
-                "detail": t["levels_stale_reason"],
-                "src": "gamma levels",
-            }
+            _item(
+                "ls",
+                tts,
+                "DATA",
+                None,
+                "Gamma levels are stale",
+                t["levels_stale_reason"],
+                "gamma levels",
+                warn=True,
+            )
         )
     return items
 
@@ -168,17 +193,17 @@ def _book_wall_items(tk: str, venue: str, now: datetime) -> list[dict[str, Any]]
     live_book = micro["ages"]["book_stale"] is False
     for i, w in enumerate(micro["wall_candidates"][:3]):
         items.append(
-            {
-                "key": f"wall{i}",
-                "ts": None if book_ms is None else book_ms / 1000.0,
-                "dom": "LIQUIDITY",
-                "dir": "up" if w["side"] == "bid" else "down",
-                "warn": not live_book,
-                "title": f"{venue} size wall · {w['side']} {w['price_text']}"
+            _item(
+                f"wall{i}",
+                None if book_ms is None else book_ms / 1000.0,
+                "LIQUIDITY",
+                "up" if w["side"] == "bid" else "down",
+                f"{venue} size wall · {w['side']} {w['price_text']}"
                 + ("" if live_book else " (not live)"),
-                "detail": f"{w['volume_text']} shown · {w['median_mult_text']}× the median level"
+                f"{w['volume_text']} shown · {w['median_mult_text']}× the median level"
                 + ("" if live_book else " · a past book, not the current one"),
-                "src": "equity book",
-            }
+                "equity book",
+                warn=not live_book,
+            )
         )
     return items
