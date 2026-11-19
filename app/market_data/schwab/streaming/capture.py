@@ -256,6 +256,18 @@ def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[s
     return frozenset()
 
 
+def sign_in_line(waiting: str | None) -> dict[str, str]:
+    """Return the header's Schwab sign-in from the chain sweep's `waiting` (ChainSweep.waits).
+
+    Its `line`, `why` (the full reason) and `cls` ("neg" while Schwab refuses it or none is
+    held: nothing is asked of Schwab's REST endpoints, so chains, /quotes answers and price
+    history stop where they are).
+    """
+    if waiting is None:
+        return {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
+    return {"line": "REFUSED: run python reauth_schwab.py", "why": waiting, "cls": "neg"}
+
+
 def _not_started() -> object:
     """Raise ConnectionError: before run the daemon has no Schwab client to make a check with."""
     raise ConnectionError("the Schwab connection has not started")
@@ -611,6 +623,7 @@ class Daemon:
             "held": {k: sorted(v) for k, v in self.connection.held.items()},
             "health": self.health.report(now),
             "writer": self.writer.status() if self.writer is not None else None,
+            "sign_in": sign_in_line(self.chains.waiting) if self.chains is not None else None,
         }
 
     async def run(self, schwab_client: Callable[[], object], stop: asyncio.Event) -> None:
