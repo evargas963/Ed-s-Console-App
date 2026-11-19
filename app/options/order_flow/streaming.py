@@ -396,25 +396,32 @@ def _apply_option_quote(
 _APPLY_BY_KIND = {"quote": _apply_quote, "book": _apply_book, "optquote": _apply_option_quote}
 #: a whole-topic message (no one symbol), and what applies it (_ingest_pushed)
 _APPLY_BY_TOPIC = {"watchlist": _answer_watchlist_request, "optquotes": _apply_rest_quotes}
+#: the records the console applies in one turn of its loop (_bus_loop): about 4 ms of work at
+#: the 20-44 us one takes (tests/fixtures/real_stream_mix_2026_10_05_1400ct.json through
+#: _ingest_pushed), the interpreter's switch interval
+RECORDS_PER_TURN = 200
 
 
 async def _bus_loop(bus: MessageBus) -> None:
     """Every Schwab record on the daemon's bus, as it changes, applied the moment it does.
 
     Applied by _ingest_pushed: the console runs in the daemon's program and reads its one bus,
-    no copy sent over a socket. A chain's record is its parts, in order. Each record handed over
-    yields, so a burst of them never holds the loop: the daemon's status beat and every route
-    take a turn.
+    no copy sent over a socket. A chain's record is its parts, in order. Up to RECORDS_PER_TURN
+    records are applied in one turn of the loop, and a chain ends its turn: each turn waits to
+    take back Python's interpreter lock from the program's busy threads (up to the switch
+    interval, 5 ms), so a turn per record left each contract a pass of thousands behind, and a
+    turn never holds the daemon's status beat and the routes past a few milliseconds.
     """
     sub = bus.subscribe("", policy=LATEST)
     record: Payload
     try:
         while FEED.running:
-            topic, record = await sub.get()
-            if not is_forwarded(topic, record):
-                continue
-            for msg in record if isinstance(record, list) else [record]:
-                _ingest_pushed(topic, msg)
+            for topic, record in [await sub.get(), *sub.taken(RECORDS_PER_TURN - 1)]:
+                if is_forwarded(topic, record):
+                    for msg in record if isinstance(record, list) else [record]:
+                        _ingest_pushed(topic, msg)
+                if isinstance(record, list):
+                    await asyncio.sleep(0)
             await asyncio.sleep(0)
     finally:
         bus.unsubscribe(sub)
