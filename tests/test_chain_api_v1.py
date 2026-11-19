@@ -30,7 +30,7 @@ from option_contract import GREEKS, LISTED, read_chain
 from push import chain as push_chain
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, pushed
 from tests.page_on_socket import Pages
 from time_et import ET
 
@@ -75,7 +75,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
         received_ts=fetched_ts,
     )
     for sym, fields, ts in streamed:
-        ofs._ingest_pushed(
+        pushed(
             f"optquote.{sym}",
             verbatim_msg(
                 symbol=sym, content={"key": sym, **fields}, src="schwab_options_l1", ts_recv=ts
@@ -294,7 +294,7 @@ def _stream_after_pricing(contract, fields, socket_open=True):
     held = {"LEVELONE_EQUITIES": ["TSLA"], "LEVELONE_OPTIONS": [sym]}
     status = daemon_status(_OPEN.timestamp(), schwab_socket_open=socket_open, held=held)
     lmp.record_feed_heartbeat(status)
-    ofs._ingest_pushed(
+    pushed(
         f"optquote.{sym}",
         verbatim_msg(
             symbol=sym,
@@ -344,7 +344,7 @@ def test_every_option_quote_sends_the_chain_panel_of_its_ticker():
     told: list[str] = []
     ofs.FEED.on_flow = told.append
     try:
-        ofs._ingest_pushed(
+        pushed(
             f"optquote.{sym}",
             verbatim_msg(
                 symbol=sym,
@@ -375,7 +375,7 @@ def test_a_quote_taken_on_the_loop_marks_the_pages_at_once_with_no_wake_up_write
     try:
 
         async def take() -> set[str]:
-            ofs._ingest_pushed(
+            pushed(
                 f"optquote.{sym}",
                 verbatim_msg(
                     symbol=sym,
@@ -410,7 +410,7 @@ def test_every_option_book_sends_the_flow_panel_of_its_ticker():
     told: list[str] = []
     ofs.FEED.on_flow = told.append
     try:
-        ofs._ingest_pushed(
+        pushed(
             f"book.{sym}",
             book_msg(
                 symbol=sym,

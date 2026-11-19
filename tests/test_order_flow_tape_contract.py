@@ -21,7 +21,11 @@ from pathlib import Path
 import calc.l1_trade_observation as l1
 from app.options.order_flow.state import OrderFlowState
 from calc import order_flow as ofe
+from stream_spine import MessageBus
+from tests.feed_live_helper import apply_record, on_the_bus
 from tests.shared_helpers import sent
+
+EQ = "LEVELONE_EQUITIES"
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _MIX = [
@@ -52,12 +56,13 @@ def _prints(key: str) -> list[tuple]:
 def _data(messages: list[dict]) -> ofe.FlowInput:
     """Return the engine's input: the tape a fresh live state recorded from `messages`, in order.
 
-    Each message's top first, then its print, as the console takes it (streaming._apply_quote).
+    Each message on a bus as the daemon puts it, and its record to the state as the console
+    takes it (streaming._apply_quote).
     """
-    state = OrderFlowState()
+    bus, state = MessageBus(), OrderFlowState()
+    state.current = bus.current
     for m in messages:
-        state.push_option_top(m["item"]["key"], m["item"])
-        state.push_level_one(m["item"]["key"], m["item"], ts_recv=m["ts_recv"])
+        apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
     (key,) = {m["item"]["key"] for m in messages}
     return ofe.FlowInput(book=None, prints=state.prints(key))  # LEVELONE messages: no book
 

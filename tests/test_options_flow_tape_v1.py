@@ -32,9 +32,12 @@ from option_contract import read_chain, read_contract
 from push import contract as push_contract
 from push import tape as push_tape
 from state import level_store
-from stream_spine import verbatim_msg
+from stream_spine import MessageBus, verbatim_msg
+from tests.feed_live_helper import apply_record, on_the_bus
 from tests.shared_helpers import fixture_json
 from time_et import ET
+
+OPT = "LEVELONE_OPTIONS"
 
 CALL = "SPY   261023C00761000"
 PUT = "SPY   261023P00762000"
@@ -55,15 +58,16 @@ def _sent(contract: str) -> list[tuple[float, dict]]:
 
 
 def _fed(contract: str, rows: list[tuple[float, dict]]) -> OrderFlowState:
-    """Return a fresh live state fed each (ts_recv, LEVELONE_OPTIONS item) as the intake does.
+    """Return a fresh live state fed each (ts_recv, LEVELONE_OPTIONS item) as the console is.
 
-    The intake is streaming._ingest_pushed: the record's top of book first, then the record, so
-    a print is kept with the bid and ask its own message brought.
+    Each item goes on a bus as the daemon puts it, and its record to the state as the intake
+    (streaming._ingest_pushed) applies it, so a print is kept with the bid and ask its record
+    then holds.
     """
-    live = OrderFlowState()
+    bus, live = MessageBus(), OrderFlowState()
+    live.current = bus.current
     for ts_recv, content in rows:
-        live.push_option_top(contract, content)
-        live.push_level_one(contract, content, ts_recv=ts_recv)
+        apply_record(live, OPT, on_the_bus(bus, OPT, {**content, "key": contract}, ts_recv))
     return live
 
 
@@ -160,9 +164,10 @@ def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():
 def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row():
     """Twelve records in a row of SPY 260904C00772000, as Schwab sent them.
 
-    A partial LEVELONE_OPTIONS tick can carry a fresh LAST_SIZE with NO LAST_PRICE on the same
-    packet (a size-only field bumping TOTAL_VOLUME on its own); two of the twelve do. A trade
-    print requires its OWN price on the SAME tick; this shape is excluded.
+    LEVELONE_OPTIONS is delivered on Change: only the fields that changed are streamed (Schwab
+    Streamer API §1.5). Two of the twelve carry a new TRADE_TIME_MILLIS and LAST_SIZE with no
+    LAST_PRICE: trades at the unchanged price, 0.02, which the contract's record on the bus still
+    holds. Each is a print at that price; none reports trade=None.
     """
     contract = next(
         c
@@ -173,9 +178,9 @@ def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row
     size_only = [c for _, c in sent if "LAST_SIZE" in c and "LAST_PRICE" not in c]
     assert [(c["LAST_SIZE"], c["TOTAL_VOLUME"]) for c in size_only] == [(4, 486829), (1, 486836)]
     rows = _tape(SIZE_ONLY, sent)
-    assert len(rows) == 2, "the size-only partials must not be counted as trade prints"
+    assert len(rows) == 4, "each new trade time is a print, its price unchanged"
     assert all(r["trade"] is not None for r in rows), "no row may ever report trade=None"
-    assert [(r["trade"], r["size"]) for r in rows] == [(0.02, 1), (0.03, 5)]
+    assert [(r["trade"], r["size"]) for r in rows] == [(0.02, 1), (0.02, 4), (0.02, 1), (0.03, 5)]
 
 
 def test_context_is_carried_forward_from_the_most_recent_full_tick():
@@ -195,15 +200,17 @@ def test_context_is_carried_forward_from_the_most_recent_full_tick():
 
 
 def test_a_print_without_a_size_or_a_multiplier_has_no_premium():
-    """Schwab's second record of the call carries LAST_PRICE 2.07 and no LAST_SIZE.
+    """A print's premium needs its size and its contract's multiplier, never 0 for either.
 
-    Its premium is unknown, never 0; so is a print's of a contract whose chain record carries no
-    multiplier (induced: the call's /chains row without its `multiplier`).
+    Schwab's second record of the call carries LAST_PRICE 2.07, a new trade time and no LAST_SIZE:
+    on Change delivery (Schwab Streamer API §1.5) its size is the first record's, unchanged, so
+    its premium is 2.07 x 1 x 100. A print of a contract whose chain record carries no multiplier
+    has no premium (induced: the call's /chains row without its `multiplier`).
     """
     sent = _sent(CALL)[:2]
     assert sent[1][1]["LAST_PRICE"] == 2.07 and "LAST_SIZE" not in sent[1][1]
-    sizeless, sized = _tape(CALL, sent)
-    assert tape_row(sizeless, LISTED[CALL])["premium"] is None
+    unchanged_size, sized = _tape(CALL, sent)
+    assert tape_row(unchanged_size, LISTED[CALL])["premium"] == 2.07 * 1 * 100
     chain = fixture_json("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
     bare = read_contract({k: v for k, v in chain[0].items() if k != "multiplier"})
     assert bare.symbol == CALL and tape_row(sized, bare)["premium"] is None
@@ -323,7 +330,7 @@ def test_newest_first_ordering_and_limit_bound():
 def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     (at, first), (later, second) = _sent(CALL)[:2]
     live = _fed(CALL, [(at, first)])
-    live.push_level_one("", second, ts_recv=later)
+    live.push_level_one(OPT, "", second, ts_recv=later)
     assert recent_prints(PUT, live.prints(PUT), 50) == []
     assert recent_prints("", live.prints(""), 50) == []
     assert len(recent_prints(CALL, live.prints(CALL), 50)) == 1

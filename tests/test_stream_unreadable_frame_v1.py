@@ -15,8 +15,7 @@ import asyncio
 import logging
 
 from app.market_data.schwab.streaming import capture
-from feed.connection import held_key
-from stream_spine import HealthRegistry, MessageBus
+from stream_spine import HealthRegistry, MessageBus, held_key
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
 
