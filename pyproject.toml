@@ -136,6 +136,7 @@ also_copy = [
   "CLAUDE.md",
   "locks.imports.toml",
   "locks.ruff.toml",
+  "pyproject.toml",
   "requirements.txt",
   "requirements-dev.txt",
 ]
@@ -162,3 +163,4 @@ pytest_add_cli_args_test_selection = [
   "-m",
   "not alone and not rail",
 ]
+pytest_add_cli_args = ["--maxfail=100000"]
