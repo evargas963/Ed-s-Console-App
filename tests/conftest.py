@@ -125,7 +125,8 @@ def _live_feed_starts_down(_markets_answers_held):
     with no timer of an earlier test's. And so are the chain captures the console holds
     (state.capture_store): every test's first ask reads its own database. And so are the
     /markets answers held (time_et.record_markets): every test starts with the 2026-10-07 set,
-    whatever answers an earlier test recorded.
+    whatever answers an earlier test recorded. And so is every ticker's quote
+    (live_market_plane): every test starts with none held, as the program does.
     """
     time_et.HELD.sessions = _markets_answers_held
     time_et.HELD.first_trade = {}
@@ -141,6 +142,8 @@ def _live_feed_starts_down(_markets_answers_held):
     with live_market_plane._lock:
         live_market_plane._feed["held"] = {}
         live_market_plane._feed["status"] = None
+        live_market_plane._by_ticker.clear()
+        live_market_plane._fields_by_ticker.clear()
     # the console reads each symbol's stream values from a bus's records: every test starts
     # bound to an empty bus of its own (feed_live_helper.BUS), as the program starts with one
     feed_live_helper.BUS = MessageBus()

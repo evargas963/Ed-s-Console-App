@@ -59,18 +59,9 @@ def test_each_cell_carries_its_dominant_side_and_the_scale_top(heat):
         b, a = c["bid"], c["ask"]
         assert _sizes(c), c
         one_sided += b is None or a is None
-        want = (
-            "BID"
-            if a is None
-            else "ASK"
-            if b is None
-            else "BID"
-            if b > a
-            else "ASK"
-            if a > b
-            else "EVEN"
-        )
-        assert c["side"] == want
+        sent = {side: v for side, v in (("BID", b), ("ASK", a)) if v is not None}
+        larger = [side for side, v in sent.items() if v == max(sent.values())]
+        assert c["side"] == (larger[0] if len(larger) == 1 else "EVEN")
     assert one_sided, "real TSLA books: a price carries a bid or an ask, rarely both"
     assert heat["max_size"] == max(v for c in heat["cells"] for v in _sizes(c))
 

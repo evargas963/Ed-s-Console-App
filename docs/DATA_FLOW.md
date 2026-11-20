@@ -135,13 +135,18 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   chain sweep (`feed/chain_sweep.py`); every request logged once (`schwab_client.log_request`).
 - **Daemon part → console part:** the bus in memory, a LATEST subscription
   (`order_flow.streaming._bus_loop`): each topic's current record as it changes, a chain in parts.
+  A record that fails to apply is counted (`apply_failures` on the daemon's status beat, beside
+  `tick_failures`) and logged with its traceback, and the next is applied. Enforced by:
+  `tests/test_live_push_channel_v1.py`.
 - **Console part → daemon part:** a call (`capture.Daemon.console_frame`): the Flow panel's contract
   and each watchlist add or removal, answered by the daemon's `watchlist` record.
 - **Program → page:** `/ws` (`live_ui.page_socket`, `live_ui.LiveUiServer`): each symbol's price row
   on every change, every panel the page shows of its ticker (`server.PAGE_PANELS`) at once and again
   when its producer marks it changed (`live_ui.changed`), and the daemon's status every second
   (`live_ui.HEARTBEAT_SEC`). A client that stops reading is dropped (`live_ui.PageSocket`); the page
-  reconnects. Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py`.
+  reconnects. A frame, symbol or panel a page sends that the server cannot take is logged and
+  counted (`page_refused`), and the beat carries the socket's counts (`page_socket`). Enforced by:
+  `tests/test_live_ui_daemon_to_browser_v1.py`, `tests/test_data_path_silent_price_v1.py`.
 - **Page → program:** HTTP for the page itself, `/api/health`, `/api/build`, `/api/watchlist` (POST,
   DELETE) and `/api/flow-contract`.
 

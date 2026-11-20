@@ -215,7 +215,7 @@ def test_operator_law_guard_wired_for_edit_tools():
         )
     )
     edit_matchers = [
-        m for m in settings["hooks"]["PreToolUse"] if "Edit" in (m.get("matcher") or "")
+        m for m in settings["hooks"]["PreToolUse"] if "matcher" in m and "Edit" in m["matcher"]
     ]
     assert edit_matchers, "no PreToolUse matcher covers Edit tools at all"
     cmds = "\n".join(h["command"] for m in edit_matchers for h in m["hooks"])

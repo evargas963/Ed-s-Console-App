@@ -87,18 +87,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     the live spot from `resolve_spot`.
   - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
     `levels_ts_utc`, computed in push, not a calculator.
-  - M-11 `build_price_level_snapshot`: a prior day whose `pd_poc`/`pd_vah`/`pd_val` are None loses
-    those levels silently (`_level_values`); `families_absent` does not list them.
   - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
-  - M-24 `calc.math_levels.compute_charm_by_strike` returns `{}` with no reason when spot is missing
-    (a branch `compute_terrain` makes unreachable: delete it).
-  - M-27 `calc.math_levels.gamma_at_price` returns the end point's value for a price outside the
-    profile.
-  - M-32 `calc/terrain_engine.py`: the per-expiry PCR, volume PCR, DTE and ATM IV maps key by date
-    alone over books keyed (date, dte); same-date books overwrite.
-  - O-13 `app/options/order_flow/streaming.py` drops malformed messages silently; `live_ui` logs a
-    bad page frame but does not count it.
   - P-09 `static/js/ed-core.js` reports a failed watchlist send without its HTTP status; first-of
     reads (`r.call || r.put` in `ed-gamma-panels.js`, `r.label || r.id` in `ed-trade-desk.js`).
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels

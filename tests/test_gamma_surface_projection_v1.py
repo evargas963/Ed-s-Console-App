@@ -35,7 +35,7 @@ SPOT = MRVL.spot
 
 def _exp_key(ct: dict) -> str:
     """Return the projection's own column key rule: the native expirationDate's first 10 chars."""
-    return str(ct.get("expirationDate") or "")[:10]
+    return ct["expirationDate"][:10]
 
 
 def _heaviest(rows: list[dict]) -> dict:
