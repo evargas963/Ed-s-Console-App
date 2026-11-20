@@ -890,6 +890,8 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     // the price levels are the levels panel's own rows (AMZN's real set): the prior day's high,
     // low and close, and VWAP; no one-day move or its ±1σ band (operator 2026-11-20)
     await expect(page.locator(".kl-row", { hasText: "σ move" })).toHaveCount(0);
+    await expect(page.locator("#klEmUp")).toHaveCount(0);
+    await expect(page.locator("#klEmDn")).toHaveCount(0);
     await expect(page.locator("#klPdh")).toHaveText("274.87");
     await expect(page.locator("#klPdl")).toHaveText("265.62");
     await expect(page.locator("#klPdc")).toHaveText("266.17");
