@@ -37,6 +37,10 @@ test("the desk chart's newest candle redraws from each forming bar, and Schwab's
   await expect(page.locator("#tdmChart .tvc-legend")).toContainText(
     "C " + F.forming_early.bars[0].c_text,
   );
+  // its volume is not built: "-", and no volume bar, until Schwab's bar brings it
+  expect(F.forming_early.bars[0].v).toBeNull();
+  await expect(page.locator("#tdmChart .tvc-legend")).toContainText("Vol -");
+  expect((await chart()).lastVolume).toEqual({ time: F.forming_early.bars[0].t });
   // 10:04:59: 10:04's later trades move the same candle
   sock.frame("forming:deskmap", "SPY", F.forming_late);
   await expect.poll(async () => (await chart()).lastCandle).toEqual(candle(F.forming_late.bars[0]));
@@ -49,6 +53,9 @@ test("the desk chart's newest candle redraws from each forming bar, and Schwab's
     .poll(async () => (await chart()).lastCandle)
     .toEqual(candle(F.forming_after.bars[0]));
   expect((await chart()).bars).toBe(F.bars_after.bars.length + 1);
+  // Schwab's minutes brought the 10:00 bar's volume; the new candle's is "-"
+  expect(F.bars_after.bars[F.bars_after.bars.length - 1].v).toBeGreaterThan(0);
+  expect((await chart()).lastVolume).toEqual({ time: F.forming_after.bars[0].t });
   await page
     .locator("#tdmChart")
     .screenshot({ path: test.info().outputPath("forming-candle.png") });

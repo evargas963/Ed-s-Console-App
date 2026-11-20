@@ -112,8 +112,10 @@ def forming(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     Each minute built from the price row (calc.forming_bar, live_market_plane.built_minutes) that
     Schwab has not sent its own bar for (state.bar_store: a held minute as new or newer drops
     it), rolled up to `tf` with the minutes held in its chart bar (chart_bars): `bars`, oldest
-    first, none when every minute is Schwab's. The daily bar is today's daily candle
-    (daily_candles), none before Schwab sends it. `trade_time_ct`: the newest built trade's time.
+    first, none when every minute is Schwab's. A built minute's volume is unknown (None) until
+    Schwab's bar brings it, so is a bar holding one (aggregate_bars). The daily bar is today's
+    daily candle (daily_candles), none before Schwab sends it. `trade_time_ct`: the newest built
+    trade's time.
     """
     tf = tf_asked(params)
     at = datetime.fromtimestamp(now, ET)
@@ -127,7 +129,7 @@ def forming(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         return {"tf": tf, "bars": [], "trade_time_ct": None}
     first = _tf_bucket_key(built[0].ts, tf)
     minutes = [_bar_dict(c) for c in newest if _tf_bucket_key(c.ts, tf) == first] + [
-        _bar_dict(Candle(m.ts, m.open, m.high, m.low, m.close, m.volume)) for m in built
+        _bar_dict(Candle(m.ts, m.open, m.high, m.low, m.close)) for m in built
     ]
     return {
         "tf": tf,

@@ -1595,6 +1595,10 @@
           lastCandle: (function (d) {
             return d.length ? d[d.length - 1] : null;
           })(candles.data()),
+          // and its volume point (no value: no volume bar drawn)
+          lastVolume: (function (d) {
+            return d.length ? d[d.length - 1] : null;
+          })(volume.data()),
           tf: S.tf,
           symbol: S.symbol,
           from: r && r.from,

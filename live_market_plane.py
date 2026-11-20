@@ -160,7 +160,7 @@ def record_from_level_one_equity(
     out, trade_ts = _plane_row(t, snapshot, rts)
     with _lock:
         _by_ticker[t] = out
-        built = next_built(_built.get(t), out.spot, trade_ts, out.total_volume)
+        built = next_built(_built.get(t), out.spot, trade_ts)
         if built is not None:
             _built[t] = built
     if trade_ts is not None:

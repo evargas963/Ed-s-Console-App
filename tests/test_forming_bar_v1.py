@@ -8,9 +8,8 @@ intake: the price row (live_market_plane.record_from_level_one_equity) and the b
 (tests/fixtures/real_spy_day_fields_and_daily_candles_2026_11_10.json) for the daily bar.
 Every expected bar is worked out here from the raw messages: each minute's trades are the
 messages whose held TRADE_TIME_MILLIS falls in it, the bar the held LAST_PRICE at its first and
-last of them and the extremes between, its volume the held TOTAL_VOLUME at its last less at the
-message before its first. INDUCED, each named where it is set: a LAST_PRICE not a number, a
-TOTAL_VOLUME lower than held.
+last of them and the extremes between, its volume unknown until Schwab's bar brings it. INDUCED,
+named where it is set: a quote-only message and a LAST_PRICE not a number.
 """
 
 from __future__ import annotations
@@ -57,13 +56,13 @@ def _replay(until: float, since: float = 0.0) -> None:
 
 
 def _held(until: float) -> list[dict[str, Any]]:
-    """Each LEVELONE message to `until` with the fields held after it: price, trade time, volume."""
+    """Each LEVELONE message to `until` with the fields held after it: price and trade time."""
     held: dict[str, Any] = {}
     out = []
     for msg in _MSGS:
         if msg["ts_recv"] > until or msg["service"] != "LEVELONE_EQUITIES":
             continue
-        for f in ("LAST_PRICE", "TRADE_TIME_MILLIS", "TOTAL_VOLUME"):
+        for f in ("LAST_PRICE", "TRADE_TIME_MILLIS"):
             if f in msg["native"]:
                 held[f] = msg["native"][f]
         out.append(dict(held))
@@ -85,7 +84,7 @@ def _expected(until: float) -> dict[float, dict[str, Any]]:
             "h": max(prices),
             "l": min(prices),
             "c": prices[-1],
-            "v": rows[idx[-1]]["TOTAL_VOLUME"] - rows[idx[0] - 1]["TOTAL_VOLUME"],
+            "v": None,  # not built: Schwab's bar brings it
         }
     return out
 
@@ -195,13 +194,14 @@ def test_the_first_trade_of_a_new_minute_opens_a_new_bar_and_a_late_bar_replaces
 def test_schwabs_bar_is_the_bar_once_it_arrives():
     """Schwab's 10:03 bar replaces the built one: the chart's 10:03 is Schwab's exactly.
 
-    The built bar is what the stream showed (its trades, TOTAL_VOLUME's rise); Schwab's is the
-    record. Both are worked out from the capture.
+    The built bar is what the stream showed (its trades), its volume "-"; Schwab's bar is the
+    record and brings the minute's volume. Both are worked out from the capture.
     """
     arrived = _bar_arrived(M3)
     _replay(arrived - 1e-6)
-    built = {b["t"]: _ohlcv(b) for b in _forming(arrived)["bars"]}
-    assert built[M3] == _ohlcv(_expected(arrived)[M3])
+    built = {b["t"]: b for b in _forming(arrived)["bars"]}
+    assert _ohlcv(built[M3]) == _ohlcv(_expected(arrived)[M3])
+    assert built[M3]["v"] is None and built[M3]["v_text"] is None
     _replay(arrived, arrived - 1e-6)
     assert M3 not in {b["t"] for b in _forming(arrived)["bars"]}
     bars = push_bars.bars(TK, arrived, {"tf": "1", "limit": 390})["bars"]
@@ -239,25 +239,11 @@ def test_a_stall_leaves_the_bar_as_it_was_with_its_last_trade_time():
     assert _ohlcv(later["bars"][-1]) == _ohlcv(_expected(end)[M4])
 
 
-def test_a_volume_lower_than_held_leaves_the_minute_s_volume_unknown():
-    """INDUCED: TOTAL_VOLUME lower than held, as Schwab's zero at 7:28 ET (§3.1 field 8) is.
-
-    The minute's volume is unknown ("-"), never a negative or a guess; its prices stand.
-    """
-    end = _at(10, 4, 59)
-    _replay(end)
-    (bar,) = [b for b in _forming(end)["bars"] if b["t"] == M4]
-    assert bar["v"] == _expected(end)[M4]["v"] > 0
-    lmp.record_from_level_one_equity(TK, {"key": TK, "TOTAL_VOLUME": 100}, received_ts=end)
-    (bar,) = [b for b in _forming(end)["bars"] if b["t"] == M4]
-    assert bar["v"] is None and bar["v_text"] is None
-    assert _ohlcv(bar)[:5] == _ohlcv(_expected(end)[M4])[:5]
-
-
 def test_a_five_minute_chart_s_forming_bar_is_its_minutes_rolled_up():
     """At 10:03:30 the 10:00 bar is Schwab's 10:00-10:02 bars and the built 10:03, rolled up.
 
-    First open, highest high, lowest low, last close, the volumes added.
+    First open, highest high, lowest low, last close; its volume unknown while the built minute's
+    is, until Schwab's 10:03 bar brings it.
     """
     now = _at(10, 3, 30)
     _replay(now)
@@ -269,8 +255,9 @@ def test_a_five_minute_chart_s_forming_bar_is_its_minutes_rolled_up():
         max(m["h"] for m in minutes),
         min(m["l"] for m in minutes),
         minutes[-1]["c"],
-        sum(m["v"] for m in minutes),
+        None,
     )
+    assert bar["v_text"] is None
     # the bars panel's 10:00 bar, without the built minute, is drawn over by it
     held = push_bars.bars(TK, now, {"tf": "5", "limit": 390})["bars"]
     assert held[-1]["t"] == bar["t"] and held[-1]["v"] == sum(m["v"] for m in minutes[:3])
