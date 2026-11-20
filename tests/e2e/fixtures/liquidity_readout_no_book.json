@@ -88,14 +88,12 @@
       "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth. NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
       "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
       "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
-      "tilt": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back.",
-      "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable."
+      "tilt": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
     },
     "disagree": {
       "1": false,
       "3": false,
-      "5": false,
-      "weighted": false
+      "5": false
     },
     "venues": {
       "COMPOSITE": {
@@ -127,10 +125,6 @@
             "tilt": null
           },
           "5": {
-            "pct": null,
-            "tilt": null
-          },
-          "weighted": {
             "pct": null,
             "tilt": null
           }
@@ -167,10 +161,6 @@
           "5": {
             "pct": null,
             "tilt": null
-          },
-          "weighted": {
-            "pct": null,
-            "tilt": null
           }
         }
       },
@@ -203,10 +193,6 @@
             "tilt": null
           },
           "5": {
-            "pct": null,
-            "tilt": null
-          },
-          "weighted": {
             "pct": null,
             "tilt": null
           }

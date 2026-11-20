@@ -8,7 +8,6 @@ it, the tape in receive order and whether the feed delivers the book now.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -396,13 +395,10 @@ def compute_book_microstructure(data: FlowInput, *, now_ts: float) -> dict[str, 
 #: the two Schwab equity books, and their deduped union
 BOOK_VENUES: tuple[str, ...] = ("NYSE_BOOK", "NASDAQ_BOOK")
 COMPOSITE = "COMPOSITE"
-#: the card's views: the weighted top-5 headline, then the flat depths
-READOUT_VIEWS: tuple[str, ...] = ("weighted", "1", "3", "5")
-#: level k (1 = the touch) weighs exp(-OF_LEVEL_DECAY * (k - 1)), the top five normalized to sum
-#: 1 (0.43, 0.26, 0.16, 0.10, 0.06): starting weights, adjustable
-OF_LEVEL_DECAY: float = 0.5
-_RAW_WEIGHTS = tuple(math.exp(-OF_LEVEL_DECAY * k) for k in range(OF_BOOK_DEPTH_DEEP))
-OF_LEVEL_WEIGHTS: tuple[float, ...] = tuple(w / sum(_RAW_WEIGHTS) for w in _RAW_WEIGHTS)
+#: the card's views: the shares summed over the best 1, 3 and 5 price levels per side, each
+#: (bid - ask) / (bid + ask) (docs/SOURCES.md gould-bonart-2015, cao-hansch-wang-2009,
+#: bookmap-imbalance); "5" is the headline the screen opens on
+READOUT_VIEWS: tuple[str, ...] = ("1", "3", "5")
 #: the headline percentage reads BALANCED under this, else the side it leans to (Bookmap's
 #: Imbalance indicator shows the ratio in the buyer's or seller's colour from 10%;
 #: docs/SOURCES.md bookmap-imbalance)
@@ -419,10 +415,6 @@ TILT_WORDS = {"BID_HEAVY": "BID HEAVY", "BALANCED": "BALANCED", "OFFER_HEAVY": "
 _SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
 #: the detail panel's words
 READOUT_DETAIL = {
-    "weights": "Headline weights by price level from the touch: "
-    + ", ".join(f"{w:.2f}" for w in OF_LEVEL_WEIGHTS)
-    + f" (exp(-{OF_LEVEL_DECAY}·(k-1)), normalized; renormalized over the levels a thin side has)."
-    " Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
     "tilt": f"The headline is the book's percentage each second, as it is. BALANCED under"
     f" {OF_TILT_PCT:.0f}%; BID or OFFER HEAVY from {OF_TILT_PCT:.0f}%"
     " (Bookmap's colour-switch line): direction only, not strength. A flip is a change of"
@@ -438,7 +430,6 @@ READOUT_DETAIL = {
     "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth."
     " NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
 }
-_DIVERGENCE = "Touch and deeper book disagree"
 _CROSSED_SENTENCE = "Book crossed — the best bid is above the best offer."
 _TOUCH_FLAG: dict[str | None, str] = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 
@@ -485,17 +476,6 @@ def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
     return sorted(sizes.items(), reverse=side == "BIDS"), partial
 
 
-def _weighted_total(levels: Levels) -> float | None:
-    """Return Σ weight × shares over the best five levels.
-
-    OF_LEVEL_WEIGHTS renormalized to sum 1 over the levels the side has; None for an empty side.
-    """
-    if not levels:
-        return None
-    weights = OF_LEVEL_WEIGHTS[: len(levels)]
-    return sum(w * v for w, (_p, v) in zip(weights, levels, strict=False)) / sum(weights)
-
-
 def _span(levels: Levels, depth: int) -> float | None:
     """Return the span from the touch price to the `depth`-th level's.
 
@@ -520,21 +500,18 @@ _ONE_SIDED = {
 def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict[str, Any]:
     """Return one book's views.
 
-    The flat totals of its best 1, 3 and 5 levels and their imbalance (the
-    one producer of a book's depth ladder: the bars, difference and sentence here, and the
-    microstructure's `depth`), and the headline percentage (the weighted view's flat totals are
-    the top five's).
+    The totals of its best 1, 3 and 5 levels, their imbalance and its percentage (the one
+    producer of a book's depth ladder: the bars, difference and sentence here, and the
+    microstructure's `depth`).
     """
     views: dict[str, dict[str, float | None]] = {}
     for view in READOUT_VIEWS:
-        depth = OF_BOOK_DEPTH_DEEP if view == "weighted" else int(view)
+        depth = int(view)
         bt, at = _book_side_depth_total(bids, depth), _book_side_depth_total(asks, depth)
         imb = _book_imbalance_from_totals(bt, at)
         views[view] = {
             "imbalance": imb,
-            "pct": _pct(_book_imbalance_from_totals(_weighted_total(bids), _weighted_total(asks)))
-            if view == "weighted"
-            else _pct(imb),
+            "pct": _pct(imb),
             "bid_total": bt,
             "ask_total": at,
             "difference": None if bt is None or at is None else abs(bt - at),
@@ -714,9 +691,6 @@ def _card_view(
         "held_open": since is not None and since == known_from,
         "held_text": None if held is None else f"HELD {'≥' if since == known_from else ''}{held}s",
         "sentence": _CROSSED_SENTENCE if r.get("touch_state") == "CROSSED" else _sentence(bid, ask),
-        "divergence": _DIVERGENCE
-        if view == "weighted" and _opposite(sm[-1], snap.get("imbalance"))
-        else None,
         "flips_2m": _flips(shown, first, last),
         "bid_text": count_text(bid),
         "ask_text": count_text(ask),

@@ -146,7 +146,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       await expect(card(page).locator(".liq-body")).toContainText(t);
     }
     await openDesk(page, READOUT_LIVE);
-    await expect(card(page).locator(".liq-sent")).toHaveText(LIVE_COMP.views.weighted.sentence); // the readout is drawn
+    await expect(card(page).locator(".liq-sent")).toHaveText(LIVE_COMP.views["5"].sentence); // the readout is drawn
     // found and read in one task of the page: a repaint replaces the card's body, and a node it
     // took out has no computed style
     const look = await page.evaluate(() => {
@@ -164,14 +164,16 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     expect(errs).toEqual([]);
   });
 
-  test("the default view is the composite, weighted: every element in order, from the served values", async ({
+  test("the default view is the composite, Top 5: every element in order, from the served values", async ({
     page,
   }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
-    const w = LIVE_COMP.views.weighted;
+    const w = LIVE_COMP.views["5"];
     await expect(card(page).locator('[data-liqvenue="COMPOSITE"]')).toHaveClass(/on/);
-    await expect(card(page).locator('[data-liqview="weighted"]')).toHaveClass(/on/);
+    await expect(card(page).locator('[data-liqview="5"]')).toHaveClass(/on/);
+    // Top 1, Top 3 and Top 5, no other depth
+    await expect(card(page).locator("[data-liqview]")).toHaveText(["Top 1", "Top 3", "Top 5"]);
     await expect(card(page).locator(".liq-depth")).toContainText(
       "price levels per side, not timeframes",
     );
@@ -185,11 +187,10 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
         .evaluate((el) => el.scrollWidth <= el.clientWidth),
     ).toBe(true);
     const text = await card(page).locator(".liq-body").innerText();
-    const span = (k, side) =>
-      READOUT_LIVE.readout.venues[k].views.weighted["span_" + side + "_text"];
+    const span = (k, side) => READOUT_LIVE.readout.venues[k].views["5"]["span_" + side + "_text"];
     const order = [
       "price levels per side, not timeframes",
-      "WEIGHTED TOP-5 HEADLINE",
+      "TOP 5 HEADLINE",
       w.side_word,
       w.pct_text,
       "Bids",
@@ -223,11 +224,27 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     }
     await expect(card(page).locator(".liq-live")).toHaveCount(0);
     // the served flag: NYSE and Nasdaq lean opposite ways at this depth
-    expect(READOUT_LIVE.readout.disagree.weighted).toBe(true);
+    expect(READOUT_LIVE.readout.disagree["5"]).toBe(true);
     await expect(card(page).locator(".liq-body")).toContainText("VENUES DISAGREE");
-    // no predicted price move, no balance scale, no demo or not-live control
-    await expect(card(page)).not.toContainText(/ticks|price goes/i);
-    await expect(card(page).locator("button")).toHaveCount(8);
+    // no predicted price move, no balance scale, no demo or not-live control, no weighting
+    await expect(card(page)).not.toContainText(/ticks|price goes|weight/i);
+    await expect(card(page).locator("button")).toHaveCount(7);
+    expect(errs).toEqual([]);
+  });
+
+  test("a stored choice of the deleted weighted view opens on Top 5, card and agreement strip", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await page.addInitScript(() => localStorage.setItem("ed.desk.liqview", "weighted"));
+    await openDesk(page, READOUT_LIVE, true);
+    const v = LIVE_COMP.views["5"];
+    await expect(card(page).locator('[data-liqview="5"]')).toHaveClass(/on/);
+    await expect(card(page).locator(".liq-body")).toContainText("TOP 5 HEADLINE");
+    await expect(card(page).locator(".liq-pct")).toHaveText(v.pct_text);
+    await expect(page.locator("#tdmAgree .tdm-ag").first()).toContainText(
+      "LIQUIDITY" + v.side_word.toLowerCase(),
+    );
     expect(errs).toEqual([]);
   });
 
@@ -240,7 +257,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       const dot = card(page).locator(".liq-dot." + k);
       await expect(dot).toHaveAttribute(
         "style",
-        "left:" + left(READOUT_LIVE.readout.venues[k].views.weighted.pct),
+        "left:" + left(READOUT_LIVE.readout.venues[k].views["5"].pct),
       );
     }
     await expect(card(page).locator(".liq-dot.sel")).toHaveCount(1);
@@ -297,7 +314,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
     const seen = new Set();
-    for (const view of ["weighted", "1", "3", "5"]) {
+    for (const view of ["1", "3", "5"]) {
       await card(page)
         .locator('[data-liqview="' + view + '"]')
         .click();
@@ -318,7 +335,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     page,
   }) => {
     const sock = await openDesk(page, READOUT_LIVE);
-    await expect(card(page).locator(".liq-pct")).toHaveText(LIVE_COMP.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(LIVE_COMP.views["5"].pct_text);
     // the composite is drawn; the desk's one book panel is asked once, of the one venue
     const last = sock.subscribes[sock.subscribes.length - 1];
     expect(Object.keys(last.panels).filter((n) => n === "book:deskmap").length).toBe(1);
@@ -343,7 +360,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
         c.book_age_text +
         " old · not live",
     );
-    await expect(card(page).locator(".liq-pct")).toHaveText(c.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(c.views["5"].pct_text);
     expect(errs).toEqual([]);
   });
 
@@ -389,7 +406,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator(".liq-body")).toContainText(
       READOUT_AUCTION.readout.auction_text,
     );
-    await expect(card(page).locator(".liq-pct")).toHaveText(c.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(c.views["5"].pct_text);
     // the line sits after the sentence box, before the venues
     const text = await card(page).locator(".liq-body").innerText();
     expect(text.indexOf(READOUT_AUCTION.readout.auction_text)).toBeGreaterThan(
@@ -407,8 +424,8 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     const c = READOUT_AUCTION.readout.venues.COMPOSITE;
     expect(c.touch_flag).toBe("BOOK CROSSED");
     await expect(card(page).locator(".liq-body")).toContainText("BOOK CROSSED");
-    await expect(card(page).locator(".liq-pct")).toHaveText(c.views.weighted.pct_text);
-    await expect(card(page).locator(".liq-body")).toContainText(c.views.weighted.ask_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(c.views["5"].pct_text);
+    await expect(card(page).locator(".liq-body")).toContainText(c.views["5"].ask_text);
     await expect(card(page).locator(".liq-sent")).toHaveText(
       "Book crossed — the best bid is above the best offer.",
     );
@@ -425,7 +442,8 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator(".liq-hl")).toBeVisible();
     await card(page).locator(".liq-hl").click();
     const panel = card(page).locator(".liq-detail");
-    for (const t of [d.weights, d.tilt, d.construction, d.spans, d.books]) {
+    expect(Object.keys(d).sort()).toEqual(["books", "construction", "spans", "tilt"]);
+    for (const t of [d.tilt, d.construction, d.spans, d.books]) {
       await expect(panel).toContainText(t);
     }
     await panel.locator("[data-liqclose]").click();
@@ -445,7 +463,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     });
     await page.clock.install(); // the page's held second runs on the test's time
     const sock = await openDesk(page, READOUT_LIVE);
-    await expect(card(page).locator(".liq-pct")).toHaveText(LIVE_COMP.views.weighted.pct_text);
+    await expect(card(page).locator(".liq-pct")).toHaveText(LIVE_COMP.views["5"].pct_text);
     // the page's time stops here; the load's held second ends, and nothing runs until it moves
     await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1200);
     const before = await page.evaluate(() => window.EdTradeDeskMap.state().liqPaints);

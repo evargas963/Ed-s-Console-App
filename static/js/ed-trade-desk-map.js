@@ -101,9 +101,7 @@
     // the Liquidity card's venue (COMPOSITE, or BOOK: the shell's book switch) and depth view
     liqVenue: sget("ed.desk.liqvenue", "COMPOSITE"),
     liqView:
-      ["weighted", "1", "3", "5"].indexOf(sget("ed.desk.liqview", "")) >= 0
-        ? sget("ed.desk.liqview", "")
-        : "weighted",
+      ["1", "3", "5"].indexOf(sget("ed.desk.liqview", "")) >= 0 ? sget("ed.desk.liqview", "") : "5",
     liqPaints: 0,
     liqHold: null,
     liqPending: false,
@@ -747,7 +745,7 @@
     };
     return (
       "Top-" +
-      (view === "weighted" ? "5" : view) +
+      view +
       " spans, bid / ask: NYSE " +
       s("NYSE_BOOK", "bid") +
       " / " +
@@ -766,7 +764,6 @@
       };
     return (
       '<div class="liq-detail liq-keep"><div class="liq-lbl"><span>DETAIL</span><button type="button" class="scbtn" data-liqclose>Close</button></div>' +
-      p(d.weights) +
       p(d.tilt) +
       (key === "COMPOSITE" ? p(d.construction) : "") +
       p(d.spans) +
@@ -801,7 +798,6 @@
     var depth =
       '<div class="liq-depth"><small>Depth: price levels per side, not timeframes</small><span>' +
       [
-        ["weighted", "Weighted"],
         ["1", "Top 1"],
         ["3", "Top 3"],
         ["5", "Top 5"],
@@ -852,7 +848,9 @@
     var h =
       depth +
       '<div class="liq-now liq-keep"><div class="liq-lbl liq-keep"><span>' +
-      (view === "weighted" ? "WEIGHTED TOP-5 HEADLINE" : "TOP " + view + " HEADLINE") +
+      "TOP " +
+      view +
+      " HEADLINE" +
       "</span>" +
       (r.touch_flag ? '<span class="liq-pill">' + esc(r.touch_flag) + "</span>" : "") +
       (r.live ? "" : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + "</span>") +
@@ -868,8 +866,7 @@
           tone +
           '">' +
           esc(orDash(v.pct_text)) +
-          "</span></div>" +
-          (v.divergence ? '<div class="liq-flag">' + esc(v.divergence) + "</div>" : "")) +
+          "</span></div>") +
       "</div>" +
       // the side Schwab sent levels for fills its track; a missing side draws no bar and "-"
       '<figure class="tdm-chartbox"><div class="liq-bars">' +

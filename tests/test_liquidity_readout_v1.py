@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import functools
 import json
-import math
 from datetime import datetime
 from pathlib import Path
 
@@ -124,29 +123,27 @@ def build_readout_payload(
         history.LEAN.forget("SPY")
 
 
-# ── one book: the weighted headline and the flat views ───────────────────────────────────────
+# ── one book: Top 1, Top 3 and Top 5, plain sums of Schwab's sizes ───────────────────────────
 
 
-def test_the_level_weights_fall_from_the_touch_and_sum_to_one():
-    w = e.OF_LEVEL_WEIGHTS
-    assert math.isclose(sum(w), 1.0)
-    assert [round(x, 2) for x in w] == [0.43, 0.26, 0.16, 0.10, 0.06]
-    assert all(math.isclose(w[k + 1] / w[k], math.exp(-0.5)) for k in range(4))
+def _sent_sizes(content: dict, side: str) -> list[float]:
+    """A side's level sizes (TOTAL_VOLUME) as Schwab sent them, best price first."""
+    key = "BID_PRICE" if side == "BIDS" else "ASK_PRICE"
+    levels = sorted(content[side], key=lambda lv: lv[key], reverse=side == "BIDS")
+    return [lv["TOTAL_VOLUME"] for lv in levels]
 
 
-def test_the_weighted_headline_and_the_flat_views_of_schwabs_nyse_book():
+def test_the_views_of_schwabs_nyse_book_are_plain_sums():
     """NYSE_BOOK's best five bids 160, 120, 120, 360, 40 and asks 200, 320, 1560, 40, 40 shares.
 
-    The headline weighs each level, the flat views sum the shares, and the weighted view's bars
-    are the flat top five.
+    Each view sums the shares of its levels; no level weighs more than another, and no other
+    view is served.
     """
     nyse = _pair_readout()["NYSE_BOOK"]["views"]
-    bids, asks = [160, 120, 120, 360, 40], [200, 320, 1560, 40, 40]
-    wb = sum(w * b for w, b in zip(e.OF_LEVEL_WEIGHTS, bids, strict=True))
-    wa = sum(w * a for w, a in zip(e.OF_LEVEL_WEIGHTS, asks, strict=True))
-    assert nyse["weighted"]["pct"] == pytest.approx((wb - wa) / (wb + wa) * 100)
-    assert (nyse["weighted"]["bid_total"], nyse["weighted"]["ask_total"]) == (800, 2160)
-    assert nyse["weighted"]["imbalance"] * 100 == pytest.approx((800 - 2160) / 2960 * 100)
+    assert set(nyse) == {"1", "3", "5"}
+    sent = _PAIR["NYSE_BOOK"]["content"]
+    assert _sent_sizes(sent, "BIDS")[:5] == [160, 120, 120, 360, 40]
+    assert _sent_sizes(sent, "ASKS")[:5] == [200, 320, 1560, 40, 40]
     for view, (b, a) in {"1": (160, 200), "3": (400, 2080), "5": (800, 2160)}.items():
         v = nyse[view]
         assert (v["bid_total"], v["ask_total"]) == (b, a)
@@ -154,25 +151,27 @@ def test_the_weighted_headline_and_the_flat_views_of_schwabs_nyse_book():
         assert (v["difference"], v["total_depth"]) == (abs(b - a), b + a)
 
 
-def test_the_weighted_headline_is_not_the_flat_top_five():
-    """Schwab's NASDAQ_BOOK: the touch leans to the bids, the flat top five to the offers.
+def test_the_touch_and_the_top_five_are_served_apart():
+    """Schwab's NASDAQ_BOOK: the touch leans to the bids, the top five to the offers.
 
-    The touch leans to the bids (+17.6%) while the flat top five leans to the offers (-5.5%);
-    the weighted headline follows the touch, and says the two disagree.
+    The touch leans to the bids (+17.6%) while the top five leans to the offers (-5.5%); each
+    view says its own sum, with no flag of ours between them.
     """
     nq = _pair_readout()["NASDAQ_BOOK"]["views"]
     assert nq["1"]["pct"] > 0 > nq["5"]["pct"]
-    assert nq["weighted"]["pct"] > 0 > nq["weighted"]["imbalance"]
     card = e.readout_card(
         _pair_readout(),
         [(1.0, _pair_readout())],
         {v: 2.0 for v in (*e.BOOK_VENUES, e.COMPOSITE)},
     )
-    assert card["venues"]["NASDAQ_BOOK"]["views"]["weighted"]["divergence"] == (
-        "Touch and deeper book disagree"
+    for venue in card["venues"].values():
+        assert set(venue["views"]) == {"1", "3", "5"}
+        assert all("divergence" not in v for v in venue["views"].values())
+    sent = _PAIR["NASDAQ_BOOK"]["content"]
+    b5, a5 = sum(_sent_sizes(sent, "BIDS")[:5]), sum(_sent_sizes(sent, "ASKS")[:5])
+    assert card["venues"]["NASDAQ_BOOK"]["views"]["5"]["pct"] == pytest.approx(
+        (b5 - a5) / (b5 + a5) * 100
     )
-    assert card["venues"]["NASDAQ_BOOK"]["views"]["5"]["divergence"] is None
-    assert card["venues"]["NYSE_BOOK"]["views"]["weighted"]["divergence"] is None
 
 
 # ── the composite: each exchange once, its newest quote ──────────────────────────────────────
@@ -213,13 +212,7 @@ def _merged(books: dict) -> dict:
 def _expected(merged: dict, view: str) -> tuple[float, float, float]:
     """(bid total, ask total, percentage) of a recomputed composite's view."""
     bids, asks = ([s for _p, s in merged[side][:5]] for side in ("BIDS", "ASKS"))
-    depth = 5 if view == "weighted" else int(view)
-    bt, at = sum(bids[:depth]), sum(asks[:depth])
-    if view == "weighted":
-        w = e.OF_LEVEL_WEIGHTS
-        b = sum(x * s for x, s in zip(w, bids, strict=False)) / sum(w[: len(bids)])
-        a = sum(x * s for x, s in zip(w, asks, strict=False)) / sum(w[: len(asks)])
-        return bt, at, (b - a) / (b + a) * 100
+    bt, at = sum(bids[: int(view)]), sum(asks[: int(view)])
     return bt, at, (bt - at) / (bt + at) * 100
 
 
@@ -457,7 +450,7 @@ def test_a_nasdaq_only_composite_is_live_while_the_feed_holds_both_books():
     comp = build_readout_payload(rows=rows)["readout"]["venues"][e.COMPOSITE]
     assert (comp["live"], comp["feed_label"], comp["books"]) == (True, "LIVE", ["NASDAQ_BOOK"])
     assert comp["source_text"] == "Schwab NASDAQ_BOOK · composite, newest quote of each exchange"
-    assert comp["views"]["weighted"]["pct"] is not None
+    assert comp["views"]["5"]["pct"] is not None
 
 
 def test_with_no_book_the_composite_names_the_two_books_it_reads():
@@ -533,26 +526,24 @@ def test_the_spans_run_from_the_touch_to_the_depths_last_level():
     nyse, nq = card["venues"]["NYSE_BOOK"]["views"], card["venues"]["NASDAQ_BOOK"]["views"]
     # prices, as the screen shows them (two decimals, no "$")
     assert (nyse["5"]["span_bid_text"], nyse["5"]["span_ask_text"]) == ("0.04", "0.19")
-    assert nyse["weighted"]["span_bid_text"] == nyse["5"]["span_bid_text"]
     assert (nyse["3"]["span_bid_text"], nyse["1"]["span_bid_text"]) == ("0.02", "0.00")
     assert nq["5"]["span_bid_text"] == f"{767.41 - 753.40:.2f}"
+    assert (nq["1"]["span_bid_text"], nq["1"]["span_ask_text"]) == ("0.00", "0.00")
 
 
-def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalized():
+def test_a_thin_side_is_read_over_the_levels_it_has():
     """Schwab's NYSE_BOOK at 10:00:34 ET on 2026-11-02 (row 66): seven bid and four ask levels.
 
-    The asks' top five is its four, the weights renormalized over four, no level invented; the
-    counts line says so.
+    The asks' top five is its four, no level invented; the counts line says so.
     """
     _ts, svc, content = _ROWS[66]
     r = _readout({v: content if v == svc else None for v in e.BOOK_VENUES})[svc]
-    bids = [lv["TOTAL_VOLUME"] for lv in content["BIDS"]][:5]
-    asks = [lv["TOTAL_VOLUME"] for lv in content["ASKS"]]
+    bids = _sent_sizes(content, "BIDS")[:5]
+    asks = _sent_sizes(content, "ASKS")
     assert (len(content["BIDS"]), len(asks)) == (7, 4)
-    w = e.OF_LEVEL_WEIGHTS
-    wb = sum(x * b for x, b in zip(w, bids, strict=True))
-    wa = sum(x * a for x, a in zip(w[:4], asks, strict=True)) / sum(w[:4])
-    assert r["views"]["weighted"]["pct"] == pytest.approx((wb - wa) / (wb + wa) * 100)
+    assert r["views"]["5"]["pct"] == pytest.approx(
+        (sum(bids) - sum(asks)) / (sum(bids) + sum(asks)) * 100
+    )
     assert r["views"]["5"]["ask_total"] == sum(asks)
     span = max(lv["ASK_PRICE"] for lv in content["ASKS"]) - min(
         lv["ASK_PRICE"] for lv in content["ASKS"]
@@ -580,8 +571,8 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
     ("row", "venue", "view", "pct", "tilt"),
     [
         (16, "NYSE_BOOK", "1", 0.0, "BALANCED"),
-        (16, "NYSE_BOOK", "weighted", 9.524, "BALANCED"),
         (14, "NYSE_BOOK", "5", -9.474, "BALANCED"),
+        (119, "COMPOSITE", "5", 9.860, "BALANCED"),
         (8, "NYSE_BOOK", "5", 10.0, "BID_HEAVY"),
         (2, "NYSE_BOOK", "5", -10.0, "OFFER_HEAVY"),
         (69, "NASDAQ_BOOK", "1", 69.231, "BID_HEAVY"),
@@ -609,16 +600,14 @@ _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text
 
 @pytest.mark.parametrize(
     ("case", "line", "pct", "tilt"),
-    [
-        ("under 10", 10.0, 9.996, "BALANCED"),
-        ("under -10", -10.0, -9.989, "BALANCED"),
-    ],
+    [("under -10", -10.0, -9.989, "BALANCED")],
 )
 def test_the_tilts_on_the_books_nearest_the_line(case, line, pct, tilt):
-    """The two books held, over SPY's whole 2026-11-02 session, nearest the 10% line.
+    """The two books held, over SPY's whole 2026-11-02 session, nearest the -10% line.
 
-    When a venue and view read nearest inside it (9.996%, -9.989%, to three decimals as the other
-    tilt tests state them), held ten seconds: just inside the line is not past it.
+    When a venue and view read nearest inside it (-9.989%, to three decimals as the other tilt
+    tests state them), held ten seconds: just inside the line is not past it. The +10% side
+    is the composite's top five at 9.860% (test_the_tilt_turns_at_10_percent).
     """
     c = _LINES[case]
     readout = _readout({svc: content for _ts, svc, content in c["books"]})
@@ -629,20 +618,20 @@ def test_the_tilts_on_the_books_nearest_the_line(case, line, pct, tilt):
 
 
 def test_no_value_has_no_tilt():
-    w = _steady(_NO_BOOK, "NYSE_BOOK", "weighted")
+    w = _steady(_NO_BOOK, "NYSE_BOOK", "5")
     assert (w["pct"], w["tilt"]) == (None, None)
 
 
 def test_the_sentence_four_cases_from_the_flat_shares():
     """Schwab's own books, each held ten seconds.
 
-    NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02 (80 bid, 80 ask), its weighted view then
-    (+1.5%, 240 shares apart), NYSE_BOOK's touch on 2026-09-25 (160 bid, 200 ask),
+    NYSE_BOOK's touch at 10:00:08 ET on 2026-11-02 (80 bid, 80 ask), its top five at 10:00:01
+    (-10.0%, 240 shares apart), NYSE_BOOK's touch on 2026-09-25 (160 bid, 200 ask),
     NASDAQ_BOOK's then (100 bid, 70 ask) and the composite's top five then (780 bid, 2,110 ask).
     """
     rows, pair = _replayed()[1], _pair_readout()
     assert _steady(rows[16][1], "NYSE_BOOK", "1")["sentence"] == "Equal shares bid and offered."
-    assert _steady(rows[2][1], "NYSE_BOOK", "weighted")["sentence"] == (
+    assert _steady(rows[2][1], "NYSE_BOOK", "5")["sentence"] == (
         "240 more shares offered than bid."
     )
     assert _steady(pair, "NYSE_BOOK", "1")["sentence"] == "40 more shares offered than bid."
@@ -749,7 +738,7 @@ def test_held_is_at_least_when_the_values_began_inside_the_window():
     end = int(points[19][0])
     card = e.readout_card(points[-1][1], points[:20], {v: points[19][0] for v in points[-1][1]})
     for v in (*e.BOOK_VENUES, e.COMPOSITE):
-        w = card["venues"][v]["views"]["weighted"]
+        w = card["venues"][v]["views"]["5"]
         series = w["lean"]["2m"]["values"]
         known = end - (len(series) - 1) + next(k for k, x in enumerate(series) if x is not None)
         assert w["held_open"] is (end - w["held_sec"] == known), v
@@ -757,15 +746,15 @@ def test_held_is_at_least_when_the_values_began_inside_the_window():
 
 
 def test_the_headline_is_the_value_standing_at_the_last_second():
-    """The composite's weighted headline at the last captured second.
+    """The composite's Top 5 headline at the last captured second.
 
     It is the newest readout's own value received by that second's end, as it is.
     """
     readout, points = _replayed()
     card = e.readout_card(readout, points, dict.fromkeys(readout, points[-1][0]))
     assert (
-        card["venues"][e.COMPOSITE]["views"]["weighted"]["pct"]
-        == points[-1][1][e.COMPOSITE]["views"]["weighted"]["pct"]
+        card["venues"][e.COMPOSITE]["views"]["5"]["pct"]
+        == points[-1][1][e.COMPOSITE]["views"]["5"]["pct"]
     )
 
 
@@ -773,7 +762,7 @@ def test_the_lean_windows_are_two_and_five_minutes_and_none_is_one():
     assert [(n, s) for n, s, _step in e.OF_LEAN_WINDOWS] == [("2m", 120), ("5m", 300)]
     readout, points = _replay()
     card = e.readout_card(readout, points, {v: points[-1][0] for v in readout})
-    lean = card["venues"]["COMPOSITE"]["views"]["weighted"]["lean"]
+    lean = card["venues"]["COMPOSITE"]["views"]["5"]["lean"]
     assert set(lean) == {"2m", "5m"}
     assert (len(lean["2m"]["values"]), len(lean["5m"]["values"])) == (121, 61)
 
@@ -863,7 +852,9 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
         got = rd["venues"][v]
         assert (got["live"], got["feed_label"]) == (True, "LIVE")
         assert got["views"] == expected["venues"][v]["views"], v
+        assert set(got["views"]) == {"1", "3", "5"}, v
     assert rd["disagree"] == expected["disagree"]
+    assert set(rd["disagree"]) == {"1", "3", "5"} and "weights" not in rd["detail"]
     assert (rd["auction"], rd["auction_text"]) == ("NONE", None)
     assert [rd["venues"][v]["source_text"] for v in (*e.BOOK_VENUES, e.COMPOSITE)] == [
         "Schwab NYSE_BOOK · live book",
@@ -888,8 +879,8 @@ def test_a_book_that_stops_keeps_its_last_numbers_marked_not_live():
         age = age_text(_END - got["book_time_ms"] / 1000.0)
         assert got["book_age_text"] == age
         assert got["book_time_ct"] == ct_label(got["book_time_ms"] / 1000.0)
-        assert got["views"]["weighted"]["pct"] is not None
-        assert got["views"]["weighted"]["bid_total"] is not None
+        assert got["views"]["5"]["pct"] is not None
+        assert got["views"]["5"]["bid_total"] is not None
         assert got["source_text"].endswith(f"book {got['book_time_ct']} · {age} old · not live")
         # said once, on the source line, as every other card says it
         words = [t for k, t in got.items() if k.endswith("_text") and isinstance(t, str)]
@@ -934,7 +925,7 @@ def test_a_book_that_stopped_is_read_to_its_own_last_book_while_the_other_runs()
     own = e.readout_card(readout, points, {"NASDAQ_BOOK": last_nq})["venues"]["NASDAQ_BOOK"]
     on = e.readout_card(readout, points, {"NASDAQ_BOOK": _END})["venues"]["NASDAQ_BOOK"]
     assert rd["NASDAQ_BOOK"]["views"] == own["views"]
-    assert own["views"]["weighted"]["held_sec"] < on["views"]["weighted"]["held_sec"]
+    assert own["views"]["5"]["held_sec"] < on["views"]["5"]["held_sec"]
     # the composite changed after NASDAQ_BOOK's last book: it is read to its own last change
     changed = [
         ts
@@ -1018,7 +1009,7 @@ def test_the_closing_auction_keeps_the_number_and_adds_its_line():
         "Closing auction window — auction imbalance is a different number, not shown here."
     )
     for got in p["readout"]["venues"].values():
-        assert got["views"]["weighted"]["pct"] is not None and got["no_number_text"] is None
+        assert got["views"]["5"]["pct"] is not None and got["no_number_text"] is None
 
 
 def test_the_opening_auction_line():
@@ -1028,7 +1019,7 @@ def test_the_opening_auction_line():
     assert p["readout"]["auction_text"] == (
         "Opening auction window — auction imbalance is a different number, not shown here."
     )
-    assert p["readout"]["venues"][e.COMPOSITE]["views"]["weighted"]["pct"] is not None
+    assert p["readout"]["venues"][e.COMPOSITE]["views"]["5"]["pct"] is not None
 
 
 def test_a_ticker_without_readouts_has_an_empty_series():
