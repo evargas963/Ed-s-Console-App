@@ -103,11 +103,9 @@
         esc(tk) +
         "</span></div>" +
         '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
-        '<div class="placeholder"><div class="sm">No ' +
-        esc(window.EdShell.getState().bookVenue) +
-        " for " +
-        esc(tk) +
-        " — Schwab has sent no book from this venue for this symbol.</div></div>";
+        '<div class="placeholder"><div class="sm">' +
+        esc(d.no_book_text) + // served: why no book of this venue is held (push.book)
+        "</div></div>";
       return;
     }
     // always served (engine.compute_book_microstructure)

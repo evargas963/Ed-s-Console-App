@@ -219,7 +219,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`time_et.market_session_date`) → `state/price_level_store.py` → the `levels` panel
   (`push.levels.levels_payload`) and the liquidity zones (`push.liquidity.liquidity_snapshot`). The
   `levels` panel is sent again with each price row (`server.PRICED_PANELS`), since each level's
-  distance is from the live price.
+  distance is from the live price. What the Trade Desk chart draws from them is served whole: the
+  prior session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the
+  volume profile's POC label (`volume_profile.poc_label`).
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
   watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`),
   taking those answers again for `chain_sweep.CHAINS_AGAIN_SEC`; `/chains` and `/quotes` requests go
@@ -279,7 +281,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   are stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
   `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
   `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
-  `push.desk.DESK_LOOKBACK`). Enforced by: `tests/test_level_crosses_wire.py`.
+  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of
+  the span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`).
+  Enforced by: `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
   chain expiry date within a year (`ChainSweep.fetch_markets`) → the bus (`markets.<date>`) → the
   Recorder (`stream_markets_raw`) and `time_et.record_markets`. At startup the recorded answers are

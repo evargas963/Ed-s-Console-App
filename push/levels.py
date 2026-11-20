@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from calc.liquidity_models import VolumeProfile
-from calc.liquidity_value_engine import PriceLevelSnapshot
+from calc.liquidity_value_engine import LEVEL_NAMES, PriceLevelSnapshot
 from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, OneDayMove, TerrainSnapshot
 from calc.terrain_read import from_spot_text, level_side
 from numeric_contract import price_text
@@ -80,7 +80,9 @@ SNAPSHOT_FIELDS = (
     "snapshot_age_text",
     "bar_source",
     "vwap_series",
+    "vwap_text",
     "volume_profile",
+    "prior_value_area",
     "degraded",
 )
 
@@ -126,9 +128,22 @@ def _profile(vp: VolumeProfile | None) -> dict[str, Any] | None:
         # the largest bin's volume: the profile's scale
         "max_volume": max((v for _p, v in vp.bins), default=None),
         "poc": vp.poc,
+        # the POC's mark on the chart: TODAY_POC's short name and its price
+        "poc_label": f"{LEVEL_NAMES['TODAY_POC'][1]} {price_text(vp.poc)}",
         "vah": vp.vah,
         "val": vp.val,
     }
+
+
+def _prior_value_area(snap: PriceLevelSnapshot) -> dict[str, Any] | None:
+    """Return the prior session's value area the chart shades: its VAL and VAH, and its words.
+
+    None when it is absent (families_absent names the `prior_day` or `prior_value_area` reason).
+    """
+    low, high = snap.price("PD_VAL"), snap.price("PD_VAH")
+    if low is None or high is None:
+        return None
+    return {"low": low, "high": high, "text": f"VA {price_text(low)} – {price_text(high)}"}
 
 
 def _session_rows(snap: PriceLevelSnapshot) -> list[dict[str, Any]]:
@@ -151,7 +166,9 @@ def _snapshot(snap: PriceLevelSnapshot | None, tf: str, served_ts: float) -> dic
         "bar_source": snap.bar_source,
         # one point per chart bar of `tf`
         "vwap_series": aggregate_vwap(snap.vwap_series, tf),
+        "vwap_text": price_text(snap.price("VWAP")),
         "volume_profile": _profile(snap.volume_profile),
+        "prior_value_area": _prior_value_area(snap),
         "degraded": list(snap.degraded),
     }
 
@@ -284,9 +301,13 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         # The VWAP curve and its σ bands, CARRIED: the one VWAP of the session, which no page
         # accumulates for itself. [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
         "vwap_series": session["vwap_series"],
+        # the session's VWAP as the VWAP family's switch shows it
+        "vwap_text": session["vwap_text"],
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
         "volume_profile": session["volume_profile"],
+        # the prior session's value area, the chart's band and the prior-day switch's words
+        "prior_value_area": session["prior_value_area"],
         "tf": tf,
         "families_absent": families_absent,
         "degraded": session["degraded"],

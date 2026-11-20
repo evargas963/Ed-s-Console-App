@@ -145,12 +145,8 @@
     document.querySelectorAll("#tdmFamilies [data-fam]").forEach(function (b) {
       b.classList.toggle("on", S.fam[b.getAttribute("data-fam")] !== 0);
     });
-    var val = levelText("PD_VAL"),
-      vah = levelText("PD_VAH");
-    var v = {
-      vwap: levelText("VWAP"),
-      prior_day: val == null || vah == null ? "" : "VA " + val + " – " + vah,
-    };
+    var pva = S.levels && S.levels.prior_value_area;
+    var v = { vwap: S.levels && S.levels.vwap_text, prior_day: pva && pva.text };
     document.querySelectorAll("#tdmFamilies [data-famv]").forEach(function (b) {
       b.textContent = v[b.getAttribute("data-famv")] || "";
     });
@@ -317,7 +313,7 @@
     window.EdShell.showPanel("strikes:desk", on ? window.EdShell.windowParams(null) : null);
     window.EdShell.showPanel("bars:deskmap", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
     window.EdShell.showPanel("bars:flow", on ? { tf: "1", limit: FLOW_BARS } : null);
-    window.EdShell.showPanel("desk", on ? { tf: S.tf } : null);
+    window.EdShell.showPanel("desk", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
     window.EdShell.showPanel("liquidity:deskmap", on ? {} : null);
     window.EdShell.showPanel("forces", on ? {} : null);
     window.EdShell.showPanel("book:deskmap", on ? { venue: venue } : null);
@@ -409,31 +405,13 @@
     });
     return out;
   }
-  function levelRow(id) {
-    return (S.levels ? S.levels.levels : []).filter(function (x) {
-      return x.id === id;
-    })[0];
-  }
-  function levelPrice(id) {
-    var l = levelRow(id);
-    return l && l.price != null ? Number(l.price) : null;
-  }
-  // the level's price as served for the screen; none: no text
-  function levelText(id) {
-    var l = levelRow(id);
-    return l ? l.price_text : null;
-  }
-  function pdValueArea() {
-    return { val: levelPrice("PD_VAL"), vah: levelPrice("PD_VAH") };
-  }
   function paintChartLevels() {
     if (!S.chart) return;
     paintFamilies();
     S.chart.setLevels(levelList());
-    // the band is yesterday's value area, as the reference draws it; today's are level lines
-    var pd = pdValueArea(),
-      on = S.fam.prior_day !== 0;
-    S.chart.setValueArea(on ? pd.val : null, on ? pd.vah : null);
+    // the band is yesterday's value area as served, as the reference draws it; today's are lines
+    var pd = S.fam.prior_day !== 0 && S.levels && S.levels.prior_value_area;
+    S.chart.setValueArea(pd ? pd.low : null, pd ? pd.high : null);
     // the session volume profile on the left edge: value-area bins brighter (the served flag), its
     // served POC marked across it
     var vp = S.fam.volume_profile !== 0 && S.levels && S.levels.volume_profile;
@@ -450,9 +428,7 @@
           })
         : [],
       vp ? vp.max_volume : null,
-      vp && vp.poc != null
-        ? { price: vp.poc, label: "POC est " + levelText("TODAY_POC"), color: P.warn }
-        : null,
+      vp && vp.poc != null ? { price: vp.poc, label: vp.poc_label, color: P.warn } : null,
     );
     var vwap = S.fam.vwap && S.levels && S.levels.vwap_series;
     S.chart.setVwap(vwap ? vwap : []);
@@ -496,6 +472,8 @@
     var items = queueItems();
     S.queue = items;
     $("tdmQueueCount").textContent = items.length ? String(items.length) : "";
+    // the chart's markers with no bar to stand on, counted and worded by the desk panel
+    $("tdmQueueOff").textContent = S.events ? S.events.markers_off_chart_text : "";
     if (S.events === undefined) {
       host.innerHTML = '<div class="tdm-empty">Loading ' + esc(shown()) + " events…</div>";
       return;

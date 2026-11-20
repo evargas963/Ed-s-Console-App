@@ -161,9 +161,14 @@ def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
                     price(r["carried"]),
                 )
             vp = lv["volume_profile"]
-            # the profile's POC is drawn with the TODAY_POC level's text: the same price
+            # the profile's POC is the TODAY_POC level, drawn with its served label
             texts = {r["id"]: r["price_text"] for r in lv["levels"]}
             assert vp is None or texts["TODAY_POC"] == price(vp["poc"])
+            assert vp is None or vp["poc_label"] == "POC est " + texts["TODAY_POC"]
+            # the prior session's value area and the VWAP, in the words their switches show
+            pva = lv["prior_value_area"]
+            assert pva is None or pva["text"] == (f"VA {price(pva['low'])} – {price(pva['high'])}")
+            assert lv["vwap_text"] == texts.get("VWAP")
         zones = p["liquidity"]["zones"]
         assert zones, name
         for z in zones:
