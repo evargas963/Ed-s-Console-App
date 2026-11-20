@@ -25,7 +25,19 @@ REFUSED = 3
 #: the counts that may rise above 0, reported and never judged: size and work items (operator
 #: 2026-11-04: "i am not going to set some arbitrary number")
 FREE = ("bytes of", "lines of", "open work items")
-DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
+DATA = (
+    ".json",
+    ".md",
+    ".mdc",
+    ".csv",
+    ".txt",
+    ".png",
+    ".ico",
+    ".pdf",
+    ".webmanifest",
+    ".lock",
+    ".gz",
+)
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
 #: what Python can load, by any case of its suffix on Windows; not a `.pyi`, which type checkers
 #: alone read (importlib.machinery.all_suffixes)

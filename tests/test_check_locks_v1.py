@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import shutil
 import subprocess
 import sys
@@ -55,6 +56,21 @@ def test_a_finding_at_zero_is_refused_and_a_line_or_a_work_item_more_is_not(tmp_
     assert "lines of product code" not in refused
     assert "open work items" not in refused
     assert "ruff T201: 0 -> 1" in refused
+
+
+def test_compressed_data_adds_no_lines(tmp_path):
+    """A gzip file is data: its bytes split at a newline byte are no lines of code."""
+    repo = _repo(tmp_path)
+    rules = (repo / check_locks.RULES).read_text(encoding="utf-8")
+    before = check_locks.counts(repo, rules)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "capture.json.gz").write_bytes(gzip.compress(b'{"a": 1}\n' * 5000))
+    _commit(repo)
+    after = check_locks.counts(repo, rules)
+    assert (after["lines of tests"], after["bytes of tests"]) == (
+        before["lines of tests"],
+        before["bytes of tests"],
+    )
 
 
 def test_every_item_of_the_work_list_is_counted_and_a_detail_under_one_is_not(tmp_path):
