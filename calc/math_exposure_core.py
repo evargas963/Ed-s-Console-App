@@ -605,10 +605,7 @@ def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:
     if used == 0:
         note = "No usable contracts (OI filtered or chain empty)."
     elif missing == used:
-        note = (
-            "All greeks missing (Schwab sent -999, or no quote came back). You will still get "
-            "OI center; gamma/delta pin/inf may be N/A until RTH."
-        )
+        note = "All greeks missing (Schwab sent -999, or no quote came back)."
     return ExposureDiagnostics(
         contracts_total=total, contracts_used=used, greeks_missing=missing, note=note
     )

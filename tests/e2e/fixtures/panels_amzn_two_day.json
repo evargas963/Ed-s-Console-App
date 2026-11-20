@@ -977,7 +977,8 @@
       "grew_text": "275/270",
       "shrank_text": "255/260",
       "busiest_text": "275\u2013280",
-      "note": null
+      "note": null,
+      "volume_zero_text": null
     },
     "level_moves": [
       {
@@ -2267,7 +2268,8 @@
       "grew_text": "275/270",
       "shrank_text": "255/260",
       "busiest_text": "275\u2013280",
-      "note": null
+      "note": null,
+      "volume_zero_text": null
     },
     "level_moves": [
       {
@@ -3045,12 +3047,13 @@
       "grew": [275.0, 270.0],
       "shrank": [272.5, 265.0],
       "busiest": [270.0, 275.0],
-      "busiest_vs_walls": "INSIDE_WALLS",
+      "busiest_vs_walls": null,
       "volume_total": 20090.0,
       "grew_text": "275/270",
       "shrank_text": "272.5/265",
       "busiest_text": "270\u2013275",
-      "note": null
+      "note": null,
+      "volume_zero_text": null
     },
     "level_moves": [
       {
