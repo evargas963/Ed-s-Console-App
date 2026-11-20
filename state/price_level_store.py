@@ -9,7 +9,6 @@ from __future__ import annotations
 import threading
 from datetime import date, datetime
 
-from calc.liquidity_models import PlaybookConfig
 from calc.liquidity_value_engine import (
     Bar,
     HoldCount,
@@ -49,7 +48,6 @@ def materialize_price_level_snapshot(
     *,
     daily: list[Candle],
     bar_source: str,
-    config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
     """Build once per input; return the SAME object while the input is the same.
 
@@ -71,13 +69,7 @@ def materialize_price_level_snapshot(
         if existing is not None and existing[0] == fingerprint:
             return existing[1]
         snap = build_price_level_snapshot(
-            tk,
-            session_date,
-            bars_norm,
-            prior=prior,
-            bar_source=bar_source,
-            sessions=held,
-            config=config,
+            session_date, bars_norm, prior=prior, bar_source=bar_source, sessions=held
         )
         _MATERIALIZED_SNAPSHOTS[key] = (fingerprint, snap)
         return snap
@@ -89,7 +81,6 @@ def materialize_hold_counts(
     *,
     daily: list[Candle],
     now: datetime,
-    config: PlaybookConfig,
 ) -> dict[str, dict[int, HoldCount]]:
     """Count once per input; return the SAME counts while the input is the same.
 
@@ -109,7 +100,7 @@ def materialize_hold_counts(
         existing = _HOLD_COUNTS.get(tk)
         if existing is not None and existing[0] == fingerprint:
             return existing[1]
-        counts = hold_counts(window, daily, now, sessions=held, config=config)
+        counts = hold_counts(window, daily, now, sessions=held)
         _HOLD_COUNTS[tk] = (fingerprint, counts)
         return counts
 

@@ -13,16 +13,19 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
+import pytest
+
 import server
 from calc.liquidity_value_engine import (
-    PlaybookConfig,
+    OvernightRange,
     bars_from_candles,
     build_price_level_snapshot,
+    get_overnight_levels,
     get_previous_day_levels,
     prior_session,
 )
 from state import bar_store
-from time_et import ET, sessions
+from time_et import ET, session, sessions
 
 _FX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_pricehistory_spy_tsla_2026_10_07.json").read_text(
@@ -66,10 +69,7 @@ def test_the_prior_days_high_low_and_close_are_schwabs_daily_candle_as_sent():
             (date(2026, 10, 7), date(2026, 10, 6)),
         ):
             out = get_previous_day_levels(
-                bars_from_candles(minutes),
-                prior_session(daily, session_day),
-                PlaybookConfig(),
-                sessions=sessions(),
+                bars_from_candles(minutes), prior_session(daily, session_day), sessions=sessions()
             )
             sent = _sent(symbol, prior_day)
             assert out.prior_date == prior_day
@@ -84,10 +84,7 @@ def test_the_prior_close_is_schwabs_official_close_not_the_last_minutes():
     """SPY 2026-10-01: Schwab's daily close 763.99; its last regular 1-minute bar closed 764.03."""
     daily, minutes = _held("SPY")
     out = get_previous_day_levels(
-        bars_from_candles(minutes),
-        prior_session(daily, date(2026, 10, 2)),
-        PlaybookConfig(),
-        sessions=sessions(),
+        bars_from_candles(minutes), prior_session(daily, date(2026, 10, 2)), sessions=sessions()
     )
     assert out.pdc == 763.99
 
@@ -103,7 +100,6 @@ def test_no_daily_candle_before_the_session_leaves_the_prior_day_absent():
     first = min(datetime.fromtimestamp(c.ts, ET).date() for c in daily)
     assert prior_session(daily, first) is None
     snap = build_price_level_snapshot(
-        "SPY",
         first,
         bars_from_candles(minutes),
         prior=prior_session(daily, first),
@@ -123,12 +119,105 @@ def test_the_prior_value_area_is_estimated_from_that_sessions_regular_bars_only(
     """
     daily, minutes = _held("SPY")
     out = get_previous_day_levels(
-        bars_from_candles(minutes),
-        prior_session(daily, date(2026, 10, 2)),
-        PlaybookConfig(),
-        sessions=sessions(),
+        bars_from_candles(minutes), prior_session(daily, date(2026, 10, 2)), sessions=sessions()
     )
     assert out.rth_bars == 390
-    assert out.pd_val is not None and out.pd_poc is not None and out.pd_vah is not None
-    assert out.pd_val <= out.pd_poc <= out.pd_vah
-    assert out.pdl <= out.pd_val and out.pd_vah <= out.pdh
+    p = out.profile
+    assert p is not None and p.val is not None and p.poc is not None and p.vah is not None
+    assert p.val <= p.poc <= p.vah
+    assert out.pdl <= p.val and p.vah <= out.pdh
+
+
+def test_the_overnight_range_runs_from_the_prior_close_itself_to_the_open():
+    """Each captured session from 2026-10-01: the bars from the prior close to the open.
+
+    The prior session's regular close (that minute's bar included) and this session's regular
+    open are Schwab's /markets answers, held from 2026-09-30 (tests/conftest.py).
+    """
+    for symbol in ("SPY", "TSLA"):
+        daily, minutes = _held(symbol)
+        days = {datetime.fromtimestamp(m.ts, ET).date() for m in minutes}
+        for day in sorted(
+            d for d in days if d >= date(2026, 10, 1) and session(d.isoformat()).regular
+        ):
+            prior = prior_session(daily, day)
+            assert prior is not None
+            prev = datetime.fromtimestamp(prior.ts, ET).date()
+            start = session(prev.isoformat()).regular[-1][1].timestamp()
+            end = session(day.isoformat()).regular[0][0].timestamp()
+            window = [m for m in minutes if start <= m.ts < end]
+            assert window, f"{symbol} {day}: no overnight bar, the check would be vacuous"
+            got = get_overnight_levels(bars_from_candles(minutes), day, prev, sessions=sessions())
+            assert got == OvernightRange(
+                high=max(m.high for m in window), low=min(m.low for m in window)
+            ), (symbol, day)
+
+
+#: a Tuesday, and its prior session: Monday 2026-10-05, 390 regular 1-minute bars in the capture
+TUESDAY, MONDAY = date(2026, 10, 6), date(2026, 10, 5)
+
+
+def _regular_bars(minutes: list, day: date) -> list:
+    """`day`'s 1-minute candles inside its regular session as Schwab's /markets sent it."""
+    hours = session(day.isoformat()).regular
+    return [m for m in minutes if hours[0][0].timestamp() <= m.ts < hours[-1][1].timestamp()]
+
+
+def test_each_family_with_no_bar_in_its_window_is_declared_absent_by_name_with_why():
+    """Tuesday's levels over Monday's regular bars alone: Tuesday's four families have no bar.
+
+    None of Monday's regular bars is in Tuesday's session or in the overnight window (Monday's
+    close to Tuesday's open): each family is declared, in order, and the prior day stands whole.
+    """
+    daily, minutes = _held("SPY")
+    snap = build_price_level_snapshot(
+        TUESDAY,
+        bars_from_candles(_regular_bars(minutes, MONDAY)),
+        prior=prior_session(daily, TUESDAY),
+        bar_source="real_pricehistory_spy_tsla_2026_10_07.json",
+        sessions=sessions(),
+    )
+    assert snap.families_absent == [
+        {"family": "vwap", "reason": "no RTH volume for session VWAP in available bars"},
+        {"family": "opening_range", "reason": "no bar in the opening minutes, or no open known"},
+        {"family": "overnight", "reason": "no overnight-window bars in available tape"},
+        {
+            "family": "value_area",
+            "reason": "no RTH volume for the volume profile in available bars",
+        },
+    ]
+    assert set(snap.levels) == {"PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL"}
+    assert (snap.degraded, snap.vwap_series, snap.volume_profile) == ([], [], None)
+
+
+@pytest.mark.parametrize("kept", [0, 299, 300])
+def test_a_prior_session_with_fewer_than_300_regular_bars_is_disclosed_as_a_partial_tape(kept):
+    """INDUCED: Monday's tape cut to its first `kept` regular bars, as a capture begun late cuts it.
+
+    Below LEVELS_PRIOR_SESSION_MIN_BARS the prior day is served and disclosed as partial; with
+    none of its bars its value area is absent, with why. Tuesday's own bars are all kept.
+    """
+    daily, minutes = _held("SPY")
+    tuesday = [m for m in minutes if datetime.fromtimestamp(m.ts, ET).date() == TUESDAY]
+    snap = build_price_level_snapshot(
+        TUESDAY,
+        bars_from_candles(_regular_bars(minutes, MONDAY)[:kept] + tuesday),
+        prior=prior_session(daily, TUESDAY),
+        bar_source="real_pricehistory_spy_tsla_2026_10_07.json",
+        sessions=sessions(),
+    )
+    partial = (
+        f"prior_day: prior session 2026-10-05 holds only {kept} of >= 300 RTH bars; its POC and "
+        "value area are estimated from a partial tape"
+    )
+    assert snap.degraded == ([] if kept >= 300 else [partial])
+    assert snap.families_absent == (
+        [
+            {
+                "family": "prior_value_area",
+                "reason": "no RTH bars of the prior session 2026-10-05 in available bars",
+            }
+        ]
+        if kept == 0
+        else []
+    )
