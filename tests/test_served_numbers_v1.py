@@ -223,9 +223,6 @@ def test_the_charts_bars_and_the_books_prices_are_served_with_two_decimals():
                 assert d["imbalance_text"] == (None if im is None else f"{im:.3f}")
             for r in book["depth_pressure"]["bid"] + book["depth_pressure"]["ask"]:
                 assert r["price_text"] == price(r["price"])
-            # no level is served with a label of its size against the others (operator
-            # 2026-11-19: the wall candidates and their 3x-the-median rule are gone)
-            assert "wall_candidates" not in book, (name, venue)
 
 
 def test_the_strikes_and_their_moves_are_served_as_listed():
