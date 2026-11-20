@@ -152,13 +152,15 @@ module that does not hold one may start. The same job runs import-linter on `loc
 the base's: no import statement outside the modules it names takes `schwab`, `authlib` or `httpx`,
 and none anywhere takes `aiohttp` or `requests`, with no count
 (`tests/test_data_path_only_feed_v1.py`); a file Python can load that it may not read is a count at
-0, so absolute (`tools/check_locks.py`). The builtin `__import__("schwab")` and a module loaded from
-a zip on `sys.path` are seen by no tool: the builder's audit (rule 14), no machine check. GitHub
-runs that workflow from the base (`pull_request_target`), and it runs no code of the head, so a
-change cannot edit its judge. `locks` is a required check on `main`: a change it refuses cannot
-merge, and nothing approves past it. No step waits on the operator's click, and none is built again
-(operator 2026-11-01: "you need to remove all of this. don't do this again. we strengthen enfocement
-instead from now on"). `gh` is allowed by a list and `gh api` only reads, in the forms
+0, so absolute (`tools/check_locks.py`), and a type stub (`.pyi`), which no loader of Python's
+takes, is not one (operator 2026-11-19: "yes", for Feed's stubs in `typings/`). The builtin
+`__import__("schwab")` and a module loaded from a zip on `sys.path` are seen by no tool: the
+builder's audit (rule 14), no machine check. GitHub runs that workflow from the base
+(`pull_request_target`), and it runs no code of the head, so a change cannot edit its judge. `locks`
+is a required check on `main`: a change it refuses cannot merge, and nothing approves past it. No
+step waits on the operator's click, and none is built again (operator 2026-11-01: "you need to
+remove all of this. don't do this again. we strengthen enfocement instead from now on"). `gh` is
+allowed by a list and `gh api` only reads, in the forms
 `tests/test_operator_law_guard_action_bans_v1.py` checks (`tools/operator_law_guard.py`).
 
 ## Rules and what enforces them
