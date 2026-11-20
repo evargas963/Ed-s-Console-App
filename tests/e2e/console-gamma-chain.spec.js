@@ -9,73 +9,34 @@
 const { test, expect } = require("@playwright/test");
 const { expiriesAnswer, pushExpiries } = require("./fixtures/expiries");
 const { expiriesFrame, priceRow, served: servedSymbol } = require("./fixtures/price_socket");
-const { served } = require("./fixtures/served_chain");
 const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
 // tests/test_vanna_charm_by_strike_v1.py)
 const REAL = require("./fixtures/vanna_charm_panels_crwd.json");
+// SPY's chain panels at 10:30:41 ET on 2026-11-12, its front expiry and its second (held to the
+// producer by tests/test_e2e_panels_two_day_v1.py)
+const TWO_DAY = require("./fixtures/panels_spy_two_day.json");
+const FRONT = TWO_DAY.chain;
+const SECOND = TWO_DAY.chain_second_expiry;
+// SPY's 2026-10-23 chain panel (its 2026-10-22 close capture) at the 761 call's first stored quote
+// and at its last: the same rows, the call's values moved (held to the producer by
+// tests/test_options_order_flow_production_v1.py)
+const CHAINS = require("./fixtures/chain_panels_spy_tsla.json");
+const FIRST = CHAINS.spy_call_first_quote;
+const LAST = CHAINS.spy_call_last_quote;
+const CALL_761 = "SPY   261023C00761000";
 
-// a contract as the server serves it: Schwab's fields and its counts and IV as the screen shows
-// them (numeric_contract.count_text, iv_text)
-function ct(side, strike, sym, oi, vol, iv, delta, expDate = "2026-09-11") {
-  const c = {
-    putCall: side,
-    strikePrice: strike,
-    symbol: sym,
-    openInterest: oi,
-    totalVolume: vol,
-    volatility: iv,
-    delta: delta,
-    gamma: 0.01,
-    expirationDate: expDate,
-  };
-  return Object.assign(c, {
-    oi_text: oi.toLocaleString("en-US"),
-    volume_text: vol.toLocaleString("en-US"),
-    iv_text: iv.toFixed(2),
-  });
-}
-// Real OSI-style symbol (root padded to 6 + YYMMDD + C/P + 8-digit strike*1000), matching the
-// vendor's own verbatim format -- used where a test needs the symbol's OWN expirationDate to
-// genuinely vary with the requested expiry (V01 test-quality review, 2026-09-13: a prior
-// fixture hardcoded expirationDate to 2026-09-11 even in a 2026-09-18 response, and used a
-// non-native "FIXTURE_" placeholder symbol instead of a real OCC-shaped one).
-function occSymbol(root, isoExpiry, side, strike) {
-  const yymmdd = isoExpiry.replace(/-/g, "").slice(2);
-  const strikeStr = String(Math.round(strike * 1000)).padStart(8, "0");
-  return root.padEnd(6, " ") + yymmdd + (side === "PUT" ? "P" : "C") + strikeStr;
-}
-const CHAIN = {
-  ticker: "SPY",
-  spot: 100,
-  spot_strike: 100,
-  expiry: "2026-09-11",
-  status: "ok",
-  scope: { kind: "complete_single_expiry" },
-  contracts: [
-    ct("CALL", 102, "SPY   260911C00102000", 1200, 300, 11.1, 0.35),
-    ct("PUT", 102, "SPY   260911P00102000", 900, 250, 12.1, -0.65),
-    ct("CALL", 100, "SPY   260911C00100000", 5400, 2100, 12.3, 0.52),
-    ct("PUT", 100, "SPY   260911P00100000", 4100, 1800, 12.6, -0.48),
-    ct("CALL", 98, "SPY   260911C00098000", 800, 150, 13.5, 0.68),
-    ct("PUT", 98, "SPY   260911P00098000", 1500, 600, 14.0, -0.32),
-  ],
-};
-
-// an 80-strike chain, every call's volume `vol`: long enough to scroll the ladder
-function bigChain(vol) {
-  return {
-    ticker: "SPY",
-    spot: 100,
-    spot_strike: 100,
-    expiry: "2026-09-11",
-    status: "ok",
-    scope: { kind: "complete_single_expiry" },
-    contracts: Array.from({ length: 80 }, (_, i) =>
-      ct("CALL", 50 + i, "SPY   260911C00" + (50 + i) + "000", 10, vol, 10, 0.1),
-    ),
-  };
-}
+// the row of the strike nearest the spot, the one under it and the ladder's top
+const SPOT_ROW = FRONT.ladder.findIndex((r) => r.spot);
+const AT_SPOT = FRONT.ladder[SPOT_ROW];
+const UNDER_SPOT = FRONT.ladder[SPOT_ROW + 1];
+const TOP = FRONT.ladder[0];
+// each row's strike as the ladder draws it
+const strikes = (panel) => panel.ladder.map((r) => r.strike_text);
+// the 761 call's volume as a panel serves it
+const volume761 = (panel) => panel.ladder.find((r) => r.call?.symbol === CALL_761).call.volume_text;
+// the 761 call's volume cell on the drawn ladder
+const volumeCell = (page) => page.locator('#chainBody tr[data-csym="' + CALL_761 + '"] td').nth(1);
 
 //: each contract the page names to the console for the Flow panel (POST /api/flow-contract)
 const flowPosts = [];
@@ -91,8 +52,8 @@ async function intercept(page) {
     });
   });
   await routeWatchlist(page, ["SPY"]);
-  panels = chainPanels(() => CHAIN);
-  sock = await pushExpiries(page, ["2026-09-11"], undefined, panels);
+  panels = chainPanels(() => FRONT);
+  sock = await pushExpiries(page, [FRONT.expiry, SECOND.expiry], undefined, panels);
 }
 // the panels the page's socket sends this test: the chain panel `chainOf(expiry)` (each reader's
 // expiry; null: the front one) as the program serves it, and the Gamma tab's own (a test may
@@ -100,7 +61,7 @@ async function intercept(page) {
 let panels, sock;
 function chainPanels(chainOf) {
   return {
-    chain: (key, params) => served(chainOf(params.expiry)),
+    chain: (key, params) => chainOf(params.expiry),
     bars: { available: false },
     tape: REAL.tape,
     terrain: REAL.terrain,
@@ -130,11 +91,15 @@ test.describe("D — Gamma Chain subview", () => {
   }) => {
     await toChain(page);
     await expect(page.locator('.sub-pane[data-sub-pane="gamma"]')).toBeHidden();
-    await expect(page.locator("#chainBody tbody tr")).toHaveCount(3);
-    await expect(page.locator("#chainBody tbody tr").first().locator("td.k")).toHaveText("102");
-    await expect(page.locator("#chainBody tbody tr.spot td.k")).toHaveText("100");
+    await expect(page.locator("#chainBody tbody tr")).toHaveCount(FRONT.ladder.length);
+    await expect(page.locator("#chainBody tbody tr").first().locator("td.k")).toHaveText(
+      TOP.strike_text,
+    );
+    await expect(page.locator("#chainBody tbody tr.spot td.k")).toHaveText(AT_SPOT.strike_text);
     // B: single-expiry truth — the null filter is "Default Expiry", the ladder says SINGLE EXPIRY
-    await expect(page.locator("#chainBody .chn-head")).toContainText("SINGLE EXPIRY · 2026-09-11");
+    await expect(page.locator("#chainBody .chn-head")).toContainText(
+      "SINGLE EXPIRY · " + FRONT.expiry,
+    );
     await expect(page.locator("#chainBody .chn-head")).toContainText("server default");
     await expect(page.locator("#expSel option").first()).toHaveText("Default Expiry");
     await expect(page.locator("#chSrc .asof")).toContainText("complete (ALL)");
@@ -144,12 +109,10 @@ test.describe("D — Gamma Chain subview", () => {
   });
 
   test("the chain spot keeps its last trade time", async ({ page }) => {
-    panels.chain = () =>
-      served(Object.assign({}, CHAIN, { spot_time_ct: "Fri 09/25 06:59 PM CT" }));
     await toChain(page);
-    await expect(page.locator("#chainBody .chn-head")).toContainText("spot 100.00");
+    await expect(page.locator("#chainBody .chn-head")).toContainText("spot " + FRONT.spot_text);
     await expect(page.locator("#chainBody .chn-head")).toContainText(
-      "last trade Fri 09/25 06:59 PM CT",
+      "last trade " + FRONT.spot_time_ct,
     );
   });
 
@@ -158,29 +121,31 @@ test.describe("D — Gamma Chain subview", () => {
   }) => {
     flowPosts.length = 0;
     await toChain(page);
-    // click the CALL side of strike 100
+    const call = AT_SPOT.call.symbol;
+    const put = UNDER_SPOT.put.symbol;
+    // click the CALL side of the strike at the spot
     await page
-      .locator('#chainBody tr[data-csym="SPY   260911C00100000"] td.chn-call')
+      .locator('#chainBody tr[data-csym="' + call + '"] td.chn-call')
       .first()
       .click();
-    expect(await page.evaluate(() => window.EdFlow.selected())).toBe("SPY   260911C00100000");
-    // click the PUT side of strike 98
+    expect(await page.evaluate(() => window.EdFlow.selected())).toBe(call);
+    // click the PUT side of the strike under it
     await page
-      .locator('#chainBody tr[data-psym="SPY   260911P00098000"] td.chn-put')
+      .locator('#chainBody tr[data-psym="' + put + '"] td.chn-put')
       .first()
       .click();
-    expect(await page.evaluate(() => window.EdFlow.selected())).toBe("SPY   260911P00098000");
-    await expect.poll(() => flowPosts).toEqual(["SPY   260911C00100000", "SPY   260911P00098000"]);
+    expect(await page.evaluate(() => window.EdFlow.selected())).toBe(put);
+    await expect.poll(() => flowPosts).toEqual([call, put]);
     // shared strike/expiry context follows the selection
     const s = await page.evaluate(() => window.EdShell.getState());
-    expect(s.selStrike).toBe(98);
+    expect(s.selStrike).toBe(UNDER_SPOT.strike);
   });
 
   test("the centre Strike selects ONLY the shared strike (no contract)", async ({ page }) => {
     flowPosts.length = 0;
     await toChain(page);
-    await page.locator('#chainBody tr[data-strike="102"] td.k').click();
-    expect(await page.evaluate(() => window.EdShell.getState().selStrike)).toBe(102);
+    await page.locator('#chainBody tr[data-strike="' + TOP.strike + '"] td.k').click();
+    expect(await page.evaluate(() => window.EdShell.getState().selStrike)).toBe(TOP.strike);
     expect(await page.evaluate(() => window.EdFlow.selected())).toBeNull(); // no contract chosen
     expect(flowPosts).toEqual([]);
   });
@@ -201,36 +166,39 @@ test.describe("D — Gamma Chain subview", () => {
   test("the header table never moves regardless of scrolling the body, including real wheel scroll during a refresh (state-authority review)", async ({
     page,
   }) => {
-    let vol = 10;
-    panels.chain = () => served(bigChain(vol));
+    let frame = FIRST;
+    panels.chain = () => frame;
     await page.setViewportSize({ width: 900, height: 640 }); // a representative, not maximal, size
     await toChain(page);
-    await expect(page.locator("#chainBody tbody tr")).toHaveCount(80);
+    await expect(page.locator("#chainBody tbody tr")).toHaveCount(FIRST.ladder.length);
 
     const headBox = () => page.locator(".chn-headtbl").boundingBox();
     const scrollTop = () => page.locator("#chainScroll").evaluate((el) => el.scrollTop);
+    // the pointer on the actual scroll element first: Playwright's hover scrolls the PAGE to
+    // bring it into view, which is not the body's scroll this test is about, so the header's
+    // place is taken after it
+    await page.locator("#chainScroll").hover();
     const before = await headBox();
     expect(before).toBeTruthy();
 
     // A real wheel scroll (not a programmatic scrollTop assignment) on the actual scroll
     // element, exercising the same input path a real trackpad/mouse produces.
-    await page.locator("#chainScroll").hover();
     await page.mouse.wheel(0, 1200);
     await expect.poll(scrollTop).toBeGreaterThan(0); // the wheel has scrolled the body
     const duringScroll = await headBox();
 
     // Fire a background refresh (same context) WHILE scrolled, with genuinely changed data,
     // and confirm both the new value lands AND the header still has not moved at all.
-    vol = 25;
-    sock.changed("chain"); // the program sends the chain again: a new chain was priced
-    await expect(page.locator("#chainBody tbody tr").first().locator("td").nth(1)).toHaveText("25");
+    frame = LAST;
+    sock.changed("chain"); // the program sends the chain again: a quote moved the 761 call
+    await expect(volumeCell(page)).toHaveText(volume761(LAST));
     const afterRefresh = await headBox();
 
     const bottom = await page
       .locator("#chainScroll")
       .evaluate((el) => el.scrollHeight - el.clientHeight);
-    await page.mouse.wheel(0, 2000);
-    await expect.poll(scrollTop).toBe(bottom); // 2000 px more takes the body to its end
+    await page.mouse.wheel(0, bottom);
+    await expect.poll(scrollTop).toBe(bottom); // a body's height more takes the body to its end
     const afterMoreScroll = await headBox();
 
     // Exact equality: a frozen (non-scrolling) header cannot move by even one pixel, at any
@@ -278,11 +246,11 @@ test.describe("D — Gamma Chain subview", () => {
   test("a routine background refresh with changed data completes, and preserves a manually-scrolled position", async ({
     page,
   }) => {
-    let vol = 10;
-    panels.chain = () => served(bigChain(vol));
+    let frame = FIRST;
+    panels.chain = () => frame;
     await toChain(page);
-    await expect(page.locator("#chainBody tbody tr")).toHaveCount(80);
-    await expect(page.locator("#chainBody tbody tr").first().locator("td").nth(1)).toHaveText("10");
+    await expect(page.locator("#chainBody tbody tr")).toHaveCount(FIRST.ladder.length);
+    await expect(volumeCell(page)).toHaveText(volume761(FIRST));
 
     await page.evaluate(() => {
       document.getElementById("chainScroll").scrollTop = 1800;
@@ -291,9 +259,9 @@ test.describe("D — Gamma Chain subview", () => {
 
     // The NEXT chain sent carries a genuinely different value -- proof a refresh actually
     // completed comes from the DOM showing THIS new value, not merely from time having passed.
-    vol = 25;
+    frame = LAST;
     sock.changed("chain");
-    await expect(page.locator("#chainBody tbody tr").first().locator("td").nth(1)).toHaveText("25");
+    await expect(volumeCell(page)).toHaveText(volume761(LAST));
 
     // A routine background refresh (same ticker/expiry context) must not recentre the ladder,
     // even though it just genuinely re-rendered with new data.
@@ -304,107 +272,79 @@ test.describe("D — Gamma Chain subview", () => {
   test("a quote that moves a value is written into the drawn ladder: the same table, its cell's new text", async ({
     page,
   }) => {
-    let vol = 10;
-    panels.chain = () => served(bigChain(vol));
+    let frame = FIRST;
+    panels.chain = () => frame;
     await toChain(page);
-    const first = page.locator("#chainBody tbody tr").first().locator("td").nth(1);
-    await expect(first).toHaveText("10");
+    const first = volumeCell(page);
+    await expect(first).toHaveText(volume761(FIRST));
     await page.evaluate(() => {
       document.querySelector("#chainBody table.chn-bodytbl").dataset.drawn = "first";
     });
-    // the next frame: the same rows, one value moved (as each streamed quote sends it)
-    vol = 25;
+    // the next frame: the same rows, the 761 call's values moved by its streamed quotes
+    frame = LAST;
     sock.changed("chain");
-    await expect(first).toHaveText("25");
+    await expect(first).toHaveText(volume761(LAST));
     const table = page.locator("#chainBody table.chn-bodytbl");
     await expect(table).toHaveAttribute("data-drawn", "first"); // written in place, not rebuilt
   });
 
-  // V01 (test-quality review, 2026-09-13): this file's own CHAIN fixture returns the SAME
-  // contracts for every requested expiry, so nothing here could ever tell a correct re-fetch
-  // apart from a frozen/stale display on an expiry switch. Closed with a mock that returns
-  // DISTINGUISHABLE, expiry-keyed contracts and an assertion that the rendered ladder actually
-  // changes to match each requested expiry -- this would fail if curExpiry()'s wiring broke and
-  // the view kept showing a stale expiry's data after the dropdown moved.
-  //
-  // A FOURTH independent review (2026-09-13) found this test's OWN fixture still hardcoded
-  // `expirationDate: '2026-09-11'` (via ct()'s old fixed default) even inside the 2026-09-18
-  // response, and used a non-native "FIXTURE_"-prefixed symbol -- fixed with real per-expiry
-  // expirationDate values and genuine OCC-shaped symbols (occSymbol above) so contract identity
-  // itself is under real test, not just the strike number and a placeholder string.
+  // each expiry's own contracts: the ladder changes to the selected expiry's, so a view that kept
+  // the expiry left fails
   test("switching the expiry dropdown re-fetches and renders that expiry's own distinct contracts", async ({
     page,
   }) => {
-    const EXP_A = "2026-09-11",
-      EXP_B = "2026-09-18";
-    const symA = occSymbol("SPY", EXP_A, "CALL", 100);
-    const symB = occSymbol("SPY", EXP_B, "CALL", 200);
-    panels = chainPanels((asked) => {
-      const exp = asked || EXP_A;
-      const strike = exp === EXP_A ? 100 : 200; // distinct strike AND distinct symbol per expiry
-      const sym = exp === EXP_A ? symA : symB;
-      return {
-        ticker: "SPY",
-        spot: strike,
-        expiry: exp,
-        status: "ok",
-        scope: { kind: "complete_single_expiry" },
-        contracts: [ct("CALL", strike, sym, 1, 1, 1, 0.1, exp)],
-      }; // expirationDate == exp, genuinely
-    });
-    sock = await pushExpiries(page, [EXP_A, EXP_B], undefined, panels);
+    const symA = FRONT.ladder[0].call.symbol;
+    const symB = SECOND.ladder[0].call.symbol;
+    panels = chainPanels((asked) => (asked === SECOND.expiry ? SECOND : FRONT));
+    sock = await pushExpiries(page, [FRONT.expiry, SECOND.expiry], undefined, panels);
     await toChain(page);
-    await expect(page.locator("#chainBody .chn-head")).toContainText("SINGLE EXPIRY · " + EXP_A);
-    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText("100");
+    await expect(page.locator("#chainBody .chn-head")).toContainText(
+      "SINGLE EXPIRY · " + FRONT.expiry,
+    );
+    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText(strikes(FRONT));
 
-    await page.locator("#expSel").selectOption(EXP_B);
-    await expect(page.locator("#chainBody .chn-head")).toContainText("SINGLE EXPIRY · " + EXP_B);
-    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText("200");
+    await page.locator("#expSel").selectOption(SECOND.expiry);
+    await expect(page.locator("#chainBody .chn-head")).toContainText(
+      "SINGLE EXPIRY · " + SECOND.expiry,
+    );
+    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText(strikes(SECOND));
     await expect(page.locator('#chainBody tr[data-csym="' + symB + '"]')).toHaveCount(1);
     await expect(page.locator('#chainBody tr[data-csym="' + symA + '"]')).toHaveCount(0);
   });
 
   // A -> B -> A: the program's B frame, sent before it read the page's return to A, arrives
-  // after A's own frame has been drawn; it is not drawn.
+  // after A's own frame has been drawn; it is not drawn. A is SPY's 2026-10-23 expiry, its next
+  // frame the one after the 761 call's quotes; B is SPY's 2026-11-12 expiry.
   test("A -> B -> A: a frame of an expiry no longer selected is not drawn over the selected one", async ({
     page,
   }) => {
-    const EXP_A = "2026-09-11",
-      EXP_B = "2026-09-18";
-    const ladder = (exp, strike) => ({
-      ticker: "SPY",
-      spot: strike,
-      expiry: exp,
-      status: "ok",
-      scope: { kind: "complete_single_expiry" },
-      contracts: [ct("CALL", strike, occSymbol("SPY", exp, "CALL", strike), 1, 1, 1, 0.1, exp)],
-    });
-    panels = chainPanels((asked) => (asked === EXP_B ? ladder(EXP_B, 222) : ladder(EXP_A, 333)));
+    const EXP_A = FIRST.expiry,
+      EXP_B = FRONT.expiry;
+    const symB = FRONT.ladder[0].call.symbol;
+    panels = chainPanels((asked) => (asked === EXP_B ? FRONT : FIRST));
     sock = await pushExpiries(page, [EXP_A, EXP_B], undefined, panels);
     await toChain(page);
-    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText("333");
+    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText(strikes(FIRST));
     await page.locator("#expSel").selectOption(EXP_B);
-    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText("222");
+    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText(strikes(FRONT));
     await page.locator("#expSel").selectOption(EXP_A);
-    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText("333");
+    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText(strikes(FIRST));
 
     await page.evaluate(() => {
-      // every ladder drawn from here on: its strikes
+      // every ladder drawn from here on: its calls
       window.__draws = [];
       new MutationObserver(() =>
         window.__draws.push(
-          [...document.querySelectorAll("#chainBody tbody tr td.k")]
-            .map((e) => e.textContent)
+          [...document.querySelectorAll("#chainBody tbody tr")]
+            .map((e) => e.getAttribute("data-csym"))
             .join(","),
         ),
       ).observe(document.getElementById("chainBody"), { childList: true, subtree: true });
     });
-    sock.frame("chain:ladder", "SPY", served(ladder(EXP_B, 222))); // the late B frame ...
-    sock.frame("chain:ladder", "SPY", served(ladder(EXP_A, 444))); // ... and A's next, behind it
-    await expect(page.locator("#chainBody tbody tr td.k")).toHaveText("444");
-    expect((await page.evaluate(() => window.__draws)).filter((d) => d.includes("222"))).toEqual(
-      [],
-    );
+    sock.frame("chain:ladder", "SPY", FRONT); // the late B frame ...
+    sock.frame("chain:ladder", "SPY", LAST); // ... and A's next, behind it
+    await expect(volumeCell(page)).toHaveText(volume761(LAST));
+    expect((await page.evaluate(() => window.__draws)).filter((d) => d.includes(symB))).toEqual([]);
     await expect(page.locator("#chainBody .chn-head")).toContainText(EXP_A);
   });
 });

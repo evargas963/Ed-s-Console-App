@@ -17,6 +17,12 @@ tests/e2e/fixtures/options_microstructure_side_payloads.json: the route's payloa
 capture published as the chain that lists them: the side is that chain record's putCall.
 STAND-IN (named): the daemon's status, holding each contract on LEVELONE_OPTIONS.
 
+The Chain and Flow specs' chain panels, tests/e2e/fixtures/chain_panels_spy_tsla.json, are the
+chain panel's producer (push.chain.chain) on real chains: that SPY close capture's, at the 761
+call's first message and at its last (quotes that move the call's values), and TSLA's complete
+2026-08-31 chain (tests/fixtures/real_tsla_complete_chain_strike_range_all.json, which lists the
+Flow spec's contract), published at noon ET on 2026-08-30, the day it was captured.
+
 Regenerate (from the repo root, project .venv):
   python -c "import tests.conftest, tests.test_options_order_flow_production_v1 as t
   t.write_flow_e2e_fixture()"
@@ -40,10 +46,11 @@ import live_market_plane as lmp
 import server as srv
 from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
+from push import chain as push_chain
 from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import pushed
+from tests.feed_live_helper import daemon_status, pushed
 from time_et import ET
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
@@ -55,16 +62,27 @@ _SIDES = (
 )
 _SPY_CLOSE = _SIDES.with_name("real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json")
 _SIDES_E2E_FIXTURE = _FLOW_E2E_FIXTURE.with_name("options_microstructure_side_payloads.json")
+_CHAIN_E2E_FIXTURE = _FLOW_E2E_FIXTURE.with_name("chain_panels_spy_tsla.json")
+_TSLA_CHAIN = _SIDES.with_name("real_tsla_complete_chain_strike_range_all.json")
 FLOW_CONTRACT = "TSLA  260831C00367500"
+SPY_CALL = "SPY   261023C00761000"
+#: the chain panels the Chain and Flow specs send
+CHAIN_PANELS = ("spy_call_first_quote", "spy_call_last_quote", "tsla")
 
 
-def build_flow_e2e_fixture_response() -> dict:
-    """Build the route's payload for FLOW_CONTRACT after its real messages, at the newest's time."""
+def _flow_events() -> list[dict]:
+    """FLOW_CONTRACT's stored messages, oldest first."""
     events = next(
         c
         for c in json.loads(_HISTORY.read_text(encoding="utf-8"))["contracts"]
         if c["symbol"] == FLOW_CONTRACT
     )["events"]
+    return sorted(events, key=lambda e: e["ts_recv"])
+
+
+def build_flow_e2e_fixture_response() -> dict:
+    """Build the route's payload for FLOW_CONTRACT after its real messages, at the newest's time."""
+    events = _flow_events()
     ofls.clear_all_live_state()
     at = max(e["ts_recv"] for e in events)
     try:
@@ -75,7 +93,7 @@ def build_flow_e2e_fixture_response() -> dict:
                 "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]},
             }
         )
-        for e in sorted(events, key=lambda e: e["ts_recv"]):
+        for e in events:
             if e["kind"] == "book":
                 pushed(
                     f"book.{FLOW_CONTRACT}",
@@ -104,9 +122,10 @@ def build_flow_e2e_fixture_response() -> dict:
 
 
 def build_side_e2e_fixture_response() -> dict:
-    """Build contract -> the route's payload for the SPY call and put after their stored messages.
+    """Build the route's payloads for the SPY call and put after their stored messages (`sides`).
 
-    Each is taken at the newest one's time.
+    Each is taken at the newest one's time. With them, the chain panel at the call's first
+    message (`spy_call_first_quote`) and at its last (`spy_call_last_quote`).
     """
     contracts = json.loads(_SIDES.read_text(encoding="utf-8"))["contracts"]
     out = {}
@@ -128,13 +147,17 @@ def build_side_e2e_fixture_response() -> dict:
         ],
         now=at_close,
     )
+    chains = {}
     try:
         for sym, msgs in contracts.items():
             at = max(m["ts_recv"] for m in msgs)
-            lmp.record_feed_heartbeat(
-                {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [sym]}}
-            )
             for m in msgs:
+                # the daemon's status as each message arrives
+                lmp.record_feed_heartbeat(
+                    daemon_status(
+                        m["ts_recv"], schwab_socket_open=True, held={"LEVELONE_OPTIONS": [sym]}
+                    )
+                )
                 pushed(
                     f"optquote.{sym}",
                     verbatim_msg(
@@ -144,13 +167,43 @@ def build_side_e2e_fixture_response() -> dict:
                         ts_recv=m["ts_recv"],
                     ),
                 )
+                if sym == SPY_CALL and m is msgs[0]:
+                    chains["spy_call_first_quote"] = push_chain.chain(
+                        "SPY", m["ts_recv"], {"expiry": None}
+                    )
             out[sym] = push_contract.options_microstructure(sym, at)
-        return out
+            if sym == SPY_CALL:
+                chains["spy_call_last_quote"] = push_chain.chain("SPY", at, {"expiry": None})
+        return {"sides": out, **chains}
     finally:
         with level_store._lock:
             level_store._levels.pop("SPY", None)
         lmp.record_feed_down()
         ofls.clear_all_live_state()
+
+
+def build_tsla_chain_panel() -> dict:
+    """Build the chain panel of TSLA's complete 2026-08-31 chain, published as captured.
+
+    INDUCED: the capture carries no TSLA price, and the levels publish none without one; the
+    price is Schwab's UNDERLYING_PRICE in FLOW_CONTRACT's first stored LEVELONE_OPTIONS message
+    (2026-08-31 14:50 ET, the next trading day), stood at the capture's instant.
+    """
+    at = datetime(2026, 8, 30, 12, 0, tzinfo=ET)
+    chain = json.loads(_TSLA_CHAIN.read_text(encoding="utf-8"))["chain"]
+    price = next(
+        e["content"]["UNDERLYING_PRICE"]
+        for e in _flow_events()
+        if "UNDERLYING_PRICE" in e["content"]
+    )
+    try:
+        srv._publish_levels(
+            "TSLA", read_chain(chain), at.timestamp(), chain_spot=(price, at.timestamp()), now=at
+        )
+        return push_chain.chain("TSLA", at.timestamp(), {"expiry": None})
+    finally:
+        with level_store._lock:
+            level_store._levels.pop("TSLA", None)
 
 
 def write_flow_e2e_fixture() -> None:
@@ -178,8 +231,9 @@ def write_flow_e2e_fixture() -> None:
         "for a in json.loads(MARKETS_ANSWERS.read_text(encoding='utf-8'))"
         "['answers'].values() if a['status'] == 200]; "
         "from tests.test_options_order_flow_production_v1 import "
-        "build_flow_e2e_fixture_response as b, build_side_e2e_fixture_response as s; "
-        "sys.stdout.write(json.dumps({'flow': b(), 'sides': s()}))"
+        "build_flow_e2e_fixture_response as b, build_side_e2e_fixture_response as s, "
+        "build_tsla_chain_panel as t; "
+        "sys.stdout.write(json.dumps({'flow': b(), **s(), 'tsla': t()}))"
     )
     try:
         out = subprocess.run(
@@ -193,7 +247,12 @@ def write_flow_e2e_fixture() -> None:
     finally:
         shutil.rmtree(root, ignore_errors=True)
     payload = json.loads(out.strip().splitlines()[-1])  # import-time log lines may precede it
-    for path, key in ((_FLOW_E2E_FIXTURE, "flow"), (_SIDES_E2E_FIXTURE, "sides")):
+    payload["chain"] = {k: payload[k] for k in CHAIN_PANELS}
+    for path, key in (
+        (_FLOW_E2E_FIXTURE, "flow"),
+        (_SIDES_E2E_FIXTURE, "sides"),
+        (_CHAIN_E2E_FIXTURE, "chain"),
+    ):
         path.write_text(json.dumps(payload[key], indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"wrote {path}")
 
@@ -243,7 +302,7 @@ def test_side_e2e_fixture_is_the_route_contract():
     Every key and value: the side the header shows is the route's CALL and PUT.
     """
     fixture = json.loads(_SIDES_E2E_FIXTURE.read_text(encoding="utf-8"))
-    assert _same(fixture, build_side_e2e_fixture_response()), (
+    assert _same(fixture, build_side_e2e_fixture_response()["sides"]), (
         "E2E side fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
     )
     assert {k: v["put_call"] for k, v in fixture.items()} == {
@@ -252,13 +311,45 @@ def test_side_e2e_fixture_is_the_route_contract():
     }
 
 
+def test_the_chain_e2e_panels_are_the_producers_own():
+    """The Chain and Flow specs' chain panels are what the chain panel serves on those chains.
+
+    Every key and value; and what each is for: the SPY ladder lists the call and put the Flow
+    spec selects, the call's streamed quote moves its volume on the same rows, and TSLA's ladder
+    lists the Flow spec's contract.
+    """
+    fixture = json.loads(_CHAIN_E2E_FIXTURE.read_text(encoding="utf-8"))
+    built = {**build_side_e2e_fixture_response(), "tsla": build_tsla_chain_panel()}
+    live = json.loads(json.dumps({k: built[k] for k in CHAIN_PANELS}))
+    assert _same(fixture, live), (
+        "E2E chain panels drifted from the producer; regenerate with write_flow_e2e_fixture()"
+    )
+
+    def calls(panel):
+        return {r["call"]["symbol"]: r["call"] for r in panel["ladder"] if r["call"]}
+
+    first, last = live["spy_call_first_quote"], live["spy_call_last_quote"]
+
+    def shape(panel):
+        return [
+            [r[k] for k in ("strike", "first", "spot", "call_itm", "put_itm")]
+            for r in panel["ladder"]
+        ]
+
+    # the same rows drawn, the call's volume moved
+    assert shape(first) == shape(last)
+    assert calls(first)[SPY_CALL]["volume_text"] != calls(last)[SPY_CALL]["volume_text"]
+    assert "SPY   261023P00762000" in {r["put"]["symbol"] for r in first["ladder"] if r["put"]}
+    assert FLOW_CONTRACT in calls(live["tsla"])
+
+
 def test_the_flow_header_is_served_from_the_contracts_chain_record():
     """The header's side, strike and expiry are the chain record's, served (AGENTS.md rule 4).
 
     SPY's 2026-10-23 chain lists the 761 call and the 762 put expiring that day; the page draws
     what is served and reads nothing from its own state.
     """
-    served = build_side_e2e_fixture_response()
+    served = build_side_e2e_fixture_response()["sides"]
     assert {k: (v["put_call"], v["strike_text"], v["expiry"]) for k, v in served.items()} == {
         "SPY   261023C00761000": ("CALL", "761", "2026-10-23"),
         "SPY   261023P00762000": ("PUT", "762", "2026-10-23"),
