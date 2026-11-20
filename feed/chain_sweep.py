@@ -29,7 +29,6 @@ from typing import Any
 from schwab.client import Client
 
 import time_et
-from app.options.order_flow.state import streamed_record
 from calibration.complete_chain_capture import capture_message
 from feed.schwab_client import (
     QUOTES_BATCH_MAX,
@@ -52,7 +51,7 @@ from option_contract import (
     streamed_quote,
 )
 from state import capture_store
-from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter
+from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter, streamed_record
 from time_et import (
     CLOSED,
     ET,

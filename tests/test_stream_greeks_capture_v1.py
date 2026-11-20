@@ -2,22 +2,99 @@
 
 Schwab's LEVELONE_OPTIONS sends only the fields that changed (Change delivery), so the bus merges
 each message into the contract's record field by field, each field with its own receive time
-(stream_spine.MessageBus), and the console reads them from that record
-(app.options.order_flow.state.streamed_record). GAMMA, DELTA and OPEN_INTEREST are in schwab-py's
-LEVELONE_OPTIONS field enum (LevelOneOptionFields: DELTA=28, GAMMA=29, OPEN_INTEREST=9); open
-interest is the chain's, never the stream's.
+(stream_spine.MessageBus), and they are read on the first read after a message changes it and
+held in that record (stream_spine.streamed_record, stream_spine.read_streamed). GAMMA, DELTA and
+OPEN_INTEREST are in schwab-py's LEVELONE_OPTIONS field enum (LevelOneOptionFields: DELTA=28,
+GAMMA=29, OPEN_INTEREST=9); open interest is the chain's, never the stream's.
 """
 
 from __future__ import annotations
 
+import json
+import math
+from pathlib import Path
+
 import time_et
-from app.options.order_flow.state import streamed_record
-from option_contract import NO_GREEKS, Received, StreamedGreeks
-from stream_spine import MessageBus, held_key
+from option_contract import NO_GREEKS, Received, Streamed, StreamedGreeks, StreamedTop
+from stream_spine import MessageBus, held_key, streamed_record
 from tests.feed_live_helper import on_the_bus
 
 SYM = "SPY   260116C00580000"
 OPT = "LEVELONE_OPTIONS"
+EQ = "LEVELONE_EQUITIES"
+#: 3 s of the real stream in RTH, every message as Schwab sent it, in receive order
+_MIX = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
+        encoding="utf-8"
+    )
+)["messages"]
+#: Schwab's LEVELONE top-of-book fields (Streamer API §3.3, §3.6) by the record's names, and
+#: whether each is a count (a size)
+_TOP = {
+    "BID_PRICE": ("bid", False),
+    "ASK_PRICE": ("ask", False),
+    "BID_SIZE": ("bid_size", True),
+    "ASK_SIZE": ("ask_size", True),
+    "MARK": ("mark", False),
+    "QUOTE_TIME_MILLIS": ("quote_time_ms", False),
+    "MONEY_INTRINSIC_VALUE": ("money_intrinsic", False),
+}
+_GREEKS = ("GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
+
+
+def _as_sent(v, count: bool = False) -> float | None:
+    """A Schwab field as sent (AGENTS.md rule 2), worked out here, outside the code under test.
+
+    Not a number: absent, -999, text, a bool, NaN or infinity; a count is also never negative.
+    """
+    if isinstance(v, bool) or not isinstance(v, int | float):
+        return None
+    if v == -999 or not math.isfinite(v) or (count and v < 0):
+        return None
+    return float(v)
+
+
+def _read_as_sent(topic: str, rec: dict) -> Streamed:
+    """The record's merged fields as sent, each Greek and the volume at its own receive time."""
+    content = rec["content" if topic.startswith("optquote.") else "native"]
+    at = rec["field_ts"]
+    top = {name: _as_sent(content[f], count) for f, (name, count) in _TOP.items() if f in content}
+    greeks = {f.lower(): Received(_as_sent(content[f]), at[f][1]) for f in _GREEKS if f in content}
+    volume = _as_sent(content.get("TOTAL_VOLUME"), count=True)
+    if volume is not None:
+        greeks["total_volume"] = Received(volume, at["TOTAL_VOLUME"][1])
+    return Streamed(StreamedTop(**top), StreamedGreeks(**greeks))
+
+
+def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it():
+    """Each LEVELONE message of 3 s of the real stream, put on the bus in receive order.
+
+    After each, the record's reading is its merged fields as sent, every Greek and the volume at
+    its own receive time: the 7,420 option and 152 equity messages carry only the fields that
+    changed, a few of them Greeks or volume over a held record, and the rest stand. A message
+    reads nothing: it makes a new version of the record, read on its first read and held, so a
+    second read with no message between is the same reading, and the version before stands as it
+    was read.
+    """
+    bus = MessageBus()
+    over_held = greeks_over_held = 0
+    for m in _MIX:
+        if m["service"] not in (OPT, EQ):
+            continue
+        before = bus.current.get(held_key(m["service"], m["item"]["key"].upper()))
+        was_held = before is not None
+        held_before = streamed_record(before)
+        topic, rec = on_the_bus(bus, m["service"], m["item"], m["ts_recv"], m["schwab_ts"])
+        assert rec["streamed"] is None  # nothing read on the message
+        first = streamed_record((topic, rec))
+        assert first == _read_as_sent(topic, rec), m
+        assert streamed_record((topic, rec)) is first  # read once per version
+        if before is not None:
+            assert before[1] is not rec and before[1]["streamed"] is held_before
+        over_held += was_held
+        greeks_over_held += was_held and any(f in m["item"] for f in (*_GREEKS, "TOTAL_VOLUME"))
+    assert over_held == 4777  # each merged into a record it changes only in part
+    assert greeks_over_held == 110  # of them, those that change a held record's Greeks or volume
 
 
 def _sent(bus: MessageBus, fields: dict, ts_recv: float, sym: str = SYM) -> None:
