@@ -156,9 +156,13 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 found.add(node.target.id)  # a record's declared field
         # a constant the module defines at its top (a function's own names are not the product's)
-        for node in tree.body:
-            if isinstance(node, ast.Assign):
-                found.update(t.id for t in node.targets if isinstance(t, ast.Name))
+        found.update(
+            t.id
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            for t in node.targets
+            if isinstance(t, ast.Name)
+        )
     return found
 
 
