@@ -31,7 +31,6 @@ from calc.terrain_engine import (
     WALL_CONTAINS,
     compute_terrain,
     price_relations,
-    wall_lean,
 )
 from calc.terrain_read import level_side
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
@@ -261,34 +260,16 @@ def test_a_breached_wall_says_where_the_live_price_is():
     assert out["call_wall_state"] == WALL_CONTAINS
 
 
-def test_a_containing_wall_earns_the_dealer_lean_only_on_a_trusted_flip():
-    """The 18:00 print (764.27) is between the put wall 764 and the call wall 765."""
+def test_a_containing_wall_carries_no_word():
+    """The 18:00 print (764.27) is between the put wall 764 and the call wall 765.
+
+    Both walls hold the price, which their states say; neither carries a word (operator
+    2026-11-19: the dealer words are gone).
+    """
     out = _spy_close_at(SPY_AFTER_HOURS_PRINT)
     assert out["call_wall_state"] == out["put_wall_state"] == WALL_CONTAINS
-    earned = out["regime"] != "UNAVAILABLE" and out["confidence"] == "TRUSTED"
-    assert out["call_wall_lean"] == ("DEALERS SELL" if earned else None)
-    assert out["put_wall_lean"] == ("DEALERS BUY" if earned else None)
-
-
-def test_one_strike_holding_both_walls_is_two_sided():
-    """The two-sided case is a worked example.
-
-    No captured chain has one strike holding both walls (ACTIVE_PROGRAM STAND-INS); the earned
-    lean is SPY's close walls (764, 765) at its 18:00 print (764.27).
-    """
-    price = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
-    assert wall_lean(770.0, 770.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
-        ("TWO-SIDED — magnet, not a barrier",) * 2
-    )
-    assert wall_lean(765.0, 764.0, price, "LONG_GAMMA_CHOP", "TRUSTED") == (
-        "DEALERS SELL",
-        "DEALERS BUY",
-    )
-    for regime, conf in (
-        ("UNAVAILABLE", "TRUSTED"),
-        ("LONG_GAMMA_CHOP", "LEVEL_APPROX_NARROW_SPAN"),
-    ):
-        assert wall_lean(765.0, 764.0, price, regime, conf) == (None, None)
+    assert out["regime"] != "UNAVAILABLE"
+    assert out["call_wall_lean"] is None and out["put_wall_lean"] is None
 
 
 #: Stand-in: ticker ZZDESK carries Schwab's SPY bars and SPY 0DTE chain, ZZDESKEM the CRWD chain
