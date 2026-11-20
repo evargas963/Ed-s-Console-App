@@ -134,6 +134,45 @@ def d1_vt[Num: (float, NDArray[np.float64])](
     return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
 
 
+#: prices evaluated per numpy block in bsm_gamma_sums: a block of a 13,000-contract chain fits
+#: the processor's cache (8 measured fastest of 4, 8, 16, 32 and 64 on SPY's whole chain)
+_GAMMA_BLOCK = 8
+
+
+def bsm_gamma_sums(
+    prices: NDArray[np.float64],
+    strike: NDArray[np.float64],
+    t_years: NDArray[np.float64],
+    sigma: NDArray[np.float64],
+    carry: NDArray[np.float64],
+    weight: NDArray[np.float64],
+) -> list[float]:
+    """Return, at each of `prices`, the sum over contracts of `weight` times the BSM gamma.
+
+    gamma = norm_pdf(d1) / (S * vt), d1 and vt as d1_vt gives them (`carry` = r - q): their
+    formulas, operation for operation, so every value is theirs to the last bit, evaluated over
+    a block of prices in place. A contract's own terms (vt, the drift) are computed once, not
+    once per block; the block's arrays are reused, not made again at each step.
+    """
+    vt = sigma * np.sqrt(t_years)
+    drift = (carry + 0.5 * sigma * sigma) * t_years
+    out: list[float] = []
+    for start in range(0, len(prices), _GAMMA_BLOCK):
+        s = prices[start : start + _GAMMA_BLOCK, None]
+        d1 = s / strike
+        np.log(d1, out=d1)
+        d1 += drift
+        d1 /= vt
+        g = -0.5 * d1
+        g *= d1
+        np.exp(g, out=g)
+        g /= SQRT_2PI
+        g /= s * vt
+        g *= weight
+        out.extend(g.sum(axis=1).tolist())
+    return out
+
+
 def bsm_gamma_delta(
     spot: float, strike: float, t_years: float, sigma: float, sign: int, r: float, q: float
 ) -> tuple[float, float]:

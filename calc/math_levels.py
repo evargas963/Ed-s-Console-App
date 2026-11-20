@@ -17,11 +17,10 @@ from calc.math_exposure_core import (
     Bucket,
     bs_charm_array,
     bsm_gamma_delta,
+    bsm_gamma_sums,
     bucket_metric,
-    d1_vt,
     expiry_years,
     key_level_strikes_with_oi,
-    norm_pdf,
     schwab_iv_to_sigma,
     strike_of_largest,
     strike_oi_legs,
@@ -299,32 +298,23 @@ def compute_gamma_profile(
     return sorted(curve.items())
 
 
-#: Candidate prices evaluated per numpy block in _gamma_profile_totals (bounds memory: a
-#: 30,000-contract chain x 32 prices is ~1M floats in each intermediate array).
-_GAMMA_PROFILE_BLOCK = 32
-
-
 def _gamma_profile_totals(parsed: list[ProfileRow], grid: list[float]) -> list[float]:
     """Sum over contracts of side_sign * gamma(s) * oi * mult * s^2 * 0.01, per s in grid.
 
     gamma is the Black-Scholes-Merton gamma with each contract's rate r and dividend yield q as
     Schwab sent them (Hull, Options, Futures and Other Derivatives, ch. 19):
     e^(-qT) * phi(d1) / (s * sigma * sqrt(T)), d1 = (ln(s/K) + (r - q + sigma^2/2) T) /
-    (sigma sqrt(T)). Evaluated as arrays, one block of prices at a time. Every input is a
+    (sigma sqrt(T)), summed by bsm_gamma_sums. Every input is a
     positive, finite number (_contract_inputs: a strike above 0, a volatility above 0, a time
     left above 0; a price above 0), so every gamma is a number.
     """
     arr = np.asarray(parsed, dtype=float)
     strike, oi, mult, t_years, sigma, side, rate, dividend = (arr[:, i] for i in range(8))
     weight = side * oi * mult * np.exp(-dividend * t_years)
-    s_all = np.asarray(grid, dtype=float)
-    out: list[float] = []
-    for start in range(0, len(s_all), _GAMMA_PROFILE_BLOCK):
-        s = s_all[start : start + _GAMMA_PROFILE_BLOCK, None]
-        d1, vt = d1_vt(s, strike, t_years, sigma, rate - dividend, log=np.log, sqrt=np.sqrt)
-        g = norm_pdf(d1, exp=np.exp) / (s * vt)
-        out.extend(((g * weight).sum(axis=1) * s[:, 0] * s[:, 0] * 0.01).tolist())
-    return out
+    sums = bsm_gamma_sums(
+        np.asarray(grid, dtype=float), strike, t_years, sigma, rate - dividend, weight
+    )
+    return [total * s * s * 0.01 for total, s in zip(sums, grid, strict=True)]
 
 
 def gamma_flip_from_profile(profile: list[tuple[float, float]], spot: float) -> float | None:
