@@ -87,8 +87,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     those levels silently (`_level_values`); `families_absent` does not list them.
   - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
-  - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
-    served.
   - M-22 `book_net_gex` sums only strikes with a known `net_gex_1pct` and does not say how many it
     left out.
   - M-24 `calc.math_levels.compute_charm_by_strike` returns `{}` with no reason when spot is missing
