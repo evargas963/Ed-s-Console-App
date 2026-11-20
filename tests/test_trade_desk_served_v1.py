@@ -22,7 +22,7 @@ from calc.liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
 from calc.micro_structure import Candle
 from calc.order_flow import (
     FlowInput,
-    _zone,
+    _tilt,
     book_readout,
     compute_book_microstructure,
 )
@@ -70,7 +70,7 @@ def test_the_book_side_is_served_from_the_real_book():
     # (440 bid, 1,840 ask: -61.4%) is OFFER_HEAVY
     readout = book_readout({"NYSE_BOOK": book, "NASDAQ_BOOK": None})["NYSE_BOOK"]
     assert readout["views"]["5"]["pct"] == pytest.approx((bid5 - ask5) / (bid5 + ask5) * 100)
-    assert _zone(readout["views"]["5"]["pct"]) == "OFFER_HEAVY"
+    assert _tilt(readout["views"]["5"]["pct"]) == "OFFER_HEAVY"
 
 
 def _desk_events(tk, crosses, now, tf):

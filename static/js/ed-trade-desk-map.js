@@ -713,10 +713,10 @@
   function liqKey() {
     return S.liqVenue === "COMPOSITE" ? "COMPOSITE" : window.EdShell.getState().bookVenue;
   }
-  // a served zone's colour on the card (bids green, offers red, balanced gold) and its arrow on
-  // the agreement strip, by the zone's name as served (order_flow.ZONE_WORDS)
-  var ZONE_TONE = { BID_HEAVY: "bid", BALANCED: "bal", OFFER_HEAVY: "ask" };
-  var ZONE_ARROW = { BID_HEAVY: "up", BALANCED: "", OFFER_HEAVY: "dn" };
+  // a served tilt's colour on the card (bids green, offers red, balanced gold) and its arrow on
+  // the agreement strip, by the tilt's name as served (order_flow.TILT_WORDS)
+  var TILT_TONE = { BID_HEAVY: "bid", BALANCED: "bal", OFFER_HEAVY: "ask" };
+  var TILT_ARROW = { BID_HEAVY: "up", BALANCED: "", OFFER_HEAVY: "dn" };
   function liqLeft(pct) {
     return window.EdDraw.centredLeft(pct) + "%";
   }
@@ -784,7 +784,7 @@
     return (
       '<div class="liq-detail liq-keep"><div class="liq-lbl"><span>DETAIL</span><button type="button" class="scbtn" data-liqclose>Close</button></div>' +
       p(d.weights) +
-      p(d.zones) +
+      p(d.tilt) +
       (key === "COMPOSITE" ? p(d.construction) : "") +
       p(d.spans) +
       p(liqSpans(rd, S.liqView)) +
@@ -860,7 +860,7 @@
     }
     var v = r.views[view],
       one = r.status === "one_sided",
-      tone = one || !v.zone ? "" : ZONE_TONE[v.zone];
+      tone = one || !v.tilt ? "" : TILT_TONE[v.tilt];
     // laid out as the other cards: the switch, the state and its number, the chart (the bars) and
     // its caption, the three gauges, then the facts
     var h =
@@ -1050,12 +1050,12 @@
       l = S.liq;
     // the Liquidity card's served side word, for its venue and depth
     var lv = m && m.readout && m.readout.venues[liqKey()],
-      lz = lv && lv.views[S.liqView] && lv.views[S.liqView].zone;
+      lt = lv && lv.views[S.liqView] && lv.views[S.liqView].tilt;
     var cells = [
       [
         "LIQUIDITY",
-        lz ? lv.views[S.liqView].side_word.toLowerCase() : "No book",
-        lz ? ZONE_ARROW[lz] : "",
+        lt ? lv.views[S.liqView].side_word.toLowerCase() : "No book",
+        lt ? TILT_ARROW[lt] : "",
       ],
       [
         "VALUE",
