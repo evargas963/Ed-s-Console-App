@@ -886,7 +886,9 @@ def _prior_day_part(
     """Return the prior session's levels, its date and what is degraded in them.
 
     The date is None with no prior candle held; degraded, a prior session with fewer than
-    LEVELS_PRIOR_SESSION_MIN_BARS RTH bars, whose POC and value area are from a partial tape.
+    LEVELS_PRIOR_SESSION_MIN_BARS RTH bars, whose POC and value area are from a partial tape. A
+    prior session whose RTH bars make no volume profile has its value area declared absent
+    (`prior_value_area`), with why.
     """
     if prior is None:
         return [_Absent("prior_day", "no Schwab daily candle held for a prior session")], None, []
@@ -894,6 +896,21 @@ def _prior_day_part(
     day = eng.prior_date
     producer = f"{_PRODUCER_NS}.get_previous_day_levels"
     window = f"{day.isoformat()} RTH (most recent prior RTH session)"
+    value_area: _Family | _Absent = (
+        _Absent(
+            "prior_value_area",
+            f"no RTH bars of the prior session {day} in available bars"
+            if eng.rth_bars == 0
+            else f"no RTH volume in the prior session {day}'s bars for its volume profile",
+        )
+        if eng.pd_poc is None or eng.pd_vah is None or eng.pd_val is None
+        else _Family(
+            (("PD_POC", eng.pd_poc), ("PD_VAH", eng.pd_vah), ("PD_VAL", eng.pd_val)),
+            producer,
+            window,
+            basis,
+        )
+    )
     families: list[_Family | _Absent] = [
         _Family(
             (("PDH", eng.pdh), ("PDL", eng.pdl), ("PDC", eng.pdc)),
@@ -901,12 +918,7 @@ def _prior_day_part(
             window,
             DAILY_CANDLE_BASIS,
         ),
-        _Family(
-            (("PD_POC", eng.pd_poc), ("PD_VAH", eng.pd_vah), ("PD_VAL", eng.pd_val)),
-            producer,
-            window,
-            basis,
-        ),
+        value_area,
     ]
     if eng.rth_bars >= LEVELS_PRIOR_SESSION_MIN_BARS:
         return families, day, []

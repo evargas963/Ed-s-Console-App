@@ -91,8 +91,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `hi < lo` uncounted; only missing volume is counted.
   - M-05 `calc/liquidity_value_engine.py` `compute_session_vwap_series` skips bars with no volume
     and counts none.
-  - M-11 `build_price_level_snapshot`: a prior day whose `pd_poc`/`pd_vah`/`pd_val` are None loses
-    those levels silently (`_level_values`); `families_absent` does not list them.
   - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
