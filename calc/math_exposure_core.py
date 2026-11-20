@@ -626,7 +626,7 @@ def exposure_books(
 
     Every contract is
     priced once; any subset of expiries is then a merge_exposure_books of its groups (the full
-    book, 0DTE, the front expiry, <=7 / >7 days).
+    book, 0DTE, the front expiry, each listed expiry).
     """
     groups: dict[tuple[str | None, float | None], list[OptionContract]] = {}
     for c in contracts:

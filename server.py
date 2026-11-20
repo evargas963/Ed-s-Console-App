@@ -1486,7 +1486,7 @@ def stop_terrain_loop() -> None:
 
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
-# capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
+# capture (the day-over-day migration), of every expiry and of each listed expiry.
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
 def _prior_capture(captures: list[StoredCapture], chain_ts: float) -> StoredCapture | None:
     """Return the previous market day's close capture before the day of the chain's.

@@ -48,6 +48,8 @@ TK = server.ticker_storage_key("CRWD")
 #: the windows a page asks: Auto and All, following the price
 AUTO = {"scope": "auto", "centre": None, "shift": 0}
 ALL = {**AUTO, "scope": "all"}
+#: the strikes panel's Auto window at the page's expiry choice: All Expirations
+STRIKES_AUTO = {**AUTO, "expiry": None}
 
 
 def _clear():
@@ -178,9 +180,13 @@ def build_e2e_panels() -> dict:
                 {
                     "vanna": push_strike_bars.strike_bars("vanna_rows", TK, at, AUTO),
                     "charm": push_strike_bars.strike_bars("charm_rows", TK, at, AUTO),
-                    "strikes": push_strikes.strikes(TK, chain_at, AUTO),
-                    "strikes_wider": push_strikes.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
-                    "strikes_all": push_strikes.strikes(TK, chain_at, ALL),
+                    "strikes": push_strikes.strikes(TK, chain_at, STRIKES_AUTO),
+                    "strikes_wider": push_strikes.strikes(
+                        TK, chain_at, {**STRIKES_AUTO, "scope": "wider"}
+                    ),
+                    "strikes_all": push_strikes.strikes(
+                        TK, chain_at, {**STRIKES_AUTO, "scope": "all"}
+                    ),
                     "terrain": push_terrain.terrain(TK, chain_at),
                     "surface": push_surface.gamma_surface(
                         TK, chain_at, {**AUTO, "cols": None, "expiry": None}, requested=False

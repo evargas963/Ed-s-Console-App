@@ -176,7 +176,7 @@ def test_strikes_payload_serves_each_strikes_volume_at_the_live_spot():
     )
     try:
         body = push_strikes.strikes(
-            C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0}
+            C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
         )
         live = srv.resolve_spot(C.ticker, now=time_et.now())[0]
     finally:
@@ -188,7 +188,7 @@ def test_strikes_payload_serves_each_strikes_volume_at_the_live_spot():
     book = compute_exposures_by_strike(
         read_chain(C.chain), spot=C.spot, now=C.now, sessions=time_et.sessions()
     )[0]
-    drawn = body["today"]["all"]
+    drawn = body["today"]
     assert drawn, "the panel draws strikes of the real chain"
     assert all(r["volume"] == strike_total_volume(book[r["strike"]]) for r in drawn)
     assert live == C.spot, "the rows are drawn at the one live spot"

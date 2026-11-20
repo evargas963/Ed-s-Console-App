@@ -374,10 +374,12 @@ def stopped_price_answers() -> dict:
             "levels": push_levels.levels_payload("SPY", "1", at),
             "confluence": push_confluence.confluence_payload("SPY", "2026-10-22", at),
             "terrain": push_terrain.terrain("SPY", at.timestamp()),
-            "strikes": push_strikes.terrain_strikes_payload("SPY", "auto", None, 0, at.timestamp()),
+            "strikes": push_strikes.terrain_strikes_payload(
+                "SPY", "auto", None, 0, None, at.timestamp()
+            ),
             "surface": surface,
             "strikes_next_close": push_strikes.terrain_strikes_payload(
-                "SPY", "auto", None, 0, next_close.timestamp()
+                "SPY", "auto", None, 0, None, next_close.timestamp()
             ),
             "surface_next_close": surface_next_close,
         }

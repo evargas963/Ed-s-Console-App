@@ -297,10 +297,10 @@
   }
   // Everything the desk draws, the program sends on the page's socket while the desk is on, at
   // once and each time it changes. Per symbol: the option terrain (`terrain:map`), the Options
-  // Book's lean at the front expiry in the Gamma scope's window (`option_book:desk`), the zones
-  // (`liquidity:deskmap`), the book (`book:deskmap`) and the Order Flow card's hour of bars
-  // (`bars:flow`). Per timeframe: the chart's bars (`bars:deskmap`) and those forming
-  // (`forming:deskmap`), levels (`levels:map`) and event window (`desk`).
+  // Book's lean at the expiry chosen (none chosen: the front one) in the Gamma scope's window
+  // (`option_book:desk`), the zones (`liquidity:deskmap`), the book (`book:deskmap`) and the Order
+  // Flow card's hour of bars (`bars:flow`). Per timeframe: the chart's bars (`bars:deskmap`) and
+  // those forming (`forming:deskmap`), levels (`levels:map`) and event window (`desk`).
   var PANELS = { "terrain:map": "terrain" };
   // these are kept as null when the program could not produce them
   var OR_NULL = {
@@ -314,10 +314,7 @@
       venue = window.EdShell.getState().bookVenue;
     window.EdShell.showPanel("levels:map", on ? { tf: S.tf } : null);
     window.EdShell.showPanel("terrain:map", on ? {} : null);
-    window.EdShell.showPanel(
-      "option_book:desk",
-      on ? Object.assign(window.EdShell.windowParams(null), { expiry: null }) : null,
-    );
+    window.EdShell.showPanel("option_book:desk", on ? window.EdShell.windowAtExpiry(null) : null);
     window.EdShell.showPanel("bars:deskmap", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
     window.EdShell.showPanel("forming:deskmap", on ? { tf: S.tf } : null);
     window.EdShell.showPanel("bars:flow", on ? { tf: "1", limit: FLOW_BARS } : null);
@@ -539,8 +536,9 @@
   }
 
   // ------------------------------------------------------------------ cards
-  // the options lean of the front expiry's Options Book (the `option_book:desk` panel), its gauge
-  // drawn as the Book view draws it (EdOptionLean); with nothing to draw, why
+  // the options lean of the Options Book at the expiry chosen, else the front one (the
+  // `option_book:desk` panel, its expiry served), its gauge drawn as the Book view draws it
+  // (EdOptionLean); with nothing to draw, why
   function paintLean(card) {
     var host = card.querySelector(".tdm-lean"),
       b = S.optBook;
@@ -1244,6 +1242,7 @@
     document.addEventListener("ed:ticker", start);
     document.addEventListener("ed:book_venue", askPanels); // the book is the venue's
     document.addEventListener("ed:scope", askPanels); // the Options Book's window is the scope's
+    document.addEventListener("ed:expiry", askPanels); // its expiry is the one chosen
     document.addEventListener("ed:panel", function (e) {
       if (onDesk()) takePanel(e.detail);
     });

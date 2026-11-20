@@ -67,20 +67,19 @@ def test_the_bars_panel_serves_canonical_bars_shape():
 
 
 def test_terrain_strikes_endpoint_shape_and_scopes():
-    """CR-03 histogram feed: per-strike [strike, net_gex, volume] rows in three expiry scopes.
+    """CR-03 histogram feed: per-strike rows of the one expiry chosen (here All Expirations).
 
     For today + prior capture, sorted by strike, read-only.
     """
-    body = push_strikes.strikes("SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0})
+    body = push_strikes.strikes(
+        "SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
+    )
     assert json.loads(json.dumps(body)) == body  # the socket's frame, as it is
     assert body["ticker"] == "SPY"
-    for side in ("today", "migration", "views"):
-        assert set(body[side]) == {"all", "near", "far"}
-    rows = body["today"]["all"]
+    assert (body["expiry"], body["expiry_text"]) == (None, "All Expirations")
+    assert isinstance(body["today"], list) and set(body["view"]) >= {"centre", "max_abs"}
+    rows = body["today"]
     if rows:
-        assert all(len(x) == 3 for x in rows)
-        ks = [x[0] for x in rows]
+        ks = [x["strike"] for x in rows]
         assert ks == sorted(ks), "strikes must be ascending"
-        # near+far partition the chain: no scope may exceed ALL
-        assert len(body["today"]["near"]) <= len(rows)
-        assert len(body["today"]["far"]) <= len(rows)
+        assert {r["strike"] for r in body["migration"]["rows"]} <= set(ks)
