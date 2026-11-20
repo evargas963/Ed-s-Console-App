@@ -38,18 +38,6 @@
       "item": "live update speed: the chain ladder showed SPY's 730 call a median 4.4 s (max 8.8 s) behind Schwab, 23 changes measured 2026-11-18 13:55 CT, marked LIVE; its fields are Schwab's own but served from the last reprice, and a full SPY reprice takes 1.4-2.7 s on a pricing thread 90% busy. The fix (serve them from the stream as received) is the operator's decision"
     },
     {
-      "category": "contradiction: rule vs hook",
-      "item": "CLAUDE.md:15 'One small task per session' vs AGENTS.md:294 and keep_going.py:85, which refuse a stop after that task"
-    },
-    {
-      "category": "contradiction: rule vs hook",
-      "item": "CLAUDE.md:12 waits for the operator's yes on every plan; AGENTS.md:294-297 allows that stop only for work outside SHAPE"
-    },
-    {
-      "category": "contradiction: rule vs rule",
-      "item": "CLAUDE.md:13 'ask again only for work outside the plan' vs AGENTS.md:139-140 a defect found anywhere is fixed with no yes asked"
-    },
-    {
       "category": "contradiction: rule vs rule",
       "item": "AGENTS.md:47 and CLAUDE.md:20 'no change reaches production without Ed's approval' vs AGENTS.md:290 merges and deploys without waiting on the operator"
     },
