@@ -240,13 +240,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Operator decides
 
-- WRITER-COUNT-PROOF (IN PROGRESS): in `stream_spine.CaptureWriter`, the two counts fixed by reading
-  the code (`_refused` resetting `_stored` after a partial batch; `_spilled` counted in the same
-  locked section) get tests that induce the refusal for real, a second connection holding SQLite's
-  write lock, with no patch. A statement that fails for its own reason rather than a refusal
-  (`_prune_part`, the spill-progress row, `_finish_spill`) no longer retries without end: the failed
-  item is kept as sent with its error in `stream_write_failures`, logged, and recording goes on
-  (operator 2026-11-19).
 - FLIP-LABEL (NEXT): the gamma flip's chain-coverage label (TRUSTED / LEVEL_APPROX / NARROW,
   `calc.math_levels.GAMMA_FLIP_TRUSTED_SPAN_PCT` 10% and `GAMMA_FLIP_MIN_SPAN_PCT` 5%) is removed:
   every chain is asked with every strike (`strike_range="ALL"`), and neither threshold has a source.

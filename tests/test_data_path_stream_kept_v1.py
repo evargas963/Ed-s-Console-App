@@ -19,6 +19,8 @@ import asyncio
 import json
 import shutil
 import sqlite3
+import sys
+import threading
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
@@ -528,18 +530,11 @@ def test_messages_spilled_when_the_database_refuses_a_round_are_not_counted_as_h
     assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == sent
 
 
-def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held(tmp_path):
-    """A keep part refused after a commit counts none of the committed as held.
+def _old_quotes_answer(writer: CaptureWriter, conn: sqlite3.Connection) -> None:
+    """Store one of Schwab's /quotes answers received a week before the keep's time.
 
-    INDUCED CONDITIONS: one of Schwab's /quotes answers received a week earlier (SPY's first
-    contract's, tests/schwab_rest_standin.SPY_QUOTES), a trigger that makes the keep's DELETE
-    abort (STAND-IN for a keep part the database refuses), the keep asked, and the mix's first ten
-    equity quotes held in memory while another connection holds the write lock. Once the lock is
-    let go the ten are committed, and the keep's part after them is refused: in the pause that
-    follows, held is the queue alone, nothing waits and nothing spills.
+    SPY's first contract's, tests/schwab_rest_standin.SPY_QUOTES, as Schwab sent it.
     """
-    db = tmp_path / "stream_capture.db"
-    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0)
     symbol, entry = next(iter(SPY_QUOTES.items()))
     old = {
         "src": "schwab_quotes",
@@ -547,14 +542,52 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
         "status": 200,
         "body": json.dumps({symbol: entry}),
     }
+    writer.insert("quotesanswer", old, conn=conn)
+
+
+def _rollback_journal(db) -> None:
+    """INDUCED CONDITION: the database in SQLite's rollback-journal mode (journal_mode=DELETE).
+
+    There a reader's open transaction lets the writer write its rows but refuses its commit
+    (SQLITE_BUSY, "database is locked") until the reader ends: a commit refused after the round
+    is stored, as a WAL commit the disk refuses (SQLITE_FULL, SQLITE_IOERR) is.
+    """
+    with closing(sqlite3.connect(db)) as conn:
+        assert conn.execute("PRAGMA journal_mode=DELETE").fetchone() == ("delete",)
+
+
+def _reading(db) -> sqlite3.Connection:
+    """Open a reader's transaction on `db` and return its connection (COMMIT ends it)."""
+    reader = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    reader.execute("BEGIN")
+    reader.execute("SELECT COUNT(*) FROM sqlite_master").fetchall()
+    return reader
+
+
+def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held(tmp_path):
+    """A keep part refused after a commit counts none of the committed as held.
+
+    INDUCED CONDITIONS: one /quotes answer received a week earlier (_old_quotes_answer), the
+    database in rollback-journal mode (_rollback_journal), a trigger that makes the keep's DELETE
+    take about two seconds, the keep asked, and the mix's first ten equity quotes held in memory
+    while another connection holds the write lock. Once the lock is let go the ten are committed;
+    while the keep's part after them runs, a reader's transaction opens, so SQLite refuses the
+    part's commit: in the pause that follows, held is the queue alone, nothing waits and nothing
+    spills.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=1.0)
     with closing(sqlite3.connect(db)) as conn, conn:
-        writer.insert("quotesanswer", old, conn=conn)
+        _old_quotes_answer(writer, conn)
         conn.execute(
-            "CREATE TRIGGER keep_refused BEFORE DELETE ON rest_quotes_raw "
-            "BEGIN SELECT RAISE(ABORT, 'a keep part the database refuses'); END"
+            "CREATE TRIGGER keep_slow BEFORE DELETE ON rest_quotes_raw BEGIN SELECT COUNT(*) FROM "
+            "(WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 10000000) "
+            "SELECT x FROM n); END"
         )
+    _rollback_journal(db)
     holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
     holder.execute("BEGIN IMMEDIATE")
+    readers: list[sqlite3.Connection] = []
     bus = MessageBus()
     sub = bus.subscribe("", policy=LOG)
     assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
@@ -565,13 +598,15 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
         await _until(lambda: writer.status()["waiting"] == 10)
         writer.prune(et_ts(_FIVE_SESSIONS))
         holder.execute("COMMIT")
+        await _until(lambda: writer.status()["rows_written"] == 10)
+        readers.append(_reading(db))  # while the keep's part runs
 
         def keep_refused() -> bool:
             s = writer.status()
             return (
                 s["state"] == WRITER_BLOCKED
                 and s["rows_written"] == 10
-                and s["error"].startswith("IntegrityError")
+                and s["error"] == "OperationalError: database is locked"
             )
 
         await _until(keep_refused)
@@ -584,11 +619,78 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
         during = asyncio.run(go())
     finally:
         holder.close()
+        for reader in readers:
+            reader.close()
+    assert _rows(db, "SELECT COUNT(*) FROM rest_quotes_raw")[0][0] == 1, "the refused part stayed"
     assert (during["held"], during["waiting"], during["spill"]) == (
         during["queue_depth"],
         0,
         None,
     ), f"held {during['held']} after the ten were committed"
+
+
+def test_a_keep_part_that_fails_for_its_own_reason_is_kept_as_sent_and_the_writer_goes_on(
+    tmp_path,
+):
+    """INDUCED CONDITIONS: a keep part SQLite rejects, with old rows in two of the keep's tables.
+
+    One /quotes answer and one feed status received a week before the keep's time; a trigger
+    that aborts any DELETE from rest_quotes_raw (SQLITE_CONSTRAINT: the statement's own failure,
+    not the database refusing writes). The keep asked, then the mix's first ten equity quotes:
+    the part is kept as sent in stream_write_failures with its error, the keep goes on to the
+    next table (the old feed status is removed), the ten are written and the writer is never
+    blocked.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.05, retry_sec=1.0)
+    before = et_ts(_FIVE_SESSIONS)
+    with closing(sqlite3.connect(db)) as conn, conn:
+        _old_quotes_answer(writer, conn)
+        writer.insert(
+            "feedstatus.LEVELONE_EQUITIES",
+            {
+                "ts": et_ts("2026-09-28 13:00"),
+                "service": "LEVELONE_EQUITIES",
+                "socket_open": True,
+                "held": 1,
+            },
+            conn=conn,
+        )
+        conn.execute(
+            "CREATE TRIGGER keep_rejected BEFORE DELETE ON rest_quotes_raw "
+            "BEGIN SELECT RAISE(ABORT, 'a keep part SQLite rejects'); END"
+        )
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    states: list[str] = []
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        writer.prune(before)
+        await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 0)
+        assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
+
+        def written() -> bool:
+            states.append(writer.status()["state"])
+            return writer.status()["rows_written"] == 10
+
+        await _until(written)
+        stop.set()
+        await task
+
+    asyncio.run(go())
+    assert _rows(db, "SELECT COUNT(*) FROM rest_quotes_raw")[0][0] == 1
+    assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10
+    ((topic, sent, error),) = _rows(db, "SELECT topic, msg_json, error FROM stream_write_failures")
+    assert (topic, json.loads(sent), error) == (
+        "keep.rest_quotes_raw",
+        {"table": "rest_quotes_raw", "column": "ts_recv", "before": before},
+        "IntegrityError: a keep part SQLite rejects",
+    )
+    after = writer.status()
+    assert (after["failures"], after["last_failure"]) == (1, f"{topic}: {error}")
+    assert WRITER_BLOCKED not in states, "the writer was blocked by one statement's own failure"
 
 
 class _UnreadableQuote(dict):
@@ -672,6 +774,132 @@ def test_a_writer_that_dies_while_holding_in_memory_counts_all_it_held_as_not_re
     )
     assert s["error"] == "RuntimeError: a message the writer cannot read"
     assert (s["unrecorded"], s["lost"], s["left_on_disk"]) == (11, 0, [])
+
+
+def test_a_writer_that_dies_holding_a_batch_whose_commit_was_refused_counts_all_of_it(tmp_path):
+    """A writer that dies holding a batch whose commit was refused counts all of it.
+
+    INDUCED CONDITIONS: the database in rollback-journal mode (_rollback_journal) with a reader's
+    transaction open, a batch of eleven rows (an input), the mix's first ten equity quotes and an
+    _UnreadableQuote eleventh, and a 10 MB memory cap. All eleven are written into the batch and
+    its commit is refused; the rollback leaves none of them stored, and the writer dies holding
+    the eleventh in memory. Not recorded is all eleven; nothing is on disk or lost.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(
+        db,
+        batch_rows=11,
+        batch_sec=60.0,
+        timeout_sec=0.05,
+        retry_sec=0.1,
+        hold_cap_bytes=10_000_000,
+    )
+    _rollback_journal(db)
+    reader = _reading(db)
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
+    bus.publish(f"quote.{_eleventh()['symbol']}", _UnreadableQuote(_eleventh()))
+
+    async def go():
+        ended = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=ended))
+        await _until(lambda: writer.status()["state"] == WRITER_DEAD)
+        ended.set()
+        await task
+
+    try:
+        asyncio.run(go())
+    finally:
+        reader.close()
+    s = writer.status()
+    assert s["error"] == "RuntimeError: a message the writer cannot read"
+    assert (s["unrecorded"], s["lost"], s["left_on_disk"]) == (11, 0, [])
+    assert _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 0
+
+
+def test_a_refused_commit_holds_every_message_counted_once_and_writes_each_once_after(tmp_path):
+    """A refused commit holds every message, counted once, and writes each once after.
+
+    INDUCED CONDITIONS: the database in rollback-journal mode (_rollback_journal) with a reader's
+    transaction open, a batch of 152 rows (an input), the mix's 152 equity quotes, and a memory
+    cap of 50 KB (an input, STAND-IN for about 2 GB), so some are held in memory and the rest
+    spill. The batch is written and its commit refused. Read over and over from another thread
+    while the writer holds them, with Python switching threads every microsecond, no message is
+    ever counted both held and spilled; once all are held, held is what memory holds and memory
+    and the spill file hold each one once. Once the reader ends, every quote is written once, in
+    arrival order, and nothing is held.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(
+        db, batch_rows=152, batch_sec=60.0, timeout_sec=0.05, retry_sec=0.1, hold_cap_bytes=50_000
+    )
+    _rollback_journal(db)
+    reader = _reading(db)
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+    sent = _publish_mix(bus, {"LEVELONE_EQUITIES"})
+    samples: list[dict] = []
+    sampling = threading.Event()
+
+    def sample() -> None:
+        while not sampling.is_set():
+            samples.append(writer.status())
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+
+        def all_held() -> bool:
+            s = writer.status()
+            return s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == sent
+
+        await _until(all_held)
+        sampling.set()
+        during = writer.status()
+        reader.execute("COMMIT")
+        await _until(
+            lambda: writer.status()["rows_written"] == sent and writer.status()["spill"] is None
+        )
+        after = writer.status()
+        stop.set()
+        await task
+        return during, after
+
+    switch = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    try:
+        during, after = asyncio.run(go())
+    finally:
+        sampling.set()
+        sampler.join()
+        sys.setswitchinterval(switch)
+        reader.close()
+    twice = [
+        s
+        for s in samples
+        if s["spill"] is not None and s["held"] + s["spill"]["messages"] + s["lost"] > sent
+    ]
+    assert not twice, f"{len(twice)} of {len(samples)} reads counted a message held and spilled"
+    assert during["state"] == WRITER_BLOCKED
+    assert during["error"] == "OperationalError: database is locked"
+    assert (during["rows_written"], during["held"], during["lost"]) == (0, during["waiting"], 0)
+    assert during["waiting"] > 0 and during["spill"]["messages"] > 0
+    assert (after["state"], after["held"], after["failures"], after["lost"]) == (
+        WRITER_RECORDING,
+        0,
+        0,
+        0,
+    )
+    stored = [
+        json.loads(native)
+        for (native,) in _rows(db, "SELECT native_json FROM stream_quotes_raw ORDER BY rowid")
+    ]
+    assert stored == [m["item"] for m in _MIX["messages"] if m["service"] == "LEVELONE_EQUITIES"], (
+        "not every quote once, in arrival order"
+    )
 
 
 def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_was_not_yet_written(
