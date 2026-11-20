@@ -501,7 +501,8 @@ def test_every_strike_row_serves_its_marks_and_the_page_compares_none(held):
     snap = held.snap
     assert snap.call_wall is not None and snap.put_wall is not None
     listed = [r.strike for r in snap.per_strike["all"]]
-    body = push_strikes.strikes(TK, time_et.now(), {**AUTO, "scope": "all"})
+    at = _QUOTE["ts_recv"]  # the marks are of the levels and the price, at any instant
+    body = push_strikes.strikes(TK, at, {**AUTO, "scope": "all"})
     rows = _strike_lists(body)
     for r in rows:
         assert r["marks"] == _marks_at(r["strike"], snap, listed), r["strike"]
@@ -509,7 +510,7 @@ def test_every_strike_row_serves_its_marks_and_the_page_compares_none(held):
     assert sorted(m["kind"] for m in marked) == ["call", "put", "spot"]
     assert "spot_strike" not in body  # its one reading is the row's mark
     for key in push_strike_bars.STRIKE_BAR_METHODS:
-        bars = push_strike_bars.strike_bars(key, TK, time_et.now(), {**AUTO, "scope": "all"})
+        bars = push_strike_bars.strike_bars(key, TK, at, {**AUTO, "scope": "all"})
         own = [r["strike"] for r in bars["rows"]]
         spot = min(own, key=lambda k: abs(k - LIVE))
         assert [r["strike"] for r in bars["rows"] if r["marks"]] == [spot], key

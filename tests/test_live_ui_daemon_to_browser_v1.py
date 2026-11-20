@@ -69,7 +69,6 @@ from numeric_contract import compact_text, count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import chain as push_chain
 from push import verdict as push_verdict
-from push.spot import resolve_spot
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
@@ -863,7 +862,7 @@ def _marks(tk, listed, **walls):
 
     The listed strike nearest the live price, then the `walls` given (call, put).
     """
-    live = resolve_spot(tk, now=time_et.now())[0]
+    live = lmp.get_quote(tk).spot  # Schwab's last trade as the daemon holds it
     spot = None if live is None else min(listed, key=lambda k: abs(k - live))
     at = {"spot": spot, **walls}
     labels = {"spot": "SPOT", "call": "Call wall", "put": "Put wall"}
