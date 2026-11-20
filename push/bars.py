@@ -83,10 +83,8 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     LEVEL_TIMEFRAMES or a `limit` not a count up to BARS_LIMIT_MAX raises: the socket sends that
     panel's words. `ticker` is the levels' own key.
     """
-    tf, limit = tf_asked(params), params.get("limit")
-    if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
-        raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
-    held = [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
+    tf = tf_asked(params)
+    held = held_minutes(ticker, params.get("limit"))
     shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
     return {
         "bars": [
@@ -102,6 +100,16 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         "tf": tf,
         "last_bar": {"t": held[-1]["t"], "label": ct_label(held[-1]["t"])} if held else None,
     }
+
+
+def held_minutes(ticker: str, limit: object) -> list[dict[str, Any]]:
+    """`ticker`'s newest `limit` 1-minute bars the console holds, oldest first: a chart's span.
+
+    From state.bar_store. A `limit` not a count from 1 to BARS_LIMIT_MAX raises.
+    """
+    if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
+        raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
+    return [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
 
 
 def _tf_bucket_key(t: float, tf: str) -> date | int:

@@ -704,6 +704,44 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: the markers the chart has no bar for are counted and worded as served", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    // the program's answers for the 15-minute desk whose chart spans the newest hour of minutes:
+    // the queue's older markers are before its first bar
+    const DESK_HOUR = REAL.desk_newest_hour;
+    deskPanels().desk = (key, params) => (params.tf === "15" ? DESK_HOUR : REAL.desk[params.tf]);
+    deskPanels().bars = (key, params, name) =>
+      name === "bars:flow"
+        ? REAL.bars_flow
+        : params.tf === "15"
+          ? REAL.bars_newest_hour
+          : REAL.bars[params.tf];
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+      localStorage.setItem("ed.desk.tf", "15");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const marked = DESK_HOUR.items.filter((it) => it.marker);
+    expect(DESK_HOUR.markers_off_chart).toBeGreaterThan(0);
+    await expect(page.locator("#tdmQueueOff")).toHaveText(DESK_HOUR.markers_off_chart_text);
+    // the chart draws the rest, and the served count is the ones it leaves out
+    await expect
+      .poll(
+        async () => (await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)).length,
+      )
+      .toBe(marked.length - DESK_HOUR.markers_off_chart);
+    // the full chart has a bar for every marker: no line
+    await page.locator('#tdmToolbar [data-tf="5"]').click();
+    await expect(page.locator("#tdmQueue .tdm-q")).toHaveCount(REAL.desk["5"].items.length);
+    await expect(page.locator("#tdmQueueOff")).toBeHidden();
+    expect(errs).toEqual([]);
+  });
+
   test("Desk: each chart marker is its queue entry, and selecting the entry selects that marker", async ({
     page,
   }) => {

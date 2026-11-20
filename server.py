@@ -1895,7 +1895,9 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
         push_contract.contract_asked(a.params), a.now
     ),
     "forces": lambda a: push_forces.forces(a.ticker),
-    "desk": lambda a: push_desk.desk_events_payload(a.ticker, tf_asked(a.params), a.at),
+    "desk": lambda a: push_desk.desk_events_payload(
+        a.ticker, tf_asked(a.params), a.at, a.params.get("limit")
+    ),
     "confluence": lambda a: push_confluence.confluence_payload(
         a.ticker, a.params.get("expiry"), a.at
     ),

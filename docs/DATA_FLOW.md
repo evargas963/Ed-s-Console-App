@@ -276,7 +276,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   are stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
   `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
   `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
-  `push.desk.DESK_LOOKBACK`). Enforced by: `tests/test_level_crosses_wire.py`.
+  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of
+  the span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`).
+  Enforced by: `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
   chain expiry date within a year (`ChainSweep.fetch_markets`) → the bus (`markets.<date>`) → the
   Recorder (`stream_markets_raw`) and `time_et.record_markets`. At startup the recorded answers are
