@@ -24,6 +24,9 @@ import httpx
 from authlib.common.errors import AuthlibBaseError
 from authlib.integrations.httpx_client import OAuth2Client
 from filelock import FileLock
+from httpx import USE_CLIENT_DEFAULT
+from httpx._client import UseClientDefault
+from httpx._types import AuthTypes
 from schwab import auth
 from schwab.client import Client
 from schwab.debug import register_redactions
@@ -36,14 +39,14 @@ from time_et import ct_clock
 log = logging.getLogger(__name__)
 
 #: a value of parsed JSON (json.loads)
-type _Json = dict[str, _Json] | list[_Json] | str | int | float | bool | None
+type Json = dict[str, Json] | list[Json] | str | int | float | bool | None
 
 
 @dataclass
 class SchwabClientState:
     ok: bool
     message: str
-    client: object | None
+    client: Client | None
 
 
 @dataclass
@@ -231,7 +234,9 @@ class OneRefreshSession(OAuth2Client):
     nothing is sent, until a new sign-in is saved.
     """
 
-    def __init__(self, *args: Any, token_file: str, metadata: Any, **kwargs: Any) -> None:
+    def __init__(
+        self, *args: Any, token_file: str, metadata: auth.TokenMetadata, **kwargs: Any
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._refresh_lock = threading.Lock()
         self._token_file, self._metadata = token_file, metadata
@@ -243,7 +248,8 @@ class OneRefreshSession(OAuth2Client):
     @override
     def ensure_active_token(self, token: Any = None) -> bool | None:
         with self._refresh_lock:
-            if self._refused is None and not self.token.is_expired(leeway=self.leeway):
+            held = self.token  # None: no token held, so none is active
+            if self._refused is None and held is not None and not held.is_expired(self.leeway):
                 return True
             with token_file_lock(self._token_file):
                 self._take_saved()
@@ -255,8 +261,14 @@ class OneRefreshSession(OAuth2Client):
                         log.exception("%s", self._refusal_text())
             raise SignInRefused(self._refusal_text()) from self._refused
 
+    @override
     def request(
-        self, method: str, url: httpx.URL | str, withhold_token: bool = False, **kwargs: Any
+        self,
+        method: str,
+        url: httpx.URL | str,
+        withhold_token: bool = False,
+        auth: AuthTypes | UseClientDefault | None = USE_CLIENT_DEFAULT,
+        **kwargs: Any,
     ) -> httpx.Response:
         """Send the request; Schwab's answer is the access token's truth (RFC 6750 §3.1).
 
@@ -267,14 +279,14 @@ class OneRefreshSession(OAuth2Client):
         (ensure_active_token), and the request is sent once more with the new one.
         """
         sent = self.token
-        response = super().request(method, url, withhold_token=withhold_token, **kwargs)
+        response = super().request(method, url, withhold_token, auth, **kwargs)
         challenge = response.headers.get("www-authenticate")
         if response.status_code != 401 or challenge is None or "invalid_token" not in challenge:
             return response
         with self._refresh_lock:
-            if self.token is sent:
-                self.token["expires_at"] = 0
-        return super().request(method, url, withhold_token=withhold_token, **kwargs)
+            if sent is not None and self.token is sent:
+                sent["expires_at"] = 0
+        return super().request(method, url, withhold_token, auth, **kwargs)
 
     def refusal(self) -> "str | None":
         """Return why this session holds no sign-in Schwab accepts, with what to run, else None.
@@ -310,27 +322,27 @@ class OneRefreshSession(OAuth2Client):
             return
         self._seen = seen
         problem = sign_in_problem(inspect_token_file(self._token_file), self._token_file)
-        token = created = None
         if problem is None:
             try:
                 saved = _token_read_func(self._token_file)()
-                token, created = dict(saved["token"]), saved["creation_timestamp"]
+                token: dict[str, Any] = dict(saved["token"])
+                created: int = saved["creation_timestamp"]
             except (OSError, ValueError, KeyError, TypeError) as e:
                 problem = repr(e)
-        if problem is not None:
-            if problem != self._unread:
-                log.warning(
-                    "the token file %s holds no sign-in to take (%s)", self._token_file, problem
-                )
-            self._unread = problem
-            return
-        self._unread = None
-        if created != self._metadata.creation_timestamp:
-            self._metadata.token, self._metadata.creation_timestamp = token, created
-            self.token = token
-            if self._refused is not None:
-                log.info("a new Schwab sign-in was saved: taken")
-            self._refused = None
+            else:
+                self._unread = None
+                if created != self._metadata.creation_timestamp:
+                    self._metadata.token, self._metadata.creation_timestamp = token, created
+                    self.token = token
+                    if self._refused is not None:
+                        log.info("a new Schwab sign-in was saved: taken")
+                    self._refused = None
+                return
+        if problem != self._unread:
+            log.warning(
+                "the token file %s holds no sign-in to take (%s)", self._token_file, problem
+            )
+        self._unread = problem
 
 
 def client_from_token_file_atomic(
@@ -379,7 +391,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
     try:
         with open(resolved, encoding="utf-8") as f:
             raw = f.read()
-        data: _Json = json.loads(raw)
+        data: Json = json.loads(raw)
         out.json_valid = True
     except ValueError as e:  # not UTF-8 text, or not JSON
         out.message = f"Invalid JSON in token file: {e}"
@@ -633,7 +645,7 @@ def complete_oauth_from_redirect_url(
 
 
 def safe_get_chain(
-    client: Any,
+    client: Client,
     ticker: str,
     *,
     strike_count: int | None = 20,
@@ -643,21 +655,19 @@ def safe_get_chain(
 ) -> httpx.Response:
     # `strike_range` (e.g. "ALL", every strike) and `strike_count` (N strikes around the price)
     # are different selections; a count can leave strikes out, so a given range is sent alone.
-    # The stock's quote is not asked for: the stream pushes it (AGENTS.md rule 3).
-    kwargs: dict[str, object] = {}
-    if strike_range is not None:
-        kwargs["strike_range"] = strike_range
-    elif strike_count is not None:
-        kwargs["strike_count"] = strike_count
-    if from_date is not None:
-        kwargs["from_date"] = from_date
-    if to_date is not None:
-        kwargs["to_date"] = to_date
-    return client.get_option_chain(ticker, **kwargs)
+    # The stock's quote is not asked for: the stream pushes it (AGENTS.md rule 3). schwab-py
+    # sends no parameter given as None.
+    return client.get_option_chain(
+        ticker,
+        strike_range=strike_range,
+        strike_count=strike_count if strike_range is None else None,
+        from_date=from_date,
+        to_date=to_date,
+    )
 
 
 def option_expiries(
-    client: Any, ticker: str, today: date
+    client: Client, ticker: str, today: date
 ) -> tuple[list[date] | None, httpx.Response]:
     """Return Schwab's expiration chain (/marketdata/v1/expirationchain) for `ticker`.
 
@@ -674,7 +684,7 @@ def option_expiries(
 type Answer = httpx.Response
 
 
-def safe_get_quotes(client: Any, symbols: "list[str]") -> httpx.Response:
+def safe_get_quotes(client: Client, symbols: "list[str]") -> httpx.Response:
     """One request to Schwab's quotes endpoint (/marketdata/v1/quotes) for `symbols`.
 
     The quote fields only; Schwab's response.
@@ -682,25 +692,22 @@ def safe_get_quotes(client: Any, symbols: "list[str]") -> httpx.Response:
     return client.get_quotes(symbols, fields=["quote"])
 
 
-def check_ticker(client: object, ticker: str) -> tuple[bool, int, object]:
+def check_ticker(client: Client, ticker: str) -> tuple[bool, int, object]:
     """One /quotes request for `ticker`: (Schwab quotes it, its status, its answer as sent).
 
     A ticker Schwab names in errors.invalidSymbols, or does not quote, or an answer other than
     200, is not a ticker Schwab answers for.
     """
-    resp: Any = safe_get_quotes(client, [ticker])
+    resp = safe_get_quotes(client, [ticker])
     try:
-        answer = resp.json()
+        answer: Json = resp.json()
     except ValueError:
         return False, resp.status_code, resp.text
-    return (
-        resp.status_code == 200 and isinstance(answer, dict) and ticker in answer,
-        resp.status_code,
-        answer,
-    )
+    quoted = resp.status_code == 200 and isinstance(answer, dict) and ticker in answer
+    return quoted, resp.status_code, answer
 
 
-def get_market_hours(client: Any, day: date) -> httpx.Response:
+def get_market_hours(client: Client, day: date) -> httpx.Response:
     """One request to Schwab's markets endpoint for equity and option hours on `day`.
 
     Schwab's response.
@@ -711,7 +718,7 @@ def get_market_hours(client: Any, day: date) -> httpx.Response:
 
 
 def get_price_history(
-    client: Any,
+    client: Client,
     ticker: str,
     shape: tuple[str, int | None, str, int],
     end: datetime,
@@ -755,7 +762,7 @@ def flatten_chain_contracts(c_json: dict[str, Any]) -> list[dict[str, Any]]:
     # carries them as sent, so a stored contract can be priced on its own
     chain_fields = {k: c_json[k] for k in ("interestRate", "dividendYield") if k in c_json}
     for side_key in ("callExpDateMap", "putExpDateMap"):
-        side_map: _Json = c_json.get(side_key)
+        side_map: Json = c_json.get(side_key)
         if not isinstance(side_map, dict):
             continue
         for exp_map in side_map.values():

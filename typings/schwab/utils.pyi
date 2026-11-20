@@ -1,0 +1,3 @@
+class EnumEnforcer:
+    enforce_enums: bool
+    def __init__(self, enforce_enums: bool) -> None: ...

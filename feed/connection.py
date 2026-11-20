@@ -30,11 +30,13 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
+from schwab.client import Client
 from schwab.streaming import UnparsableMessage
 
 import time_et
+from feed.schwab_client import Json
 from feed.stream import TimedStream, label
 from stream_spine import (
     SERVICE_TOPIC,
@@ -172,9 +174,8 @@ def _publisher(
         if not isinstance(content, list):
             log.warning("%s: a frame with no list of items, not taken: %.500r", service, msg)
             return
-        for item in content:
-            key = item.get("key") if isinstance(item, dict) else None
-            if not isinstance(key, str) or not key:
+        for item in cast(list[Json], content):
+            if not isinstance(item, dict) or not isinstance(key := item.get("key"), str) or not key:
                 log.warning("%s: an item with no symbol, not taken: %.500r", service, item)
                 continue
             sym = key.upper()
@@ -192,10 +193,12 @@ def _dispatch(publishers: dict[str, Callable[[dict[str, Any]], None]], msg: dict
 
     Schwab's heartbeats carry nothing to hand.
     """
-    for d in msg["data"] if "data" in msg else []:
+    data: list[dict[str, Any]] = msg["data"] if "data" in msg else []
+    for d in data:
         if d["service"] in publishers:
             publishers[d["service"]](label(d))
-    for d in msg["notify"] if "notify" in msg else []:
+    notify: list[dict[str, Any]] = msg["notify"] if "notify" in msg else []
+    for d in notify:
         if "heartbeat" not in d and d["service"] in publishers:
             publishers[d["service"]](d)
 
@@ -356,7 +359,7 @@ class Connection:
         """Return when `symbol`'s hold on `service` began (its answer's time); None: not held."""
         return self.since[service].get(symbol)
 
-    async def connect(self, client: object) -> TimedStream:
+    async def connect(self, client: Client) -> TimedStream:
         stream = TimedStream(client, self.clock)
         # every message Schwab sends, whatever its size: the websockets library caps a received
         # message at 1 MiB by default, and nothing of ours does
@@ -399,7 +402,7 @@ class Connection:
         """
         while True:
             try:
-                msg = await stream._receive()
+                msg = await stream.receive()
             except UnparsableMessage as e:  # a frame Schwab sent that cannot be read
                 log.warning(
                     "schwab: skipped a frame (%s: %s)",
@@ -408,7 +411,8 @@ class Connection:
                     exc_info=True,
                 )
                 continue
-            for response in msg["response"] if "response" in msg else []:
+            responses: list[dict[str, Any]] = msg["response"] if "response" in msg else []
+            for response in responses:
                 self.answered(response)
             try:
                 _dispatch(self.publishers, msg)
@@ -453,7 +457,7 @@ class Connection:
                     f"{REQUEST_TIMEOUT_SEC:.0f} s"
                 )
 
-    async def run_connection(self, client: object, stop: asyncio.Event) -> None:
+    async def run_connection(self, client: Client, stop: asyncio.Event) -> None:
         """Run one connection's life until it dies or stop is set.
 
         Ask for everything once; then one task reads (read), one sends what is asked (send) and
@@ -479,7 +483,7 @@ class Connection:
         finally:
             await self.disconnect()
 
-    async def run(self, schwab_client: Callable[[], object], stop: asyncio.Event) -> None:
+    async def run(self, schwab_client: Callable[[], Client], stop: asyncio.Event) -> None:
         """Connect, and reconnect with backoff whenever the connection ends, until stop."""
         failures = 0
         while not stop.is_set():

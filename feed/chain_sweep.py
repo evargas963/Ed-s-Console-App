@@ -22,8 +22,11 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any
+
+from schwab.client import Client
 
 import time_et
 from app.options.order_flow.state import streamed_record
@@ -32,6 +35,7 @@ from feed.schwab_client import (
     QUOTES_BATCH_MAX,
     REQUESTS_AT_ONCE,
     Answer,
+    OneRefreshSession,
     flatten_chain_contracts,
     get_market_hours,
     get_price_history,
@@ -305,8 +309,8 @@ type _Answers = tuple[
     dict[str, list[dict[str, Any]]],
     dict[str, str],
 ]
-#: the daemon's Schwab client, built on each ask (capture.one_schwab_client): schwab-py's, untyped
-type _SchwabClient = Callable[[], Any]
+#: the daemon's Schwab client, built on each ask (capture.one_schwab_client)
+type _SchwabClient = Callable[[], Client]
 
 
 class ChainSweep:
@@ -428,7 +432,10 @@ class ChainSweep:
         logged once, until it passes.
         """
         try:
-            self.waiting = schwab_client().session.refusal()
+            session = schwab_client().session
+            if not isinstance(session, OneRefreshSession):  # the daemon builds every client on it
+                raise TypeError(f"the Schwab client's session is a {type(session).__name__}")
+            self.waiting = session.refusal()
         except (ConnectionError, TimeoutError) as e:
             why = (
                 f"the daemon holds no Schwab sign-in to ask with ({e}); a new one is saved by "
@@ -683,7 +690,7 @@ class ChainSweep:
             self.fetch_markets(schwab_client, [expiry.isoformat() for expiry in listed[1]])
             # REQUESTS_AT_ONCE expiries asked together, their answers taken in expiry order
             answers = list(
-                self._asking.map(lambda e: self.ask_expiry(client, ticker, e, stop), listed[1])
+                self._asking.map(partial(self.ask_expiry, client, ticker, stop=stop), listed[1])
             )
             for expiry, resp in zip(listed[1], answers, strict=True):
                 if resp is None:
@@ -707,7 +714,14 @@ class ChainSweep:
         return self.take_greeks(chain)
 
     @staticmethod
-    def ask_expiry(client: Any, ticker: str, expiry: date, stop: threading.Event) -> Answer | None:
+    def ask_quotes(schwab_client: _SchwabClient, symbols: list[str]) -> Answer:
+        """One /quotes answer for `symbols` (send_quotes), the client built on the asking thread."""
+        return safe_get_quotes(schwab_client(), symbols)
+
+    @staticmethod
+    def ask_expiry(
+        client: Client, ticker: str, expiry: date, stop: threading.Event
+    ) -> Answer | None:
         """One expiry's /chains answer (fetch_chain); None when a stop came before it was asked.
 
         A 429 is asked once more: one refused expiry does not cost the ticker a round.
@@ -762,7 +776,7 @@ class ChainSweep:
         while self._queue and len(asked) < at_once:
             batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
             symbols: list[str] = [ct["symbol"] for _chain, ct in batch]
-            ask = self._asking.submit(lambda s=symbols: safe_get_quotes(schwab_client(), s))
+            ask = self._asking.submit(self.ask_quotes, schwab_client, symbols)
             asked.append((batch, ask))
         for batch, ask in asked:
             self.take_quotes(batch, ask)

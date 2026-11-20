@@ -80,10 +80,9 @@ omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
 # strict mode
 [tool.pyright]
 pythonVersion = "3.13"
-# every product module but Feed's, whose calls into schwab-py (untyped) wait for its typed edge
+# every product module; schwab-py ships no types, so Feed's calls into it read typings/schwab
 include = ["."]
 exclude = [
-  "feed",
   "tests",
   "tools",
   "**/node_modules",

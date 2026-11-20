@@ -1,0 +1,6 @@
+from typing import Any
+
+class OAuth2Token(dict[str, Any]):
+    def __init__(self, params: dict[str, Any]) -> None: ...
+    # None: the token holds no integer expires_at
+    def is_expired(self, leeway: int = 60) -> bool | None: ...
