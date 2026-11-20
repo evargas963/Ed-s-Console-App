@@ -72,8 +72,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   restarting a daemon that exited reads "not running", exit 0, and the window then restarts it; a
   daemon asked to stop that ends on another exit code reads "stopped" and is restarted too. Next:
   find what tells these apart from a clean stop's 30 s close, then fix at the source.
-- ZONES-ONE (NEXT): `calc/liquidity_value_engine.py`'s two zone builders
-  (`build_premarket_snapshot`, `build_live_snapshot`) and its snapshot cache become one builder.
 
 ## Queued
 
@@ -87,7 +85,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     the live spot from `resolve_spot`.
   - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
     `levels_ts_utc`, computed in push, not a calculator.
-  - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command

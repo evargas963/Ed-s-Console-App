@@ -262,7 +262,7 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
 
         d = bars("auto")
         rows = [r["strike"] for r in d["rows"]]
-        assert d["spot_strike"] is not None  # around the price
+        assert [r for r in d["rows"] if r["marks"]]  # around the price: its row in the window
         panned = bars("auto", centre=d["view"]["centre"], shift=2)
         every = [r["strike"] for r in bars("all")["rows"]]
         assert panned["view"]["centre"] == every[every.index(d["view"]["centre"]) + 2]

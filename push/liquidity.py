@@ -18,7 +18,7 @@ from calc.liquidity_value_engine import (
     OPTION_LEVEL_TAGS,
     HoldCount,
     bars_from_candles,
-    build_live_snapshot,
+    build_zone_snapshot,
     wilson_interval,
 )
 from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
@@ -131,7 +131,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
     _canon = canonical_price_level_snapshot(ticker_upper, now)
     if _canon is None:
         return unavailable(ticker_upper, NO_PRICE_LEVELS_REASON, zones=[])
-    out = build_live_snapshot(
+    out = build_zone_snapshot(
         ticker_upper,
         config,
         canonical=_canon,

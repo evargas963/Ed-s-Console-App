@@ -29,7 +29,7 @@ const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
 // tests/test_vanna_charm_by_strike_v1.py): eleven strikes around 270, with the DEX and OI measures
 const STRIKES = require("./fixtures/vanna_charm_panels_crwd.json").strikes;
-const SPOT = STRIKES.spot_strike; // 270
+const SPOT = STRIKES.today.all.find((r) => r.marks.some((m) => m.kind === "spot")).strike; // 270
 const K = STRIKES.today.all[6].strike; // 272.5, the strike a test clicks
 // each level with its text as the server serves it (two decimals, numeric_contract.price_text)
 const PUT_WALL = STRIKES.today.all[4].strike;

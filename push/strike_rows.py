@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from calc.terrain_engine import SCOPES, StrikeRow, StrikeValue, strike_window
@@ -23,6 +23,10 @@ VALUE_TEXT = {
     "vanna_rows": compact_text,
     "charm_rows": compact_text,
 }
+
+#: each mark a strike row can carry, as the screen names it: the listed strike nearest the live
+#: price, and the published levels' call wall and put wall
+MARK_LABELS = {"spot": "SPOT", "call": "Call wall", "put": "Put wall"}
 
 
 def window(
@@ -63,7 +67,9 @@ def windowed[R: BarRow](
     return win, {**view, "max_abs": max(known) if known else None}
 
 
-def max_abs_served(rows: Sequence[BarRow], measure: str) -> dict[str, Any] | None:
+def max_abs_served(
+    rows: Sequence[BarRow], measure: str, marks: Mapping[str, float | None]
+) -> dict[str, Any] | None:
     """Return the row with the largest |value| of every strike, served; None with no known value.
 
     Every row is looked at, on screen or not: the chart labels it.
@@ -71,18 +77,25 @@ def max_abs_served(rows: Sequence[BarRow], measure: str) -> dict[str, Any] | Non
     known = [(abs(r.value), r) for r in rows if r.value is not None]
     if not known:
         return None
-    return served(max(known, key=lambda size_row: size_row[0])[1], measure)
+    return served(max(known, key=lambda size_row: size_row[0])[1], measure, marks)
 
 
-def served(row: BarRow, measure: str) -> dict[str, Any]:
+def served(row: BarRow, measure: str, marks: Mapping[str, float | None]) -> dict[str, Any]:
     """Return a per-strike row as the page draws it: its fields by name, its value's text.
 
-    A GEX row's volume is served with its text too. The page draws the texts; it formats none.
+    A GEX row's volume is served with its text too, and its marks: each kind of `marks` (kind ->
+    its strike, None not known) whose strike is the row's, with its label (MARK_LABELS). The page
+    draws the texts and the marks; it formats and compares none.
     """
     out = {
         **row._asdict(),
         "strike_text": strike_text(row.strike),
         "text": VALUE_TEXT[measure](row.value),
+        "marks": [
+            {"kind": kind, "label": MARK_LABELS[kind]}
+            for kind, at in marks.items()
+            if at == row.strike
+        ],
     }
     if isinstance(row, StrikeRow):
         out["volume_text"] = count_text(row.volume)

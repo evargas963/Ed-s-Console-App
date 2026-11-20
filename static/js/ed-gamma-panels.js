@@ -255,8 +255,9 @@
   // ({strike, value, text, ...}, ascending), drawn highest strike first, each bar's length its
   // |value| against the served scale (view.max_abs). The strike labels pan the window
   // (wireStrikeAxis -> `reload`); a pan is never silent. `opts`: `top` html above the list,
-  // `attrs(r)` and `cells(r)` a row's extra attributes and cells.
-  function drawStrikeBars(host, rows, view, pan, spotStrike, reload, opts) {
+  // `attrs(r)` and `cells(r)` a row's extra attributes and cells. Each row carries its served
+  // marks (the strike at the price, the walls), each drawn as its class.
+  function drawStrikeBars(host, rows, view, pan, reload, opts) {
     window.EdShell.panServed(pan, view.centre);
     var maxAbs = view.max_abs; // at least |v| for every v drawn
     var note =
@@ -279,7 +280,11 @@
           tone = window.EdDraw.bySign(v, "pos", "neg", "");
         bars +=
           '<div class="gbs-row' +
-          (k === spotStrike ? " spot" : "") +
+          r.marks
+            .map(function (mk) {
+              return " mark-" + mk.kind;
+            })
+            .join("") +
           '" data-strike="' +
           k +
           '"' +
@@ -324,7 +329,7 @@
       firstRow ? firstRow.getBoundingClientRect().height : 0,
       reload,
     );
-    var sr = host.querySelector(".gbs-row.spot");
+    var sr = host.querySelector(".gbs-row.mark-spot");
     if (sr && sr.scrollIntoView) sr.scrollIntoView({ block: "center" });
   }
 
@@ -357,7 +362,7 @@
     );
     // rows: each strike's net GEX $ (value) and session volume with their texts; the volume is a
     // count, never coloured
-    drawStrikeBars(host, rows, d.views.all, _gbsPan, d.spot_strike, loadGbs, {
+    drawStrikeBars(host, rows, d.views.all, _gbsPan, loadGbs, {
       top: expOn ? '<div class="gbs-allexp">all expiries</div>' : "",
       attrs: function (r) {
         return ' data-volume="' + (r.volume == null ? "" : r.volume) + '"';
@@ -528,7 +533,7 @@
         return;
       }
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
-      drawStrikeBars(host, d.rows, d.view, pan, d.spot_strike, ask, { top: "" });
+      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "" });
     }
     function ask() {
       if (!inSub()) {

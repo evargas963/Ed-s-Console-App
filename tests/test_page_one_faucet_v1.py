@@ -33,6 +33,7 @@ from numeric_contract import count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import chain as push_chain
 from push import expiries as push_expiries
+from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from push import surface as push_surface
 from push import verdict as push_verdict
@@ -233,6 +234,28 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
     )
 
 
+#: the marks of a strike row as the screen names them (push.strike_rows.MARK_LABELS)
+SPOT_MARK = {"kind": "spot", "label": "SPOT"}
+CALL_MARK = {"kind": "call", "label": "Call wall"}
+PUT_MARK = {"kind": "put", "label": "Put wall"}
+
+
+def _strike_lists(body):
+    """Every row the strikes panel serves: each scope's, each measure's and the labelled rows."""
+    return [
+        *(r for sc in ("all", "near", "far") for r in body["today"][sc]),
+        *(r for m in body["measures"].values() for r in m["rows"]),
+        *(m["max_abs_row"] for m in body["measures"].values()),
+        body["max_abs_row"],
+    ]
+
+
+def _spot_marked(body):
+    """The strike every list of the strikes panel marks as the price's, as {"spot_strike": k}."""
+    (strike,) = {r["strike"] for r in _strike_lists(body) if SPOT_MARK in r["marks"]}
+    return {"spot_strike": strike}
+
+
 @pytest.mark.parametrize(
     "route",
     [
@@ -240,12 +263,14 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
         lambda: push_surface.gamma_surface(
             "SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}, requested=False
         ),
-        lambda: push_strikes.strikes("SPY", time_et.now(), AUTO),
+        lambda: _spot_marked(push_strikes.strikes("SPY", time_et.now(), AUTO)),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
 )
 def test_the_spot_row_is_served(route):
     """The row every panel marks as spot: the listed strike nearest the live price, served.
+
+    The strikes panel serves it as the mark of its row, the same strike in every list.
 
     It was worked out in six places in the page. SPY's 2026-10-22 close capture, published at the
     price Schwab sent in it (764.04), and SPY's first print after it a strike away (16:39:03 ET,
@@ -440,7 +465,7 @@ def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["all"]
     body = push_strikes.strikes(TK, time_et.now(), AUTO)
     top = max(rows, key=lambda r: abs(r.value))
-    # the row by name, with its net GEX and volume as the screen shows them
+    # the row by name, with its net GEX and volume as the screen shows them, and its marks
     assert body["max_abs_row"] == {
         "strike": top.strike,
         "strike_text": strike_text(top.strike),
@@ -448,7 +473,49 @@ def test_the_largest_gex_strike_is_served(held):
         "volume": top.volume,
         "text": dollars_text(top.value),
         "volume_text": count_text(top.volume),
+        "marks": _marks_at(top.strike, held.snap, [r.strike for r in rows]),
     }
+
+
+def _marks_at(strike, snap, listed):
+    """The marks a row at `strike` carries, worked out here: the live price's, then the walls."""
+    at = {
+        "spot": min(listed, key=lambda k: abs(k - LIVE)),
+        "call": snap.call_wall,
+        "put": snap.put_wall,
+    }
+    named = {"spot": SPOT_MARK, "call": CALL_MARK, "put": PUT_MARK}
+    return [named[kind] for kind, k in at.items() if k == strike]
+
+
+def test_every_strike_row_serves_its_marks_and_the_page_compares_none(held):
+    """Each row of every list is served with its marks: the strike at the live price and the walls.
+
+    The Trade Desk compared each row's strike with the terrain panel's walls and the strikes
+    panel's spot strike to choose its tags and row classes, and GEX by Strike, Vanna and Charm
+    compared theirs with the spot strike (AGENTS.md rule 4). Every strike of CRWD's chain (the
+    All window): today's rows of every scope, the DEX and OI rows and the labelled rows carry the
+    published levels' walls and the live price's strike (269.395 -> 270); Vanna's and Charm's
+    rows the live price's strike of their own rows.
+    """
+    snap = held.snap
+    assert snap.call_wall is not None and snap.put_wall is not None
+    listed = [r.strike for r in snap.per_strike["all"]]
+    at = _QUOTE["ts_recv"]  # the marks are of the levels and the price, at any instant
+    body = push_strikes.strikes(TK, at, {**AUTO, "scope": "all"})
+    rows = _strike_lists(body)
+    for r in rows:
+        assert r["marks"] == _marks_at(r["strike"], snap, listed), r["strike"]
+    marked = [m for r in body["today"]["all"] for m in r["marks"]]
+    assert sorted(m["kind"] for m in marked) == ["call", "put", "spot"]
+    assert "spot_strike" not in body  # its one reading is the row's mark
+    for key in push_strike_bars.STRIKE_BAR_METHODS:
+        bars = push_strike_bars.strike_bars(key, TK, at, {**AUTO, "scope": "all"})
+        own = [r["strike"] for r in bars["rows"]]
+        spot = min(own, key=lambda k: abs(k - LIVE))
+        assert [r["strike"] for r in bars["rows"] if r["marks"]] == [spot], key
+        assert all(r["marks"] in ([], [SPOT_MARK]) for r in bars["rows"]), key
+        assert "spot_strike" not in bars, key
 
 
 def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
