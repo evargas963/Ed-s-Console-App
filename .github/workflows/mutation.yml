@@ -20,9 +20,29 @@ permissions:
   contents: read
 
 jobs:
+  # one job per module, each on a runner of its own: one whole run of every module lost its runner
+  # twice, about halfway (runs 44688655892 and 44695117505, no results kept); a module's job is
+  # short, and a lost runner loses that module alone
   mutmut:
     runs-on: ubuntu-24.04
-    timeout-minutes: 350
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - confluence_composite
+          - l1_trade_observation
+          - liquidity_models
+          - liquidity_value_engine
+          - math_exposure_core
+          - math_forces
+          - math_levels
+          - math_volatility
+          - micro_structure
+          - order_flow
+          - terrain_atr
+          - terrain_engine
+          - terrain_read
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,23 +56,25 @@ jobs:
       - name: Install Python dependencies
         run: uv pip install --system -r requirements-dev.txt -r requirements.txt
 
+      # two workers: each forks the whole test process, and four ran the runner out
       - name: Run the mutants
-        run: mutmut run --max-children "$(nproc)"
+        run: mutmut run --max-children 2 "calc.${{ matrix.module }}.*"
 
-      # the score and the results of every mutant tested are kept however the run ends, a
-      # cancelled one included
+      # the score and each surviving mutant are kept however the job ends
       - name: The score
         if: always()
         run: |
           mutmut export-cicd-stats
           cat mutants/mutmut-cicd-stats.json
+          mutmut results | tee mutants/survivors.txt
 
       - name: Keep the results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: mutmut-results
+          name: mutmut-${{ matrix.module }}
           path: |
             mutants/mutmut-cicd-stats.json
+            mutants/survivors.txt
             mutants/**/*.meta
           if-no-files-found: warn
