@@ -71,7 +71,6 @@ const CHAIN = {
   expiry: "2026-09-18",
   status: "ok",
   scope: { kind: "complete_single_expiry" },
-  adjusted_deliverable_symbols: [],
   // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
   ladder: [
     {

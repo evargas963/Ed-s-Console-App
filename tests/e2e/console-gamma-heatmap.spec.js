@@ -659,6 +659,50 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     expect(sock.subscribes.length).toBe(subscribes); // the page asked for nothing
   });
 
+  // Structures draws each ladder row's contract fields as served on the row (push.chain._series),
+  // a strike's second listing on its own row. INDUCED: AMZN lists one contract per strike and
+  // side, so a second listing at the price's strike is added, with a settlement its call and put
+  // differ on (served null) and its own last trading day.
+  test("Structures draws every ladder row with the contract fields served on it", async ({
+    page,
+  }) => {
+    const i = CHAIN.ladder.findIndex((r) => r.strike === K);
+    const row = CHAIN.ladder[i];
+    const second = Object.assign({}, row, {
+      first: false,
+      spot: false,
+      series: Object.assign({}, row.series, {
+        settlementType: null,
+        last_trading_day_et: "2026-11-12",
+      }),
+    });
+    const ladder = CHAIN.ladder.slice(0, i + 1).concat([second], CHAIN.ladder.slice(i + 1));
+    panels.chain = chainAt(Object.assign({}, CHAIN, { ladder: ladder }));
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.EdShell.setSubview("structures"));
+    const rows = page.locator("#stBody tbody tr");
+    await expect(rows).toHaveCount(ladder.length);
+    const s = row.series;
+    const cells = [String(s.multiplier), s.settlementType, s.exerciseType, s.expirationType];
+    await expect(rows.nth(i).locator("td")).toHaveText(
+      [row.strike_text].concat(cells, [s.last_trading_day_et, /PENNY/]),
+    );
+    await expect(rows.nth(i + 1).locator("td")).toHaveText([
+      row.strike_text,
+      cells[0],
+      "-",
+      cells[2],
+      cells[3],
+      "2026-11-12",
+      /PENNY/,
+    ]);
+    // the flags are the row's served nonStandard (false) and pennyPilot (true)
+    expect([s.nonStandard, s.pennyPilot]).toEqual([false, true]);
+    await expect(rows.nth(i).locator(".st-flag.on")).toHaveText(["PENNY"]);
+    // one flag per Schwab field: nonStandard is NON-STD alone (operator 2026-11-20)
+    await expect(rows.nth(i).locator(".st-flag")).toHaveText(["NON-STD", "PENNY"]);
+  });
+
   test("Strike Detail's Net GEX$ is this expiry's value from the chain panel, never GEX-by-Strike's all-expiry total", async ({
     page,
   }) => {

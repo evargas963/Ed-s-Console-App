@@ -188,9 +188,9 @@
       );
     var nearest = sorted[0];
     var rows = sorted.slice(1, 6).map(function (r) {
-      return [r.label || r.id, r.price_text, r.evidence_tier];
+      return [r.label, r.price_text, r.evidence_tier];
     });
-    var heroVal = (nearest.label || nearest.id) + " " + nearest.price_text;
+    var heroVal = nearest.label + " " + nearest.price_text; // served: every level has its name
     return stage(
       2,
       "td-accent-green",

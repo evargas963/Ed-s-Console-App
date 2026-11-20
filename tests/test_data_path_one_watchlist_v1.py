@@ -494,6 +494,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "ts": sent[0]["ts_recv"],
         "status": 200,
         "answer": CHECKS["TSLA"]["body"],
+        "text": "TSLA is added to the watchlist",
     }
     assert invalid == {
         "ok": False,
@@ -503,6 +504,8 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "ts": sent[1]["ts_recv"],
         "status": 200,
         "answer": {"errors": {"invalidSymbols": ["ZQZQZ"]}},
+        "text": 'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": '
+        '["ZQZQZ"]}})',
     }
     assert removed == {
         "ok": True,
@@ -512,6 +515,7 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "ts": sent[2]["ts_recv"],
         "status": None,
         "answer": None,
+        "text": "TSLA is removed from the watchlist",
     }
     assert [q["symbols"] for q in schwab.rest.asked(QUOTES)] == ["TSLA", "ZQZQZ"], (
         "one check per add"
@@ -664,7 +668,16 @@ def test_the_routes_that_take_a_json_body_read_it_and_refuse_none():
         assert client.post(route, json=[]).status_code == 422, route
         plain = client.post(route, content="x", headers={"Content-Type": "text/plain"})
         assert plain.status_code == 422, route
-    assert client.post("/api/watchlist", json={"ticker": "TSLA"}).status_code == 503
+    away = client.post("/api/watchlist", json={"ticker": "TSLA"})
+    assert (away.status_code, away.json()) == (
+        503,
+        {"ok": False, "text": "TSLA is not added: no capture daemon runs in this program"},
+    )
+    gone = client.delete("/api/watchlist/TSLA")
+    assert (gone.status_code, gone.json()["text"]) == (
+        503,
+        "TSLA is not removed: no capture daemon runs in this program",
+    )
     assert client.post("/api/flow-contract", json={"contract": None}).status_code == 200
     extra = client.post("/api/flow-contract", json={"contract": None, "x": 1})
     assert extra.status_code == 200
@@ -707,6 +720,11 @@ def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_no
         ("r3", capture.NOT_CHECKED, "QQQ", ["SPY"]),
     ]
     assert got[2]["answer"].startswith("ConnectionError: no Schwab client ("), got[2]["answer"]
+    assert [m["text"] for m in got] == [
+        "SPY is already on the watchlist",
+        "QQQ is not on the watchlist",
+        f"QQQ is not added: it was not checked with Schwab ({json.dumps(got[2]['answer'])})",
+    ]
     assert (got[0]["status"], got[0]["answer"], got[1]["status"], got[1]["answer"]) == (
         None,
         None,

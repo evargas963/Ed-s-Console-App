@@ -1,6 +1,7 @@
 // The console's watchlist routes (server.py post_watchlist, delete_watchlist) and the beat that
 // carries the list to the page, stood in for: the capture daemon keeps the one list, each add or
-// removal is answered with its record ({ok, op, ticker, tickers, ts, status, answer}), and the
+// removal is answered with its record ({ok, op, ticker, tickers, ts, status, answer, text}: the
+// sentence capture.WATCHLIST_TEXT makes of it), and the
 // program's socket (/ws, live_ui.LiveUiServer.beat_loop) sends the daemon's status, its `ts` and
 // `watchlist`, every second as a `feed` frame; both are stamped on one clock. STAND-INS: Schwab quotes every ticker added except
 // one in `invalid`, which is answered as Schwab answered ZQZQZ on 2026-10-07
@@ -67,6 +68,11 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
           tickers: list.slice(),
           status: 200,
           answer: { errors: { invalidSymbols: [t] } },
+          text:
+            t +
+            ' is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["' +
+            t +
+            '"]}})',
         });
       }
       list.push(t);
@@ -77,6 +83,7 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
         tickers: list.slice(),
         status: 200,
         answer: {},
+        text: t + " is added to the watchlist",
       });
     }
     if (req.method() !== "DELETE") {
@@ -96,6 +103,7 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
       tickers: list.slice(),
       status: null,
       answer: null,
+      text: t + " is removed from the watchlist",
     });
   });
   return list;
