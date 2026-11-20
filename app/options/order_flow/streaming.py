@@ -46,7 +46,7 @@ from app.options.order_flow.state import (
 )
 from calc.order_flow import BOOK_VENUES, book_readout
 from instrument_identity import ticker_storage_key
-from stream_spine import LATEST, MessageBus, Payload
+from stream_spine import LATEST, MessageBus
 from time_et import record_markets
 
 if TYPE_CHECKING:
@@ -89,7 +89,9 @@ class Feed:
     carrying a _REPRICE_FIELDS value and every contract of a /quotes answer (server._on_stream_tick:
     reprices its ticker); `on_chain` with what assemble_chain_part settles (server._on_chain);
     `on_feed` on each status beat; `on_flow` with the symbol of every streamed equity quote and
-    book (server.flow_changed). `tick_failures` counts the tick callback's failures.
+    book (server.flow_changed). `tick_failures` counts the tick callback's failures, and
+    `apply_failures` the bus records that failed to apply (_bus_loop); both ride the daemon's
+    status beat (capture.Daemon.status).
     """
 
     daemon: Daemon | None = None
@@ -100,6 +102,7 @@ class Feed:
     on_feed: Callable[[], None] | None = None
     on_flow: Callable[[str], None] | None = None
     tick_failures: int = 0
+    apply_failures: int = 0
 
 
 #: the console's one bus reader (Feed)
@@ -172,9 +175,7 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
     (spot, spot_ts), capture), with the chain's one spot and its trade time and whether the sweep
     stored it as its window's capture. A chain missing a part is never returned.
     """
-    tk, ts = msg.get("ticker"), msg.get("ts_recv")
-    if not tk or not isinstance(ts, (int, float)):
-        return []
+    tk, ts = msg["ticker"], float(msg["ts_recv"])
     out: list[ChainSettled] = []
     cur = _chain_parts.get(tk)
     if cur is not None and cur["ts"] != ts:
@@ -182,7 +183,7 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
             (
                 tk,
                 None,
-                float(ts),
+                ts,
                 f"the daemon's chain of {tk} arrived with "
                 f"{len(cur['got'])} of its {cur['parts']} parts",
                 None,
@@ -193,7 +194,7 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
         cur = None
     if "failed" in msg:
         _chain_parts.pop(tk, None)
-        return [*out, (tk, None, float(ts), str(msg["failed"]), None, False)]
+        return [*out, (tk, None, ts, str(msg["failed"]), None, False)]
     if cur is None:
         if int(msg["part"]) != 0:
             return out  # a chain begun before this console connected: not its chain
@@ -205,7 +206,7 @@ def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
             (
                 tk,
                 [c for i in range(cur["parts"]) for c in cur["got"][i]],
-                float(ts),
+                ts,
                 None,
                 (msg["spot"], msg["spot_ts"]),
                 msg["capture"],
@@ -267,7 +268,7 @@ def _log_stream(phase: str, **kwargs: Any) -> None:
 _REPRICE_FIELDS = ("TOTAL_VOLUME", "GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
 
 
-def _ingest_pushed(topic: str, msg: Payload) -> None:
+def _ingest_pushed(topic: str, msg: dict[str, Any]) -> None:
     """Apply ONE daemon-pushed Schwab stream message to the live planes.
 
     Every timestamp written is the message's own `ts_recv` -- the daemon's receive time for
@@ -286,12 +287,11 @@ def _ingest_pushed(topic: str, msg: Payload) -> None:
       markets.DATE Schwab's /markets answer -> that date's sessions (time_et), when it is a 200
 
     Every equity quote, every option quote carrying a _REPRICE_FIELDS value, and every contract
-    of a /quotes answer, is passed to the tick callback. A message missing its symbol, its
-    receive time or its Schwab payload is dropped whole: nothing is applied with a guessed
-    part.
+    of a /quotes answer, is passed to the tick callback. Each message is the daemon's own
+    constructor's (stream_spine.quote_msg, book_msg, verbatim_msg, bar_msg; chain_sweep's), so
+    its symbol, receive time and Schwab payload are there; a message that fails to apply raises,
+    and _bus_loop counts it (Feed.apply_failures).
     """
-    if not isinstance(msg, dict):
-        return
     if topic.startswith("chain."):
         _apply_chain_part(msg)
         return
@@ -302,11 +302,6 @@ def _ingest_pushed(topic: str, msg: Payload) -> None:
     if topic in _APPLY_BY_TOPIC:
         _APPLY_BY_TOPIC[topic](msg)
         return
-    sym = msg.get("symbol")
-    ts = msg.get("ts_recv")
-    if not sym or not isinstance(ts, (int, float)):
-        return
-    ts = float(ts)
     kind = topic.split(".", 1)[0]
     if kind in ("bar1m", "pricehistory"):  # the bar writer's: a streamed bar, a price history
         streamed_bars.put(msg)
@@ -314,7 +309,7 @@ def _ingest_pushed(topic: str, msg: Payload) -> None:
     received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
     apply = _APPLY_BY_KIND.get(kind)
     if apply is not None:
-        apply(sym, ts, msg, received)
+        apply(msg["symbol"], float(msg["ts_recv"]), msg, received)
 
 
 def _apply_chain_part(msg: dict[str, Any]) -> None:
@@ -347,10 +342,7 @@ def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, A
 
     A print is kept with the bid and ask its record on the bus holds.
     """
-    item: Payload = msg.get("native")
-    if not isinstance(item, dict):
-        return
-    push_level_one("LEVELONE_EQUITIES", sym, item, ts_recv=ts, field_received=received)
+    push_level_one("LEVELONE_EQUITIES", sym, msg["native"], ts_recv=ts, field_received=received)
     _flow(sym)
     _tick(sym)
 
@@ -360,11 +352,8 @@ def _apply_book(sym: str, ts: float, msg: dict[str, Any], _received: dict[str, A
 
     Either one sends the panels that show it (the flow callback).
     """
-    content: Payload = msg.get("content")
-    if not isinstance(content, dict):
-        return
-    book = push_book(sym, content, msg["service"])
-    if msg.get("service") != "OPTIONS_BOOK":
+    book = push_book(sym, msg["content"], msg["service"])
+    if msg["service"] != "OPTIONS_BOOK":
         if book is not None:
             recent.BOOKS.record(sym, msg["service"], book)
         recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
@@ -381,9 +370,7 @@ def _apply_option_quote(
     newest message carried a value the levels use (a merged record holds the last of each field;
     only one this message brought is new).
     """
-    content: Payload = msg.get("content")
-    if not isinstance(content, dict):
-        return
+    content: dict[str, Any] = msg["content"]
     push_level_one("LEVELONE_OPTIONS", sym, content, ts_recv=ts, field_received=received)
     _flow(sym)
     if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
@@ -400,6 +387,22 @@ _APPLY_BY_TOPIC = {"watchlist": _answer_watchlist_request, "optquotes": _apply_r
 RECORDS_PER_TURN = 200
 
 
+def _apply(topic: str, msg: dict[str, Any]) -> None:
+    """Apply one bus record (_ingest_pushed); a failure is counted and logged, never raised."""
+    try:
+        _ingest_pushed(topic, msg)
+    except Exception as e:  # counted + WARNING; the next record is still applied
+        FEED.apply_failures += 1
+        if FEED.apply_failures & (FEED.apply_failures - 1) == 0:
+            log.warning(
+                "a %s record not applied (%s failures): %s",
+                topic,
+                FEED.apply_failures,
+                e,
+                exc_info=True,
+            )
+
+
 async def _bus_loop(bus: MessageBus) -> None:
     """Every Schwab record on the daemon's bus, as it changes, applied the moment it does.
 
@@ -409,15 +412,19 @@ async def _bus_loop(bus: MessageBus) -> None:
     take back Python's interpreter lock from the program's busy threads (up to the switch
     interval, 5 ms), so a turn per record left each contract a pass of thousands behind, and a
     turn never holds the daemon's status beat and the routes past a few milliseconds.
+
+    A record that fails to apply is counted (Feed.apply_failures) and logged with its traceback
+    (at the 1st, 2nd, 4th, 8th... failure: one on every message would flood the log), and the
+    next is applied: one record never ends the console's data.
     """
     sub = bus.subscribe("", policy=LATEST)
-    record: Payload
+    record: dict[str, Any] | list[dict[str, Any]]
     try:
         while FEED.running:
             for topic, record in [await sub.get(), *sub.taken(RECORDS_PER_TURN - 1)]:
                 if is_forwarded(topic, record):
                     for msg in record if isinstance(record, list) else [record]:
-                        _ingest_pushed(topic, msg)
+                        _apply(topic, msg)
                 if isinstance(record, list):
                     await asyncio.sleep(0)
             await asyncio.sleep(0)

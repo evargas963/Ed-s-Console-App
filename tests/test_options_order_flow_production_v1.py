@@ -250,3 +250,16 @@ def test_side_e2e_fixture_is_the_route_contract():
         "SPY   261023C00761000": "CALL",
         "SPY   261023P00762000": "PUT",
     }
+
+
+def test_the_flow_header_is_served_from_the_contracts_chain_record():
+    """The header's side, strike and expiry are the chain record's, served (AGENTS.md rule 4).
+
+    SPY's 2026-10-23 chain lists the 761 call and the 762 put expiring that day; the page draws
+    what is served and reads nothing from its own state.
+    """
+    served = build_side_e2e_fixture_response()
+    assert {k: (v["put_call"], v["strike_text"], v["expiry"]) for k, v in served.items()} == {
+        "SPY   261023C00761000": ("CALL", "761", "2026-10-23"),
+        "SPY   261023P00762000": ("PUT", "762", "2026-10-23"),
+    }

@@ -11,6 +11,7 @@ from typing import Any
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
 from instrument_identity import ticker_storage_key
+from numeric_contract import strike_text
 from push.book import stamp_book_times
 from state import level_store
 from state.level_store import published_levels
@@ -32,10 +33,14 @@ def options_microstructure(c: str, now: float) -> dict[str, Any]:
     """Return the Flow panel's payload for contract `c` at `now`, judged by the one live rule."""
     payload = options_live_payload(ticker_storage_key(c), now)
     payload["contract"] = c
-    # the side of the contract's chain record; None while no chain the console holds lists it
+    # the side, strike and expiry of the contract's chain record, the header's; None while no
+    # chain the console holds lists it
     tk = level_store.listing_ticker(c)
     listing = None if tk is None else published_levels(tk)
-    payload["put_call"] = None if listing is None else listing.contracts[c].side
+    record = None if listing is None else listing.contracts[c]
+    payload["put_call"] = None if record is None else record.side
+    payload["strike_text"] = None if record is None else strike_text(record.strike)
+    payload["expiry"] = None if record is None else record.expiry
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
     stamp_book_times(payload)

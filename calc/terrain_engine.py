@@ -553,26 +553,26 @@ def chain_ladder(
 
 def atm_sigma_by_expiry(
     contracts: list[OptionContract], spot: float
-) -> dict[ExpiryKey, float | None]:
-    """Return each expiry's ATM implied vol as a fraction, keyed like exposure_books.
+) -> dict[str | None, float | None]:
+    """Return each expiry date's ATM implied vol as a fraction, over all its contracts.
 
-    The key is (expiry, days to expiry). The value is the mean of the call and the put IV, each
-    at its side's strike nearest spot (the lower one on a tie, as nearest_strike). Both legs or
-    None: one side's IV never stands in for the mean, and a leg whose nearest contract has no IV
-    from Schwab (-999, or 0: no sigma) has none -- the next strike's IV never stands in for it.
-    Schwab `volatility` is a percent, converted by schwab_iv_to_sigma.
+    The value is the mean of the call and the put IV, each at its side's strike nearest spot
+    (the lower one on a tie, as nearest_strike). Both legs or None: one side's IV never stands
+    in for the mean, and a leg whose nearest contract has no IV from Schwab (-999, or 0: no
+    sigma) has none -- the next strike's IV never stands in for it. Schwab `volatility` is a
+    percent, converted by schwab_iv_to_sigma.
     """
-    legs: dict[ExpiryKey, dict[str, tuple[tuple[float, float], float | None]]] = {}
+    legs: dict[str | None, dict[str, tuple[tuple[float, float], float | None]]] = {}
     for c in contracts:
-        sides = legs.setdefault((c.expiry, c.days_to_expiry), {})
+        sides = legs.setdefault(c.expiry, {})
         if c.strike is None or c.side is None:
             continue
         near = (abs(c.strike - float(spot)), c.strike)
         if c.side not in sides or near < sides[c.side][0]:
             sides[c.side] = (near, schwab_iv_to_sigma(c.volatility))
-    out: dict[ExpiryKey, float | None] = {}
+    out: dict[str | None, float | None] = {}
     # a contract with no expiry date keeps its own key (None), last
-    for k, s in sorted(legs.items(), key=lambda kv: (kv[0][0] is None, kv[0][0])):
+    for k, s in sorted(legs.items(), key=lambda kv: (kv[0] is None, kv[0])):
         # the call's and the put's sigma, each when known: their mean only with both
         sig = [v for x in ("CALL", "PUT") if x in s and (v := s[x][1]) is not None]
         out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 else None
@@ -580,7 +580,9 @@ def atm_sigma_by_expiry(
 
 
 def compute_implied_one_day_move(
-    contracts: list[OptionContract], spot: float | None, atm_sigma: dict[ExpiryKey, float | None]
+    contracts: list[OptionContract],
+    spot: float | None,
+    atm_sigma: dict[str | None, float | None],
 ) -> OneDayMove | None:
     """Compute the institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
 
@@ -610,10 +612,10 @@ def compute_implied_one_day_move(
     front = min(_dtes, default=None)
     if front is None:
         return None
-    at_front = [s for (_e, d), s in atm_sigma.items() if d == front]
-    if len(at_front) != 1 or at_front[0] is None:
+    at_front = {c.expiry for c in contracts if c.days_to_expiry == front}
+    sigma = atm_sigma[at_front.pop()] if len(at_front) == 1 else None
+    if sigma is None:
         return None
-    sigma = at_front[0]
     em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
     return {
         "points": em,
@@ -974,8 +976,8 @@ def compute_terrain(
         **flip,
         net_gex_at_spot=gamma_at_spot,
         **_walls(exposures),
-        pcr_all=put_call_oi_ratio(exposures),
-        pcr_volume_all=put_call_volume_ratio(exposures),
+        pcr_all=put_call_oi_ratio(exposures.values()),
+        pcr_volume_all=put_call_volume_ratio(exposures.values()),
         pin_candidate=None if pin is None else pin.strike,
         pin_expected_moves=None if pin is None else pin.expected_moves,
         pin_strike_widths=None if pin is None else pin.strike_widths,
@@ -994,7 +996,7 @@ def compute_terrain(
         **by_expiry,
         **_expiry_fields(books),
         atm_iv_pct_by_expiry={
-            e: None if s is None else s * 100.0 for (e, _d), s in atm_sigma.items() if e is not None
+            e: None if s is None else s * 100.0 for e, s in atm_sigma.items() if e is not None
         },
     )
 
@@ -1141,16 +1143,20 @@ class _ExpiryFields(TypedDict):
 
 
 def _expiry_fields(books: dict[ExpiryKey, Book]) -> _ExpiryFields:
-    """Return each dated expiry's own; a contract with no expiry date is in the book only."""
-    dated = {(e, d): b for (e, d), b in books.items() if e is not None}
+    """Return each dated expiry's own, over every book of that date.
+
+    A contract with no expiry date is in the book only. An expiry's DTE is Schwab's
+    daysToExpiration for its contracts; None when they were not all sent the same one.
+    """
+    buckets: dict[str, list[Bucket]] = {}
+    dtes: dict[str, set[float | None]] = {}
+    for (e, d), (book, _diag) in books.items():
+        if e is not None:
+            buckets.setdefault(e, []).extend(book.values())
+            dtes.setdefault(e, set()).add(d)
     return {
-        "pcr_by_expiry": {
-            e: put_call_oi_ratio(book)
-            for (e, _d), (book, _diag) in sorted(dated.items(), key=lambda kv: kv[0][0])
-        },
-        "pcr_volume_by_expiry": {
-            e: put_call_volume_ratio(book) for (e, _d), (book, _diag) in dated.items()
-        },
-        "expiries": sorted({e for (e, _d) in dated}),
-        "expiry_dte": {e: d for (e, d) in dated},
+        "pcr_by_expiry": {e: put_call_oi_ratio(buckets[e]) for e in sorted(buckets)},
+        "pcr_volume_by_expiry": {e: put_call_volume_ratio(b) for e, b in buckets.items()},
+        "expiries": sorted(buckets),
+        "expiry_dte": {e: next(iter(d)) if len(d) == 1 else None for e, d in dtes.items()},
     }

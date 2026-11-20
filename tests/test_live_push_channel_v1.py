@@ -12,6 +12,7 @@ bound with bind_daemon) run on one event loop, as capture.run runs them. These t
     not);
   * a console that starts late first takes the bus's current records, then each that changes;
   * the live loop never opens the capture database;
+  * a record that fails to apply is counted, logged and served on the beat, and the next applied;
   * with no daemon in the program nothing is served, and the feed starts once one is bound.
 """
 
@@ -433,13 +434,44 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
     assert said == ["no capture daemon runs in this program: the console has no data"], said
 
 
-def test_a_message_missing_its_receive_time_is_dropped_whole():
-    ofs._ingest_pushed("quote.ZZZNOTS", {"symbol": "ZZZNOTS", "native": {"LAST_PRICE": 1.0}})
-    msg = _spy_trade(SPY_LAST, time_et.now())
-    msg["symbol"] = "ZZZNOPE"
-    del msg["ts_recv"]
-    ofs._ingest_pushed("quote.ZZZNOPE", msg)
-    assert ofls.prints("ZZZNOTS") == [] and ofls.prints("ZZZNOPE") == []
+@pytest.mark.usefixtures("feed")
+def test_a_message_missing_its_receive_time_is_dropped_whole(caplog):
+    """A record that fails to apply is counted and logged, and the console's loop goes on.
+
+    INDUCED: SPY's real quote with no receive time, on topics of their own (ZZZNOPE0, ...), which
+    the daemon's constructor (stream_spine.quote_msg) never makes. Each fails to apply: nothing
+    of it reaches a tape, each is counted (Feed.apply_failures) and the daemon's status beat
+    carries the count, the failure the count reaches a power of two at is logged with its
+    traceback, and SPY's trade published after them is applied.
+    """
+    before = ofs.FEED.apply_failures
+    failing = 1 << before.bit_length()  # the count's next power of two: that failure is logged
+    bad = [f"ZZZNOPE{i}" for i in range(failing - before)]
+    clock = clock_from(RTH_INSTANT)
+
+    async def body(bus, _web):
+        for sym in bad:
+            msg = _spy_trade(SPY_LAST, clock())
+            msg["symbol"] = sym
+            del msg["ts_recv"]
+            bus.publish(f"quote.{sym}", msg)
+        ts = clock()
+        bus.publish("quote.SPY", _spy_trade(SPY_LAST, ts))
+        assert await _until(_received(ts))  # the loop went on past them
+
+    with caplog.at_level("WARNING", logger=ofs.log.name):
+        asyncio.run(_run(body))
+    assert all(ofls.prints(sym) == [] for sym in bad)
+    assert ofs.FEED.apply_failures == failing
+    beat = capture.Daemon(MessageBus(), HealthRegistry(), []).status(clock())
+    assert beat["apply_failures"] == failing
+    logged = [
+        r
+        for r in caplog.records
+        if r.name == ofs.log.name and f"record not applied ({failing} failures)" in r.getMessage()
+    ]
+    assert len(logged) == 1 and logged[0].exc_info is not None, logged
+    assert "quote.ZZZNOPE" in logged[0].getMessage() and "ts_recv" in logged[0].getMessage()
 
 
 #: production's stream of 2026-10-05 14:00:00-14:00:03 CT (RTH): every LEVELONE_OPTIONS item

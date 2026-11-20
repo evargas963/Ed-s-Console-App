@@ -169,11 +169,14 @@ def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
     assert math.isclose(gamma_at_price(calls, (p0 + p1) / 2), (v0 + v1) / 2, rel_tol=1e-9)
 
 
-def test_gamma_at_price_clamps_outside_the_profile() -> None:
+def test_gamma_at_price_is_unknown_outside_the_profile() -> None:
+    """Past the chain's last strike the curve is not computed: unknown, never its end value."""
     chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
-    assert gamma_at_price(prof, prof[0][0] - 50.0) == prof[0][1]  # below -> first value
-    assert gamma_at_price(prof, prof[-1][0] + 50.0) == prof[-1][1]  # above -> last value
+    assert gamma_at_price(prof, prof[0][0] - 50.0) is None  # below the lowest strike
+    assert gamma_at_price(prof, prof[-1][0] + 50.0) is None  # above the highest strike
+    assert gamma_at_price(prof, prof[0][0]) == prof[0][1]  # the ends are the profile's own
+    assert gamma_at_price(prof, prof[-1][0]) == prof[-1][1]
     assert gamma_at_price([], spot) is None
     assert gamma_at_price(prof, None) is None
 

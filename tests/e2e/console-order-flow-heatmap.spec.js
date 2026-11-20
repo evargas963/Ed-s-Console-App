@@ -97,21 +97,6 @@ test("the Book panel names a failed read, never tells it as a book Schwab did no
   await expect(page.locator("#obBody")).not.toContainText("Schwab has sent no book");
 });
 
-test("the Book panel shows each served wall candidate size", async ({ page }) => {
-  // the program's own answer on Schwab's captured SPY book (CLOSED_BOOK): each wall candidate
-  // (engine._book_wall_candidates: side, price, volume, its text, median_mult) reads its served
-  // size, whole with separators (1,560); the page once printed w.size, never served
-  await openBook(page, CLOSED_BOOK);
-  expect(CLOSED_BOOK.wall_candidates.length).toBeGreaterThan(0);
-  for (const w of CLOSED_BOOK.wall_candidates) {
-    await expect(page.locator("#obBody")).toContainText(
-      w.side + " @ " + Number(w.price).toFixed(2),
-    );
-    expect(w.volume_text).toBe(Math.round(w.volume).toLocaleString("en-US"));
-    await expect(page.locator("#obBody")).toContainText(w.volume_text);
-  }
-});
-
 // the program's own answers for SPY's real book and quotes at 22:00 ET, the daemon's connection up
 // and ended (tests/test_order_flow_book_payload_v1.py)
 const CLOSED_BOOK = require(

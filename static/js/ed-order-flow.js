@@ -58,14 +58,12 @@
   // Per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-first,
   // up to OF_BOOK_DEPTH_DEEP (5) levels of the displayed book, as served, each bar against the
   // served largest size (depth_pressure.max_volume).
-  function ladderHtml(bidLevels, askLevels, maxVol, wallSet) {
+  function ladderHtml(bidLevels, askLevels, maxVol) {
     function row(l, side) {
       var w = window.EdDraw.barWidth(l.volume, maxVol);
-      var isWall = wallSet[side + "@" + l.price];
       return (
         '<div class="dom-row ' +
         side +
-        (isWall ? " wall" : "") +
         '">' +
         '<div class="dom-bar-track"><i class="dom-bar" style="width:' +
         w +
@@ -122,11 +120,6 @@
     function bk(k) {
       return classOf(cls, k);
     }
-    var walls = d.wall_candidates;
-    var wallSet = {};
-    walls.forEach(function (w) {
-      wallSet[w.side + "@" + w.price] = w;
-    });
 
     var midHtml =
       '<div class="dom-mid"><span>mark ' +
@@ -168,23 +161,6 @@
         bk("ages.quote_age_sec"),
       ],
     ];
-    var wallsHtml = walls.length
-      ? walls
-          .map(function (w) {
-            return (
-              '<div class="fl-row"><span class="k">' +
-              esc(orDash(w.side)) +
-              " @ " +
-              w.price_text +
-              '</span><span class="v">' +
-              esc(orDash(w.volume_text)) +
-              ' <span class="sm">(' +
-              w.median_mult_text +
-              "× median)</span></span></div>"
-            );
-          })
-          .join("")
-      : '<div class="sm" style="padding:4px 0;">no size-outlier candidates in the current displayed book</div>';
     var deferred = d.deferred.join(" · ");
 
     // the book's served word (book_feed_label: LIVE, OFFLINE, NOT LIVE); no book age served reads
@@ -202,7 +178,7 @@
       "</span></div></div>" +
       '<div class="dom-wrap">' +
       '<div class="dom-ladder">' +
-      ladderHtml(bidLevels, askLevels, d.depth_pressure.max_volume, wallSet) +
+      ladderHtml(bidLevels, askLevels, d.depth_pressure.max_volume) +
       midHtml +
       "</div>" +
       '<div class="dom-stats">' +
@@ -210,9 +186,6 @@
       section("Imbalance", rowsImb) +
       section("Freshness", fresh) +
       "</div>" +
-      "</div>" +
-      '<div class="fl-sec" style="margin-top:14px;"><div class="fl-sec-h">Wall candidates (size-outlier heuristic, displayed book only)</div>' +
-      wallsHtml +
       "</div>" +
       '<div class="fl-foot">' +
       (deferred ? esc(deferred) + " — " : "") +

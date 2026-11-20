@@ -1,7 +1,7 @@
 """The `desk` panel: the Trade Desk's attention queue, one item per event, newest first.
 
-Read from State: the recorded level crosses (state.cross_store), the terrain panel at the live
-price (push.terrain) and the book's size walls (push.book).
+Read from State: the recorded level crosses (state.cross_store) and the terrain panel at the live
+price (push.terrain).
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Any, Literal
 
 from numeric_contract import price_text
-from push.book import order_flow_microstructure
 from push.terrain import terrain
 from push.verdict import LEVELS_STALE
 from state import cross_store
@@ -54,15 +53,15 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     return start.timestamp()
 
 
-def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str, Any]:
+def desk_events_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     """Return the Trade Desk's attention queue at `now`.
 
     Level crosses in the timeframe's window as recorded (level, direction, price, spot, time),
     numbered oldest first, the newest cross at each level for the newest DESK_MARKERS levels
-    flagged for the chart; wall breaches and stale levels from the terrain; the book's size walls
-    at the book's own time -- newest first, an item with no time last -- plus the window's up/down
-    cross counts. One item is one event: the chart's marker and the queue's entry are the same
-    item. The page draws it; it selects, numbers and orders nothing.
+    flagged for the chart; wall breaches and stale levels from the terrain -- newest first, an
+    item with no time last -- plus the window's up/down cross counts. One item is one event: the
+    chart's marker and the queue's entry are the same item. The page draws it; it selects,
+    numbers and orders nothing.
     """
     start = _desk_window_start(tf, now)
     crosses = cross_store.merged_recent(tk, 200)
@@ -72,7 +71,6 @@ def desk_events_payload(tk: str, venue: str, tf: str, now: datetime) -> dict[str
     items = [
         *_cross_items(in_window),
         *_terrain_items(tk, now),
-        *_book_wall_items(tk, venue, now),
     ]
     # newest first; an event with no time of its own after every timed one
     items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
@@ -177,33 +175,6 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
                 t["levels_stale_reason"],
                 "gamma levels",
                 warn=True,
-            )
-        )
-    return items
-
-
-def _book_wall_items(tk: str, venue: str, now: datetime) -> list[dict[str, Any]]:
-    """Return the book's size walls, stamped with the book's own time (BOOK_TIME).
-
-    A book that is not live is a past observation and says so.
-    """
-    items: list[dict[str, Any]] = []
-    micro = order_flow_microstructure(tk, venue, now.timestamp())
-    book_ms = micro["provenance"]["book_time_ms"]
-    live_book = micro["ages"]["book_stale"] is False
-    for i, w in enumerate(micro["wall_candidates"][:3]):
-        items.append(
-            _item(
-                f"wall{i}",
-                None if book_ms is None else book_ms / 1000.0,
-                "LIQUIDITY",
-                "up" if w["side"] == "bid" else "down",
-                f"{venue} size wall · {w['side']} {w['price_text']}"
-                + ("" if live_book else " (not live)"),
-                f"{w['volume_text']} shown · {w['median_mult_text']}× the median level"
-                + ("" if live_book else " · a past book, not the current one"),
-                "equity book",
-                warn=not live_book,
             )
         )
     return items

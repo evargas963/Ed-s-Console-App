@@ -160,7 +160,8 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
     that reason; the value area said "no today RTH bars" over 278 RTH bars (2026-09-28, the
     running app). SPY's real bars of the same days have volume and get both. The prior day
     (Thursday 10-01) is Schwab's daily candle, present for both
-    (fixtures/real_schwab_daily_spx_2026_10.json, real_pricehistory_spy_tsla_2026_10_07.json).
+    (fixtures/real_schwab_daily_spx_2026_10.json, real_pricehistory_spy_tsla_2026_10_07.json);
+    its value area, from its bars, is $SPX's absent too, declared with why.
     """
     friday = datetime(2026, 10, 2, tzinfo=ET).date()
     for name, tk, has_volume in (
@@ -179,9 +180,15 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
         assert snap.price("PDH") is not None and "prior_day" not in absent, tk
         if has_volume:
             assert snap.price("VWAP") is not None and "value_area" not in absent, tk
+            assert snap.price("PD_POC") is not None and "prior_value_area" not in absent, tk
         else:
             assert absent["vwap"] == "no RTH volume for session VWAP in available bars"
             assert absent["value_area"] == "no RTH volume for the volume profile in available bars"
+            # Thursday's $SPX bars carry no volume either: its value area is declared absent
+            assert absent["prior_value_area"] == (
+                "no RTH volume in the prior session 2026-10-01's bars for its volume profile"
+            )
+            assert {"PD_POC", "PD_VAH", "PD_VAL"}.isdisjoint(snap.levels)
 
 
 def test_absent_input_stays_absent_and_is_declared():

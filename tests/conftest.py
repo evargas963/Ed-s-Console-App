@@ -32,12 +32,10 @@ from stream_spine import MessageBus
 from tests import feed_live_helper
 from time_et import ET, now, record_markets, session
 
-# Every pytest process (serial runner, xdist controller, and each xdist worker) owns ONE
-# deterministic, process-private runtime boundary before any application module imports
-# (RC-523 runtime root + RC-515 explicit isolation, reconciled). Every mutable runtime path
-# is rooted under one directory, and Schwab is explicitly OFFLINE with a missing token
-# so no test can reach the live account. Tests of live/offline semantics monkeypatch after
-# this boundary and therefore state their own inputs.
+# Every pytest process (serial runner, xdist controller, and each xdist worker) owns one
+# process-private runtime folder before any application module imports: every mutable runtime
+# path is rooted under it, and Schwab is offline with a missing token, so no test can reach the
+# live account.
 _PYTEST_RUNTIME_ROOT = Path(
     tempfile.mkdtemp(prefix=f"ed-pytest-{os.getpid()}-")  # the process id names each worker's
 ).resolve()
