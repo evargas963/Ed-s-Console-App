@@ -414,7 +414,18 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
     served = stopped_price_answers()
     for route, name in STOPPED_FIXTURES.items():
         fx = json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
-        assert fx == served[route], route
+        # what differs, by key, with both values: pytest's whole-dict diff reorders and truncates
+        assert fx == served[route], (
+            route,
+            {
+                k: (
+                    fx[k] if k in fx else "absent",
+                    served[route][k] if k in served[route] else "absent",
+                )
+                for k in fx.keys() | served[route].keys()
+                if k not in fx or k not in served[route] or fx[k] != served[route][k]
+            },
+        )
     for route in PRICE_MARKED:
         assert served[route]["spot_time_ct"] is not None
         assert served[route]["spot_not_live_text"].startswith("not live · last trade ")

@@ -99,3 +99,78 @@ markers = [
   "alone: a limit on the wall clock, which CI runs with no test workers beside it",
   "rail: guards production or the credentials rather than an app value (tools/check_tests_serve_app.py)",
 ]
+
+# Mutation testing (mutmut, https://github.com/boxed/mutmut): how many deliberate mistakes in the
+# code the tests catch. Run by .github/workflows/mutation.yml on Linux (mutmut needs fork). The
+# code it mutates; everything else the tests read is copied beside it.
+[tool.mutmut]
+source_paths = ["calc/"]
+also_copy = [
+  "app/",
+  "calibration/",
+  "docs/",
+  "feed/",
+  "push/",
+  "state/",
+  "static/",
+  "tests/",
+  "tools/",
+  "typings/",
+  "config.py",
+  "db.py",
+  "db_authority.py",
+  "instrument_identity.py",
+  "json_blob_codec.py",
+  "launch.py",
+  "live_market_plane.py",
+  "live_price_rows.py",
+  "numeric_contract.py",
+  "open_gap.py",
+  "option_contract.py",
+  "runtime_layout.py",
+  "server.py",
+  "stream_spine.py",
+  "time_et.py",
+  "AGENTS.md",
+  "ACTIVE_PROGRAM.md",
+  "CLAUDE.md",
+  "locks.imports.toml",
+  "locks.ruff.toml",
+  "pyproject.toml",
+  "requirements.txt",
+  "requirements-dev.txt",
+]
+# every test of the app; the tests of the check tools and guards (tools/) reach no line of it
+pytest_add_cli_args_test_selection = [
+  "tests/",
+  "--ignore=tests/e2e",
+  "--ignore-glob=tests/test_check_*",
+  "--ignore-glob=tests/test_census_*",
+  "--ignore-glob=tests/test_operator_*",
+  "--ignore-glob=tests/test_operating_process_lock_*",
+  "--ignore-glob=tests/test_hook_chain_*",
+  "--ignore-glob=tests/test_keep_going_*",
+  "--ignore-glob=tests/test_wiring_rules_*",
+  "--ignore-glob=tests/test_reset_guard_*",
+  "--ignore-glob=tests/test_protected_paths_*",
+  "--ignore-glob=tests/test_guards_read_*",
+  "--ignore-glob=tests/test_shell_reader_*",
+  "--ignore-glob=tests/test_bootstrap_worktree_venv_*",
+  "--ignore-glob=tests/test_runtime_governance_decoupling_*",
+  "--ignore-glob=tests/test_schwab_field_inventory_*",
+  # the tests of the test runner (scripts/, node): no line of the app
+  "--ignore-glob=tests/test_full_suite_output_sink_*",
+  "--ignore-glob=tests/test_e2e_stream_db_isolation_*",
+  # tests that read the code itself, which mutmut's instrumented copy changes: the source's
+  # imports and text, the calls made (each function runs through mutmut's trampoline) and the
+  # thread a function runs on
+  "--ignore-glob=tests/test_data_path_only_feed_*",
+  "--deselect=tests/test_gamma_flip_schwab_rate_v1.py::test_no_product_file_reads_the_stock_streams_dividend_yield",
+  "--deselect=tests/test_stream_reader_keeps_up_v1.py::test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced",
+  "--deselect=tests/test_terrain_one_calculation_v1.py::test_each_value_is_computed_once_and_nothing_unread_is_computed",
+  # a program started in a folder of its own reads mutmut's settings from that folder, where
+  # there are none (mutmut 3.8.1, configuration._config_reader)
+  "--deselect=tests/test_data_path_startup_v1.py::test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask",
+  "-m",
+  "not alone and not rail",
+]
