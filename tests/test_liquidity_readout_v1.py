@@ -528,6 +528,7 @@ def test_the_spans_run_from_the_touch_to_the_depths_last_level():
     assert (nyse["5"]["span_bid_text"], nyse["5"]["span_ask_text"]) == ("0.04", "0.19")
     assert (nyse["3"]["span_bid_text"], nyse["1"]["span_bid_text"]) == ("0.02", "0.00")
     assert nq["5"]["span_bid_text"] == f"{767.41 - 753.40:.2f}"
+    assert (nq["1"]["span_bid_text"], nq["1"]["span_ask_text"]) == ("0.00", "0.00")
 
 
 def test_a_thin_side_is_read_over_the_levels_it_has():
