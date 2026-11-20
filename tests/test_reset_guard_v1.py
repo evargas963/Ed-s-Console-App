@@ -208,6 +208,27 @@ def test_the_safe_reset_is_live_on_the_pretooluse_path():
     assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
 
 
+def test_git_handed_to_a_program_that_runs_it_is_judged_as_git():
+    """A script that runs its arguments (`python run_in.py <folder> git checkout -- <file>`).
+
+    The guard cannot see into the script, so the git it is handed is judged where it is written:
+    a builder's `checkout --` went through such a script on 2026-11-20. A read is still legal.
+    """
+    for tool, cmd in (
+        ("Bash", "python C:/s/run_in.py C:/w git checkout -- tests/test_x.py"),
+        ("Bash", "C:/v/python.exe C:/s/run_in.py C:/w git reset --hard"),
+        ("PowerShell", "node run.js git stash"),
+        ("Bash", "python run.py C:/w C:/Git/cmd/git.exe clean -fd"),
+    ):
+        assert any("RESET_GUARD" in b for b in PLG.pretooluse_block(tool, {"command": cmd})), cmd
+    for cmd in (
+        "python C:/s/run_in.py C:/w git status",
+        "python C:/s/run_in.py C:/w git log --oneline -1",
+        'git commit -m "the guard refuses git reset --hard"',
+    ):
+        assert not OPL.reset_guard_violations(cmd), cmd
+
+
 def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
     r"""Git given by its path or with `.exe` (`& C:\Git\cmd\git.exe reset --hard`) is git."""
     for tool, cmd in (
