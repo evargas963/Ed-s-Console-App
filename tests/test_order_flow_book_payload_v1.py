@@ -48,12 +48,15 @@ _E2E_OFFLINE = _E2E_FIXTURE.with_name("order_flow_book_offline_payload.json")
 _CLOSED = datetime.fromisoformat("2026-10-23T22:00:00-04:00").timestamp()
 
 
-def build_book_closed_payload(feed_down: bool = False) -> dict:
-    """Build the route's NYSE_BOOK payload for SPY at _CLOSED, from the real book and quotes.
+def build_book_closed_payload(
+    feed_down: bool = False, with_book: bool = True, at: float | None = None
+) -> dict:
+    """Build the route's NYSE_BOOK payload for SPY at `at` (_CLOSED when None), from real data.
 
     The daemon's connection is up (NOT LIVE, the market closed), or ended after its row arrived
-    (`feed_down`: OFFLINE).
+    (`feed_down`: OFFLINE). Without `with_book`, Schwab's NYSE_BOOK message is not sent.
     """
+    when = _CLOSED if at is None else at
     book = json.loads((_FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
         "books"
     ]["NYSE_BOOK"]
@@ -66,7 +69,7 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
     try:
         lmp.record_feed_heartbeat(
             daemon_status(
-                _CLOSED,
+                when,
                 schwab_socket_open=True,
                 held={"LEVELONE_EQUITIES": ["SPY"], "NYSE_BOOK": ["SPY"]},
             )
@@ -75,21 +78,20 @@ def build_book_closed_payload(feed_down: bool = False) -> dict:
             quotes, key=lambda m: m["ts_recv"]
         ):  # each change as Schwab sent it, in order
             lmp.record_from_level_one_equity("SPY", m["item"], received_ts=m["ts_recv"])
-        ofs._ingest_pushed(
-            "book.SPY",
-            book_msg(
-                symbol="SPY",
-                service="NYSE_BOOK",
-                content=book["content"],
-                src="schwab_book",
-                ts_recv=book["ts_recv"],
-            ),
-        )
+        if with_book:
+            ofs._ingest_pushed(
+                "book.SPY",
+                book_msg(
+                    symbol="SPY",
+                    service="NYSE_BOOK",
+                    content=book["content"],
+                    src="schwab_book",
+                    ts_recv=book["ts_recv"],
+                ),
+            )
         if feed_down:
             lmp.record_feed_down()
-        return json.loads(
-            json.dumps(push_book.order_flow_microstructure("SPY", "NYSE_BOOK", _CLOSED))
-        )
+        return json.loads(json.dumps(push_book.order_flow_microstructure("SPY", "NYSE_BOOK", when)))
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("SPY", None)
@@ -103,6 +105,7 @@ _RTH = datetime.fromisoformat("2026-10-23T15:59:05-04:00").timestamp()
 #: 2026-10-19 10:00 ET, regular hours, after $SPX's captured 09:30 message
 _SPX_RTH = datetime.fromisoformat("2026-10-19T10:00:00-04:00").timestamp()
 _E2E_ROWS = _E2E_FIXTURE.with_name("price_rows_live.json")
+_E2E_NO_BOOK = _E2E_FIXTURE.with_name("order_flow_book_none_payload.json")
 
 
 def _row_after(ticker: str, messages: list, at: float) -> dict:
@@ -157,6 +160,11 @@ def write_book_e2e_fixture() -> None:
             json.dumps(build_book_closed_payload(down), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+    _E2E_NO_BOOK.write_text(
+        json.dumps(build_book_closed_payload(with_book=False, at=_RTH), indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
     _E2E_ROWS.write_text(
         json.dumps(build_price_rows(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
@@ -207,6 +215,27 @@ def test_the_live_price_rows_fixture_is_the_daemons_rows():
         ("$SPX", "LIVE", None),
     ]
     assert live["SPY"]["spot"] is not None and live["SPY"]["trade_time_ct"] is not None
+
+
+def test_with_no_book_held_the_panel_says_why_by_its_cause():
+    """P-24: no book of the venue held, the panel serves why, by the book's own live verdict.
+
+    In regular hours, the feed up and SPY held on NYSE_BOOK, but no book sent (INDUCED: the real
+    book withheld): Schwab has sent none. Outside the market's hours: the live rule's reason. The
+    feed down: its reason. With a book: no such text. The committed no-book fixture is the
+    route's payload.
+    """
+    live = build_book_closed_payload(with_book=False, at=_RTH)
+    assert live["status"] == "no_book" and live["book_feed_label"] == "LIVE"
+    assert live["no_book_text"] == "Schwab has sent no NYSE_BOOK book for SPY"
+    assert _same(json.loads(_E2E_NO_BOOK.read_text(encoding="utf-8")), live), (
+        "E2E fixture drifted from the route; regenerate with write_book_e2e_fixture()"
+    )
+    closed = build_book_closed_payload(with_book=False)
+    assert closed["no_book_text"] == "outside Schwab's market hours"
+    down = build_book_closed_payload(feed_down=True, with_book=False)
+    assert down["no_book_text"] == "Schwab NYSE_BOOK feed down during Closed"
+    assert build_book_closed_payload()["no_book_text"] is None
 
 
 def test_the_book_serves_its_levels_and_no_size_outlier_label():

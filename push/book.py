@@ -59,6 +59,19 @@ def stamp_book_times(payload: dict[str, Any]) -> None:
     payload["quote_when_age_text"] = _when_age(payload["quote_time_ct"], ages["quote_age_sec"])
 
 
+def _no_book_text(label: str, outage: str | None, ticker: str, venue: str) -> str | None:
+    """Why no book of `venue` is held for `ticker`, as the screen says it.
+
+    While the venue's book is live (its feed up, the symbol held on it, its market trading),
+    Schwab has sent none; otherwise the live rule's own reason (live_market_plane.live_state).
+    """
+    match label:
+        case lmp.LIVE:
+            return f"Schwab has sent no {venue} book for {ticker}"
+        case _:
+            return outage
+
+
 def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, Any]:
     """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1).
 
@@ -80,7 +93,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     top_label, top_outage = price_state(t, now)
     _row = price_row(t, now)
     # the venue's book: the same verdict on its own service (price_state), its word served
-    book_label = price_state(t, now, venue)[0]
+    book_label, book_outage = price_state(t, now, venue)
     data = FlowInput(
         book=newest_book(t, venue),
         top=(
@@ -105,6 +118,9 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     )
     payload["ticker"] = t
     payload["venue"] = venue
+    payload["no_book_text"] = (
+        None if payload["status"] == "ok" else _no_book_text(book_label, book_outage, t, venue)
+    )
     stamp_book_times(payload)
     payload["readout"] = liquidity_readout(t, now)
     return payload

@@ -76216,6 +76216,7 @@
       "book_feed_label": "LIVE",
       "ticker": "AMZN",
       "venue": "NASDAQ_BOOK",
+      "no_book_text": null,
       "quote_time_ct": "Thu 11/12 09:39 AM CT",
       "book_time_ct": "Thu 11/12 09:39 AM CT",
       "book_age_text": "2s",

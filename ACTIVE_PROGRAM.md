@@ -91,7 +91,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     shown on the page.
   - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
   - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
-  - P-24 `static/js/ed-order-flow.js` shows one fixed reason for every no-book cause.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command
