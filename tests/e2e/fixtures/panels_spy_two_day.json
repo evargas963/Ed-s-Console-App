@@ -4038,7 +4038,8 @@
         "volume_total": 2683916.0,
         "grew_text": "775/770",
         "shrank_text": "756/760",
-        "busiest_text": "757\u2013760"
+        "busiest_text": "757\u2013760",
+        "volume_zero_text": null
       },
       "near": {
         "rows": [
@@ -5360,7 +5361,8 @@
         "volume_total": 2379907.0,
         "grew_text": "766/710",
         "shrank_text": "756/760",
-        "busiest_text": "756\u2013757"
+        "busiest_text": "756\u2013757",
+        "volume_zero_text": null
       },
       "far": {
         "rows": [
@@ -8810,7 +8812,8 @@
         "volume_total": 304009.0,
         "grew_text": "775/770",
         "shrank_text": "750/810",
-        "busiest_text": "718\u2013724"
+        "busiest_text": "718\u2013724",
+        "volume_zero_text": null
       }
     },
     "level_moves": [
@@ -13378,7 +13381,8 @@
         "volume_total": 2683916.0,
         "grew_text": "775/770",
         "shrank_text": "756/760",
-        "busiest_text": "757\u2013760"
+        "busiest_text": "757\u2013760",
+        "volume_zero_text": null
       },
       "near": {
         "rows": [
@@ -14700,7 +14704,8 @@
         "volume_total": 2379907.0,
         "grew_text": "766/710",
         "shrank_text": "756/760",
-        "busiest_text": "756\u2013757"
+        "busiest_text": "756\u2013757",
+        "volume_zero_text": null
       },
       "far": {
         "rows": [
@@ -18150,7 +18155,8 @@
         "volume_total": 304009.0,
         "grew_text": "775/770",
         "shrank_text": "750/810",
-        "busiest_text": "718\u2013724"
+        "busiest_text": "718\u2013724",
+        "volume_zero_text": null
       }
     },
     "level_moves": [

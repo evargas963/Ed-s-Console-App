@@ -70,6 +70,23 @@ def test_a_volume_not_known_leaves_the_volume_total_unknown():
     body = _published(NFLX.ticker, chain, NFLX.spot, NFLX.now)
     assert body["today_side_sums"]["gex_above"] is not None
     assert body["migration"]["all"]["volume_total"] is None
+    assert body["migration"]["all"]["volume_zero_text"] is None, "unknown is not zero"
+
+
+def test_a_session_volume_of_zero_is_served_with_what_it_means():
+    """Induced test condition: NFLX's chain with every totalVolume a reported 0.
+
+    The chain is of another day, so its verdict is STALE and the 0 is the snapshot's, which the
+    served words say; the page draws them. Schwab's real volume serves none.
+    """
+    zero = [{**c, "totalVolume": 0} for c in NFLX.chain]
+    body = _published(NFLX.ticker, zero, NFLX.spot, NFLX.now)
+    assert body["levels_state"] == "STALE"
+    assert body["migration"]["all"]["volume_total"] == 0
+    assert body["migration"]["all"]["volume_zero_text"] == push_strikes.ZERO_VOLUME_STALE
+    sent = _published(NFLX.ticker, NFLX.chain, NFLX.spot, NFLX.now)
+    assert sent["migration"]["all"]["volume_total"] > 0
+    assert sent["migration"]["all"]["volume_zero_text"] is None
 
 
 def test_a_side_with_no_strike_has_no_total():

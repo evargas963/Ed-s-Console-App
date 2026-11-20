@@ -25,7 +25,7 @@ from numeric_contract import dollars_text, strike_text
 from push.answers import unavailable
 from push.spot import resolve_spot
 from push.strike_rows import BarRow, max_abs_served, served, window_asked, windowed
-from push.verdict import terrain_cache_get
+from push.verdict import LEVELS_STALE, terrain_cache_get
 
 
 def _served_migration(row: MigrationRow) -> dict[str, Any]:
@@ -105,18 +105,33 @@ def _scale_with_prior(
     return max(both) if both else None
 
 
-def _shown_scope(m: PositioningMigration) -> dict[str, Any]:
+#: what a session volume of 0 means, by the chain's verdict: a stale chain's rows are its snapshot
+ZERO_VOLUME_STALE = (
+    "zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source "
+    "badge above"
+)
+ZERO_VOLUME = (
+    "no option volume yet this session — the counter resets at the new session and fills from "
+    "the open"
+)
+
+
+def _shown_scope(m: PositioningMigration, levels_state: str) -> dict[str, Any]:
     """One scope's migration as the screen shows it.
 
-    Each row with its change's text (_served_migration), and the strikes that grew, shrank and
-    traded most, each list as the screen shows it.
+    Each row with its change's text (_served_migration), the strikes that grew, shrank and traded
+    most, each list as the screen shows it, and what a session volume of 0 means (None unless 0).
     """
+    zero = None
+    if m["volume_total"] == 0:
+        zero = ZERO_VOLUME_STALE if levels_state == LEVELS_STALE else ZERO_VOLUME
     return {
         **m,
         "rows": [_served_migration(r) for r in m["rows"]],
         "grew_text": "/".join(map(strike_text, m["grew"])),
         "shrank_text": "/".join(map(strike_text, m["shrank"])),
         "busiest_text": "–".join(map(strike_text, m["busiest"])),
+        "volume_zero_text": zero,
     }
 
 
@@ -196,7 +211,7 @@ def terrain_strikes_payload(
         "today_side_sums": _side_sums(today["all"], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
         "max_abs_row": max_abs_served(today["all"], "gex", marks),
-        "migration": {sc: _shown_scope(m) for sc, m in migration.items()},
+        "migration": {sc: _shown_scope(m, verdict["levels_state"]) for sc, m in migration.items()},
         # the call wall, put wall and gamma flip today against the prior day's own, each with its
         # texts as the screen shows them
         "level_moves": [served_level_move(v) for v in level_moves(snap, prior_day)],

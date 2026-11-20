@@ -1536,7 +1536,8 @@
         "volume_total": 6615.0,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": "275\u2013300"
+        "busiest_text": "275\u2013300",
+        "volume_zero_text": null
       },
       "near": {
         "rows": [],
@@ -1548,7 +1549,8 @@
         "volume_total": null,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": ""
+        "busiest_text": "",
+        "volume_zero_text": null
       },
       "far": {
         "rows": [
@@ -2415,7 +2417,8 @@
         "volume_total": 6615.0,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": "275\u2013300"
+        "busiest_text": "275\u2013300",
+        "volume_zero_text": null
       }
     },
     "level_moves": [
@@ -4197,7 +4200,8 @@
         "volume_total": 6615.0,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": "275\u2013300"
+        "busiest_text": "275\u2013300",
+        "volume_zero_text": null
       },
       "near": {
         "rows": [],
@@ -4209,7 +4213,8 @@
         "volume_total": null,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": ""
+        "busiest_text": "",
+        "volume_zero_text": null
       },
       "far": {
         "rows": [
@@ -5076,7 +5081,8 @@
         "volume_total": 6615.0,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": "275\u2013300"
+        "busiest_text": "275\u2013300",
+        "volume_zero_text": null
       }
     },
     "level_moves": [
@@ -10026,7 +10032,8 @@
         "volume_total": 6615.0,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": "275\u2013300"
+        "busiest_text": "275\u2013300",
+        "volume_zero_text": null
       },
       "near": {
         "rows": [],
@@ -10038,7 +10045,8 @@
         "volume_total": null,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": ""
+        "busiest_text": "",
+        "volume_zero_text": null
       },
       "far": {
         "rows": [
@@ -10905,7 +10913,8 @@
         "volume_total": 6615.0,
         "grew_text": "",
         "shrank_text": "",
-        "busiest_text": "275\u2013300"
+        "busiest_text": "275\u2013300",
+        "volume_zero_text": null
       }
     },
     "level_moves": [
