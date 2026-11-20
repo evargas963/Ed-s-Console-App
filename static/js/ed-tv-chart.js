@@ -1483,8 +1483,9 @@
         paintLevels(true);
       },
       // markers: [{id, time, price, num, text, color, meta}], drawn as numbered callouts at their
-      // bar and price; one with no price or no bar is not drawn; the selected one (selectMarker)
-      // is drawn heavier; a click on one calls onClick(meta)
+      // bar and price; one before the first bar has no bar and is not drawn (the desk panel counts
+      // those, markers_off_chart); the selected one (selectMarker) is drawn heavier; a click on
+      // one calls onClick(meta)
       setMarkers: function (list, onClick) {
         S.markerList = list;
         S.onMarkerClick = onClick;
@@ -1496,7 +1497,7 @@
         var m = [];
         S.markerList.forEach(function (x) {
           var i = barIndexAt(Number(x.time));
-          if (i < 0 || x.price == null) return;
+          if (i < 0) return;
           S.markerMeta[x.id] = x.meta;
           m.push({
             id: x.id,
@@ -1602,6 +1603,8 @@
           })(S.bars.length ? S.bars[0].t : heat.h ? heat.h.bucket_ts[0] : null),
           zones: zones.zones.length,
           volumeProfileBins: vprofile.rows.length,
+          volumeProfileMark: vprofile.mark && vprofile.mark.label,
+          valueArea: [band._lo, band._hi],
           levels: S.priceLines.map(function (l) {
             return l.options().title;
           }),

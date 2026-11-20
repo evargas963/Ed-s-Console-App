@@ -1,7 +1,7 @@
 """The `desk` panel: the Trade Desk's attention queue, one item per event, newest first.
 
-Read from State: the recorded level crosses (state.cross_store) and the terrain panel at the live
-price (push.terrain).
+Read from State: the recorded level crosses (state.cross_store), the terrain panel at the live
+price (push.terrain) and the chart's bars (push.bars).
 """
 
 from __future__ import annotations
@@ -9,7 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from numeric_contract import price_text
+from numeric_contract import count_text, price_text
+from push.bars import chart_bars, held_minutes
 from push.terrain import terrain
 from push.verdict import LEVELS_STALE
 from state import cross_store
@@ -53,7 +54,7 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     return start.timestamp()
 
 
-def desk_events_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
+def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[str, Any]:
     """Return the Trade Desk's attention queue at `now`.
 
     Level crosses in the timeframe's window as recorded (level, direction, price, spot, time),
@@ -61,15 +62,21 @@ def desk_events_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     flagged for the chart; wall breaches and stale levels from the terrain -- newest first, an
     item with no time last -- plus the window's up/down cross counts. One item is one event: the
     chart's marker and the queue's entry are the same item. The page draws it; it selects,
-    numbers and orders nothing.
+    numbers and orders nothing. `limit` is the 1-minute bars the desk's chart asks for at `tf`
+    (the `bars` panel's): a marker before the first of those chart bars has no bar to stand on,
+    and those are counted with their words (`markers_off_chart`, `markers_off_chart_text`).
     """
     start = _desk_window_start(tf, now)
     crosses = cross_store.merged_recent(tk, 200)
     in_window = sorted(
         (c for c in crosses if c.cross.ts_utc >= start), key=lambda c: c.cross.ts_utc
     )
+    cross_items = _cross_items(in_window)
+    marked = [it for it in cross_items if it["marker"]]
+    chart = chart_bars(tk, tf, held_minutes(tk, limit), now)
+    off_chart = [it for it in marked if not chart or it["ts"] < chart[0]["t"]]
     items = [
-        *_cross_items(in_window),
+        *cross_items,
         *_terrain_items(tk, now),
     ]
     # newest first; an event with no time of its own after every timed one
@@ -87,7 +94,21 @@ def desk_events_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         "cross_counts": {
             d: sum(1 for c in in_window if c.cross.direction == d) for d in ("up", "down")
         },
+        "markers_off_chart": len(off_chart),
+        "markers_off_chart_text": _off_chart_text(len(off_chart), len(marked), chart),
     }
+
+
+def _off_chart_text(off: int, marked: int, chart: list[dict[str, Any]]) -> str:
+    """Return the words for the chart's markers with no bar: empty when every marker has one."""
+    if not off:
+        return ""
+    where = (
+        f"their crosses are before the chart's first bar, {ct_label(chart[0]['t'])}"
+        if chart
+        else "the chart holds no bars"
+    )
+    return f"{count_text(off)} of {count_text(marked)} chart markers not drawn: {where}"
 
 
 def _item(

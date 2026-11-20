@@ -603,6 +603,60 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: the prior value area band, its words, the VWAP's and the POC label are drawn as served", async ({
+    page,
+  }) => {
+    // register P-16: the map picked PD_VAL, PD_VAH, VWAP and TODAY_POC out of the levels by id
+    // and wrote "VA … – …" and "POC est …" itself; it draws the levels panel's fields
+    const errs = watchErrors(page);
+    await intercept(page); // every panel sent in its real shape
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const pva = LEVELS.prior_value_area;
+    const chart = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chart()).valueArea).toEqual([pva.low, pva.high]);
+    expect((await chart()).volumeProfileMark).toBe(LEVELS.volume_profile.poc_label);
+    await expect(page.locator('#tdmFamilies [data-famv="prior_day"]')).toHaveText(pva.text);
+    await expect(page.locator('#tdmFamilies [data-famv="vwap"]')).toHaveText(LEVELS.vwap_text);
+    expect(errs).toEqual([]);
+  });
+
+  test("Desk: no prior value area band when the prior value area is absent", async ({ page }) => {
+    // INDUCED: SPY's levels with the prior session's value area absent, as the program serves
+    // $SPX's (Schwab's index bars carry no volume; tests/test_trade_desk_served_v1.py)
+    const errs = watchErrors(page);
+    await intercept(page);
+    const reason = "no RTH volume in the prior session 2026-11-11's bars for its volume profile";
+    deskPanels().levels = levelsAt((key, params) =>
+      Object.assign({}, REAL.levels[params.tf], {
+        prior_value_area: null,
+        levels: REAL.levels[params.tf].levels.filter((r) => !/^PD_(VAL|VAH|POC)$/.test(r.id)),
+        families_absent: REAL.levels[params.tf].families_absent.concat([
+          { family: "prior_value_area", reason: reason },
+        ]),
+      }),
+    );
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
+      .toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.valueArea)).toEqual([
+      null,
+      null,
+    ]);
+    await expect(page.locator('#tdmFamilies [data-famv="prior_day"]')).toHaveText("");
+    expect(errs).toEqual([]);
+  });
+
   test("Desk: levels sent for a timeframe the chart has left are not drawn", async ({ page }) => {
     // the program's 5m levels, sent before it read the switch to 15m, arrive after it
     const errs = watchErrors(page);
@@ -701,6 +755,44 @@ test.describe("Trade Desk renders served values", () => {
     await expect(page.locator("#tdmAgree")).toContainText(
       COMP.views.weighted.side_word.toLowerCase(),
     );
+    expect(errs).toEqual([]);
+  });
+
+  test("Desk: the markers the chart has no bar for are counted and worded as served", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    // the program's answers for the 15-minute desk whose chart spans the newest hour of minutes:
+    // the queue's older markers are before its first bar
+    const DESK_HOUR = REAL.desk_newest_hour;
+    deskPanels().desk = (key, params) => (params.tf === "15" ? DESK_HOUR : REAL.desk[params.tf]);
+    deskPanels().bars = (key, params, name) =>
+      name === "bars:flow"
+        ? REAL.bars_flow
+        : params.tf === "15"
+          ? REAL.bars_newest_hour
+          : REAL.bars[params.tf];
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+      localStorage.setItem("ed.desk.tf", "15");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const marked = DESK_HOUR.items.filter((it) => it.marker);
+    expect(DESK_HOUR.markers_off_chart).toBeGreaterThan(0);
+    await expect(page.locator("#tdmQueueOff")).toHaveText(DESK_HOUR.markers_off_chart_text);
+    // the chart draws the rest, and the served count is the ones it leaves out
+    await expect
+      .poll(
+        async () => (await page.evaluate(() => window.EdTradeDeskMap.state().chart.markers)).length,
+      )
+      .toBe(marked.length - DESK_HOUR.markers_off_chart);
+    // the full chart has a bar for every marker: no line
+    await page.locator('#tdmToolbar [data-tf="5"]').click();
+    await expect(page.locator("#tdmQueue .tdm-q")).toHaveCount(REAL.desk["5"].items.length);
+    await expect(page.locator("#tdmQueueOff")).toBeHidden();
     expect(errs).toEqual([]);
   });
 

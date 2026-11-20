@@ -12,7 +12,7 @@ import re
 
 # The ONE shell reader (tools/shell_parse.py, stdlib-only): the rules below judge each git
 # statement a command runs on its own words.
-from tools.shell_parse import git_subcommand, read
+from tools.shell_parse import git_subcommand, program_name, read
 
 #: Wipe-protected paths (the reset guard's reach): the one writer and the guards.
 PROTECTED_PATHS: tuple[str, ...] = (
@@ -110,9 +110,16 @@ def reset_guard_violations(command: str, powershell: bool = False) -> list[str]:
     Not subject-disableable: no env token or repo file can authorize a wipe.
     `git reset --soft`, `git restore --staged` (index-only), `git stash list`,
     `git checkout -b` and `push --force-with-lease` stay legal. Text a command only carries (a
-    commit message, a heredoc nothing runs) is not a statement.
+    commit message, a heredoc nothing runs) is not a statement. A git handed to another program
+    as its words (a script that runs its arguments, `python run_in.py <folder> git ...`) is
+    judged from that word on: the guard cannot see into the program it is handed to.
     """
-    gits = [st.words for st in read(command, powershell=powershell) if st.program == "git"]
+    gits = [
+        st.words[k:]
+        for st in read(command, powershell=powershell)
+        for k, word in enumerate(st.words)
+        if program_name(word) == "git"
+    ]
     if any(_hard(*git_subcommand(words)) for words in gits):
         return [
             "RESET_GUARD: destructive git can discard operator work — "

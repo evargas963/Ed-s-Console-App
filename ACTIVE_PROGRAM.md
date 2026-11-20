@@ -96,13 +96,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     the live spot from `resolve_spot`.
   - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
     `levels_ts_utc`, computed in push, not a calculator.
-  - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
-    `calc.math_levels` rejects a strike ≤ 0 as INVALID.
-  - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
-    shown on the page.
-  - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
   - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
-  - P-24 `static/js/ed-order-flow.js` shows one fixed reason for every no-book cause.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command

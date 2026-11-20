@@ -619,6 +619,18 @@
   padding: 4px;
 }
 
+.tdm-queue-off {
+  padding: 6px 10px;
+  border-top: 1px solid var(--ed-edge);
+  color: var(--ed-ink-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tdm-queue-off:empty {
+  display: none;
+}
+
 .tdm-empty {
   padding: 14px 10px;
   color: var(--ed-ink-3);
