@@ -174,12 +174,15 @@ test.describe("D — Gamma Chain subview", () => {
 
     const headBox = () => page.locator(".chn-headtbl").boundingBox();
     const scrollTop = () => page.locator("#chainScroll").evaluate((el) => el.scrollTop);
+    // the pointer on the actual scroll element first: Playwright's hover scrolls the PAGE to
+    // bring it into view, which is not the body's scroll this test is about, so the header's
+    // place is taken after it
+    await page.locator("#chainScroll").hover();
     const before = await headBox();
     expect(before).toBeTruthy();
 
     // A real wheel scroll (not a programmatic scrollTop assignment) on the actual scroll
     // element, exercising the same input path a real trackpad/mouse produces.
-    await page.locator("#chainScroll").hover();
     await page.mouse.wheel(0, 1200);
     await expect.poll(scrollTop).toBeGreaterThan(0); // the wheel has scrolled the body
     const duringScroll = await headBox();
