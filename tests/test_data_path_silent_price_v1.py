@@ -83,6 +83,13 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
             assert await _until(
                 lambda: bool(beats) and beats[-1]["page_socket"]["page_refused"] == 4
             ), beats[-1:]
+            # and the header's line says so (left_out_line)
+            assert beats[-1]["left_out"] == {
+                "line": "4 page frames refused",
+                "why": "counted since the program started; each is in the daemon's log with "
+                "what arrived",
+                "cls": "neg",
+            }
         finally:  # a failure still closes the socket: cancelling over an open one can hang
             await ws.close()
             stop.set()
@@ -94,6 +101,17 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     assert "'not json'" in warned and '\'{"op": "hello"}\'' in warned, warned
     assert "a subscribed symbol not a string, or blank: 7" in warned, warned
     assert "b'\\xff not text'" in warned, warned  # a binary frame, read as what it carries
+
+
+def test_the_header_line_names_each_count_left_out_and_nothing_when_none():
+    """The header shows what the program left out only when something was (operator 2026-11-20).
+
+    Each count above 0 is named; with every count 0 there is no line (None), and the header
+    shows nothing.
+    """
+    assert live_ui.left_out_line(0, 0, 0) is None
+    assert live_ui.left_out_line(3, 0, 1)["line"] == "3 records not applied · 1 page frames refused"
+    assert live_ui.left_out_line(0, 2, 0)["line"] == "2 reprices failed"
 
 
 def test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the_page():

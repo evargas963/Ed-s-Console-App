@@ -151,6 +151,8 @@ def _daemon_heartbeat(socket_open=True, held=("SPY",), clock=time_et.now):
         "schwab_socket_open": socket_open,
         "held": {"LEVELONE_EQUITIES": list(held)},
         "health": {},
+        "apply_failures": 0,
+        "tick_failures": 0,
     }
 
 

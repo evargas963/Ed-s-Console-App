@@ -120,6 +120,8 @@ class _Feed:
             "schwab_socket_open": self.open,
             "held": {"LEVELONE_EQUITIES": self.held},
             "health": {},
+            "apply_failures": 0,
+            "tick_failures": 0,
         }
 
 
