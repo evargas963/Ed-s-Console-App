@@ -1,6 +1,7 @@
 """AGENTS.md rule 2: a Schwab field as sent.
 
-Not a number: absent, -999, text, NaN or infinity, and a negative volume, size or open interest.
+Not a number: absent, -999, text, NaN or infinity, and a negative volume, size, open interest or
+strike.
 Everything else is taken as sent; a reported 0 is 0.
 """
 
@@ -62,6 +63,22 @@ def test_minus_999_open_interest_is_unreported():
         read_chain(chain), spot=CRWD.spot, now=CRWD.now, sessions=sessions()
     )
     assert books[chain[0]["strikePrice"]]["oi_unreported"] == 1
+
+
+def test_a_negative_strike_is_not_a_number_and_no_strike_of_the_book():
+    """Schwab's strike is unsigned (Streamer API §3.2: the option symbol's strike digits).
+
+    INDUCED: one real CRWD contract sent with a strike of -5 (no capture holds a strike at or
+    below 0; the lowest is 0.5). Its reader gives no strike, so no book is keyed by -5, and the
+    other contracts are read as sent.
+    """
+    chain = copy.deepcopy(CRWD.chain)
+    chain[0]["strikePrice"] = -5.0
+    read = read_chain(chain)
+    assert read[0].strike is None
+    assert [c.strike for c in read[1:]] == [c["strikePrice"] for c in chain[1:]]
+    books, _ = compute_exposures_by_strike(read, spot=CRWD.spot, now=CRWD.now, sessions=sessions())
+    assert -5.0 not in books
 
 
 def test_a_strike_whose_open_interest_is_all_zero_shows_zero_not_absent():

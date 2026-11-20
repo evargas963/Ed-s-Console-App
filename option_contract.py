@@ -289,7 +289,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
-        strike=schwab_number(raw.get("strikePrice")),
+        strike=schwab_count(raw.get("strikePrice")),
         expiration=expiration,
         expiry=expiration[:10] if isinstance(expiration, str) and len(expiration) >= 10 else None,
         expires_at=_expires_at(expiration, raw.get("symbol")),

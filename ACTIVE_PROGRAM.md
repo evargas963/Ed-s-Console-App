@@ -87,8 +87,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     the live spot from `resolve_spot`.
   - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
     `levels_ts_utc`, computed in push, not a calculator.
-  - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
-    `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
     shown on the page.
   - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
