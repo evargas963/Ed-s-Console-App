@@ -40,7 +40,15 @@ from option_contract import read_chain
 from push import desk as push_desk
 from push import levels as push_levels
 from state import bar_store, cross_store, level_store, price_level_store
-from tests.feed_live_helper import daemon_status, price_history, recorder, stored_crosses
+from tests.feed_live_helper import (
+    daemon_bars,
+    daemon_status,
+    hold_schwab_daily,
+    newest_bars,
+    price_history,
+    recorder,
+    stored_crosses,
+)
 from tests.real_chains import (
     SPY_0DTE,
     SPY_AFTER_HOURS_PRINT,
@@ -503,6 +511,70 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
         == (390, 0)
     )
     assert vp["basis"].startswith("Estimated volume by price")
+
+
+def _price(value):
+    """Return a price as the operator's format shows it, two decimals, worked apart from code."""
+    return f"{value:.2f}"
+
+
+def test_the_chart_reads_the_prior_value_area_and_the_poc_label_as_served(spy_levels):
+    """Register P-16: the desk map picked PD_VAL, PD_VAH, VWAP and TODAY_POC out by id.
+
+    It composed "VA <val> – <vah>" and "POC est <poc>" itself. The levels panel serves the prior
+    session's value area (the band's low and high, and its words), the VWAP's words and the POC's
+    label. Real SPY 1-minute bars of 2026-10-01 and 02 and Schwab's daily candles of 2026-10-07.
+    """
+    _spot, _terrain, serve = spy_levels
+    hold_schwab_daily("SPY", under=DESK)  # the prior session: Thursday 10-01
+    try:
+        server._publish_price_levels(DESK, FRIDAY_CLOSE)
+        body = serve()
+    finally:
+        bar_store._series.pop((DESK, "1d"), None)
+    by_id = {r["id"]: r["price"] for r in body["levels"]}
+    low, high = by_id["PD_VAL"], by_id["PD_VAH"]
+    assert low < high
+    assert body["prior_value_area"] == {
+        "low": low,
+        "high": high,
+        "text": f"VA {_price(low)} – {_price(high)}",
+    }
+    assert body["vwap_text"] == _price(by_id["VWAP"])
+    vp = body["volume_profile"]
+    assert vp["poc"] == by_id["TODAY_POC"] and vp["poc_label"] == f"POC est {_price(vp['poc'])}"
+    assert "prior_value_area" not in {f["family"] for f in body["families_absent"]}
+
+
+def test_no_prior_value_area_band_when_the_prior_session_has_none():
+    """Schwab's $SPX 1-minute bars carry no volume: no profile, so no value area for either day.
+
+    The daemon's record of 2026-10-01 and 02 (real_daemon_bars_spx_2026_10_01_02.json) and
+    Schwab's $SPX daily candles (real_schwab_daily_spx_2026_10.json): the prior session's value
+    area is declared absent with why, and the panel serves no band, no POC label and no VWAP.
+    """
+    tk = "ZZDESKSPX"
+    _forget(tk)
+    for r in newest_bars(daemon_bars("real_daemon_bars_spx_2026_10_01_02.json", "$SPX"), "$SPX"):
+        bar = server._schwab_bar(
+            r["bar_start_ms"], r["open"], r["high"], r["low"], r["close"], r["volume"]
+        )
+        assert bar is not None
+        bar_store.keep_bar(tk, bar)
+    hold_schwab_daily("$SPX", under=tk)
+    try:
+        server._publish_price_levels(tk, FRIDAY_CLOSE)
+        body = push_levels.levels_payload(tk, "1", FRIDAY_CLOSE)
+    finally:
+        bar_store._series.pop((tk, "1d"), None)
+        _forget(tk)
+    absent = {f["family"]: f["reason"] for f in body["families_absent"]}
+    assert absent["prior_value_area"] == (
+        "no RTH volume in the prior session 2026-10-01's bars for its volume profile"
+    )
+    assert {r["id"] for r in body["levels"]} >= {"PDH", "PDL", "PDC"}
+    assert body["prior_value_area"] is None
+    assert body["volume_profile"] is None and body["vwap_text"] is None
 
 
 @pytest.mark.usefixtures("spy_levels")

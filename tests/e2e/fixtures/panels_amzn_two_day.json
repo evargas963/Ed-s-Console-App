@@ -80648,6 +80648,7 @@
           273.83554213635693, 268.2080691420198
         ]
       ],
+      "vwap_text": "271.02",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
@@ -81235,8 +81236,14 @@
         ],
         "max_volume": 42690.925932278406,
         "poc": 271.74,
+        "poc_label": "POC est 271.74",
         "vah": 273.44,
         "val": 269.83
+      },
+      "prior_value_area": {
+        "low": 265.77,
+        "high": 267.37,
+        "text": "VA 265.77 \u2013 267.37"
       },
       "tf": "1",
       "families_absent": [],
@@ -82337,6 +82344,7 @@
           273.83554213635693, 268.2080691420198
         ]
       ],
+      "vwap_text": "271.02",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
@@ -82924,8 +82932,14 @@
         ],
         "max_volume": 42690.925932278406,
         "poc": 271.74,
+        "poc_label": "POC est 271.74",
         "vah": 273.44,
         "val": 269.83
+      },
+      "prior_value_area": {
+        "low": 265.77,
+        "high": 267.37,
+        "text": "VA 265.77 \u2013 267.37"
       },
       "tf": "5",
       "families_absent": [],
@@ -83990,6 +84004,7 @@
           273.83554213635693, 268.2080691420198
         ]
       ],
+      "vwap_text": "271.02",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
@@ -84577,8 +84592,14 @@
         ],
         "max_volume": 42690.925932278406,
         "poc": 271.74,
+        "poc_label": "POC est 271.74",
         "vah": 273.44,
         "val": 269.83
+      },
+      "prior_value_area": {
+        "low": 265.77,
+        "high": 267.37,
+        "text": "VA 265.77 \u2013 267.37"
       },
       "tf": "15",
       "families_absent": [],
