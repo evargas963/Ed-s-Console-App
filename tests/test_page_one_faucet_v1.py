@@ -324,7 +324,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
 def test_chain_flags_are_served():
     """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
     body = push_chain.chain(TK, time_et.now(), {"expiry": EXPIRY})
-    plain = [c["symbol"] for c in _CONTRACTS if len(c.get("optionDeliverablesList") or []) == 1]
+    plain = [c["symbol"] for c in _CONTRACTS if len(c["optionDeliverablesList"]) == 1]
     on_plain = [
         r["series"]["nonStandard"]
         for r in body["ladder"]
