@@ -47,7 +47,7 @@ numbered rules hold, each naming the items it serves), in `.claude/rules/` and i
 and the item in `ACTIVE_PROGRAM.md` (an ENF item or STANDARD-CHECKS) that builds one. Enforced by:
 no machine check — ENF-12.
 
-## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
+## Shared rules (master copy: the operator's wording, copied in his Prompt Builder project on claude.ai; a change is proposed to him separately)
 
 ### First gate (EdWebConsole)
 
@@ -257,8 +257,8 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
 8. **Clocks** (serves 5). Market logic in ET; the page shows Central Time. The market's sessions are
    Schwab's /markets answers, and before a day's first window the pre-market begins with the first
    stock trade Schwab streams that was made that day; no session table is typed by hand. Enforced
-   by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`, which refuses a clock
-   time typed in product code (in force)
+   by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`; a clock time typed in
+   code — ruff `TID251` bans `datetime.time` in every file (`pyproject.toml`, in force)
 9. **Real data** (serves 11). Tests run on captured Schwab data (`tests/fixtures/`) through the real
    code; no stand-ins, no patches of the code under test. Enforced by: `tools/check_locks.py`:
    patching lines in tests may not rise (locks); stand-ins left in the tests — STAND-INS

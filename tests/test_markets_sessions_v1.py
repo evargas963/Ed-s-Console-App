@@ -14,11 +14,9 @@ the stand-in host, tests/schwab_rest_standin.py), and CRWD's LEVELONE_EQUITIES m
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import json
 import sqlite3
-import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -34,7 +32,6 @@ from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status, mark_feed_live
 from tests.schwab_rest_standin import CHAINS, MARKETS, MARKETS_ANSWERS, LocalSchwab
 from time_et import ET
-from tools import check_end_to_end as cee
 
 FX = Path(__file__).resolve().parent / "fixtures"
 
@@ -298,32 +295,6 @@ def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
         "levels are 780s old; the daemon's chain sweep has not delivered this ticker in two of "
         "its rounds (137s each)"
     )
-
-
-def test_no_market_time_is_typed_in_the_product():
-    """The market's sessions are Schwab's /markets answers (AGENTS.md rule 8).
-
-    No product file
-    builds a clock time from a literal, as `time(4)` did for a market day Schwab never sent.
-    """
-    repo = Path(__file__).resolve().parent.parent
-    # every product Python file the repository tracks, as check_end_to_end defines product
-    files = subprocess.run(
-        ["git", "ls-files", "*.py"], cwd=repo, capture_output=True, text=True, check=True
-    ).stdout.split()
-    product = [repo / f for f in files if cee.is_product(f)]
-    assert any(p.parent.name == "calc" for p in product), "the Calculators are read too"
-    typed = [
-        f"{path.name}:{node.lineno}"
-        for path in product
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "time"
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-    ]
-    assert typed == []
 
 
 def test_the_options_are_open_until_the_last_option_market_closes():
