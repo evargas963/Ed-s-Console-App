@@ -26,6 +26,7 @@ from push import liquidity as push_liquidity
 from state import bar_store, level_store
 from tests.feed_live_helper import daemon_status, price_history
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
+from tests.page_on_socket import pages
 from tests.real_chains import SPY_CLOSE
 from time_et import ET
 
@@ -251,3 +252,15 @@ def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value():
     summary = body["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == ("lower", "above_value")
     assert body == json.loads(DRAWN.read_text(encoding="utf-8"))
+
+
+def test_a_page_showing_the_zones_is_told_again_with_each_price_row_of_its_ticker():
+    """Each zone's side of the price, and the zones nearest it, move with the live price, not only
+    with a new bar: a page showing them is sent them again with each of its ticker's price rows
+    (live_ui.on_row), as the levels are, and a page on another ticker is not."""
+    with pages() as on_socket:
+        page = on_socket.open("SPY", "liquidity")
+        other = on_socket.open("QQQ", "liquidity")
+        on_socket.server.on_row("SPY")
+        assert on_socket.told(page) == {"liquidity"}
+        assert on_socket.told(other) == set()
