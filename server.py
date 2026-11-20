@@ -35,7 +35,6 @@ from app.options.order_flow.streaming import (
     streamed_bars,
     watchlist_request,
 )
-from calc.liquidity_models import PlaybookConfig
 from calc.liquidity_value_engine import (
     bars_from_candles,
 )
@@ -1850,7 +1849,6 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
             bars_from_candles(bar_store.bars_1m(tk, 2500)),
             daily=bar_store.series(tk, "1d"),
             bar_source=BAR_SOURCE,
-            config=PlaybookConfig(),
         )
     except Exception as e:  # logged; the ticker's next bar builds them
         log.warning("price levels for %s not built: %s", tk, e, exc_info=True)

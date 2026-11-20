@@ -188,9 +188,7 @@ class Zone:
     zone_mid: float
     #: [{"label": str, "value": float}]
     source_levels: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
-    source_tags: list[str] = field(default_factory=list[str])
     confluence_score: int = 0
-    snapshot_type: SnapshotType = SnapshotType.PREMARKET
     interpretation_notes: str = ""
 
 
@@ -214,10 +212,7 @@ class SnapshotOutput:
 
 @dataclass
 class PlaybookConfig:
-    """Configurable engine settings."""
+    """How the zones cluster the levels (cluster_price_levels_into_zones)."""
 
-    opening_range_minutes: int = 15
-    value_area_percent: float = 0.70
     clustering_threshold_pct: float = 0.002  # adjacent levels within 0.2% merge
     max_zone_width: float = 0.0  # 0 = no cap; when > 0, zones cannot exceed this width
-    tick_size: float = 0.01

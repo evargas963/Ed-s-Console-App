@@ -320,7 +320,6 @@ def _overnight_under_prior_low_bars(session_date: date) -> list:
 def _overnight_under_prior_low_zones(session_date: date):
     prev = date.fromordinal(session_date.toordinal() - 1)
     snap = build_price_level_snapshot(
-        "SPY",
         session_date,
         bars_from_candles(_overnight_under_prior_low_bars(session_date)),
         prior=_daily_candle(prev, 106.0, 100.0, 102.0),  # the prior session's two regular bars
@@ -373,6 +372,14 @@ def test_cluster_price_levels():
     assert [(lo, hi) for lo, hi, *_ in clusters] == [(500.0, 500.5), (505.0, 505.0)]
 
 
+def test_a_gap_of_exactly_the_threshold_and_a_zone_of_exactly_the_cap_merge():
+    """INDUCED: the edges, met exactly (0.2% of 500.00 is 1.00, and the console's cap is 2.00)."""
+    levels = [(500.0, "PDH"), (501.0, "ORB_HIGH"), (502.0, "VWAP")]
+    assert 500.0 * PlaybookConfig().clustering_threshold_pct == 1.0
+    clusters = cluster_price_levels_into_zones(levels, PlaybookConfig(max_zone_width=2.0))
+    assert [(lo, hi) for lo, hi, *_ in clusters] == [(500.0, 502.0)]
+
+
 def test_no_lookahead_premarket():
     """Premarket snapshot does not use same-day RTH data."""
     session = date(2026, 10, 6)  # a Tuesday: its prior session is the day before
@@ -382,19 +389,16 @@ def test_no_lookahead_premarket():
     for i in range(100):
         dt = datetime(prev_date.year, prev_date.month, prev_date.day, 10, 0 + i % 60, tzinfo=ET)
         bars.append(_mk_bar(dt, 500, 501, 499, 500, 1000))
-    cfg = PlaybookConfig()
     snap = build_price_level_snapshot(
-        "SPY",
         session,
         bars_from_candles(bars),
         prior=_daily_candle(prev_date, 501.0, 499.0, 500.0),
         bar_source="test",
         sessions=sessions(),
-        config=cfg,
     )
     out = build_zone_snapshot(
         "SPY",
-        cfg,
+        PlaybookConfig(),
         canonical=snap,
         now=_pre_open(session),
         extra_levels=[],
@@ -418,9 +422,23 @@ def _real_zones(now: datetime, option_levels: list[tuple[float, str]]):
     The newest receipt of each minute of 2026-10-01 and 10-02 (tests/liquidity_friday.py), the
     prior session Schwab's daily candle of 10-01; the price is the last bar's close.
     """
+    snap, held = _real_snapshot(now)
+    out = build_zone_snapshot(
+        "SPY",
+        PlaybookConfig(),
+        canonical=snap,
+        now=now,
+        extra_levels=option_levels,
+        price=held[-1]["close"],
+        sessions=sessions(),
+    )
+    return out, held
+
+
+def _real_snapshot(now: datetime):
+    """The price levels at `now` over Schwab's SPY bars received before it, and those bars."""
     held = [b for b in friday_bars() if b["timestamp"] / 1000 < now.timestamp()]
     snap = build_price_level_snapshot(
-        "SPY",
         now.date(),
         bars_from_candles(
             [
@@ -434,16 +452,7 @@ def _real_zones(now: datetime, option_levels: list[tuple[float, str]]):
         bar_source="test",
         sessions=sessions(),
     )
-    out = build_zone_snapshot(
-        "SPY",
-        PlaybookConfig(),
-        canonical=snap,
-        now=now,
-        extra_levels=option_levels,
-        price=held[-1]["close"],
-        sessions=sessions(),
-    )
-    return out, held
+    return snap, held
 
 
 def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
@@ -491,6 +500,43 @@ def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
             else ZoneType.PIVOT_VALUE
         )
         assert z.zone_type == want, (z.zone_low, z.zone_high, price)
+
+
+def test_the_zones_are_the_live_ones_from_the_regular_open_itself():
+    """At 09:30 ET, Friday 2026-10-02's regular open as Schwab's /markets sent it: live zones."""
+    out, _held = _real_zones(datetime(2026, 10, 2, 9, 30, tzinfo=ET), [])
+    assert out.snapshot_type == SnapshotType.LIVE and out.summary is not None
+
+
+def test_a_price_on_a_zones_edge_or_between_them_is_inside_it():
+    """The live zones at 15:00 ET Friday, each priced at its low, its high and in its upper half.
+
+    Support is a level under the market and resistance one over it (Osler 2000); a price on a
+    zone's edge or within it is neither: pivot / value.
+    """
+    snap, _held = _real_snapshot(FRIDAY)
+
+    def zones(price: float):
+        return build_zone_snapshot(
+            "SPY",
+            PlaybookConfig(),
+            canonical=snap,
+            now=FRIDAY,
+            extra_levels=[],
+            price=price,
+            sessions=sessions(),
+        ).zones
+
+    wide = [z for z in zones(0.0) if z.zone_low < z.zone_high]
+    assert wide, "no zone of two levels or more on these bars: the check would be vacuous"
+    for z in wide:
+        for price in (z.zone_low, (z.zone_mid + z.zone_high) / 2, z.zone_high):
+            (got,) = [
+                y.zone_type
+                for y in zones(price)
+                if (y.zone_low, y.zone_high) == (z.zone_low, z.zone_high)
+            ]
+            assert got == ZoneType.PIVOT_VALUE, (z.zone_low, z.zone_high, price)
 
 
 def test_source_levels_use_actual_values():

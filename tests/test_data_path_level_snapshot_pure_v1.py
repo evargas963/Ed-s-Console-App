@@ -48,7 +48,7 @@ def test_the_same_bars_give_the_same_level_snapshot(tk):
     bars, prior = _bars(tk), prior_session(schwab_daily(tk), FRIDAY)
     first, second = (
         build_price_level_snapshot(
-            tk, FRIDAY, bars, prior=prior, bar_source=FIXTURE, sessions=sessions()
+            FRIDAY, bars, prior=prior, bar_source=FIXTURE, sessions=sessions()
         )
         for _ in range(2)
     )

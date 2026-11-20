@@ -19,6 +19,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from itertools import pairwise
 from typing import Any, NamedTuple
 
 from calc.liquidity_models import (
@@ -32,8 +33,7 @@ from calc.liquidity_models import (
     volume_profile,
 )
 from calc.micro_structure import Candle
-from instrument_identity import ticker_storage_key
-from numeric_contract import float_finite_or_none, float_positive_or_none
+from numeric_contract import float_positive_or_none
 from time_et import ET, Session
 
 log = logging.getLogger(__name__)
@@ -49,6 +49,9 @@ type VwapPoint = tuple[float, float, float, float, float, float]
 #: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
 #: price levels built from it
 LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
+
+#: the opening range: the first this many minutes from the regular open
+OPENING_RANGE_MINUTES: int = 15
 
 #: where the prior day's high, low and close come from: Schwab sends them on its daily candle
 DAILY_CANDLE_BASIS = "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
@@ -126,8 +129,8 @@ def bars_from_candles(candles: list[Candle]) -> list[Bar]:
 class PriorDayLevels:
     """The prior session's levels: its daily candle's high, low and close as Schwab sent them.
 
-    Its POC and value area are estimated from its RTH 1-minute bars (`rth_bars` of them); None
-    where those bars make no profile.
+    Its POC and value area are its volume profile's, estimated from its RTH 1-minute bars
+    (`rth_bars` of them); None where those bars make no profile.
     """
 
     prior_date: date
@@ -135,9 +138,7 @@ class PriorDayLevels:
     pdh: float
     pdl: float
     pdc: float
-    pd_poc: float | None
-    pd_vah: float | None
-    pd_val: float | None
+    profile: VolumeProfile | None
 
 
 @dataclass(frozen=True)
@@ -172,7 +173,6 @@ def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
 def get_previous_day_levels(
     bars_norm: list[Bar],
     prior: Candle,
-    config: PlaybookConfig,
     *,
     sessions: Mapping[str, Session],
 ) -> PriorDayLevels:
@@ -186,16 +186,13 @@ def get_previous_day_levels(
     prev_bars = [
         b for b in bars_norm if b["_dt"].date() == prior_date and _in_rth(sessions, b["_dt"])
     ]
-    p = volume_profile(prev_bars, config.value_area_percent, config.tick_size)
     return PriorDayLevels(
         prior_date=prior_date,
         rth_bars=len(prev_bars),
         pdh=prior.high,
         pdl=prior.low,
         pdc=prior.close,
-        pd_poc=None if p is None else p.poc,
-        pd_vah=None if p is None else p.vah,
-        pd_val=None if p is None else p.val,
+        profile=volume_profile(prev_bars),
     )
 
 
@@ -247,17 +244,16 @@ def get_overnight_levels(
 def compute_opening_range(
     bars_norm: list[Bar],
     session_date: date,
-    config: PlaybookConfig,
     *,
     sessions: Mapping[str, Session],
 ) -> OpeningRange | None:
-    """Return the range of the first N minutes (default 15) from the date's regular open (Schwab).
+    """Return the range of the first OPENING_RANGE_MINUTES from the date's regular open (Schwab).
 
     From normalized bars (bars_from_candles). None when the date has no regular session, when
     Schwab's /markets answer for it is not held (the open is unknown), or when no bar falls in it.
     """
     regular = _regular(sessions, session_date)
-    span = timedelta(minutes=config.opening_range_minutes)
+    span = timedelta(minutes=OPENING_RANGE_MINUTES)
     orb_bars = [
         b for b in bars_norm if regular is not None and regular[0] <= b["_dt"] < regular[0] + span
     ]
@@ -332,7 +328,6 @@ def _filter_rth_bars(
 def compute_volume_profile_levels(
     bars_norm: list[Bar],
     session_date: date,
-    config: PlaybookConfig,
     *,
     sessions: Mapping[str, Session],
 ) -> VolumeProfile | None:
@@ -340,11 +335,7 @@ def compute_volume_profile_levels(
 
     From normalized bars (bars_from_candles). RTH only, no lookahead.
     """
-    return volume_profile(
-        _filter_rth_bars(bars_norm, session_date, sessions),
-        config.value_area_percent,
-        config.tick_size,
-    )
+    return volume_profile(_filter_rth_bars(bars_norm, session_date, sessions))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -451,7 +442,7 @@ def _held_levels(
     return [(price, lid) for lid in level_ids if (price := canonical.price(lid)) is not None]
 
 
-def _zone(cluster: Cluster, zone_type: ZoneType, notes: str, snapshot_type: SnapshotType) -> Zone:
+def _zone(cluster: Cluster, zone_type: ZoneType, notes: str) -> Zone:
     """Return the zone of one cluster (cluster_price_levels_into_zones)."""
     lo, hi, mid, tags, source_pairs = cluster
     return Zone(
@@ -460,9 +451,7 @@ def _zone(cluster: Cluster, zone_type: ZoneType, notes: str, snapshot_type: Snap
         zone_high=hi,
         zone_mid=mid,
         source_levels=[{"label": t, "value": p} for p, t in source_pairs],
-        source_tags=tags,
         confluence_score=len(tags),
-        snapshot_type=snapshot_type,
         interpretation_notes=notes,
     )
 
@@ -569,7 +558,7 @@ def build_zone_snapshot(
             (float(pair[0]), str(pair[1])) for pair in extra_levels
         ]
     zones = [
-        _zone(cluster, *_classify_live_cluster(cluster[0], cluster[1], price), kind)
+        _zone(cluster, *_classify_live_cluster(cluster[0], cluster[1], price))
         for cluster in cluster_price_levels_into_zones(levels, config)
     ]
     return SnapshotOutput(ticker=ticker, snapshot_type=kind, zones=zones, summary=summary)
@@ -690,7 +679,6 @@ class PriceLevelValue:
                 "window": self.window,
                 "vendor_basis": self.vendor_basis,
             },
-            "staleness": {"as_of_ts_utc": self.as_of_ts_utc},
         }
 
 
@@ -702,47 +690,38 @@ class PriceLevelSnapshot:
     """
 
     __slots__ = (
-        "ticker",
         "session_date",
         "bar_source",
         "as_of_ts_utc",
         "levels",
-        "vwap_path",
         "vwap_series",
         "families_absent",
         "degraded",
         "bars_used",
-        "session_rth_positive_volume_bars",
         "volume_profile",
     )
 
     def __init__(
         self,
         *,
-        ticker: str,
         session_date: date,
         bar_source: str,
         as_of_ts_utc: float | None,
         levels: dict[str, PriceLevelValue],
-        vwap_path: list[tuple[float, float]],
         families_absent: list[dict[str, str]],
         degraded: list[str],
         bars_used: int,
         vwap_series: list[VwapPoint],
-        session_rth_positive_volume_bars: int = 0,
-        volume_profile: VolumeProfile | None = None,
+        volume_profile: VolumeProfile | None,
     ) -> None:
-        self.ticker = ticker
         self.session_date = session_date
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
         self.levels = levels  # level_id -> PriceLevelValue
-        self.vwap_path = vwap_path  # [(epoch_sec, vwap)]
         self.vwap_series = vwap_series  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
         self.families_absent = families_absent
         self.degraded = degraded
         self.bars_used = bars_used
-        self.session_rth_positive_volume_bars = int(session_rth_positive_volume_bars)
         self.volume_profile = volume_profile  # the session's profile the value area is read from
 
     def price(self, level_id: str) -> float | None:
@@ -812,7 +791,7 @@ class _Family(NamedTuple):
     Each is served with the family's producer, window and vendor basis.
     """
 
-    prices: tuple[tuple[str, float | None], ...]
+    prices: tuple[tuple[str, float], ...]
     producer: str
     window: str
     vendor_basis: str
@@ -830,20 +809,18 @@ def _level_values(
 ) -> dict[str, PriceLevelValue]:
     """Return each family's (level id, price) as a served level, in order.
 
-    A price that is not a finite number is left out: absent stays absent.
+    Every price is a finite number: Schwab's daily candle's, checked where it came in
+    (server._schwab_bar), or computed from bars checked there.
     """
     levels: dict[str, PriceLevelValue] = {}
     for f in families:
         if isinstance(f, _Absent):
             continue
         for level_id, price in f.prices:
-            v = float_finite_or_none(price)
-            if v is None:
-                continue
             family, scope, tier = PHASE2A_LEVEL_IDS[level_id]
             levels[level_id] = PriceLevelValue(
                 level_id=level_id,
-                price=v,
+                price=price,
                 family=family,
                 semantic_scope=scope,
                 evidence_tier=tier,
@@ -858,7 +835,6 @@ def _level_values(
 def _prior_day_part(
     bars_norm: list[Bar],
     prior: Candle | None,
-    cfg: PlaybookConfig,
     sessions: Mapping[str, Session],
     basis: str,
 ) -> tuple[list[_Family | _Absent], date | None, list[str]]:
@@ -871,8 +847,8 @@ def _prior_day_part(
     """
     if prior is None:
         return [_Absent("prior_day", "no Schwab daily candle held for a prior session")], None, []
-    eng = get_previous_day_levels(bars_norm, prior, cfg, sessions=sessions)
-    day = eng.prior_date
+    eng = get_previous_day_levels(bars_norm, prior, sessions=sessions)
+    day, p = eng.prior_date, eng.profile
     producer = f"{_PRODUCER_NS}.get_previous_day_levels"
     window = f"{day.isoformat()} RTH (most recent prior RTH session)"
     value_area: _Family | _Absent = (
@@ -882,12 +858,9 @@ def _prior_day_part(
             if eng.rth_bars == 0
             else f"no RTH volume in the prior session {day}'s bars for its volume profile",
         )
-        if eng.pd_poc is None or eng.pd_vah is None or eng.pd_val is None
+        if p is None
         else _Family(
-            (("PD_POC", eng.pd_poc), ("PD_VAH", eng.pd_vah), ("PD_VAL", eng.pd_val)),
-            producer,
-            window,
-            basis,
+            (("PD_POC", p.poc), ("PD_VAH", p.vah), ("PD_VAL", p.val)), producer, window, basis
         )
     )
     families: list[_Family | _Absent] = [
@@ -912,18 +885,17 @@ def _prior_day_part(
 def _opening_range_part(
     bars_norm: list[Bar],
     session_date: date,
-    cfg: PlaybookConfig,
     sessions: Mapping[str, Session],
     basis: str,
 ) -> _Family | _Absent:
     """Return the session's opening range."""
-    orb = compute_opening_range(bars_norm, session_date, cfg, sessions=sessions)
+    orb = compute_opening_range(bars_norm, session_date, sessions=sessions)
     if orb is None:
         return _Absent("opening_range", "no bar in the opening minutes, or no open known")
     return _Family(
         (("ORB_HIGH", orb.high), ("ORB_LOW", orb.low), ("ORB_MID", orb.mid)),
         f"{_PRODUCER_NS}.compute_opening_range",
-        f"{session_date.isoformat()} first {cfg.opening_range_minutes}m RTH",
+        f"{session_date.isoformat()} first {OPENING_RANGE_MINUTES}m RTH",
         basis,
     )
 
@@ -955,20 +927,18 @@ def _vwap_part(
     bars_norm: list[Bar],
     session_date: date,
     sessions: Mapping[str, Session],
-    rth_volume_bars: int,
     *,
     window: str,
     basis: str,
 ) -> tuple[_Family | _Absent, list[VwapPoint]]:
-    """Return the session VWAP and its bands, and its series (one accumulation for both)."""
+    """Return the session VWAP and its bands, and its series (one accumulation for both).
+
+    The series has a point from the first RTH bar with volume above 0 (no volume is negative,
+    server._schwab_bar), so an empty one means no RTH volume.
+    """
     vwap_series = compute_session_vwap_series(bars_norm, session_date, sessions=sessions)
     if not vwap_series:
-        return _Absent(
-            "vwap",
-            "RTH volume bars present but session VWAP did not materialize"
-            if rth_volume_bars > 0
-            else "no RTH volume for session VWAP in available bars",
-        ), vwap_series
+        return _Absent("vwap", "no RTH volume for session VWAP in available bars"), vwap_series
     # the curve's last point IS the served level and band
     _t, vwap, p1, m1, p2, m2 = vwap_series[-1]
     return _Family(
@@ -982,16 +952,20 @@ def _vwap_part(
 def _value_area_part(
     bars_norm: list[Bar],
     session_date: date,
-    cfg: PlaybookConfig,
     sessions: Mapping[str, Session],
-    rth_volume_bars: int,
     *,
     window: str,
     basis: str,
 ) -> tuple[_Family | _Absent, VolumeProfile | None]:
-    """Return the session's value area, and its volume profile (None: none materialized)."""
-    profile = compute_volume_profile_levels(bars_norm, session_date, cfg, sessions=sessions)
+    """Return the session's value area, and its volume profile (None: none materialized).
+
+    Bars with volume make no profile when none has a range to spread it over (high under low).
+    """
+    profile = compute_volume_profile_levels(bars_norm, session_date, sessions=sessions)
     if profile is None:
+        rth_volume_bars = count_session_rth_positive_volume_bars(
+            bars_norm, session_date, sessions=sessions
+        )
         return _Absent(
             "value_area",
             "no RTH volume for the volume profile in available bars"
@@ -1007,14 +981,12 @@ def _value_area_part(
 
 
 def build_price_level_snapshot(
-    ticker: str,
     session_date: date,
     bars_norm: list[Bar],
     *,
     prior: Candle | None,
     bar_source: str,
     sessions: Mapping[str, Session],
-    config: PlaybookConfig | None = None,
 ) -> PriceLevelSnapshot:
     """Build the levels: THE level producer.
 
@@ -1027,47 +999,39 @@ def build_price_level_snapshot(
     zero, or a neighbouring level. A prior session with fewer than
     LEVELS_PRIOR_SESSION_MIN_BARS RTH bars is disclosed in `degraded`, never filled.
     """
-    cfg = config or PlaybookConfig()
     as_of: float | None = max((b["_dt"].timestamp() for b in bars_norm), default=None)
     basis = f"1m bars ({bar_source}); Schwab streamed bars"
-    families, prior_date, degraded = _prior_day_part(bars_norm, prior, cfg, sessions, basis)
+    families, prior_date, degraded = _prior_day_part(bars_norm, prior, sessions, basis)
     vwap_series: list[VwapPoint] = []
     profile: VolumeProfile | None = None
-    rth_volume_bars = 0
     if not bars_norm:
         families += [
             _Absent(fam, f"no bars available (source {bar_source})")
             for fam in ("vwap", "opening_range", "overnight", "value_area")
         ]
     else:
-        rth_volume_bars = count_session_rth_positive_volume_bars(
-            bars_norm, session_date, sessions=sessions
-        )
         window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"
         vwap, vwap_series = _vwap_part(
-            bars_norm, session_date, sessions, rth_volume_bars, window=window, basis=basis
+            bars_norm, session_date, sessions, window=window, basis=basis
         )
         value_area, profile = _value_area_part(
-            bars_norm, session_date, cfg, sessions, rth_volume_bars, window=window, basis=basis
+            bars_norm, session_date, sessions, window=window, basis=basis
         )
         families += [
             vwap,
-            _opening_range_part(bars_norm, session_date, cfg, sessions, basis),
+            _opening_range_part(bars_norm, session_date, sessions, basis),
             _overnight_part(bars_norm, session_date, prior_date, sessions, basis),
             value_area,
         ]
     return PriceLevelSnapshot(
-        ticker=ticker_storage_key(ticker),  # canonical liquidity snapshot/ledger identity
         session_date=session_date,
         bar_source=bar_source,
         as_of_ts_utc=as_of,
         levels=_level_values(families, as_of),
-        vwap_path=[(t, w) for t, w, _a, _b, _c, _d in vwap_series],
         vwap_series=vwap_series,
         families_absent=[f._asdict() for f in families if isinstance(f, _Absent)],
         degraded=degraded,
         bars_used=len(bars_norm),
-        session_rth_positive_volume_bars=rth_volume_bars,
         volume_profile=profile,
     )
 
@@ -1130,7 +1094,7 @@ def _touch_outcomes(rth: list[Bar], level: float, start: datetime, minutes: int)
     at = {b["_dt"]: b for b in rth}
     touches = holds = 0
     armed = True
-    for prev, bar in zip(rth, rth[1:], strict=False):
+    for prev, bar in pairwise(rth):
         if not bar["low"] <= level <= bar["high"]:
             armed = True
             continue
@@ -1155,7 +1119,6 @@ def hold_counts(
     now: datetime,
     *,
     sessions: Mapping[str, Session],
-    config: PlaybookConfig,
 ) -> dict[str, dict[int, HoldCount]]:
     """Count each level type's touches and holds over the sessions whose close is past at `now`.
 
@@ -1177,20 +1140,18 @@ def hold_counts(
     found = {lid: {m: [0, 0, 0, 0] for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
     for d, (hours, rth) in days.items():
         snap = build_price_level_snapshot(
-            "",
             d,
             [b for b in bars_norm if b["_dt"] < hours[1]],
             prior=prior_session(daily, d),
             bar_source="",
             sessions=sessions,
-            config=config,
         )
         o, half = rth[0]["open"], swing[(d.year, d.month)]
         grid = [
             o + half * (2 * k + 1 - HOLD_BASELINE_LEVELS) / HOLD_BASELINE_LEVELS
             for k in range(HOLD_BASELINE_LEVELS)
         ]
-        after_range = hours[0] + timedelta(minutes=config.opening_range_minutes)
+        after_range = hours[0] + timedelta(minutes=OPENING_RANGE_MINUTES)
         opened = {
             lid: after_range if lid in _AFTER_OPENING_RANGE else hours[0] for lid in HOLD_LEVELS
         }
@@ -1209,18 +1170,18 @@ def hold_counts(
 def hold_window(bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]) -> list[Bar]:
     """Return the bars hold_counts reads at `now`: each before a regular close at or before `now`.
 
-    Every closed session's bars and everything before them; no bar of a session still open. The
-    closes are tried newest first, so a bar before the newest is decided by one comparison.
+    Every closed session's bars and everything before them: each bar before the newest such
+    close; no bar of a session still open, and none with no session closed.
     """
-    closes = sorted(
-        (
-            r[1]
-            for day in sessions
-            if (r := _regular(sessions, date.fromisoformat(day))) is not None and r[1] <= now
-        ),
-        reverse=True,
-    )
-    return [b for b in bars_norm if any(b["_dt"] < close for close in closes)]
+    closes = [
+        r[1]
+        for day in sessions
+        if (r := _regular(sessions, date.fromisoformat(day))) is not None and r[1] <= now
+    ]
+    if not closes:
+        return []
+    newest = max(closes)
+    return [b for b in bars_norm if b["_dt"] < newest]
 
 
 def _closed_sessions(

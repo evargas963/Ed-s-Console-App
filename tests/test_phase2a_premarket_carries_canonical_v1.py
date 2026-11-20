@@ -76,13 +76,11 @@ def _canonical(session: date, bars: list):
         volume=sum(b.volume for b in held),
     )
     return build_price_level_snapshot(
-        "SPY",
         session,
         bars_from_candles(bars),
         prior=prior,
         bar_source="test_fixture",
         sessions=sessions(),
-        config=PlaybookConfig(),
     )
 
 

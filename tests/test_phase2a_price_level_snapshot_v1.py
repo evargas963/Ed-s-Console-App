@@ -119,7 +119,6 @@ def _clean_snapshots():
 
 def test_snapshot_carries_value_scope_provenance_and_as_of():
     snap = build_price_level_snapshot(
-        "SPY",
         SESSION,
         bars_from_candles(_tape()),
         prior=_prior("SPY", SESSION),
@@ -169,7 +168,6 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
         ("real_daemon_bars_spy_tsla_2026_10_01_02.json", "SPY", True),
     ):
         snap = build_price_level_snapshot(
-            tk,
             friday,
             bars_from_candles(_daemon_bars(name, tk)),
             prior=prior_session(schwab_daily(tk), friday),
@@ -193,9 +191,10 @@ def test_an_index_has_no_volume_levels_and_says_so_an_etf_has_them():
 
 def test_absent_input_stays_absent_and_is_declared():
     snap = build_price_level_snapshot(
-        "SPY", SESSION, [], prior=None, bar_source="empty", sessions=sessions()
+        SESSION, [], prior=None, bar_source="empty", sessions=sessions()
     )
     assert snap.levels == {}, "no bars must produce no levels, not zeros or spot"
+    assert (snap.vwap_series, snap.volume_profile) == ([], None), "no curve and no profile"
     fams = {f["family"] for f in snap.families_absent}
     assert {"prior_day", "vwap", "opening_range", "overnight", "value_area"} <= fams
     assert all(f.get("reason") for f in snap.families_absent)
@@ -210,7 +209,6 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
     )
 
     snap = build_price_level_snapshot(
-        "SPY",
         SESSION,
         tape,
         prior=_prior("SPY", SESSION),
