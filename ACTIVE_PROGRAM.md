@@ -235,12 +235,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Operator decides
 
-- WRITER-COUNT-PROOF (OPERATOR): in `stream_spine.CaptureWriter`, two counts were fixed by reading
-  the code with no test that fails before (`_refused` resetting `_stored` after a partial batch;
-  `_spilled` counted in the same locked section). Decision: accept the code-read proof, or name a
-  way to induce each without patching the writer. And: what the writer does with a statement that
-  fails for its own reason rather than a refusal (`_prune_part`, the spill-progress row,
-  `_finish_spill`, `stream_write_failures`), which today retries without end and can stop recording.
 - ONE-30 (OPERATOR): an option contract's own SECURITY_STATUS is not read; inside its option window
   a Halted contract reads LIVE (`live_market_plane.not_trading`). Re-subscription snapshots resend
   old statuses, so taking the field needs a rule for which message is current.
