@@ -21,13 +21,15 @@ from calc.liquidity_models import (
 from calc.liquidity_value_engine import (
     OvernightRange,
     bars_from_candles,
-    build_premarket_snapshot,
     build_price_level_snapshot,
+    build_zone_snapshot,
     cluster_price_levels_into_zones,
     get_overnight_levels,
+    prior_session,
 )
 from calc.micro_structure import Candle
-from tests.feed_live_helper import daemon_bars
+from tests.feed_live_helper import daemon_bars, schwab_daily
+from tests.liquidity_friday import FRIDAY, friday_bars
 from time_et import ET, sessions
 
 
@@ -325,8 +327,21 @@ def _overnight_under_prior_low_zones(session_date: date):
         bar_source="test",
         sessions=sessions(),
     )
-    # the price: the last overnight close, under the prior low
-    return build_premarket_snapshot("SPY", PlaybookConfig(), canonical=snap, price=96.0).zones
+    # before the open; the price: the last overnight close, under the prior low
+    return build_zone_snapshot(
+        "SPY",
+        PlaybookConfig(),
+        canonical=snap,
+        now=_pre_open(session_date),
+        extra_levels=[],
+        price=96.0,
+        sessions=sessions(),
+    ).zones
+
+
+def _pre_open(session_date: date) -> datetime:
+    """Return 09:00 ET on `session_date`, before its regular open."""
+    return datetime(session_date.year, session_date.month, session_date.day, 9, 0, tzinfo=ET)
 
 
 def test_no_pool_language_in_rendered_zone_payload():
@@ -377,7 +392,15 @@ def test_no_lookahead_premarket():
         sessions=sessions(),
         config=cfg,
     )
-    out = build_premarket_snapshot("SPY", cfg, canonical=snap, price=500.0)
+    out = build_zone_snapshot(
+        "SPY",
+        cfg,
+        canonical=snap,
+        now=_pre_open(session),
+        extra_levels=[],
+        price=500.0,
+        sessions=sessions(),
+    )
     labels = {s["label"] for z in out.zones for s in z.source_levels}
     assert labels & {"PDH", "PDL", "PDC"}
     # No today POC/VAH/VAL in the premarket zones: every poc-shaped level is the
@@ -387,6 +410,87 @@ def test_no_lookahead_premarket():
     assert all(t.startswith("PD_") for t in poc_labels), (
         f"the premarket zones carry a same-day POC: {poc_labels}"
     )
+
+
+def _real_zones(now: datetime, option_levels: list[tuple[float, str]]):
+    """The one builder's zones at `now` over Schwab's SPY bars received before it.
+
+    The newest receipt of each minute of 2026-10-01 and 10-02 (tests/liquidity_friday.py), the
+    prior session Schwab's daily candle of 10-01; the price is the last bar's close.
+    """
+    held = [b for b in friday_bars() if b["timestamp"] / 1000 < now.timestamp()]
+    snap = build_price_level_snapshot(
+        "SPY",
+        now.date(),
+        bars_from_candles(
+            [
+                Candle(
+                    b["timestamp"] / 1000, b["open"], b["high"], b["low"], b["close"], b["volume"]
+                )
+                for b in held
+            ]
+        ),
+        prior=prior_session(schwab_daily("SPY"), now.date()),
+        bar_source="test",
+        sessions=sessions(),
+    )
+    out = build_zone_snapshot(
+        "SPY",
+        PlaybookConfig(),
+        canonical=snap,
+        now=now,
+        extra_levels=option_levels,
+        price=held[-1]["close"],
+        sessions=sessions(),
+    )
+    return out, held
+
+
+def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
+    """The same builder, before Friday 2026-10-02's open and at 15:00 ET, on Schwab's SPY bars.
+
+    Expected values worked out here from the bars and Schwab's daily candle as sent. INDUCED:
+    one option level (a call wall at 671.00), for no captured terrain goes with these bars.
+    """
+    wall = [(671.0, "GAMMA_CALL_WALL")]
+    prior = prior_session(schwab_daily("SPY"), FRIDAY.date())
+    assert prior is not None
+    overnight_from = datetime(2026, 10, 1, 16, 0, tzinfo=ET).timestamp()  # 10-01's regular close
+    opening = datetime(2026, 10, 2, 9, 30, tzinfo=ET).timestamp()  # 10-02's regular open
+
+    pre, held = _real_zones(datetime(2026, 10, 2, 9, 0, tzinfo=ET), wall)
+    overnight = [b for b in held if b["timestamp"] / 1000 >= overnight_from]
+    assert overnight, "no overnight bar in the capture: the assertion would be vacuous"
+    got = {s["label"]: s["value"] for z in pre.zones for s in z.source_levels}
+    assert (pre.snapshot_type, pre.summary) == (SnapshotType.PREMARKET, None)
+    assert set(got) == {"PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL"} | {
+        "OVERNIGHT_HIGH",
+        "OVERNIGHT_LOW",
+    }
+    assert (got["PDH"], got["PDL"], got["PDC"]) == (prior.high, prior.low, prior.close)
+    assert got["OVERNIGHT_HIGH"] == max(b["high"] for b in overnight)
+    assert got["OVERNIGHT_LOW"] == min(b["low"] for b in overnight)
+
+    live, held = _real_zones(FRIDAY, wall)
+    first15 = [b for b in held if opening <= b["timestamp"] / 1000 < opening + 15 * 60]
+    got = {s["label"]: s["value"] for z in live.zones for s in z.source_levels}
+    assert live.snapshot_type == SnapshotType.LIVE and live.summary is not None
+    assert "PDC" not in got and got["GAMMA_CALL_WALL"] == 671.0
+    assert (got["PDH"], got["PDL"]) == (prior.high, prior.low)
+    assert (got["ORB_HIGH"], got["ORB_LOW"]) == (
+        max(b["high"] for b in first15),
+        min(b["low"] for b in first15),
+    )
+    price = held[-1]["close"]
+    for z in live.zones:
+        want = (
+            ZoneType.RESISTANCE_LIQUIDITY
+            if z.zone_low > price
+            else ZoneType.SUPPORT_LIQUIDITY
+            if z.zone_high < price
+            else ZoneType.PIVOT_VALUE
+        )
+        assert z.zone_type == want, (z.zone_low, z.zone_high, price)
 
 
 def test_source_levels_use_actual_values():

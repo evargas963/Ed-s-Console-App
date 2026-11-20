@@ -72,8 +72,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   restarting a daemon that exited reads "not running", exit 0, and the window then restarts it; a
   daemon asked to stop that ends on another exit code reads "stopped" and is restarted too. Next:
   find what tells these apart from a clean stop's 30 s close, then fix at the source.
-- ZONES-ONE (NEXT): `calc/liquidity_value_engine.py`'s two zone builders
-  (`build_premarket_snapshot`, `build_live_snapshot`) and its snapshot cache become one builder.
 
 ## Queued
 

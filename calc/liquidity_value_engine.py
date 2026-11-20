@@ -3,7 +3,7 @@
 Deterministic institutional intraday zone mapper. Works for any ticker.
 The price levels (prior day, overnight, opening range, VWAP, value area) are computed once per
 bar input into the materialized PriceLevelSnapshot (build_price_level_snapshot); the zones
-(build_live_snapshot, build_premarket_snapshot before the open) are built from that snapshot.
+(build_zone_snapshot, before the open and after it) are built from that snapshot.
 
 Data source agnostic: consumes normalized OHLCV bars (list of dicts).
 All calculations derived from bars; no Schwab-specific logic.
@@ -408,32 +408,7 @@ def cluster_price_levels_into_zones(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def build_premarket_snapshot(
-    ticker: str,
-    config: PlaybookConfig,
-    *,
-    canonical: PriceLevelSnapshot,
-    price: float | None,
-) -> SnapshotOutput:
-    """Premarket: PDH/PDL/PDC, PD POC/VAH/VAL, overnight high/low. No same-day RTH.
-
-    The families are CARRIED from the one materialized snapshot (``canonical``); no level
-    helper runs here. Absent stays absent: a family missing from the snapshot is missing here,
-    never replaced by spot, zero or a neighbouring level. Each zone is typed by its side of the
-    live ``price`` (_classify_live_cluster), as the live zones are.
-    """
-    zones = [
-        _zone(
-            cluster, *_classify_live_cluster(cluster[0], cluster[1], price), SnapshotType.PREMARKET
-        )
-        for cluster in cluster_price_levels_into_zones(
-            _held_levels(canonical, PREMARKET_LEVELS), config
-        )
-    ]
-    return SnapshotOutput(ticker=ticker, snapshot_type=SnapshotType.PREMARKET, zones=zones)
-
-
-#: the levels a premarket snapshot clusters, in order
+#: the levels the zones cluster before the session's regular open, in order
 PREMARKET_LEVELS = (
     "PDH",
     "PD_VAH",
@@ -444,7 +419,8 @@ PREMARKET_LEVELS = (
     "OVERNIGHT_HIGH",
     "OVERNIGHT_LOW",
 )
-#: the levels a live snapshot clusters, in order (the option levels and spot follow them)
+#: the levels the zones cluster from the session's regular open, in order (the option levels
+#: follow them)
 LIVE_LEVELS = (
     "PDH",
     "PD_VAH",
@@ -555,7 +531,7 @@ def _classify_live_cluster(lo: float, hi: float, price: float | None) -> tuple[Z
     return ZoneType.PIVOT_VALUE, "The price is inside it"
 
 
-def build_live_snapshot(
+def build_zone_snapshot(
     ticker: str,
     config: PlaybookConfig,
     *,
@@ -565,35 +541,38 @@ def build_live_snapshot(
     price: float | None,
     sessions: Mapping[str, Session],
 ) -> SnapshotOutput:
-    """Build the session's zones from the one materialized price-level snapshot (``canonical``).
+    """Build the session's zones at `now` from the one price-level snapshot (``canonical``).
 
-    The option levels (``extra_levels``) are fused in; no level helper runs here. Each zone is
-    typed by its side of the live ``price`` (_classify_live_cluster). Before the session's regular
-    open it is the premarket shape, as it is while the session's hours are not held: the regular
-    session Schwab's /markets sent.
+    The zones' one builder, before the open and after it; no level helper runs here, and a level
+    the snapshot does not hold is left out, never replaced by spot, zero or a neighbour. Before
+    the session's regular open (Schwab's /markets), or while its hours are not held, the zones
+    cluster PREMARKET_LEVELS; from the open, LIVE_LEVELS with the option levels
+    (``extra_levels``) fused in and the value summary. Each zone is typed by its side of the live
+    ``price`` (_classify_live_cluster).
     """
     regular = _regular(sessions, canonical.session_date)
     if regular is None or now < regular[0]:
-        return build_premarket_snapshot(ticker, config, canonical=canonical, price=price)
-    levels = _held_levels(canonical, LIVE_LEVELS) + [
-        (float(pair[0]), str(pair[1])) for pair in extra_levels
-    ]
+        kind, summary = SnapshotType.PREMARKET, None
+        levels = _held_levels(canonical, PREMARKET_LEVELS)
+    else:
+        val, vah = canonical.price("TODAY_VAL"), canonical.price("TODAY_VAH")
+        kind, summary = (
+            SnapshotType.LIVE,
+            SnapshotSummary(
+                value_state=value_area_relation(
+                    val, vah, canonical.price("PD_VAL"), canonical.price("PD_VAH")
+                ),
+                vwap_relation=vwap_against_value(canonical.price("VWAP"), val, vah),
+            ),
+        )
+        levels = _held_levels(canonical, LIVE_LEVELS) + [
+            (float(pair[0]), str(pair[1])) for pair in extra_levels
+        ]
     zones = [
-        _zone(cluster, *_classify_live_cluster(cluster[0], cluster[1], price), SnapshotType.LIVE)
+        _zone(cluster, *_classify_live_cluster(cluster[0], cluster[1], price), kind)
         for cluster in cluster_price_levels_into_zones(levels, config)
     ]
-    val, vah = canonical.price("TODAY_VAL"), canonical.price("TODAY_VAH")
-    return SnapshotOutput(
-        ticker=ticker,
-        snapshot_type=SnapshotType.LIVE,
-        zones=zones,
-        summary=SnapshotSummary(
-            value_state=value_area_relation(
-                val, vah, canonical.price("PD_VAL"), canonical.price("PD_VAH")
-            ),
-            vwap_relation=vwap_against_value(canonical.price("VWAP"), val, vah),
-        ),
-    )
+    return SnapshotOutput(ticker=ticker, snapshot_type=kind, zones=zones, summary=summary)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
