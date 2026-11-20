@@ -139,4 +139,24 @@ also_copy = [
   "requirements.txt",
   "requirements-dev.txt",
 ]
-pytest_add_cli_args_test_selection = ["tests/", "--ignore=tests/e2e", "-m", "not alone and not rail"]
+# every test of the app; the tests of the check tools and guards (tools/) reach no line of it
+pytest_add_cli_args_test_selection = [
+  "tests/",
+  "--ignore=tests/e2e",
+  "--ignore-glob=tests/test_check_*",
+  "--ignore-glob=tests/test_census_*",
+  "--ignore-glob=tests/test_operator_*",
+  "--ignore-glob=tests/test_operating_process_lock_*",
+  "--ignore-glob=tests/test_hook_chain_*",
+  "--ignore-glob=tests/test_keep_going_*",
+  "--ignore-glob=tests/test_wiring_rules_*",
+  "--ignore-glob=tests/test_reset_guard_*",
+  "--ignore-glob=tests/test_protected_paths_*",
+  "--ignore-glob=tests/test_guards_read_*",
+  "--ignore-glob=tests/test_shell_reader_*",
+  "--ignore-glob=tests/test_bootstrap_worktree_venv_*",
+  "--ignore-glob=tests/test_runtime_governance_decoupling_*",
+  "--ignore-glob=tests/test_schwab_field_inventory_*",
+  "-m",
+  "not alone and not rail",
+]
