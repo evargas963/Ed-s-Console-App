@@ -1,6 +1,7 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (the `bars:chart` panel, completed Schwab bars at the toolbar's timeframe), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
+   (the `bars:chart` panel, completed Schwab bars at the toolbar's timeframe, and the `forming:chart`
+   panel over them), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (the socket's `strikes:chart` panel: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
