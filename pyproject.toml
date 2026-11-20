@@ -158,9 +158,19 @@ pytest_add_cli_args_test_selection = [
   "--ignore-glob=tests/test_bootstrap_worktree_venv_*",
   "--ignore-glob=tests/test_runtime_governance_decoupling_*",
   "--ignore-glob=tests/test_schwab_field_inventory_*",
-  # the import contracts read the source's imports, which mutmut's instrumented copy adds to
+  # the tests of the test runner (scripts/, node): no line of the app
+  "--ignore-glob=tests/test_full_suite_output_sink_*",
+  "--ignore-glob=tests/test_e2e_stream_db_isolation_*",
+  # tests that read the code itself, which mutmut's instrumented copy changes: the source's
+  # imports and text, the calls made (each function runs through mutmut's trampoline) and the
+  # thread a function runs on
   "--ignore-glob=tests/test_data_path_only_feed_*",
+  "--deselect=tests/test_gamma_flip_schwab_rate_v1.py::test_no_product_file_reads_the_stock_streams_dividend_yield",
+  "--deselect=tests/test_stream_reader_keeps_up_v1.py::test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced",
+  "--deselect=tests/test_terrain_one_calculation_v1.py::test_each_value_is_computed_once_and_nothing_unread_is_computed",
+  # a program started in a folder of its own reads mutmut's settings from that folder, where
+  # there are none (mutmut 3.8.1, configuration._config_reader)
+  "--deselect=tests/test_data_path_startup_v1.py::test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask",
   "-m",
   "not alone and not rail",
 ]
-pytest_add_cli_args = ["--maxfail=100000"]
