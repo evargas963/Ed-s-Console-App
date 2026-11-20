@@ -77,6 +77,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Queued
 
+- HTTPX2 (QUEUED, on upgrade): authlib 1.9.1 warns that its httpx fallback is deprecated ("please
+  use httpx2"); schwab-py 1.5.1 is built on httpx. Left as is (operator 2026-11-19): authlib, httpx
+  and schwab-py stay pinned in `requirements.txt`, and are upgraded together, with the sign-in
+  refresh tested before a deploy, when schwab-py moves to httpx2 or authlib drops the fallback.
 - P1-6 (QUEUED): found defects, each checked against the code on 2026-11-19 and fixed at its source
   with a test that fails before:
   - S-23 `push/strikes.py` `_side_sums` splits the per-strike GEX (priced at the snapshot's spot) by
