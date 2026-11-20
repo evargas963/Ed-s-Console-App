@@ -187,8 +187,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   never combined) → the `book` and `bookmap` panels (`push.book.book`, `push/bookmap.py`), sent
   again on each book (`server.FLOW_PANELS`). The Liquidity card's order-imbalance readout of both
   books and their composite is computed once per book (`calc.order_flow.book_readout`) and kept a
-  second at a time (`order_flow.history.LEAN`). A side Schwab sent with no levels is empty, never an
-  older book's. Enforced by: `tests/test_data_path_book_time_v1.py`,
+  second at a time (`order_flow.history.LEAN`): (bid − ask) / (bid + ask) over the shares Schwab
+  sent at the best 1, 3 and 5 levels, Top 5 the screen's default. A side Schwab sent with no levels
+  is empty, never an older book's. Enforced by: `tests/test_data_path_book_time_v1.py`,
   `tests/test_data_path_book_size_v1.py`.
 - **Option quote.** LEVELONE_OPTIONS → the bus → the Recorder for kept contracts (D4) → the console
   reads each contract's top of book, Greeks and volume from its bus record

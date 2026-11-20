@@ -438,7 +438,7 @@ test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's
   // with one book held, the composite is that book: its numbers, named on the source line
   const comp = CLOSED_BOOK.readout.venues.COMPOSITE;
   await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
-  await expect(page.locator("#tdmCardLiq .liq-pct")).toHaveText(comp.views.weighted.pct_text);
+  await expect(page.locator("#tdmCardLiq .liq-pct")).toHaveText(comp.views["5"].pct_text);
   await expect(page.locator("#tdmLiqTitle")).toHaveText("SPY shares");
   await expect(page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]')).toHaveClass(/\bon\b/);
   await expect(page.locator("#tdmCardLiq .liq-body")).toContainText("2,160");
@@ -461,8 +461,8 @@ test("Desk: the book age keeps Schwab's book time", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   // the card's footnote keeps the served composite's book time; its side word and totals are served
   await expect(page.locator("#tdmCardLiq")).toContainText("Book " + COMP.book_time_ct);
-  await expect(page.locator("#tdmCardLiq .liq-word")).toHaveText(COMP.views.weighted.side_word);
-  await expect(page.locator("#tdmCardLiq .liq-body")).toContainText(COMP.views.weighted.ask_text);
+  await expect(page.locator("#tdmCardLiq .liq-word")).toHaveText(COMP.views["5"].side_word);
+  await expect(page.locator("#tdmCardLiq .liq-body")).toContainText(COMP.views["5"].ask_text);
   await expect(page.locator("#tdmTrust")).toContainText(
     "BOOK " + BOOK_TIME + " · " + MICRO.book_age_text,
   );
@@ -757,7 +757,7 @@ test.describe("Trade Desk renders served values", () => {
       await expect(page.locator("#tdmQueue .tdm-q .tdm-q-m").nth(i)).toContainText(
         it.time_ct == null ? "time not reported" : it.time_ct,
       );
-    await expect(page.locator("#tdmCardLiq .liq-word")).toHaveText(COMP.views.weighted.side_word);
+    await expect(page.locator("#tdmCardLiq .liq-word")).toHaveText(COMP.views["5"].side_word);
     // Schwab sends no trade side: the Order Flow card claims none (operator 2026-09-29)
     await expect(page.locator("#tdmCardFlow")).not.toContainText(
       /NET BUYING|NET SELLING|tick rule|PROXY|delta/i,
@@ -787,9 +787,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect(page.locator("#tdmCardVol figcaption")).toHaveText(
       "ATM implied vol by expiry, nearest first",
     );
-    await expect(page.locator("#tdmAgree")).toContainText(
-      COMP.views.weighted.side_word.toLowerCase(),
-    );
+    await expect(page.locator("#tdmAgree")).toContainText(COMP.views["5"].side_word.toLowerCase());
     expect(errs).toEqual([]);
   });
 
