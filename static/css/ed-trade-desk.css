@@ -530,8 +530,7 @@
 }
 
 .tdm-fam.fam-opening_range,
-.tdm-fam.fam-overnight,
-.tdm-fam.fam-expected_move {
+.tdm-fam.fam-overnight {
   --fam-mark: repeating-linear-gradient(90deg, var(--ed-stale) 0 4px, transparent 4px 7px);
 }
 
@@ -1797,12 +1796,6 @@
 
 .cm-page tr.data-row td:not(.rail) {
   cursor: pointer;
-}
-
-.cm-page td.inside {
-  background: #172b48;
-  color: #fff;
-  font-weight: 700;
 }
 
 .cm-page .score {

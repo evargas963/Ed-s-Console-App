@@ -44,15 +44,6 @@ def test_spys_net_gamma_and_contracts_are_served_by_the_operators_formats():
     assert terrain["net_gex_at_spot"] == -2718991225.452607
     assert terrain["net_gex_at_spot_text"] == "-$2.72B"
     assert (terrain["contracts_used"], terrain["contracts_used_text"]) == (292, "292")
-    # no one-day move at that stopped price: no ATM IV text
-    assert terrain["implied_1d_move"] is None and terrain["atm_iv_text"] is None
-
-
-def test_the_atm_iv_is_served_with_two_decimals():
-    """AMZN's levels the browser tests draw: the front expiry's ATM IV, 40.31862554, as 40.32."""
-    terrain = json.loads((E2E / "panels_amzn_two_day.json").read_text(encoding="utf-8"))["terrain"]
-    assert terrain["implied_1d_move"]["iv_pct_atm"] == 40.31862554
-    assert terrain["atm_iv_text"] == "40.32"
 
 
 def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_make_them():
@@ -184,10 +175,9 @@ def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
 
 
 def test_every_option_level_and_ratio_of_the_terrain_is_served():
-    """SPY's and AMZN's terrain levels, ratios and one-day move are served as text.
+    """SPY's and AMZN's terrain levels and ratios are served as text.
 
-    Each option level, each on the 0DTE basis, the put/call ratios (two decimals) and the
-    one-day move (its points two decimals, its days whole).
+    Each option level, each on the 0DTE basis, and the put/call ratios (two decimals).
     """
     for name in ("spy", "amzn"):
         t = _panels(name)["terrain"]
@@ -196,11 +186,6 @@ def test_every_option_level_and_ratio_of_the_terrain_is_served():
         assert t["same_day_text"] == {k: price(v) for k, v in t["same_day"].items()}
         assert t["pcr_all_text"] == price(t["pcr_all"])
         assert t["pcr_by_expiry_text"] == {k: price(v) for k, v in t["pcr_by_expiry"].items()}
-        move = t["implied_1d_move"]
-        assert (t["move_points_text"], t["move_dte_text"]) == (
-            price(move["points"]),
-            f"{round(move['dte_used']):,}",
-        )
     spy = _panels("spy")["terrain"]
     assert (spy["call_wall_text"], spy["gamma_flip_text"], spy["pcr_all_text"]) == (
         "775.00",

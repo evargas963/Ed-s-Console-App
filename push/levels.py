@@ -11,7 +11,7 @@ from typing import Any
 
 from calc.liquidity_models import VolumeProfile
 from calc.liquidity_value_engine import LEVEL_NAMES, PriceLevelSnapshot
-from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, OneDayMove, TerrainSnapshot
+from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, TerrainSnapshot
 from calc.terrain_read import from_spot_text, level_side
 from numeric_contract import price_text
 from push.bars import aggregate_vwap
@@ -60,18 +60,6 @@ def pin_note(snap: TerrainSnapshot) -> str | None:
         f"Most open interest within one expected move, of the expiry settling at today's close. "
         f"Price {distance} {side} it; {snap.pin_minutes_to_close:.0f} minutes to the close."
     )
-
-
-def expected_move(move: OneDayMove | None, spot: float | None) -> tuple[float, float] | None:
-    """Return the one-day move's upper and lower price.
-
-    The live price plus and minus the terrain's implied one-day move
-    (TerrainSnapshot.implied_1d_move). None without either.
-    """
-    if move is None or spot is None:
-        return None
-    points = move["points"]
-    return float(spot) + float(points), float(spot) - float(points)
 
 
 #: the price-level snapshot's own fields in the panel, each None when none is published
@@ -174,12 +162,12 @@ def _snapshot(snap: PriceLevelSnapshot | None, tf: str, served_ts: float) -> dic
 
 
 def _gamma(
-    published: PublishedLevels | None, spot: float | None
-) -> tuple[list[dict[str, Any]], tuple[float, float] | None, list[dict[str, Any]]]:
-    """Return the terrain's levels carried beside the session's, the one-day move and the 0DTE rows.
+    published: PublishedLevels | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return the terrain's levels carried beside the session's, and the 0DTE rows.
 
-    Each with the terrain's own time. With no levels published: none carried, no move, and each
-    0DTE level unknown.
+    Each with the terrain's own time. With no levels published: none carried, and each 0DTE level
+    unknown.
     """
     if published is None:
         absent = {
@@ -190,32 +178,23 @@ def _gamma(
             "carried_text": None,
             "staleness": _stamp(None),
         }
-        return [], None, [{"id": gid, "label": label, **absent} for gid, label in SAME_DAY_LEVELS]
+        return [], [{"id": gid, "label": label, **absent} for gid, label in SAME_DAY_LEVELS]
     t = published.served()
     stamp = _stamp(published.levels_ts_utc)
-    em = expected_move(published.snap.implied_1d_move, spot)
-    priced = [(gid, label, "gamma", t[gid]) for gid, label in OPTION_LEVELS]
-    if em is not None:
-        priced += [
-            ("em_up", "+1σ move", "expected_move", em[0]),
-            ("em_dn", "−1σ move", "expected_move", em[1]),
-        ]
     carried = [
         {
             "id": gid,
-            "price": price,
-            "family": fam,
+            "price": t[gid],
+            "family": "gamma",
             "label": label,
             "short": label,
             "evidence_tier": "DERIVED",
-            "provenance": {"producer": "calc.terrain_engine.compute_terrain", "carried": True}
-            if fam == "gamma"
-            else {"producer": "push.levels.expected_move", "carried": False},
+            "provenance": {"producer": "calc.terrain_engine.compute_terrain", "carried": True},
             "staleness": dict(stamp),
             "note": pin_note(published.snap) if gid == "pin_candidate" else None,
         }
-        for gid, label, fam, price in priced
-        if price is not None
+        for gid, label in OPTION_LEVELS
+        if t[gid] is not None
     ]
     # the nearest listed expiry's own levels, beside the whole book's level of the same name, at
     # the terrain's own compute time: both as the screen shows them (TerrainSnapshot.to_dict)
@@ -232,7 +211,7 @@ def _gamma(
         }
         for gid, label in SAME_DAY_LEVELS
     ]
-    return carried, em, zero_dte
+    return carried, zero_dte
 
 
 def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
@@ -246,7 +225,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     snap = canonical_price_level_snapshot(tk, now)
     session = _snapshot(snap, tf, served_ts)
     published, verdict = terrain_cache_get(tk, served_ts)
-    carried, em, zero_dte = _gamma(published, spot)
+    carried, zero_dte = _gamma(published)
     levels: list[dict[str, Any]] = []
     families_absent: list[dict[str, Any]] = []
     if snap is None:
@@ -254,12 +233,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     else:
         levels += _session_rows(snap)
         families_absent += snap.families_absent
-    if spot is None:
-        families_absent.append({"family": "expected_move", "reason": "no live price"})
-    elif em is None:
-        families_absent.append(
-            {"family": "expected_move", "reason": "the terrain has no implied 1-day move"}
-        )
     levels += carried
     for row in levels:
         price = row.get("price")
@@ -298,8 +271,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         "levels": levels,
         "by_distance": by_distance,
         "zero_dte": zero_dte,
-        # The VWAP curve and its σ bands, CARRIED: the one VWAP of the session, which no page
-        # accumulates for itself. [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
+        # The VWAP curve, CARRIED: the one VWAP of the session, which no page accumulates for
+        # itself. [epoch_sec, vwap]
         "vwap_series": session["vwap_series"],
         # the session's VWAP as the VWAP family's switch shows it
         "vwap_text": session["vwap_text"],

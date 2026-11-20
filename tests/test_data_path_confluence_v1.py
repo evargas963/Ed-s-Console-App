@@ -36,7 +36,6 @@ from numeric_contract import price_text
 from option_contract import read_chain
 from push import chain as push_chain
 from push import confluence as push_confluence
-from push import levels as push_levels
 from push import strike_rows
 from push import verdict as push_verdict
 from state import capture_store, level_store
@@ -1662,15 +1661,14 @@ def test_a_chain_whose_every_expiry_has_passed_says_so():
     assert body["reason"] == "no expiry on this chain is still open"
 
 
-def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
+def test_the_matrix_shows_the_live_price():
     """CRWD's captured chain (2026-10-16 expiry, captured 2026-10-07 10:38:40 ET) and a print.
 
     The chain is published at the price Schwab sent in that chain answer (its stored capture's
     spot, 269.04), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
     (LAST_PRICE 269.395), taken in by the plane and made the price row by the daemon's own
-    function. The matrix stays ranked at the chain's price; its window, its
-    spot, its one-day move and each row's distance are the live price's, the move the same two
-    prices the levels panel serves (push.levels.expected_move).
+    function. The matrix stays ranked at the chain's price; its window, its spot and each row's
+    distance are the live price's.
     """
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]
@@ -1681,21 +1679,15 @@ def test_the_matrix_shows_the_live_price_and_the_one_day_move_levels_serves():
     try:
         publish_capture(tk, CRWD.chain, at.timestamp(), CRWD.spot, at.date().isoformat(), at)
         body = push_confluence.confluence_payload(tk, str(CRWD.chain[0]["expirationDate"])[:10], at)
-        levels = {r["id"]: r["price"] for r in push_levels.levels_payload(tk, "1", at)["levels"]}
     finally:
         _forget(tk)
-    moves = {
-        lv["abbrev"]: lv["price"] for lv in _rail_levels(body) if lv["abbrev"] in ("EM+", "EM−")
-    }
     listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
     assert live not in listed
     assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)
     assert (body["spot"], body["spot_text"]) == (live, f"{live:.2f}")
     assert "priced_at_spot" not in body
     assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
-    assert moves == {"EM+": levels["em_up"], "EM−": levels["em_dn"]}
     assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in body["rows"])
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [
         min(r["strike"] for r in body["rows"] if r["strike"] >= live)
     ]
-    assert levels["em_up"] - live == live - levels["em_dn"] > 0

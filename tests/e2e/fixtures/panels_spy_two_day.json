@@ -18228,12 +18228,6 @@
       "put_charm_wall": 756.0
     },
     "same_day_repriced_from": null,
-    "implied_1d_move": {
-      "points": 8.391520212971177,
-      "iv_pct_atm": 17.58726927,
-      "dte_used": 1.0,
-      "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); sigma = mean ATM call/put implied vol of the first expiry at least a day out"
-    },
     "call_delta_wall": 775.0,
     "put_delta_wall": 760.0,
     "contracts_used": 12996,
@@ -18530,9 +18524,6 @@
       "2028-12-15": "0.03",
       "2029-01-19": "0.26"
     },
-    "atm_iv_text": "17.59",
-    "move_points_text": "8.39",
-    "move_dte_text": "1",
     "levels_ts_utc": 1794497441.9345267,
     "chain_basis": "every_expiry_strike_range_ALL",
     "spot_source": "streaming_plane",
@@ -61630,11 +61621,6 @@
             "value_text": "757.00"
           },
           {
-            "label": "VWAP_P1",
-            "value": 757.7035241802233,
-            "value_text": "757.70"
-          },
-          {
             "label": "TODAY_VAH",
             "value": 757.84,
             "value_text": "757.84"
@@ -61650,7 +61636,7 @@
             "value_text": "758.01"
           }
         ],
-        "confluence_score": 5,
+        "confluence_score": 4,
         "interpretation_notes": "The price is inside it"
       },
       {
@@ -61666,11 +61652,6 @@
             "label": "PDL",
             "value": 754.9,
             "value_text": "754.90"
-          },
-          {
-            "label": "VWAP_M1",
-            "value": 755.4665396942011,
-            "value_text": "755.47"
           },
           {
             "label": "ORB_MID",
@@ -61693,7 +61674,7 @@
             "value_text": "756.70"
           }
         ],
-        "confluence_score": 6,
+        "confluence_score": 5,
         "interpretation_notes": "Below the price"
       },
       {
@@ -61989,27 +61970,6 @@
           "price_text": "775.00"
         },
         {
-          "id": "em_up",
-          "price": 765.4665202129712,
-          "family": "expected_move",
-          "label": "+1\u03c3 move",
-          "short": "+1\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497441.9345267,
-            "as_of_time_ct": "Thu 11/12 09:30 AM CT"
-          },
-          "note": null,
-          "distance": 8.391520212971159,
-          "side": "ABOVE",
-          "from_spot_text": "8.39 above spot",
-          "price_text": "765.47"
-        },
-        {
           "id": "call_charm_wall",
           "price": 765.0,
           "family": "gamma",
@@ -62240,31 +62200,6 @@
           "price_text": "759.81"
         },
         {
-          "id": "VWAP_P2",
-          "price": 758.8220164232343,
-          "family": "vwap",
-          "label": "VWAP +2\u03c3",
-          "short": "VWAP+2\u03c3",
-          "side": "ABOVE",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": 1.7470164232342995,
-          "from_spot_text": "1.75 above spot",
-          "price_text": "758.82"
-        },
-        {
           "id": "PD_VAL",
           "price": 758.01,
           "family": "prior_day",
@@ -62338,31 +62273,6 @@
           "distance": 0.7649999999999864,
           "from_spot_text": "0.76 above spot",
           "price_text": "757.84"
-        },
-        {
-          "id": "VWAP_P1",
-          "price": 757.7035241802233,
-          "family": "vwap",
-          "label": "VWAP +1\u03c3",
-          "short": "VWAP+1\u03c3",
-          "side": "ABOVE",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": 0.6285241802232804,
-          "from_spot_text": "0.63 above spot",
-          "price_text": "757.70"
         },
         {
           "id": "max_pain",
@@ -62507,31 +62417,6 @@
           "price_text": "755.77"
         },
         {
-          "id": "VWAP_M1",
-          "price": 755.4665396942011,
-          "family": "vwap",
-          "label": "VWAP \u22121\u03c3",
-          "short": "VWAP\u22121\u03c3",
-          "side": "BELOW",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": -1.6084603057989852,
-          "from_spot_text": "1.61 below spot",
-          "price_text": "755.47"
-        },
-        {
           "id": "PDL",
           "price": 754.9,
           "family": "prior_day",
@@ -62555,31 +62440,6 @@
           "distance": -2.175000000000068,
           "from_spot_text": "2.18 below spot",
           "price_text": "754.90"
-        },
-        {
-          "id": "VWAP_M2",
-          "price": 754.34804745119,
-          "family": "vwap",
-          "label": "VWAP \u22122\u03c3",
-          "short": "VWAP\u22122\u03c3",
-          "side": "BELOW",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": -2.7269525488100044,
-          "from_spot_text": "2.73 below spot",
-          "price_text": "754.35"
         },
         {
           "id": "ORB_LOW",
@@ -62693,44 +62553,19 @@
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
           "price_text": "750.00"
-        },
-        {
-          "id": "em_dn",
-          "price": 748.6834797870289,
-          "family": "expected_move",
-          "label": "\u22121\u03c3 move",
-          "short": "\u22121\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497441.9345267,
-            "as_of_time_ct": "Thu 11/12 09:30 AM CT"
-          },
-          "note": null,
-          "distance": -8.391520212971159,
-          "side": "BELOW",
-          "from_spot_text": "8.39 below spot",
-          "price_text": "748.68"
         }
       ],
       "by_distance": [
         "max_pain",
         "TODAY_POC",
         "VWAP",
-        "VWAP_P1",
         "TODAY_VAH",
         "ORB_HIGH",
         "PD_VAL",
         "TODAY_VAL",
         "pin_candidate",
         "ORB_MID",
-        "VWAP_M1",
-        "VWAP_P2",
         "PDL",
-        "VWAP_M2",
         "PDC",
         "put_wall",
         "absolute_gamma_strike",
@@ -62746,8 +62581,6 @@
         "key_delta_strike",
         "put_charm_wall",
         "call_charm_wall",
-        "em_up",
-        "em_dn",
         "call_wall",
         "lvp",
         "call_delta_wall"
@@ -62924,246 +62757,66 @@
         }
       ],
       "vwap_series": [
-        [
-          1794493800.0, 754.3858333333334, 754.3858333333334, 754.3858333333334, 754.3858333333334,
-          754.3858333333334
-        ],
-        [
-          1794493860.0, 754.4049697191838, 754.4393304014692, 754.3706090368984, 754.4736910837547,
-          754.3362483546128
-        ],
-        [
-          1794493920.0, 754.4159807120697, 754.4550709734989, 754.3768904506404, 754.494161234928,
-          754.3378001892113
-        ],
-        [
-          1794493980.0, 754.4754202596308, 754.620281246572, 754.3305592726897, 754.7651422335131,
-          754.1856982857486
-        ],
-        [
-          1794494040.0, 754.5720945209049, 754.8400881672601, 754.3041008745497, 755.1080818136154,
-          754.0361072281944
-        ],
-        [
-          1794494100.0, 754.6619707856946, 755.0337667920908, 754.2901747792985, 755.4055627984868,
-          753.9183787729024
-        ],
-        [
-          1794494160.0, 754.9394092615573, 755.6998016017487, 754.1790169213659, 756.4601939419402,
-          753.4186245811744
-        ],
-        [
-          1794494220.0, 755.1795304898063, 756.1394390097446, 754.2196219698681, 757.099347529683,
-          753.2597134499297
-        ],
-        [
-          1794494280.0, 755.3034489277521, 756.3135243391685, 754.2933735163358, 757.3235997505849,
-          753.2832981049194
-        ],
-        [
-          1794494340.0, 755.4274834306548, 756.5022313338279, 754.3527355274816, 757.5769792370012,
-          753.2779876243084
-        ],
-        [
-          1794494400.0, 755.595170517372, 756.7526451875622, 754.4376958471819, 757.9101198577523,
-          753.2802211769917
-        ],
-        [
-          1794494460.0, 755.69595075714, 756.8955489607044, 754.4963525535757, 758.0951471642688,
-          753.2967543500113
-        ],
-        [
-          1794494520.0, 755.7524915237773, 756.9737112232451, 754.5312718243094, 758.1949309227128,
-          753.3100521248417
-        ],
-        [
-          1794494580.0, 755.7963474966105, 757.0290257774385, 754.5636692157824, 758.2617040582667,
-          753.3309909349542
-        ],
-        [
-          1794494640.0, 755.8199180673083, 757.057394234615, 754.5824419000016, 758.2948704019218,
-          753.3449657326948
-        ],
-        [
-          1794494700.0, 755.9203282508195, 757.1705801744995, 754.6700763271394, 758.4208320981796,
-          753.4198244034593
-        ],
-        [
-          1794494760.0, 755.9557994431351, 757.2137420197516, 754.6978568665186, 758.4716845963683,
-          753.4399142899019
-        ],
-        [
-          1794494820.0, 756.0392735852764, 757.3134016085202, 754.7651455620327, 758.5875296317638,
-          753.491017538789
-        ],
-        [
-          1794494880.0, 756.0933261733231, 757.38100764395, 754.8056447026962, 758.668689114577,
-          753.5179632320693
-        ],
-        [
-          1794494940.0, 756.1469912043965, 757.4380434576894, 754.8559389511036, 758.7290957109825,
-          753.5648866978105
-        ],
-        [
-          1794495000.0, 756.2113317461915, 757.5073447064632, 754.9153187859198, 758.8033576667349,
-          753.6193058256481
-        ],
-        [
-          1794495060.0, 756.2829579235371, 757.6066330351022, 754.959282811972, 758.9303081466672,
-          753.6356077004069
-        ],
-        [
-          1794495120.0, 756.3341979934859, 757.6816252104962, 754.9867707764755, 759.0290524275066,
-          753.6393435594651
-        ],
-        [
-          1794495180.0, 756.3920100850885, 757.766454700329, 755.017565469848, 759.1408993155694,
-          753.6431208546076
-        ],
-        [
-          1794495240.0, 756.4294939132903, 757.8111652251708, 755.0478226014098, 759.1928365370514,
-          753.6661512895292
-        ],
-        [
-          1794495300.0, 756.4514864619646, 757.832371858868, 755.0706010650612, 759.2132572557714,
-          753.6897156681578
-        ],
-        [
-          1794495360.0, 756.4712303776311, 757.8496046012406, 755.0928561540215, 759.2279788248501,
-          753.714481930412
-        ],
-        [
-          1794495420.0, 756.4892196859489, 757.860238274979, 755.1182010969188, 759.231256864009,
-          753.7471825078889
-        ],
-        [
-          1794495480.0, 756.5164986306215, 757.8844412978568, 755.1485559633862, 759.2523839650922,
-          753.7806132961508
-        ],
-        [
-          1794495540.0, 756.537814804132, 757.9017448886374, 755.1738847196267, 759.2656749731427,
-          753.8099546351214
-        ],
-        [
-          1794495600.0, 756.5564186830786, 757.9007077330605, 755.2121296330968, 759.2449967830423,
-          753.8678405831149
-        ],
-        [
-          1794495660.0, 756.560717559373, 757.892192029805, 755.229243088941, 759.2236665002368,
-          753.8977686185091
-        ],
-        [
-          1794495720.0, 756.5575968091339, 757.8738311929995, 755.2413624252682, 759.1900655768652,
-          753.9251280414026
-        ],
-        [
-          1794495780.0, 756.5444125556191, 757.8416660056483, 755.24715910559, 759.1389194556775,
-          753.9499056555608
-        ],
-        [
-          1794495840.0, 756.5442930600686, 757.8287338524177, 755.2598522677196, 759.1131746447669,
-          753.9754114753704
-        ],
-        [
-          1794495900.0, 756.5492004254436, 757.8204452784089, 755.2779555724783, 759.0916901313743,
-          754.0067107195129
-        ],
-        [
-          1794495960.0, 756.5450095979539, 757.8070944427145, 755.2829247531934, 759.0691792874752,
-          754.0208399084327
-        ],
-        [
-          1794496020.0, 756.5439638379902, 757.7979765838309, 755.2899510921495, 759.0519893296714,
-          754.035938346309
-        ],
-        [
-          1794496080.0, 756.5393148742655, 757.7848934488571, 755.2937362996739, 759.0304720234487,
-          754.0481577250823
-        ],
-        [
-          1794496140.0, 756.5314065870473, 757.7688802909089, 755.2939328831857, 759.0063539947705,
-          754.0564591793241
-        ],
-        [
-          1794496200.0, 756.5262839958621, 757.7571132310044, 755.2954547607197, 758.9879424661466,
-          754.0646255255775
-        ],
-        [
-          1794496260.0, 756.5306132070493, 757.7468960592166, 755.314330354882, 758.9631789113839,
-          754.0980475027147
-        ],
-        [
-          1794496320.0, 756.5331904831042, 757.7437697326333, 755.3226112335752, 758.9543489821623,
-          754.1120319840462
-        ],
-        [
-          1794496380.0, 756.5359352372968, 757.7398590143928, 755.3320114602009, 758.9437827914886,
-          754.128087683105
-        ],
-        [
-          1794496440.0, 756.5376795761268, 757.7374866858298, 755.3378724664238, 758.9372937955329,
-          754.1380653567207
-        ],
-        [
-          1794496500.0, 756.5405809706018, 757.7322813352238, 755.3488806059798, 758.9239816998459,
-          754.1571802413578
-        ],
-        [
-          1794496560.0, 756.5492928193429, 757.7326828750229, 755.3659027636629, 758.916072930703,
-          754.1825127079828
-        ],
-        [
-          1794496620.0, 756.5500024587436, 757.7284107318629, 755.3715941856243, 758.9068190049824,
-          754.1931859125049
-        ],
-        [
-          1794496680.0, 756.5526968927715, 757.7248392821308, 755.3805545034121, 758.89698167149,
-          754.2084121140529
-        ],
-        [
-          1794496740.0, 756.5561267369493, 757.7241295473176, 755.388123926581, 758.8921323576859,
-          754.2201211162127
-        ],
-        [
-          1794496800.0, 756.555172493964, 757.7132205623293, 755.3971244255988, 758.8712686306944,
-          754.2390763572337
-        ],
-        [
-          1794496860.0, 756.5593494278503, 757.7064677339887, 755.4122311217119, 758.853586040127,
-          754.2651128155736
-        ],
-        [
-          1794496920.0, 756.5616567667238, 757.7047635151093, 755.4185500183382, 758.847870263495,
-          754.2754432699526
-        ],
-        [
-          1794496980.0, 756.5622839895173, 757.702389843671, 755.4221781353635, 758.8424956978247,
-          754.2820722812098
-        ],
-        [
-          1794497040.0, 756.5629090078822, 757.6993894965264, 755.4264285192381, 758.8358699851706,
-          754.2899480305939
-        ],
-        [
-          1794497100.0, 756.566885057828, 757.699208094303, 755.434562021353, 758.8315311307779,
-          754.3022389848782
-        ],
-        [
-          1794497160.0, 756.5682274771283, 757.6979386784296, 755.4385162758269, 758.827649879731,
-          754.3088050745256
-        ],
-        [
-          1794497220.0, 756.5710172686604, 757.6968090630553, 755.4452254742655, 758.8226008574502,
-          754.3194336798706
-        ],
-        [
-          1794497280.0, 756.5748139563187, 757.696993925165, 755.4526339874725, 758.8191738940113,
-          754.3304540186261
-        ],
-        [
-          1794497340.0, 756.5850319372122, 757.7035241802233, 755.4665396942011, 758.8220164232343,
-          754.34804745119
-        ]
+        [1794493800.0, 754.3858333333334],
+        [1794493860.0, 754.4049697191838],
+        [1794493920.0, 754.4159807120697],
+        [1794493980.0, 754.4754202596308],
+        [1794494040.0, 754.5720945209049],
+        [1794494100.0, 754.6619707856946],
+        [1794494160.0, 754.9394092615573],
+        [1794494220.0, 755.1795304898063],
+        [1794494280.0, 755.3034489277521],
+        [1794494340.0, 755.4274834306548],
+        [1794494400.0, 755.595170517372],
+        [1794494460.0, 755.69595075714],
+        [1794494520.0, 755.7524915237773],
+        [1794494580.0, 755.7963474966105],
+        [1794494640.0, 755.8199180673083],
+        [1794494700.0, 755.9203282508195],
+        [1794494760.0, 755.9557994431351],
+        [1794494820.0, 756.0392735852764],
+        [1794494880.0, 756.0933261733231],
+        [1794494940.0, 756.1469912043965],
+        [1794495000.0, 756.2113317461915],
+        [1794495060.0, 756.2829579235371],
+        [1794495120.0, 756.3341979934859],
+        [1794495180.0, 756.3920100850885],
+        [1794495240.0, 756.4294939132903],
+        [1794495300.0, 756.4514864619646],
+        [1794495360.0, 756.4712303776311],
+        [1794495420.0, 756.4892196859489],
+        [1794495480.0, 756.5164986306215],
+        [1794495540.0, 756.537814804132],
+        [1794495600.0, 756.5564186830786],
+        [1794495660.0, 756.560717559373],
+        [1794495720.0, 756.5575968091339],
+        [1794495780.0, 756.5444125556191],
+        [1794495840.0, 756.5442930600686],
+        [1794495900.0, 756.5492004254436],
+        [1794495960.0, 756.5450095979539],
+        [1794496020.0, 756.5439638379902],
+        [1794496080.0, 756.5393148742655],
+        [1794496140.0, 756.5314065870473],
+        [1794496200.0, 756.5262839958621],
+        [1794496260.0, 756.5306132070493],
+        [1794496320.0, 756.5331904831042],
+        [1794496380.0, 756.5359352372968],
+        [1794496440.0, 756.5376795761268],
+        [1794496500.0, 756.5405809706018],
+        [1794496560.0, 756.5492928193429],
+        [1794496620.0, 756.5500024587436],
+        [1794496680.0, 756.5526968927715],
+        [1794496740.0, 756.5561267369493],
+        [1794496800.0, 756.555172493964],
+        [1794496860.0, 756.5593494278503],
+        [1794496920.0, 756.5616567667238],
+        [1794496980.0, 756.5622839895173],
+        [1794497040.0, 756.5629090078822],
+        [1794497100.0, 756.566885057828],
+        [1794497160.0, 756.5682274771283],
+        [1794497220.0, 756.5710172686604],
+        [1794497280.0, 756.5748139563187],
+        [1794497340.0, 756.5850319372122]
       ],
       "vwap_text": "756.59",
       "volume_profile": {
@@ -63792,27 +63445,6 @@
           "price_text": "775.00"
         },
         {
-          "id": "em_up",
-          "price": 765.4665202129712,
-          "family": "expected_move",
-          "label": "+1\u03c3 move",
-          "short": "+1\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497441.9345267,
-            "as_of_time_ct": "Thu 11/12 09:30 AM CT"
-          },
-          "note": null,
-          "distance": 8.391520212971159,
-          "side": "ABOVE",
-          "from_spot_text": "8.39 above spot",
-          "price_text": "765.47"
-        },
-        {
           "id": "call_charm_wall",
           "price": 765.0,
           "family": "gamma",
@@ -64043,31 +63675,6 @@
           "price_text": "759.81"
         },
         {
-          "id": "VWAP_P2",
-          "price": 758.8220164232343,
-          "family": "vwap",
-          "label": "VWAP +2\u03c3",
-          "short": "VWAP+2\u03c3",
-          "side": "ABOVE",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": 1.7470164232342995,
-          "from_spot_text": "1.75 above spot",
-          "price_text": "758.82"
-        },
-        {
           "id": "PD_VAL",
           "price": 758.01,
           "family": "prior_day",
@@ -64141,31 +63748,6 @@
           "distance": 0.7649999999999864,
           "from_spot_text": "0.76 above spot",
           "price_text": "757.84"
-        },
-        {
-          "id": "VWAP_P1",
-          "price": 757.7035241802233,
-          "family": "vwap",
-          "label": "VWAP +1\u03c3",
-          "short": "VWAP+1\u03c3",
-          "side": "ABOVE",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": 0.6285241802232804,
-          "from_spot_text": "0.63 above spot",
-          "price_text": "757.70"
         },
         {
           "id": "max_pain",
@@ -64310,31 +63892,6 @@
           "price_text": "755.77"
         },
         {
-          "id": "VWAP_M1",
-          "price": 755.4665396942011,
-          "family": "vwap",
-          "label": "VWAP \u22121\u03c3",
-          "short": "VWAP\u22121\u03c3",
-          "side": "BELOW",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": -1.6084603057989852,
-          "from_spot_text": "1.61 below spot",
-          "price_text": "755.47"
-        },
-        {
           "id": "PDL",
           "price": 754.9,
           "family": "prior_day",
@@ -64358,31 +63915,6 @@
           "distance": -2.175000000000068,
           "from_spot_text": "2.18 below spot",
           "price_text": "754.90"
-        },
-        {
-          "id": "VWAP_M2",
-          "price": 754.34804745119,
-          "family": "vwap",
-          "label": "VWAP \u22122\u03c3",
-          "short": "VWAP\u22122\u03c3",
-          "side": "BELOW",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": -2.7269525488100044,
-          "from_spot_text": "2.73 below spot",
-          "price_text": "754.35"
         },
         {
           "id": "ORB_LOW",
@@ -64496,44 +64028,19 @@
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
           "price_text": "750.00"
-        },
-        {
-          "id": "em_dn",
-          "price": 748.6834797870289,
-          "family": "expected_move",
-          "label": "\u22121\u03c3 move",
-          "short": "\u22121\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497441.9345267,
-            "as_of_time_ct": "Thu 11/12 09:30 AM CT"
-          },
-          "note": null,
-          "distance": -8.391520212971159,
-          "side": "BELOW",
-          "from_spot_text": "8.39 below spot",
-          "price_text": "748.68"
         }
       ],
       "by_distance": [
         "max_pain",
         "TODAY_POC",
         "VWAP",
-        "VWAP_P1",
         "TODAY_VAH",
         "ORB_HIGH",
         "PD_VAL",
         "TODAY_VAL",
         "pin_candidate",
         "ORB_MID",
-        "VWAP_M1",
-        "VWAP_P2",
         "PDL",
-        "VWAP_M2",
         "PDC",
         "put_wall",
         "absolute_gamma_strike",
@@ -64549,8 +64056,6 @@
         "key_delta_strike",
         "put_charm_wall",
         "call_charm_wall",
-        "em_up",
-        "em_dn",
         "call_wall",
         "lvp",
         "call_delta_wall"
@@ -64727,54 +64232,18 @@
         }
       ],
       "vwap_series": [
-        [
-          1794493800.0, 754.5720945209049, 754.8400881672601, 754.3041008745497, 755.1080818136154,
-          754.0361072281944
-        ],
-        [
-          1794494100.0, 755.4274834306548, 756.5022313338279, 754.3527355274816, 757.5769792370012,
-          753.2779876243084
-        ],
-        [
-          1794494400.0, 755.8199180673083, 757.057394234615, 754.5824419000016, 758.2948704019218,
-          753.3449657326948
-        ],
-        [
-          1794494700.0, 756.1469912043965, 757.4380434576894, 754.8559389511036, 758.7290957109825,
-          753.5648866978105
-        ],
-        [
-          1794495000.0, 756.4294939132903, 757.8111652251708, 755.0478226014098, 759.1928365370514,
-          753.6661512895292
-        ],
-        [
-          1794495300.0, 756.537814804132, 757.9017448886374, 755.1738847196267, 759.2656749731427,
-          753.8099546351214
-        ],
-        [
-          1794495600.0, 756.5442930600686, 757.8287338524177, 755.2598522677196, 759.1131746447669,
-          753.9754114753704
-        ],
-        [
-          1794495900.0, 756.5314065870473, 757.7688802909089, 755.2939328831857, 759.0063539947705,
-          754.0564591793241
-        ],
-        [
-          1794496200.0, 756.5376795761268, 757.7374866858298, 755.3378724664238, 758.9372937955329,
-          754.1380653567207
-        ],
-        [
-          1794496500.0, 756.5561267369493, 757.7241295473176, 755.388123926581, 758.8921323576859,
-          754.2201211162127
-        ],
-        [
-          1794496800.0, 756.5629090078822, 757.6993894965264, 755.4264285192381, 758.8358699851706,
-          754.2899480305939
-        ],
-        [
-          1794497100.0, 756.5850319372122, 757.7035241802233, 755.4665396942011, 758.8220164232343,
-          754.34804745119
-        ]
+        [1794493800.0, 754.5720945209049],
+        [1794494100.0, 755.4274834306548],
+        [1794494400.0, 755.8199180673083],
+        [1794494700.0, 756.1469912043965],
+        [1794495000.0, 756.4294939132903],
+        [1794495300.0, 756.537814804132],
+        [1794495600.0, 756.5442930600686],
+        [1794495900.0, 756.5314065870473],
+        [1794496200.0, 756.5376795761268],
+        [1794496500.0, 756.5561267369493],
+        [1794496800.0, 756.5629090078822],
+        [1794497100.0, 756.5850319372122]
       ],
       "vwap_text": "756.59",
       "volume_profile": {
@@ -65403,27 +64872,6 @@
           "price_text": "775.00"
         },
         {
-          "id": "em_up",
-          "price": 765.4665202129712,
-          "family": "expected_move",
-          "label": "+1\u03c3 move",
-          "short": "+1\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497441.9345267,
-            "as_of_time_ct": "Thu 11/12 09:30 AM CT"
-          },
-          "note": null,
-          "distance": 8.391520212971159,
-          "side": "ABOVE",
-          "from_spot_text": "8.39 above spot",
-          "price_text": "765.47"
-        },
-        {
           "id": "call_charm_wall",
           "price": 765.0,
           "family": "gamma",
@@ -65654,31 +65102,6 @@
           "price_text": "759.81"
         },
         {
-          "id": "VWAP_P2",
-          "price": 758.8220164232343,
-          "family": "vwap",
-          "label": "VWAP +2\u03c3",
-          "short": "VWAP+2\u03c3",
-          "side": "ABOVE",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": 1.7470164232342995,
-          "from_spot_text": "1.75 above spot",
-          "price_text": "758.82"
-        },
-        {
           "id": "PD_VAL",
           "price": 758.01,
           "family": "prior_day",
@@ -65752,31 +65175,6 @@
           "distance": 0.7649999999999864,
           "from_spot_text": "0.76 above spot",
           "price_text": "757.84"
-        },
-        {
-          "id": "VWAP_P1",
-          "price": 757.7035241802233,
-          "family": "vwap",
-          "label": "VWAP +1\u03c3",
-          "short": "VWAP+1\u03c3",
-          "side": "ABOVE",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": 0.6285241802232804,
-          "from_spot_text": "0.63 above spot",
-          "price_text": "757.70"
         },
         {
           "id": "max_pain",
@@ -65921,31 +65319,6 @@
           "price_text": "755.77"
         },
         {
-          "id": "VWAP_M1",
-          "price": 755.4665396942011,
-          "family": "vwap",
-          "label": "VWAP \u22121\u03c3",
-          "short": "VWAP\u22121\u03c3",
-          "side": "BELOW",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": -1.6084603057989852,
-          "from_spot_text": "1.61 below spot",
-          "price_text": "755.47"
-        },
-        {
           "id": "PDL",
           "price": 754.9,
           "family": "prior_day",
@@ -65969,31 +65342,6 @@
           "distance": -2.175000000000068,
           "from_spot_text": "2.18 below spot",
           "price_text": "754.90"
-        },
-        {
-          "id": "VWAP_M2",
-          "price": 754.34804745119,
-          "family": "vwap",
-          "label": "VWAP \u22122\u03c3",
-          "short": "VWAP\u22122\u03c3",
-          "side": "BELOW",
-          "strength": null,
-          "evidence_tier": "derived_certified",
-          "semantic_scope": "session_rth",
-          "provenance": {
-            "producer": "calc.liquidity_value_engine.compute_session_vwap_series",
-            "session_scope": "RTH",
-            "semantic_scope": "session_rth",
-            "window": "2026-11-12 RTH (canonical snapshot over Schwab /pricehistory 1-minute bars and CHART_EQUITY)",
-            "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497340.0,
-            "as_of_time_ct": "Thu 11/12 09:29 AM CT"
-          },
-          "distance": -2.7269525488100044,
-          "from_spot_text": "2.73 below spot",
-          "price_text": "754.35"
         },
         {
           "id": "ORB_LOW",
@@ -66107,44 +65455,19 @@
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
           "price_text": "750.00"
-        },
-        {
-          "id": "em_dn",
-          "price": 748.6834797870289,
-          "family": "expected_move",
-          "label": "\u22121\u03c3 move",
-          "short": "\u22121\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497441.9345267,
-            "as_of_time_ct": "Thu 11/12 09:30 AM CT"
-          },
-          "note": null,
-          "distance": -8.391520212971159,
-          "side": "BELOW",
-          "from_spot_text": "8.39 below spot",
-          "price_text": "748.68"
         }
       ],
       "by_distance": [
         "max_pain",
         "TODAY_POC",
         "VWAP",
-        "VWAP_P1",
         "TODAY_VAH",
         "ORB_HIGH",
         "PD_VAL",
         "TODAY_VAL",
         "pin_candidate",
         "ORB_MID",
-        "VWAP_M1",
-        "VWAP_P2",
         "PDL",
-        "VWAP_M2",
         "PDC",
         "put_wall",
         "absolute_gamma_strike",
@@ -66160,8 +65483,6 @@
         "key_delta_strike",
         "put_charm_wall",
         "call_charm_wall",
-        "em_up",
-        "em_dn",
         "call_wall",
         "lvp",
         "call_delta_wall"
@@ -66338,22 +65659,10 @@
         }
       ],
       "vwap_series": [
-        [
-          1794493800.0, 755.8199180673083, 757.057394234615, 754.5824419000016, 758.2948704019218,
-          753.3449657326948
-        ],
-        [
-          1794494700.0, 756.537814804132, 757.9017448886374, 755.1738847196267, 759.2656749731427,
-          753.8099546351214
-        ],
-        [
-          1794495600.0, 756.5376795761268, 757.7374866858298, 755.3378724664238, 758.9372937955329,
-          754.1380653567207
-        ],
-        [
-          1794496500.0, 756.5850319372122, 757.7035241802233, 755.4665396942011, 758.8220164232343,
-          754.34804745119
-        ]
+        [1794493800.0, 755.8199180673083],
+        [1794494700.0, 756.537814804132],
+        [1794495600.0, 756.5376795761268],
+        [1794496500.0, 756.5850319372122]
       ],
       "vwap_text": "756.59",
       "volume_profile": {

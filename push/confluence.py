@@ -19,10 +19,9 @@ from calc.terrain_engine import (
     TerrainSnapshot,
     nearest_strike,
 )
-from calc.terrain_read import within
 from numeric_contract import price_text
 from push.answers import unavailable
-from push.levels import expected_move, pin_note
+from push.levels import pin_note
 from push.spot import price_mark, resolve_spot
 from push.strike_rows import window
 from push.verdict import LevelsVerdict, terrain_staleness
@@ -82,13 +81,8 @@ def _option_abbrev(label: str, same_day: bool) -> str:
     return base
 
 
-def _confluence_markers(
-    live: TerrainSnapshot, tk: str, now: datetime, spot: float | None
-) -> list[dict[str, Any]]:
-    """Levels carried from this same priced snapshot, plus the session levels already published.
-
-    And the one-day move around the live price `spot`.
-    """
+def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime) -> list[dict[str, Any]]:
+    """Levels carried from this same priced snapshot, plus the session levels already published."""
     markers: list[dict[str, Any]] = []
     snap = canonical_price_level_snapshot(tk, now)
     if snap is not None:
@@ -128,26 +122,6 @@ def _confluence_markers(
                     "price": price,
                 }
             )
-    move = expected_move(live.implied_1d_move, spot)
-    if move is not None:
-        markers.append(
-            {
-                "label": "+1σ move",
-                "short": "EM+",
-                "title": "Expected move, one day, upper",
-                "lane": "session",
-                "price": move[0],
-            }
-        )
-        markers.append(
-            {
-                "label": "−1σ move",
-                "short": "EM−",
-                "title": "Expected move, one day, lower",
-                "lane": "session",
-                "price": move[1],
-            }
-        )
     return markers
 
 
@@ -216,12 +190,6 @@ def _level_named(levels: list[dict[str, Any]], abbrev: str) -> dict[str, Any] | 
     return None
 
 
-def _move_text(low: dict[str, Any] | None, high: dict[str, Any] | None) -> str | None:
-    if low is None or high is None:
-        return None
-    return low["price_text"] + "–" + high["price_text"]
-
-
 def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) -> Matrix:
     """Return the ranking of one expiry of a priced chain: the one the matrix request shows.
 
@@ -276,12 +244,10 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     stored = _ranked_matrix(live, priced_at, chosen, match["dte"])
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
-    markers = _confluence_markers(live, tk, now, live_spot)
+    markers = _confluence_markers(live, tk, now)
     levels = _screen_levels(markers)
     flip = _level_named(levels, "Flip")
     pin = _level_named(levels, "Pin")
-    em_up = _level_named(levels, "EM+")
-    em_dn = _level_named(levels, "EM−")
     ranked = sorted(stored.ranked)
     lo, hi, view = window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
     body: dict[str, Any] = {
@@ -293,14 +259,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
         "rows": window_rows(stored, ranked[lo : hi + 1]),
     }
     body.update(at_price(body["rows"], stored.strikes, live_spot))
-    low = None
-    high = None
-    if em_dn is not None:
-        low = em_dn["price"]
-    if em_up is not None:
-        high = em_up["price"]
-    for row in body["rows"]:
-        row["inside"] = within(low, high, row["strike"])  # inside the one-day move
     body.update(
         {
             "ticker": tk,
@@ -321,7 +279,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             "flip_text": None if flip is None else flip["price_text"],
             "pin_text": None if pin is None else pin["price_text"],
             "pin_note": pin_note(live),
-            "move_text": _move_text(em_dn, em_up),
         }
     )
     return body

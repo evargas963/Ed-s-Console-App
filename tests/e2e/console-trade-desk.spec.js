@@ -625,6 +625,29 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: no one-day move or its ±1σ band is switched, drawn or written", async ({ page }) => {
+    // operator 2026-11-20: the standard deviation bands of the implied one-day move are removed
+    // from everywhere; SPY's real panels, as served
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
+      .toBeGreaterThan(0);
+    await expect(page.locator('#tdmFamilies [data-fam="vwap"]')).toHaveCount(1);
+    await expect(page.locator('#tdmFamilies [data-fam="expected_move"]')).toHaveCount(0);
+    await expect(page.locator("#tdmFamilies")).not.toContainText("σ move");
+    const titles = await page.evaluate(() => window.EdTradeDeskMap.state().chart.levels);
+    expect(titles.filter((t) => /σ move/.test(t))).toEqual([]);
+    await expect(page.locator("#tdmCardVol")).not.toContainText(/1-day move|1σ|Move from/);
+    expect(errs).toEqual([]);
+  });
+
   test("Desk: no prior value area band when the prior value area is absent", async ({ page }) => {
     // INDUCED: SPY's levels with the prior session's value area absent, as the program serves
     // $SPX's (Schwab's index bars carry no volume; tests/test_trade_desk_served_v1.py)
@@ -1204,10 +1227,11 @@ test.describe("Trade Desk renders served values", () => {
         level("call_wall").from_spot_text,
     ); // the levels panel's own rows
     // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location);
-    // its five levels, the price not among them
-    await expect(body).toContainText("Inside a Pivot / value zone (757.00–758.01, confluence 5)");
+    // its four levels (max pain, today's VAH, the opening range high, the prior day's VAL; no VWAP
+    // band since 2026-11-20), the price not among them
+    await expect(body).toContainText("Inside a Pivot / value zone (757.00–758.01, confluence 4)");
     expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([
-      757.0, 758.01, 5,
+      757.0, 758.01, 4,
     ]);
     // the walls' and the flip's own moves since the prior close, as served (no drift word)
     await expect(body).toContainText(

@@ -35,6 +35,9 @@ class PublishedLevels:
     priced_at: tuple[float | None, str, float | None]
     #: the heatmap grid (server.project_gamma_surface); None without a price or a book
     gamma_surface: dict[str, Any] | None
+    #: every contract the heatmap's cells name, read once as it is published: the beat's restamp
+    #: (server.restamp_open_surfaces) reads it every second for every ticker
+    surface_symbols: frozenset[str]
     vanna_rows: list[StrikeValue]
     charm_rows: list[StrikeValue]
     #: the chain as Schwab sent it, and as priced with the values pushed since

@@ -70,8 +70,6 @@
   // the card's price levels: each is the `levels` panel's own row of that id (push.levels.levels_payload),
   // its price as served; a row not sent, or a panel not sent or failed, reads '-'
   var PRICE_LEVELS = {
-    em_up: "klEmUp",
-    em_dn: "klEmDn",
     PDH: "klPdh",
     PDL: "klPdl",
     PDC: "klPdc",

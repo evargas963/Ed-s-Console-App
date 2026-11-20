@@ -134,7 +134,7 @@
     var foot = '<div class="lv-foot">';
     foot +=
       "<span>VWAP curve: " +
-      (vwapN ? vwapN + " pts carried (±1σ/±2σ)" : "not available") +
+      (vwapN ? vwapN + " pts carried" : "not available") +
       "</span>";
     var absentSrc = d.families_absent != null ? d.families_absent : null;
     var absent = [];

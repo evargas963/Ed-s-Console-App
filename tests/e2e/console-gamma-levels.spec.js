@@ -57,7 +57,7 @@ const LEVELS = {
     },
   ],
   by_distance: ["VWAP", "POC", "PDH"],
-  vwap_series: [[1757000000, 100.0, 100.5, 99.5, 101.0, 99.0]],
+  vwap_series: [[1757000000, 100.0]],
   families_absent: [{ family: "gamma", reason: "sent as the terrain panel" }],
   degraded: [],
 };
@@ -147,6 +147,8 @@ test.describe("D — Gamma Levels view", () => {
     // no proximity marking (operator 2026-09-29); absence disclosed honestly
     await expect(lv.locator(".lv-row.near-spot")).toHaveCount(0);
     await expect(lv.locator(".lv-foot")).toContainText("VWAP curve");
+    // the VWAP's standard deviation bands are removed (operator 2026-11-20): none is named
+    await expect(lv).not.toContainText("σ");
     await expect(lv.locator(".lv-foot .lv-absent")).toContainText("gamma");
     await page.setViewportSize({ width: 1672, height: 941 });
     await page.screenshot({ path: "test-results/gamma-levels-1672x941.png", fullPage: false });

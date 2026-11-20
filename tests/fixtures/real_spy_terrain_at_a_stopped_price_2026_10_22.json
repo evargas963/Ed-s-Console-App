@@ -4,7 +4,6 @@
  "atm_iv_pct_by_expiry": {
   "2026-10-22": 17.55400877
  },
- "atm_iv_text": null,
  "atr_daily": null,
  "atr_daily_text": null,
  "atr_monthly": null,
@@ -43,7 +42,6 @@
  "headline_source": "Estimate assumes dealers long calls, short puts (SqueezeMetrics 2017), the convention least reliable for single stocks (Garleanu, Pedersen & Poteshman 2009). Swings: Ni, Pearson, Poteshman & White, RFS 2021; late-day continuation: Baltussen, Da, Lammers & Martens, JFE 2021.",
  "hvp": 764.0,
  "hvp_text": "764.00",
- "implied_1d_move": null,
  "key_delta_strike": 772.0,
  "key_delta_strike_text": "772.00",
  "levels_age_text": "2h",
@@ -58,8 +56,6 @@
  "max_pain": 771.0,
  "max_pain_dte": 0.0,
  "max_pain_text": "771.00",
- "move_dte_text": null,
- "move_points_text": null,
  "net_gex_at_spot": -2718991225.452607,
  "net_gex_at_spot_text": "-$2.72B",
  "pcr_all": 1.0943957688082107,

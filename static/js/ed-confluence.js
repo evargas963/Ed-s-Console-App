@@ -22,12 +22,7 @@
       false,
     ],
     ["Strike", "", "Listed strike.", false],
-    [
-      "Δ spot",
-      "points",
-      "Strike minus the live price. Blue marks the one-day expected move.",
-      false,
-    ],
+    ["Δ spot", "points", "Strike minus the live price.", false],
     ["Composite", "", "The score for this strike, up to the preset ceiling.", true],
     ["Net GEX", "$ / 1%", "Net gamma exposure in dollars per 1% move.", false],
     ["OI", "contracts", "Open interest in contracts. Green intensity shows size.", false],
@@ -460,7 +455,6 @@
       ],
       ["GAMMA REGIME · CHAIN", regimeWords(body.regime), ""],
       ["MODELED FLIP · CHAIN", body.flip_text, body.expiry ? body.expiry : ""],
-      ["EXPECTED MOVE · LIVE PRICE", body.move_text, body.move_text ? "one day" : ""],
       ["PIN · CHAIN", body.pin_text, body.pin_text ? "expiry closing today" : "", body.pin_note],
     ]
       .map(function (cell) {
@@ -501,7 +495,6 @@
     heads += "</tr>";
     var bodyRows = "";
     rows.forEach(function (row, i) {
-      var inside = row.inside === true;
       var scoreShown =
         row.score_text == null
           ? ""
@@ -526,8 +519,7 @@
           "</td>";
       }
       bodyRows += '<td class="strike">' + esc(text(row.strike_text)) + "</td>";
-      bodyRows +=
-        '<td class="' + (inside ? "inside" : "") + '">' + esc(text(row.distance_text)) + "</td>";
+      bodyRows += "<td>" + esc(text(row.distance_text)) + "</td>";
       if (row.score_text == null) {
         bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">-</td>';
       } else {

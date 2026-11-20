@@ -216,10 +216,6 @@ def test_one_vwap_accumulation_feeds_the_scalar_and_the_curve():
         sessions=sessions(),
     )
     assert snap.price("VWAP") == snap.vwap_series[-1][1]
-    for lid, idx in (("VWAP_P1", 2), ("VWAP_M1", 3), ("VWAP_P2", 4), ("VWAP_M2", 5)):
-        assert snap.price(lid) == snap.vwap_series[-1][idx], (
-            f"{lid} differs from the last point of the curve the browser draws"
-        )
 
 
 # ── the surfaces ─────────────────────────────────────────────────────────────

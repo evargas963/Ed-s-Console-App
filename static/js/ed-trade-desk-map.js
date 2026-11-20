@@ -2,7 +2,7 @@
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- the bars panel (completed Schwab bars at the timeframe),
-                     the levels panel (value area, VWAP + bands, prior day, opening range, overnight),
+                     the levels panel (value area, VWAP, prior day, opening range, overnight),
                      the terrain panel (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- the desk panel (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
@@ -31,7 +31,6 @@
     { id: "value_area", lbl: "Value area" },
     { id: "vwap", lbl: "VWAP" },
     { id: "gamma", lbl: "Gamma" },
-    { id: "expected_move", lbl: "±1σ move" },
     { id: "prior_day", lbl: "Prior day" },
     { id: "opening_range", lbl: "Opening range" },
     { id: "overnight", lbl: "Overnight" },
@@ -83,7 +82,7 @@
     fam: JSON.parse(
       sget(
         "ed.desk.fam",
-        '{"value_area":1,"vwap":1,"gamma":1,"expected_move":1,"prior_day":1,"opening_range":1,"overnight":1}',
+        '{"value_area":1,"vwap":1,"gamma":1,"prior_day":1,"opening_range":1,"overnight":1}',
       ),
     ),
     ticker: null,
@@ -360,7 +359,6 @@
       prior_day: [P.stale, 2, 1],
       opening_range: [P.stale, 2, 1],
       overnight: [P.stale, 2, 1],
-      expected_move: [P.stale, 3, 1],
       gamma: [P.stale, 2, 1],
     };
     var gamma = {
@@ -661,21 +659,14 @@
       var vixC = window.EdShell.marketContext().filter(function (c) {
         return c.volatility; // served: the index this card shows
       })[0];
-      var im = t && t.implied_1d_move,
-        vix = vixC && S.quotes[vixC.key];
-      if (!im || im.iv_pct_atm == null) {
-        state(c, t === undefined ? "LOADING" : "UNAVAILABLE", t === undefined ? "" : "warn");
-        c.querySelector(".tdm-hero").innerHTML = "";
-      } else {
-        state(c, "ATM IV " + esc(t.atm_iv_text) + "%", "");
-        c.querySelector(".tdm-hero").innerHTML =
-          "±" + t.move_points_text + " <small>implied 1-day move, 1σ</small>";
-      }
+      var vix = vixC && S.quotes[vixC.key];
+      state(
+        c,
+        t === undefined ? "LOADING" : !t || why(t) ? "UNAVAILABLE" : "",
+        t === undefined || (t && !why(t)) ? "" : "warn",
+      );
       src(c, "Schwab option chain · " + (!t || why(t) ? "-" : esc(chainAgeLabel(t))));
       c.querySelector(".tdm-rows").innerHTML =
-        (im && im.dte_used != null
-          ? row("Move from", "first expiry ≥1 day out (" + t.move_dte_text + "d)")
-          : "") +
         row("ATR daily", orDash(t && t.atr_daily_text)) +
         row("ATR weekly", orDash(t && t.atr_weekly_text)) +
         row("ATR monthly", orDash(t && t.atr_monthly_text)) +
