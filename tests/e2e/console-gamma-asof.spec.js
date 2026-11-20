@@ -54,7 +54,6 @@ const CHAIN = {
   spot_strike: 100,
   expiry: "2026-09-11",
   status: "ok",
-  adjusted_deliverable_symbols: [],
   scope: { kind: "complete_single_expiry" },
   // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
   ladder: [{ strike: 100, call: CONTRACTS[0], put: CONTRACTS[1], net_gex: null }],

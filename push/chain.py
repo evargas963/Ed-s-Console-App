@@ -82,13 +82,44 @@ def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:
     ]
 
 
-def _ladder_with_gex(
+#: the fields Schwab sends per contract that Structures shows once per ladder row, under Schwab's
+#: names: a listing's call and put at one strike share them
+SERIES_FIELDS = (
+    "multiplier",
+    "settlementType",
+    "exerciseType",
+    "expirationType",
+    "nonStandard",
+    "pennyPilot",
+)
+
+
+def _last_trading_day_et(leg: dict[str, Any]) -> str | None:
+    """Return Schwab's lastTradingDay (epoch milliseconds) as its date in ET; None when not sent."""
+    ms = leg.get("lastTradingDay")
+    return et_date_str_from_ts_utc(ms / 1000.0) if isinstance(ms, float) else None
+
+
+def _series(row: LadderRow) -> dict[str, Any]:
+    """Return the contract-level fields of the row's call and put, each once, as Structures shows.
+
+    Each is the value every leg of the row was sent with (a row of one leg, that leg's); one the
+    legs differ on, or that Schwab did not send, is None: no leg's value stands for another's.
+    """
+    legs = [leg for leg in (row["call"], row["put"]) if leg is not None]
+    read = {f: {leg.get(f) for leg in legs} for f in SERIES_FIELDS}
+    read["last_trading_day_et"] = {_last_trading_day_et(leg) for leg in legs}
+    return {f: next(iter(v)) if len(v) == 1 else None for f, v in read.items()}
+
+
+def _served_ladder(
     ladder: list[LadderRow], column: dict[float, float | None] | None
 ) -> list[dict[str, Any]]:
-    """Each ladder strike with its net GEX in this expiry, as the heatmap publishes it.
+    """Each ladder row with its net GEX in this expiry and its contract-level fields (_series).
 
-    The expiry's column of the surface (_net_gex_column): Strike Detail shows it beside this
-    expiry's contracts -- one value, one producer.
+    The net GEX is the expiry's column of the surface, as the heatmap publishes it
+    (_net_gex_column): Strike Detail shows it beside this expiry's contracts -- one value, one
+    producer.
     """
     served: list[dict[str, Any]] = []
     for row in ladder:
@@ -99,6 +130,7 @@ def _ladder_with_gex(
                 "strike_text": strike_text(row["strike"]),
                 "net_gex": gex,
                 "net_gex_text": dollars_text(gex),
+                "series": _series(row),
             }
         )
     return served
@@ -107,15 +139,6 @@ def _ladder_with_gex(
 def _listing(contracts: list[OptionContract]) -> dict[str, Any]:
     """Return what Schwab's listing says of an expiry's contracts, as the chain panel serves it."""
     return {
-        # Schwab's own flag for a non-standard (adjusted) deliverable, as sent
-        "adjusted_deliverable_symbols": [c.symbol for c in contracts if c.non_standard],
-        # Schwab's lastTradingDay, an instant in epoch milliseconds, as its date on the market's
-        # clock (ET); a contract Schwab sent none for has no entry
-        "last_trading_day_et": {
-            c.symbol: et_date_str_from_ts_utc(ms / 1000.0)
-            for c in contracts
-            if isinstance(ms := c.listing.get("lastTradingDay"), float)
-        },
         # two contracts listed at one (strike, side): the chain is not strike-unique
         "has_duplicate_contracts": len({(c.strike, c.side) for c in contracts}) < len(contracts),
     }
@@ -178,7 +201,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             resolved_expiry,
             not_on_ladder,
         )
-    served = _ladder_with_gex(ladder, _net_gex_column(held.gamma_surface, resolved_expiry))
+    served = _served_ladder(ladder, _net_gex_column(held.gamma_surface, resolved_expiry))
     return {
         "ticker": t,
         "spot": live_spot,

@@ -135,6 +135,7 @@ test("a beat built before an add, arriving after its answer, does not take the a
         ts: 1002,
         status: 200,
         answer: {},
+        text: "AMD is added to the watchlist",
       }),
     }),
   );
@@ -186,6 +187,7 @@ test("the answer to an add stands when a beat then carries no status", async ({ 
         ts: Date.now() / 1000,
         status: 200,
         answer: { errors: { invalidSymbols: ["ZQZQZ"] } },
+        text: 'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["ZQZQZ"]}})',
       }),
     }),
   );
@@ -193,13 +195,66 @@ test("the answer to an add stands when a beat then carries no status", async ({ 
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "QQQ"]);
   await page.evaluate(() => window.EdShell.addSymbol("ZQZQZ"));
   const said =
-    'ZQZQZ is not added: Schwab does not quote it ({"errors":{"invalidSymbols":["ZQZQZ"]}})';
+    'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["ZQZQZ"]}})';
   await expect(page.locator("#wlMsg")).toHaveText(said);
   await taken(page, socket); // a beat with no status, after the answer
   await expect(page.locator("#wlMsg")).toHaveText(said);
   socket.send(feed(["SPY", "QQQ"])); // the daemon reports again
   await expect(page.locator("#wlFeed")).toHaveText("");
   await expect(page.locator("#wlMsg")).toHaveText(said);
+});
+
+// Each answer's served sentence is drawn as sent: the daemon's record (capture.WATCHLIST_TEXT) and
+// the console's own when the daemon is away (server._watchlist_change, its 503 as it answers with
+// no daemon). INDUCED: an answer that is not the program's JSON (a 500 page from something between
+// the page and the program) says its HTTP status.
+test("the served sentence of each answer is drawn; an answer that is not the program's says its HTTP status", async ({
+  page,
+}) => {
+  await holdClock(page); // nothing self-clears
+  // the program's clock: the beat at 1000, the removal's record at 1001
+  await page.routeWebSocket(/\/ws$/, (ws) => ws.send(feed(["SPY", "QQQ"], 1000)));
+  const answers = [
+    {
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        op: "removed",
+        ticker: "QQQ",
+        tickers: ["SPY"],
+        ts: 1001,
+        status: null,
+        answer: null,
+        text: "QQQ is removed from the watchlist",
+      }),
+    },
+    {
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        text: "TSLA is not added: no capture daemon runs in this program",
+      }),
+    },
+    { status: 500, contentType: "text/html", body: "<html><body>Internal error</body></html>" },
+    { status: 502, contentType: "text/html", body: "<html><body>Bad gateway</body></html>" },
+  ];
+  await page.route("**/api/watchlist**", (route) => route.fulfill(answers.shift()));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "QQQ"]);
+  await page.locator('[data-rm="QQQ"]').click();
+  await expect(page.locator("#wlMsg")).toHaveText("QQQ is removed from the watchlist");
+  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY"]);
+  await page.evaluate(() => window.EdShell.addSymbol("TSLA"));
+  await expect(page.locator("#wlMsg")).toHaveText(
+    "TSLA is not added: no capture daemon runs in this program",
+  );
+  await page.evaluate(() => window.EdShell.addSymbol("TSLA"));
+  await expect(page.locator("#wlMsg")).toHaveText("TSLA is not added: HTTP 500");
+  await page.locator('[data-rm="SPY"]').click();
+  await expect(page.locator("#wlMsg")).toHaveText("SPY is not removed: HTTP 502");
+  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY"]);
 });
 
 test("the socket drops: the rail stands marked; it returns: the new connection's beat redraws it", async ({

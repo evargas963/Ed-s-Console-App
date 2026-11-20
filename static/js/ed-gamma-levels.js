@@ -49,11 +49,6 @@
     render(host, d);
   });
 
-  function levelName(r) {
-    if (r.label != null && r.label !== "") return r.label;
-    if (r.id != null && r.id !== "") return r.id;
-    return "-";
-  }
   function timeHtml(when) {
     if (when == null || when === "") return "";
     return '<div class="lv-age">' + esc(when) + "</div>";
@@ -91,7 +86,7 @@
         if (r.id != null) shown[r.id] = true;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.carried_text, when, r.price_text, when, true, r.note);
+        body += pairRow(r.label, r.carried_text, when, r.price_text, when, true, r.note);
       });
     }
     if (levels != null) {
@@ -100,7 +95,7 @@
         if (r.id != null && shown[r.id]) return;
         var st = r.staleness != null ? r.staleness : null;
         var when = st != null && st.as_of_time_ct != null ? st.as_of_time_ct : null;
-        body += pairRow(levelName(r), r.price_text, when, null, null, false, r.note);
+        body += pairRow(r.label, r.price_text, when, null, null, false, r.note);
       });
     }
     if (!body) {
