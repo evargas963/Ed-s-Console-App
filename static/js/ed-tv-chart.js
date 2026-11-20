@@ -702,16 +702,6 @@
       crosshairMarkerVisible: false,
       title: "VWAP",
     });
-    var bandLines = [1, 2, 3, 4].map(function () {
-      return chart.addSeries(LWC.LineSeries, {
-        color: alpha(P.accent, 0.4),
-        lineWidth: 1,
-        lineStyle: 2,
-        lastValueVisible: false,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-      });
-    });
     var band = new BandPrimitive();
     candles.attachPrimitive(band);
     var callouts = new CalloutPrimitive(function () {
@@ -1352,9 +1342,6 @@
       });
       paintStyle();
       vwapLine.applyOptions({ color: P.accent });
-      bandLines.forEach(function (s) {
-        s.applyOptions({ color: alpha(P.accent, 0.4) });
-      });
       draw.color = P.accent2;
       draw.redraw();
       api.setVolume(S.bars);
@@ -1446,23 +1433,18 @@
       setVolume: function (bars) {
         volume.setData(bars.map(api._volPoint));
       },
-      // VWAP + bands, one point per bar, served for the chart's timeframe (the levels panel's tf:
-      // the value as of the bar's last minute, stamped with the bar's t). Rows are
-      // [t, vwap, +1, -1, +2, -2].
+      // VWAP, one point per bar, served for the chart's timeframe (the levels panel's tf: the
+      // value as of the bar's last minute, stamped with the bar's t). Rows are [t, vwap].
       setVwap: function (rows) {
-        var cols = [1, 2, 3, 4, 5],
-          out = cols.map(function () {
-            return [];
-          });
-        rows.forEach(function (r) {
-          cols.forEach(function (c, k) {
-            if (r && r[c] != null) out[k].push({ time: r[0], value: r[c] });
-          });
-        });
-        vwapLine.setData(out[0]);
-        bandLines.forEach(function (s, k) {
-          s.setData(out[k + 1]);
-        });
+        vwapLine.setData(
+          rows
+            .filter(function (r) {
+              return r && r[1] != null;
+            })
+            .map(function (r) {
+              return { time: r[0], value: r[1] };
+            }),
+        );
       },
       setStyle: function (style) {
         S.style = style === "line" ? "line" : "candles";

@@ -43,8 +43,8 @@ log = logging.getLogger(__name__)
 type Bar = dict[str, Any]
 #: one cluster of levels: (zone_low, zone_high, zone_mid, source_tags, [(price, tag), ...])
 type Cluster = tuple[float, float, float, list[str], list[tuple[float, str]]]
-#: one point of the session VWAP series: (bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)
-type VwapPoint = tuple[float, float, float, float, float, float]
+#: one point of the session VWAP series: (bar_epoch_sec, vwap)
+type VwapPoint = tuple[float, float]
 
 #: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
 #: price levels built from it
@@ -93,10 +93,6 @@ LEVEL_NAMES = {
     "OVERNIGHT_HIGH": ("Overnight high", "ONH"),
     "OVERNIGHT_LOW": ("Overnight low", "ONL"),
     "VWAP": ("VWAP", "VWAP"),
-    "VWAP_P1": ("VWAP +1σ", "VWAP+1σ"),
-    "VWAP_M1": ("VWAP −1σ", "VWAP−1σ"),
-    "VWAP_P2": ("VWAP +2σ", "VWAP+2σ"),
-    "VWAP_M2": ("VWAP −2σ", "VWAP−2σ"),
 }
 
 
@@ -265,7 +261,7 @@ def compute_opening_range(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# VWAP & BANDS
+# VWAP
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -275,17 +271,16 @@ def compute_session_vwap_series(
     *,
     sessions: Mapping[str, Session],
 ) -> list[VwapPoint]:
-    """Return running session VWAP and σ bands after each RTH bar.
+    """Return the running session VWAP after each RTH bar.
 
-    From normalized bars (bars_from_candles). Returns
-    [(bar_epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ), ...] using the standard
-    cumulative moments VWAP_t = Σ(tp·v)/Σv and σ_t² = Σ(tp²·v)/Σv − VWAP_t².
+    From normalized bars (bars_from_candles). Returns [(bar_epoch_sec, vwap), ...], the standard
+    cumulative VWAP_t = Σ(tp·v)/Σv.
 
-    The one VWAP accumulation: the served VWAP level and bands are its last point; the chart's
-    polyline is this list carried to the browser.
+    The one VWAP accumulation: the served VWAP level is its last point; the chart's polyline is
+    this list carried to the browser.
     """
     rth_bars = _filter_rth_bars(bars_norm, session_date, sessions)
-    cum_tpv = cum_vol = cum_tp2v = 0.0
+    cum_tpv = cum_vol = 0.0
     series: list[VwapPoint] = []
     for b in rth_bars:
         vol = b["volume"]  # a 0-volume minute adds nothing and keeps its VWAP point
@@ -294,12 +289,9 @@ def compute_session_vwap_series(
         tp = (b["high"] + b["low"] + b["close"]) / 3.0
         cum_tpv += tp * vol
         cum_vol += vol
-        cum_tp2v += tp * tp * vol
         if cum_vol <= 0:
             continue
-        w = cum_tpv / cum_vol
-        sd = max(0.0, cum_tp2v / cum_vol - w * w) ** 0.5
-        series.append((b["_dt"].timestamp(), w, w + sd, w - sd, w + 2 * sd, w - 2 * sd))
+        series.append((b["_dt"].timestamp(), cum_tpv / cum_vol))
     return series
 
 
@@ -420,10 +412,8 @@ LIVE_LEVELS = (
     "ORB_MID",
     "ORB_LOW",
     "TODAY_VAH",
-    "VWAP_P1",
     "VWAP",
     "TODAY_POC",
-    "VWAP_M1",
     "TODAY_VAL",
     "PD_VAL",
     "PDL",
@@ -592,10 +582,6 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "ORB_LOW": ("opening_range", "session_rth", "price_fact"),
     "ORB_MID": ("opening_range", "session_rth", "price_fact"),
     "VWAP": ("vwap", "session_rth", "derived_certified"),
-    "VWAP_P1": ("vwap", "session_rth", "derived_certified"),
-    "VWAP_M1": ("vwap", "session_rth", "derived_certified"),
-    "VWAP_P2": ("vwap", "session_rth", "derived_certified"),
-    "VWAP_M2": ("vwap", "session_rth", "derived_certified"),
     "TODAY_POC": ("value_area", "session_rth", "derived_certified"),
     "TODAY_VAH": ("value_area", "session_rth", "derived_certified"),
     "TODAY_VAL": ("value_area", "session_rth", "derived_certified"),
@@ -718,7 +704,7 @@ class PriceLevelSnapshot:
         self.bar_source = bar_source
         self.as_of_ts_utc = as_of_ts_utc
         self.levels = levels  # level_id -> PriceLevelValue
-        self.vwap_series = vwap_series  # [(epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ)]
+        self.vwap_series = vwap_series  # [(epoch_sec, vwap)]
         self.families_absent = families_absent
         self.degraded = degraded
         self.bars_used = bars_used
@@ -931,7 +917,7 @@ def _vwap_part(
     window: str,
     basis: str,
 ) -> tuple[_Family | _Absent, list[VwapPoint]]:
-    """Return the session VWAP and its bands, and its series (one accumulation for both).
+    """Return the session VWAP and its series (one accumulation for both).
 
     The series has a point from the first RTH bar with volume above 0 (no volume is negative,
     server._schwab_bar), so an empty one means no RTH volume.
@@ -939,10 +925,9 @@ def _vwap_part(
     vwap_series = compute_session_vwap_series(bars_norm, session_date, sessions=sessions)
     if not vwap_series:
         return _Absent("vwap", "no RTH volume for session VWAP in available bars"), vwap_series
-    # the curve's last point IS the served level and band
-    _t, vwap, p1, m1, p2, m2 = vwap_series[-1]
+    # the curve's last point IS the served level
     return _Family(
-        (("VWAP", vwap), ("VWAP_P1", p1), ("VWAP_M1", m1), ("VWAP_P2", p2), ("VWAP_M2", m2)),
+        (("VWAP", vwap_series[-1][1]),),
         f"{_PRODUCER_NS}.compute_session_vwap_series",
         window,
         basis,

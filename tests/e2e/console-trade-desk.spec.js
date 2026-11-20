@@ -1227,10 +1227,11 @@ test.describe("Trade Desk renders served values", () => {
         level("call_wall").from_spot_text,
     ); // the levels panel's own rows
     // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location);
-    // its five levels, the price not among them
-    await expect(body).toContainText("Inside a Pivot / value zone (757.00–758.01, confluence 5)");
+    // its four levels (max pain, today's VAH, the opening range high, the prior day's VAL; no VWAP
+    // band since 2026-11-20), the price not among them
+    await expect(body).toContainText("Inside a Pivot / value zone (757.00–758.01, confluence 4)");
     expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([
-      757.0, 758.01, 5,
+      757.0, 758.01, 4,
     ]);
     // the walls' and the flip's own moves since the prior close, as served (no drift word)
     await expect(body).toContainText(

@@ -121,7 +121,7 @@ def _tf_bucket_key(t: float, tf: str) -> date | int:
 
 
 def aggregate_vwap(rows: Sequence[Sequence[float]], tf: str) -> list[list[float]]:
-    """VWAP rows [t, vwap, +1s, -1s, +2s, -2s] rolled up to the chart timeframe.
+    """VWAP rows [t, vwap] rolled up to the chart timeframe.
 
     Exactly as aggregate_bars rolls the bars: each bar takes the value as of its last minute,
     stamped with the bar's first minute (the bar's own `t`).

@@ -2,7 +2,7 @@
 
    One page for the SELECTED ticker, one global timeframe:
      MARKET MAP   <- the bars panel (completed Schwab bars at the timeframe),
-                     the levels panel (value area, VWAP + bands, prior day, opening range, overnight),
+                     the levels panel (value area, VWAP, prior day, opening range, overnight),
                      the terrain panel (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- the desk panel (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,

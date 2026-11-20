@@ -492,6 +492,40 @@ def test_no_payload_serves_a_one_day_move_or_its_band():
     assert not any("inside" in row for row in confluence["rows"])
 
 
+#: every id and word the VWAP's standard deviation bands were served under (operator 2026-11-20)
+VWAP_BANDS = {
+    "VWAP_P1",
+    "VWAP_M1",
+    "VWAP_P2",
+    "VWAP_M2",
+    "VWAP +1σ",
+    "VWAP −1σ",
+    "VWAP +2σ",
+    "VWAP −2σ",
+    "VWAP+1σ",
+    "VWAP−1σ",
+    "VWAP+2σ",
+    "VWAP−2σ",
+}
+
+
+def test_no_payload_serves_a_vwap_band(spy_levels):
+    """SPY's real 1-minute bars (2026-10-01 and 02), whose session priced VWAP bands.
+
+    The levels at every chart timeframe and the liquidity zones carry the session VWAP, its line
+    and its level, and no band of standard deviations: no band level, no band word, and each
+    point of the VWAP curve is [time, vwap].
+    """
+    _spot, _terrain, serve = spy_levels
+    liquidity = push_liquidity.liquidity_snapshot(DESK, FRIDAY_CLOSE)
+    for tf in ("1", "5", "15"):
+        body = serve(tf)
+        assert "VWAP" in {r["id"] for r in body["levels"]}, tf
+        assert body["vwap_series"] and all(len(p) == 2 for p in body["vwap_series"]), tf
+        assert not VWAP_BANDS & _keys_and_words(body, set()), tf
+    assert not VWAP_BANDS & _keys_and_words(liquidity, set())
+
+
 def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
     """Both level names are served now, from one table (LEVEL_NAMES).
 
@@ -504,7 +538,7 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
     assert len(snap) >= 8  # the real SPY bars price most of them
     # every level the engine can produce has its name: none is ever served by its id
     assert set(PHASE2A_LEVEL_IDS) <= set(LEVEL_NAMES)
-    assert {r["label"] for r in snap} >= {"VWAP +1σ", "VWAP −1σ", "VWAP +2σ", "VWAP −2σ"}
+    assert "VWAP" in {r["label"] for r in snap} and not any("σ" in r["label"] for r in snap)
     for r in body["levels"]:
         assert r["label"] and r["short"], r["id"]
         if r["id"] in LEVEL_NAMES:

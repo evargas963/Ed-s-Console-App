@@ -4,193 +4,83 @@
     {
       "zone_label": "-",
       "zone_side": "value",
-      "zone_low": -44.3533325484506,
-      "zone_high": -44.3533325484506,
-      "anchor": -44.3533325484506,
-      "source_levels": [
-        {
-          "label": "VWAP_M1",
-          "value": -44.3533325484506,
-          "value_text": "-44.35"
-        }
-      ],
-      "confluence_score": 1,
-      "interpretation_notes": "No live price: the side of the price is not known",
-      "zone_low_text": "-44.35",
-      "zone_high_text": "-44.35"
-    },
-    {
-      "zone_label": "-",
-      "zone_side": "value",
       "zone_low": 0.0,
       "zone_high": 0.0,
+      "zone_low_text": "0.00",
+      "zone_high_text": "0.00",
       "anchor": 0.0,
       "source_levels": [
-        {
-          "label": "ORB_HIGH",
-          "value": 0.0,
-          "value_text": "0.00"
-        },
-        {
-          "label": "ORB_MID",
-          "value": 0.0,
-          "value_text": "0.00"
-        },
-        {
-          "label": "ORB_LOW",
-          "value": 0.0,
-          "value_text": "0.00"
-        },
-        {
-          "label": "TODAY_VAH",
-          "value": 0.0,
-          "value_text": "0.00"
-        },
-        {
-          "label": "TODAY_POC",
-          "value": 0.0,
-          "value_text": "0.00"
-        },
-        {
-          "label": "TODAY_VAL",
-          "value": 0.0,
-          "value_text": "0.00"
-        },
-        {
-          "label": "OVERNIGHT_LOW",
-          "value": 0.0,
-          "value_text": "0.00"
-        }
+        { "label": "ORB_HIGH", "value": 0.0, "value_text": "0.00" },
+        { "label": "ORB_MID", "value": 0.0, "value_text": "0.00" },
+        { "label": "ORB_LOW", "value": 0.0, "value_text": "0.00" },
+        { "label": "TODAY_VAH", "value": 0.0, "value_text": "0.00" },
+        { "label": "TODAY_POC", "value": 0.0, "value_text": "0.00" },
+        { "label": "TODAY_VAL", "value": 0.0, "value_text": "0.00" },
+        { "label": "OVERNIGHT_LOW", "value": 0.0, "value_text": "0.00" }
       ],
       "confluence_score": 7,
-      "interpretation_notes": "No live price: the side of the price is not known",
-      "zone_low_text": "0.00",
-      "zone_high_text": "0.00"
+      "interpretation_notes": "No live price: the side of the price is not known"
     },
     {
       "zone_label": "-",
       "zone_side": "value",
       "zone_low": 2.9153649326952222,
       "zone_high": 2.9153649326952222,
-      "anchor": 2.9153649326952222,
-      "source_levels": [
-        {
-          "label": "VWAP",
-          "value": 2.9153649326952222,
-          "value_text": "2.92"
-        }
-      ],
-      "confluence_score": 1,
-      "interpretation_notes": "No live price: the side of the price is not known",
       "zone_low_text": "2.92",
-      "zone_high_text": "2.92"
-    },
-    {
-      "zone_label": "-",
-      "zone_side": "value",
-      "zone_low": 50.18406241384104,
-      "zone_high": 50.18406241384104,
-      "anchor": 50.18406241384104,
-      "source_levels": [
-        {
-          "label": "VWAP_P1",
-          "value": 50.18406241384104,
-          "value_text": "50.18"
-        }
-      ],
+      "zone_high_text": "2.92",
+      "anchor": 2.9153649326952222,
+      "source_levels": [{ "label": "VWAP", "value": 2.9153649326952222, "value_text": "2.92" }],
       "confluence_score": 1,
-      "interpretation_notes": "No live price: the side of the price is not known",
-      "zone_low_text": "50.18",
-      "zone_high_text": "50.18"
+      "interpretation_notes": "No live price: the side of the price is not known"
     },
     {
       "zone_label": "-",
       "zone_side": "value",
       "zone_low": 758.7901,
       "zone_high": 758.7901,
-      "anchor": 758.7901,
-      "source_levels": [
-        {
-          "label": "PDL",
-          "value": 758.7901,
-          "value_text": "758.79"
-        }
-      ],
-      "confluence_score": 1,
-      "interpretation_notes": "No live price: the side of the price is not known",
       "zone_low_text": "758.79",
-      "zone_high_text": "758.79"
+      "zone_high_text": "758.79",
+      "anchor": 758.7901,
+      "source_levels": [{ "label": "PDL", "value": 758.7901, "value_text": "758.79" }],
+      "confluence_score": 1,
+      "interpretation_notes": "No live price: the side of the price is not known"
     },
     {
       "zone_label": "-",
       "zone_side": "value",
       "zone_low": 761.19,
       "zone_high": 761.19,
-      "anchor": 761.19,
-      "source_levels": [
-        {
-          "label": "PD_VAL",
-          "value": 761.19,
-          "value_text": "761.19"
-        }
-      ],
-      "confluence_score": 1,
-      "interpretation_notes": "No live price: the side of the price is not known",
       "zone_low_text": "761.19",
-      "zone_high_text": "761.19"
+      "zone_high_text": "761.19",
+      "anchor": 761.19,
+      "source_levels": [{ "label": "PD_VAL", "value": 761.19, "value_text": "761.19" }],
+      "confluence_score": 1,
+      "interpretation_notes": "No live price: the side of the price is not known"
     },
     {
       "zone_label": "-",
       "zone_side": "value",
       "zone_low": 764.35,
       "zone_high": 765.65,
+      "zone_low_text": "764.35",
+      "zone_high_text": "765.65",
       "anchor": 765.0,
       "source_levels": [
-        {
-          "label": "PD_POC",
-          "value": 764.35,
-          "value_text": "764.35"
-        },
-        {
-          "label": "OVERNIGHT_HIGH",
-          "value": 764.98,
-          "value_text": "764.98"
-        },
-        {
-          "label": "PD_VAH",
-          "value": 765.34,
-          "value_text": "765.34"
-        },
-        {
-          "label": "PDH",
-          "value": 765.65,
-          "value_text": "765.65"
-        }
+        { "label": "PD_POC", "value": 764.35, "value_text": "764.35" },
+        { "label": "OVERNIGHT_HIGH", "value": 764.98, "value_text": "764.98" },
+        { "label": "PD_VAH", "value": 765.34, "value_text": "765.34" },
+        { "label": "PDH", "value": 765.65, "value_text": "765.65" }
       ],
       "confluence_score": 4,
-      "interpretation_notes": "No live price: the side of the price is not known",
-      "zone_low_text": "764.35",
-      "zone_high_text": "765.65"
+      "interpretation_notes": "No live price: the side of the price is not known"
     }
   ],
-  "summary": {
-    "value_state": "lower",
-    "vwap_relation": "above_value"
-  },
+  "summary": { "value_state": "lower", "vwap_relation": "above_value" },
   "spot_location": null,
   "hold_rates": [
-    {
-      "level": "Prior day high",
-      "text": "- (0 touches) [30 min: - (0 touches)]"
-    },
-    {
-      "level": "Prior day low",
-      "text": "- (8 touches) [30 min: - (8 touches)]"
-    },
-    {
-      "level": "Prior day close",
-      "text": "- (5 touches) [30 min: - (5 touches)]"
-    },
+    { "level": "Prior day high", "text": "- (0 touches) [30 min: - (0 touches)]" },
+    { "level": "Prior day low", "text": "- (8 touches) [30 min: - (8 touches)]" },
+    { "level": "Prior day close", "text": "- (5 touches) [30 min: - (5 touches)]" },
     {
       "level": "Prior day POC (est. from 1-min bars)",
       "text": "- (0 touches) [30 min: - (0 touches)]"
@@ -203,26 +93,11 @@
       "level": "Prior day VAL (est. from 1-min bars)",
       "text": "- (0 touches) [30 min: - (0 touches)]"
     },
-    {
-      "level": "Overnight high",
-      "text": "- (0 touches) [30 min: - (0 touches)]"
-    },
-    {
-      "level": "Overnight low",
-      "text": "- (5 touches) [30 min: - (5 touches)]"
-    },
-    {
-      "level": "Opening range high",
-      "text": "- (0 touches) [30 min: - (0 touches)]"
-    },
-    {
-      "level": "Opening range low",
-      "text": "- (7 touches) [30 min: - (7 touches)]"
-    },
-    {
-      "level": "Opening range mid",
-      "text": "- (14 touches) [30 min: - (13 touches)]"
-    }
+    { "level": "Overnight high", "text": "- (0 touches) [30 min: - (0 touches)]" },
+    { "level": "Overnight low", "text": "- (5 touches) [30 min: - (5 touches)]" },
+    { "level": "Opening range high", "text": "- (0 touches) [30 min: - (0 touches)]" },
+    { "level": "Opening range low", "text": "- (7 touches) [30 min: - (7 touches)]" },
+    { "level": "Opening range mid", "text": "- (14 touches) [30 min: - (13 touches)]" }
   ],
   "hold_note": "Over the last 60 completed sessions held: a touch is a 1-minute bar reaching the level from one side, once per approach; it held when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels hold about half the time, so only the difference means anything. '-' below 100 touches. A past frequency, not a forecast."
 }

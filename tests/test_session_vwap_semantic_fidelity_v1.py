@@ -67,7 +67,7 @@ def test_the_vwap_starts_at_the_first_rth_bar_with_volume_above_zero() -> None:
         bars_from_candles([absent, zero, one]), FRIDAY, sessions=sessions()
     )
     tp = (one.high + one.low + one.close) / 3.0
-    assert series == [(one.ts, tp, tp, tp, tp, tp)]
+    assert series == [(one.ts, tp)]
 
 
 def test_rth_volume_with_no_range_to_spread_it_over_makes_no_value_area_and_says_why() -> None:

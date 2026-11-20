@@ -271,8 +271,8 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         "levels": levels,
         "by_distance": by_distance,
         "zero_dte": zero_dte,
-        # The VWAP curve and its σ bands, CARRIED: the one VWAP of the session, which no page
-        # accumulates for itself. [epoch_sec, vwap, +1σ, -1σ, +2σ, -2σ]
+        # The VWAP curve, CARRIED: the one VWAP of the session, which no page accumulates for
+        # itself. [epoch_sec, vwap]
         "vwap_series": session["vwap_series"],
         # the session's VWAP as the VWAP family's switch shows it
         "vwap_text": session["vwap_text"],

@@ -150,8 +150,6 @@ def test_every_level_at_zero_stands_in_the_live_zones():
         "TODAY_POC",
         "TODAY_VAL",
         "VWAP",
-        "VWAP_P1",
-        "VWAP_M1",
         "OVERNIGHT_HIGH",
         "OVERNIGHT_LOW",
     }
