@@ -192,7 +192,8 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_book_size_v1.py`.
 - **Option quote.** LEVELONE_OPTIONS → the bus → the Recorder for kept contracts (D4) → the console
   reads each contract's top of book, Greeks and volume from its bus record
-  (`order_flow.state.streamed_record`), never a copy → the `contract` and `chain` panels
+  (`stream_spine.streamed_record`: read once into the record when a message changes it,
+  `stream_spine.read_streamed`), never a copy → the `contract` and `chain` panels
   (`server.OPTION_PANELS`) and the levels (a reprice, below). A contract's streamed Greeks are one
   set, taken only while all six arrived in this hold (`option_contract.streamed_greek_set`,
   `capture.Daemon.option_record`). Enforced by: `tests/test_data_path_option_quote_time_v1.py`,
