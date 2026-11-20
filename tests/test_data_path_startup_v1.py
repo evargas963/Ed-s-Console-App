@@ -254,7 +254,8 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
             time.sleep(0.2)
     finally:
         for p in psutil.process_iter(["cmdline"]):
-            if str(home) in " ".join(p.info["cmdline"] or []):
+            # psutil gives None for a process whose command line it may not read
+            if p.info["cmdline"] is not None and str(home) in " ".join(p.info["cmdline"]):
                 p.kill()
 
 
