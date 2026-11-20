@@ -2,13 +2,8 @@
 
 Rules, never generative: identical inputs give identical output.
 
-The regime is the sign of dealer gamma at spot, which needs strikes near spot; the flip level is
-what needs a wide chain. So:
-  * confidence TRUSTED or LEVEL_APPROX: the regime is issued; the confidence is served beside it
-    and says when the flip level is approximate.
-  * confidence NARROW or UNAVAILABLE, a missing spot, or dealer gamma at spot absent or exactly
-    zero: no regime (UNAVAILABLE). The coverage floor is a bound below which the read declines
-    to speak, not proof the sign is right above it (calc.math_levels.GAMMA_FLIP_MIN_SPAN_PCT).
+The regime is the sign of dealer gamma at spot. It is issued whenever that gamma is known and not
+zero and the spot is above 0; otherwise there is no regime (UNAVAILABLE).
 
 The headline says only what published evidence supports: the sign goes with the size of price
 swings, not with a trade direction; the sign is a model (it assumes dealers long calls and short
@@ -21,7 +16,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from calc.math_levels import GAMMA_FLIP_LEVEL_APPROX, GAMMA_FLIP_TRUSTED
 from numeric_contract import price_text
 
 REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
@@ -124,10 +118,9 @@ def flip_note(gamma_at_spot: float | None, curve_at_spot: float | None) -> str |
 
 @dataclass(frozen=True)
 class TerrainRead:
-    """The regime, the flip's confidence, the headline and its sources (shown on hover)."""
+    """The regime, the headline and its sources (shown on hover)."""
 
     regime: str
-    confidence: str
     headline: str
     headline_source: str
 
@@ -165,32 +158,21 @@ _READS = {
         "continuation: Baltussen, Da, Lammers & Martens, JFE 2021.",
     ),
     REGIME_UNAVAILABLE: (
-        "No estimate: the chain does not cover enough strikes around the price, or there is "
-        "no price.",
+        "No estimate: the dealers' position at the price is unknown or flat, or there is no price.",
         "",
     ),
 }
 
 
-def build_terrain_read(
-    *, spot: float | None, flip_confidence: str, gamma_at_spot: float | None = None
-) -> TerrainRead:
-    """Return the regime read at `spot` for a flip of `flip_confidence`.
+def build_terrain_read(*, spot: float | None, gamma_at_spot: float | None = None) -> TerrainRead:
+    """Return the regime read at `spot`.
 
     The regime is the sign of dealer gamma at spot (`gamma_at_spot`), not the side of the flip
     the price is on, so a chain whose profile never crosses zero still has one. It is issued
-    with a spot above 0 and a confidence of TRUSTED or LEVEL_APPROX; otherwise it is
-    UNAVAILABLE.
+    with a spot above 0 and that gamma known and not zero; otherwise it is UNAVAILABLE.
     """
-    speaks = (
-        spot is not None
-        and spot > 0
-        and flip_confidence in (GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX)
-    )
-    regime = regime_from_signed_gamma(gamma_at_spot) if speaks else None
+    regime = regime_from_signed_gamma(gamma_at_spot) if spot is not None and spot > 0 else None
     if regime is None:
         regime = REGIME_UNAVAILABLE
     headline, source = _READS[regime]
-    return TerrainRead(
-        regime=regime, confidence=flip_confidence, headline=headline, headline_source=source
-    )
+    return TerrainRead(regime=regime, headline=headline, headline_source=source)

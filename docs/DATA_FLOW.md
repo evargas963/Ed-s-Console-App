@@ -65,8 +65,12 @@ The rules for the data itself, at every hop from Schwab to the screen.
   After five sessions (`capture.SESSIONS_KEPT`, `capture.keep_sessions`) those rows move into
   `stream_archive` as compressed blocks (`stream_spine.ARCHIVED`, read back by
   `stream_spine.archived_rows`); the tables of `stream_spine.KEPT_BY_TIME` (price history, chain and
-  quote answers, operational tables) drop rows older than five sessions. A row the database refuses
-  is kept as sent with its error in `stream_write_failures`. While the database refuses every write,
+  quote answers, operational tables) drop rows older than five sessions. A row the database refuses,
+  or a statement of the writer's own (a keep part, a spill's progress row) that fails for its own
+  reason, is kept as sent with its error in `stream_write_failures` and the writer goes on: an
+  error is every write's when its SQLite code is in `stream_spine.REFUSAL_CODES` (busy, locked,
+  full, I/O, read-only and the like), else that row's or statement's alone
+  (`stream_spine._its_own`). While the database refuses every write,
   the writer holds messages in memory up to `stream_spine.HOLD_CAP_BYTES`, then in spill files
   beside the database (`<stem>.<ms>.<n>.spill`), and writes them back in order, recording progress
   in `stream_spill_progress`; files a stop or crash left are written back at the next start. Its

@@ -82,21 +82,33 @@ def _test_functions(source: str):
             yield node
 
 
+def _held(node: ast.AST, loops: tuple[ast.For | ast.AsyncFor, ...]):
+    """Each assertion under `node`, read with the loops it runs in, innermost first: one inside
+    `for w in rows: assert w` reads `(w for w in rows)`, so what it iterates is what it names."""
+    for inner in ast.iter_child_nodes(node):
+        text = None
+        if isinstance(inner, ast.Assert):
+            text = ast.unparse(inner.test)
+        elif (
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Attribute)
+            and inner.func.attr.startswith("assert")
+        ):
+            text = ast.unparse(inner)
+        if text is not None:
+            for loop in reversed(loops):
+                text = f"({text} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)})"
+            yield text
+        if isinstance(inner, (ast.For, ast.AsyncFor)):
+            yield from _held(ast.Module(body=inner.body, type_ignores=[]), (*loops, inner))
+            yield from _held(ast.Module(body=inner.orelse, type_ignores=[]), loops)
+        else:
+            yield from _held(inner, loops)
+
+
 def python_assertions(source: str) -> dict[str, set[str]]:
     """{test name: its assertions, as the syntax tree reads them}."""
-    found: dict[str, set[str]] = {}
-    for node in _test_functions(source):
-        held = found.setdefault(node.name, set())
-        for inner in ast.walk(node):
-            if isinstance(inner, ast.Assert):
-                held.add(ast.unparse(inner.test))
-            elif (
-                isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr.startswith("assert")
-            ):
-                held.add(ast.unparse(inner))
-    return found
+    return {node.name: set(_held(node, ())) for node in _test_functions(source)}
 
 
 def _js_layout_aside(statement: str) -> str:
@@ -155,7 +167,26 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
                 found.add(node.attr)  # a value an object is given (`self.name = ...`)
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 found.add(node.target.id)  # a record's declared field
+        # a constant the module defines at its top (a function's own names are not the product's)
+        found.update(
+            t.id
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            for t in node.targets
+            if isinstance(t, ast.Name)
+        )
     return found
+
+
+def _names(assertion: str) -> set[str]:
+    """What an assertion names: a function it calls, a value by its key or its attribute, and, in
+    Python, every name it reads (the parser's own reading, never a guess from the text)."""
+    named = {name for pair in NAMED.findall(assertion) for name in pair if name}
+    try:
+        tree = ast.parse(assertion, mode="eval")
+    except SyntaxError:  # a Playwright expect: the pattern alone reads it
+        return named
+    return named | {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
 
 
 def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
@@ -167,9 +198,7 @@ def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
     out = []
     for test in sorted(before.keys() & after.keys()):
         lost = [
-            a
-            for a in sorted(before[test] - after[test])
-            if not deleted.intersection(name for pair in NAMED.findall(a) for name in pair)
+            a for a in sorted(before[test] - after[test]) if not deleted.intersection(_names(a))
         ]
         # an assertion corrected or strengthened is one for one; only a net loss is a loss
         if len(lost) > len(after[test] - before[test]):

@@ -1458,7 +1458,7 @@ test.describe("Trade Desk renders served values", () => {
       terrain: Object.assign({}, TERRAIN, {
         call_wall: 772,
         call_wall_text: "772.00",
-        call_wall_lean: "DEALERS SELL",
+        call_wall_lean: null,
         flip_note: "the flip's note, as served",
       }),
       strikes: Object.assign({}, STRIKES, {

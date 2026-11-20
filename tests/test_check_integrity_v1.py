@@ -98,6 +98,29 @@ def test_an_assertion_lost_while_the_value_it_reads_is_still_built_is_refused(re
     assert _found(repo) == ["test_x: assertion lost: product.row()['unread'] == 2"]
 
 
+LOOPED = "    for w in product.row()['unread']:\n        assert w > 0\n"
+
+
+def test_an_assertion_in_a_loop_over_a_deleted_value_goes_with_it(repo):
+    write(repo, "product.py", "def row():\n    return {'kept': 1, 'unread': [2]}\n")
+    write(repo, "tests/test_a.py", SURVIVES + LOOPED)
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    write(repo, "product.py", "def row():\n    return {'kept': 1}\n")
+    write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == []
+
+
+def test_an_assertion_in_a_loop_over_a_value_still_built_is_refused(repo):
+    write(repo, "product.py", "def row():\n    return {'kept': 1, 'unread': [2]}\n")
+    write(repo, "tests/test_a.py", SURVIVES + LOOPED)
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    write(repo, "product.py", "def row():\n    return {'kept': 3, 'unread': [2]}\n")
+    write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == ["test_x: assertion lost: (w > 0 for w in product.row()['unread'])"]
+
+
 RECORD = "class Row:\n    def __init__(self):\n        self.kept = 1\n"
 
 
@@ -119,6 +142,38 @@ def test_an_assertion_lost_while_the_attribute_it_reads_is_still_set_is_refused(
     write(repo, "product.py", RECORD + "        self.unread = 3\n")
     write(repo, "tests/test_a.py", SURVIVES)
     assert _found(repo) == ["test_x: assertion lost: product.Row().unread == 2"]
+
+
+def test_an_assertion_gone_with_the_constant_it_names_passes(repo):
+    write(repo, "product.py", "VALUE = 1\nNARROW = 'narrow'\n")
+    write(repo, "tests/test_a.py", SURVIVES + "    assert tier == NARROW\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    write(repo, "product.py", "VALUE = 1\n")
+    write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == []
+
+
+def test_an_assertion_lost_while_the_constant_it_names_lives_is_refused(repo):
+    write(repo, "product.py", "VALUE = 1\nNARROW = 'narrow'\n")
+    write(repo, "tests/test_a.py", SURVIVES + "    assert tier == NARROW\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    write(repo, "product.py", "VALUE = 2\nNARROW = 'narrow'\n")
+    write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == ["test_x: assertion lost: tier == NARROW"]
+
+
+def test_a_deleted_local_name_excuses_no_assertion(repo):
+    """Only a name defined at a module's top is the product's: a function's own `result`
+    deleted with it does not excuse a test's assertion on its own `result`."""
+    write(repo, "product.py", "def f():\n    result = 1\n    return result\n")
+    write(repo, "tests/test_a.py", SURVIVES + "    assert result == 1\n")
+    _commit(repo)
+    _git(repo, "branch", "-f", "main")
+    write(repo, "product.py", "def f():\n    return 1\n")
+    write(repo, "tests/test_a.py", SURVIVES)
+    assert _found(repo) == ["test_x: assertion lost: result == 1"]
 
 
 def test_an_assertion_taken_from_a_surviving_test_is_refused(repo):

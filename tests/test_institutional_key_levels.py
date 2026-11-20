@@ -103,8 +103,9 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
     # values no code read deleted (rr_25d, zero_dte_gamma_share_pct, vanna_agg, the wall ranges).
     # The v2 fields this test locks are all still carried.
     # v5: net_gex_peak deleted (it always equalled hvp or lvp). v6: the pin read on open interest,
-    # its four gate inputs deleted.
-    assert TERRAIN_SCHEMA_VERSION == 6 and d["schema_version"] == 6
+    # its four gate inputs deleted. v7: the flip's chain-coverage confidence deleted.
+    assert TERRAIN_SCHEMA_VERSION == 7 and d["schema_version"] == 7
+    assert "confidence" not in d
     for fld in (
         "net_gex_at_spot",
         "key_delta_strike",

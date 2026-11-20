@@ -38,11 +38,12 @@ from calc.math_exposure_core import (
 from calc.math_levels import (
     CharmBucket,
     compute_charm_by_strike,
-    compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
     compute_max_pain,
     contract_inputs,
+    gamma_at_price,
+    gamma_flip_from_profile,
     merge_charm_maps,
     pick_charm_wall_strikes,
     repriced_to_close,
@@ -73,7 +74,7 @@ from time_et import (
 )
 
 #: Payload schema version — bump on any field change so the UI can fail closed.
-TERRAIN_SCHEMA_VERSION = 6
+TERRAIN_SCHEMA_VERSION = 7
 
 #: an exposure book's key: (expiry, days to expiry)
 type ExpiryKey = tuple[str | None, float | None]
@@ -152,7 +153,6 @@ class TerrainSnapshot:
 
     # regime
     regime: str = "UNAVAILABLE"
-    confidence: str = "UNAVAILABLE"
     headline: str = ""
     #: the headline's sources, shown on hover
     headline_source: str = ""
@@ -315,12 +315,11 @@ _HEAVY_FIELDS = (
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
-    read = build_terrain_read(spot=spot, flip_confidence="UNAVAILABLE")
+    read = build_terrain_read(spot=spot)
     return TerrainSnapshot(
         ticker=ticker,
         spot=spot,
         regime=read.regime,
-        confidence=read.confidence,
         headline=read.headline,
         headline_source=read.headline_source,
         error=reason,
@@ -718,47 +717,30 @@ class PriceRelations:
 def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelations:
     """Return every relation of `price` to the published levels (`terrain`, a snapshot's to_dict).
 
-    Each wall's state and lean and the price's side of the flip. The levels are the
+    Each wall's state and label and the price's side of the flip. The levels are the
     publication's; the price is the one given, the live price on every panel. A level's
     distance from the price is served with the level (the levels panel).
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
-    call_lean, put_lean = wall_lean(call, put, price, terrain["regime"], terrain["confidence"])
     return PriceRelations(
         call_wall_state=wall_geometry_state(price, call, "call"),
         put_wall_state=wall_geometry_state(price, put, "put"),
-        call_wall_lean=call_lean,
-        put_wall_lean=put_lean,
+        call_wall_lean=wall_lean(call, price, "call"),
+        put_wall_lean=wall_lean(put, price, "put"),
         flip_relation=price_side(flip, price),
     )
 
 
-def wall_lean(
-    call_wall: float | None,
-    put_wall: float | None,
-    price: float | None,
-    regime: str,
-    confidence: str,
-) -> tuple[str | None, str | None]:
-    """(call, put) wall labels as the chart states them at `price`.
+def wall_lean(wall: float | None, price: float | None, side: str) -> str | None:
+    """The wall's label on the chart at `price`: "BREACHED — spot above", "at" or "below".
 
-    One strike holding both walls is TWO-SIDED (a magnet, not a barrier); a breached wall says
-    where the price is (above, at or below it); a containing wall earns the dealer lean
-    (resistance: dealers sell, support: dealers buy) only on a TRUSTED flip with a regime;
-    otherwise None.
+    Only a breached wall (wall_geometry_state) has one, saying where the price is; a containing
+    wall has none (its side of the price is its state), nor does an unknown wall or price.
     """
-    if call_wall is not None and call_wall == put_wall:
-        both = "TWO-SIDED — magnet, not a barrier"
-        return both, both
-    earn = regime != "UNAVAILABLE" and confidence == "TRUSTED"
-
-    def one(wall: float | None, side: str, lean: str) -> str | None:
-        state, where = wall_geometry_state(price, wall, side), price_side(wall, price)
-        if state == WALL_BREACHED and where is not None:  # breached: the wall and price known
-            return f"BREACHED — spot {where.lower()}"
-        return lean if state == WALL_CONTAINS and earn else None
-
-    return one(call_wall, "call", "DEALERS SELL"), one(put_wall, "put", "DEALERS BUY")
+    where = price_side(wall, price)
+    if wall_geometry_state(price, wall, side) == WALL_BREACHED and where is not None:
+        return f"BREACHED — spot {where.lower()}"
+    return None
 
 
 #: How far from the price a strike may be to be the pin strike, in expected moves: within one
@@ -914,7 +896,7 @@ def same_day_levels(
     abs_gamma = pick_absolute_gamma_strike(exposures)
     hvp, lvp = pick_volatility_point_strikes(exposures)
     profile = compute_gamma_profile(parsed, spot)
-    flip, _confidence, _flip_diag = compute_gamma_flip_v2(rows, spot, profile=profile)
+    flip = gamma_flip_from_profile(profile, spot)
     support = compute_gamma_support_levels(profile, spot)
     call_charm, put_charm = pick_charm_wall_strikes(charm)
     (call_delta_wall, _), (put_delta_wall, _) = pick_delta_wall_strikes(exposures)
@@ -946,8 +928,8 @@ def compute_terrain(
 ) -> TerrainSnapshot:
     """Full terrain for one ticker, the ONE terrain engine; never invents a level.
 
-    Fed the whole multi-expiry chain (dealers hedge the whole delta book, not the 0DTE slice); a
-    narrow chain yields no regime (compute_gamma_flip_v2's confidence gate). `now`: the valuation
+    Fed the whole multi-expiry chain (dealers hedge the whole delta book, not the 0DTE slice); the
+    regime is the sign of dealer gamma at the price (build_terrain_read). `now`: the valuation
     instant for every time-to-expiry, read once by the caller's entry point (the live reprice: its
     own; a replay of a stored chain: the snapshot's). `sessions`: Schwab's /markets answers by ET
     date, the settlement of each expiry.
@@ -967,12 +949,12 @@ def compute_terrain(
     pin = pin_by_open_interest(contracts, spot, now=now, sessions=sessions, product=product)
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma)
     gamma_at_spot = book_net_gex(exposures)
-    flip, confidence = _flip_fields(contracts, spot, gamma_at_spot, now, sessions, product)
+    flip = _flip_fields(contracts, spot, gamma_at_spot, now, sessions, product)
     # each expiry's ATM implied vol, once: the one-day move's and the per-expiry ATM IV's
     atm_sigma = atm_sigma_by_expiry(contracts, spot)
     expiry_rows = _expiry_rows(contracts)
     by_expiry = _by_expiry(expiry_rows, spot, now, sessions, product)
-    read = build_terrain_read(spot=spot, flip_confidence=confidence, gamma_at_spot=gamma_at_spot)
+    read = build_terrain_read(spot=spot, gamma_at_spot=gamma_at_spot)
     same_day, same_day_repriced_from = same_day_levels(
         expiry_rows,
         spot,
@@ -987,7 +969,6 @@ def compute_terrain(
         ticker=ticker,
         spot=float(spot),
         regime=read.regime,
-        confidence=read.confidence,
         headline=read.headline,
         headline_source=read.headline_source,
         **flip,
@@ -1102,27 +1083,25 @@ def _flip_fields(
     now: datetime,
     sessions: Mapping[str, Session],
     product: str,
-) -> tuple[_Flip, str]:
-    """Return the flip's fields and the flip's confidence, from one gamma profile at `now`.
+) -> _Flip:
+    """Return the flip's fields, from one gamma profile at `now`.
 
     The model curve places the flip only (Schwab sends gamma at its own price, never at other
-    prices); where the curve's sign at spot disagrees with Schwab's (`gamma_at_spot`), the flip's
+    prices): where it crosses zero over the strikes the chain lists, nearest the price, else
+    None; where the curve's sign at spot disagrees with Schwab's (`gamma_at_spot`), the flip's
     note says so.
     """
-    # the gamma profile, built once at one instant, feeds the flip verdict and the regime read
     parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
     profile = compute_gamma_profile(parsed, spot)
-    flip, confidence, flip_diag = compute_gamma_flip_v2(contracts, spot, profile=profile)
     # GSF/GRC from the SAME materialized profile — no second materialization.
     gsl = compute_gamma_support_levels(profile, spot)
-    fields: _Flip = {
-        "gamma_flip": flip,
+    return {
+        "gamma_flip": gamma_flip_from_profile(profile, spot),
         "gsf": gsl["gsf"],
         "grc": gsl["grc"],
-        "flip_note": flip_note(gamma_at_spot, flip_diag["curve_gamma_at_spot"]),
+        "flip_note": flip_note(gamma_at_spot, gamma_at_price(profile, spot)),
         "profile": profile,
     }
-    return fields, confidence
 
 
 class _MaxPain(TypedDict):

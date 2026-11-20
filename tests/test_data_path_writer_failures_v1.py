@@ -854,6 +854,74 @@ def test_a_spill_file_is_resumed_after_its_committed_part_and_a_crash_cut_record
     assert (after["left_on_disk"], progress) == ([], 0)
 
 
+@pytest.mark.parametrize(
+    ("statement", "sent"),
+    [
+        ("INSERT", lambda name: {"spill": name, "written_back": len(_EVENTS)}),
+        ("DELETE", lambda name: {"spill": name}),
+    ],
+)
+def test_a_spill_progress_statement_that_fails_for_its_own_reason_is_kept_and_the_writer_goes_on(
+    tmp_path, statement, sent
+):
+    """INDUCED CONDITIONS: a spill file left beside the database and a trigger SQLite runs.
+
+    The file holds the captured option quotes; the trigger aborts every `statement` on
+    stream_spill_progress (SQLITE_CONSTRAINT: the statement's own failure, not the database
+    refusing writes): the write-back's progress row, or the row's deletion once the file is
+    written back. The new writer keeps that statement as sent in stream_write_failures with its
+    error, writes every found quote once, deletes the file, writes the quote that arrives after,
+    and is never blocked.
+    """
+    db = tmp_path / "stream_capture.db"
+    CaptureWriter(db)
+    records = [_spill_record(e["content"], 1790863200.0 + i) for i, e in enumerate(_EVENTS)]
+    spill = db.with_name("stream_capture.1.spill")
+    spill.write_bytes(b"".join(len(r).to_bytes(4, "big") + r for r in records))
+    with closing(sqlite3.connect(db)) as conn, conn:
+        conn.execute(
+            f"CREATE TRIGGER progress_rejected BEFORE {statement} ON stream_spill_progress "
+            "BEGIN SELECT RAISE(ABORT, 'a statement SQLite rejects'); END"
+        )
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
+    states: list[str] = []
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+
+        def written_back() -> bool:
+            states.append(writer.status()["state"])
+            return writer.status()["spill"] is None
+
+        await _until(written_back)
+        _publish_options(bus, health, _EVENTS[:1])  # arrives after the write-back
+        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
+        stop.set()
+        await task
+        return writer.status()
+
+    after = asyncio.run(go())
+
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS] + [_EVENTS[0]["content"]], (
+        "not every found quote once, in order, then the one that arrived"
+    )
+    ((topic, kept, error),) = _failures(db)
+    assert (topic, json.loads(kept), error) == (
+        "stream_spill_progress",
+        sent(spill.name),
+        "IntegrityError: a statement SQLite rejects",
+    )
+    assert not spill.exists(), "the written-back spill file was kept"
+    assert (after["state"], after["failures"], after["spill"], after["lost"]) == (
+        "stopped",
+        1,
+        None,
+        0,
+    )
+    assert "blocked" not in states, "the writer was blocked by one statement's own failure"
+
+
 def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_bytes(tmp_path):
     """INDUCED CONDITIONS: a spill file left beside the database, a quote and 3 cut-off bytes.
 

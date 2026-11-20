@@ -434,22 +434,6 @@ def compute_gamma_support_levels(
     return {"gsf": gsf, "grc": grc}
 
 
-#: The flip's verdict is chain coverage: how far the delivered strikes reach around spot. It does
-#: not say the level is right, and it is silent on how far the level moves within a session.
-GAMMA_FLIP_TRUSTED = "TRUSTED"
-GAMMA_FLIP_NARROW = "LOW_CONFIDENCE_NARROW_CHAIN"
-GAMMA_FLIP_UNAVAILABLE = "UNAVAILABLE"
-#: Middle tier: the chain reaches GAMMA_FLIP_MIN_SPAN_PCT but not GAMMA_FLIP_TRUSTED_SPAN_PCT, so
-#: the level is approximate. It certifies neither the level nor the sign of gamma at spot.
-GAMMA_FLIP_LEVEL_APPROX = "LEVEL_APPROX_NARROW_SPAN"
-#: The floor, as a share of spot each side: a chain that does not reach it earns GAMMA_FLIP_NARROW
-#: and nothing is claimed. Reaching it earns at most GAMMA_FLIP_LEVEL_APPROX. Asserted, not derived.
-GAMMA_FLIP_MIN_SPAN_PCT = 0.05
-#: The span, as a share of spot each side, at which the flip level earns GAMMA_FLIP_TRUSTED: where
-#: the measured error against the full-chain flip stopped falling. A floor, not proof of the level.
-GAMMA_FLIP_TRUSTED_SPAN_PCT = 0.10
-
-
 def gamma_at_price(profile: list[tuple[float, float]], price: float | None) -> float | None:
     """Net dealer gamma at `price`, linearly interpolated from the profile.
 
@@ -475,46 +459,6 @@ def gamma_at_price(profile: list[tuple[float, float]], price: float | None) -> f
         if x0 <= price <= x1:
             return _lerp(price, x0, x1, y0, y1)
     return None
-
-
-def compute_gamma_flip_v2(
-    contracts: list[OptionContract], spot: float, *, profile: list[tuple[float, float]]
-) -> tuple[float | None, str, dict[str, float | None]]:
-    """Canonical gamma flip (profile zero-crossing) plus a CHAIN-COVERAGE verdict.
-
-    `profile` is compute_gamma_profile's curve for the same contracts and spot.
-    Returns (flip | None, verdict, diagnostics). The verdict is the tier the delivered strikes'
-    span around spot earns: GAMMA_FLIP_TRUSTED, GAMMA_FLIP_LEVEL_APPROX or GAMMA_FLIP_NARROW.
-    """
-    if not contracts or not spot or spot <= 0:
-        return None, GAMMA_FLIP_UNAVAILABLE, {}
-    strikes = [c.strike for c in contracts if c.strike is not None]
-    if not strikes:
-        return None, GAMMA_FLIP_UNAVAILABLE, {}
-    lo, hi = min(strikes), max(strikes)
-    covers_regime = lo <= spot * (1.0 - GAMMA_FLIP_MIN_SPAN_PCT) and hi >= spot * (
-        1.0 + GAMMA_FLIP_MIN_SPAN_PCT
-    )
-    covers_level = lo <= spot * (1.0 - GAMMA_FLIP_TRUSTED_SPAN_PCT) and hi >= spot * (
-        1.0 + GAMMA_FLIP_TRUSTED_SPAN_PCT
-    )
-    # TRUSTED is earned by the LEVEL span, never the fetch width
-    _verdict = (
-        GAMMA_FLIP_TRUSTED
-        if covers_level
-        else GAMMA_FLIP_LEVEL_APPROX
-        if covers_regime
-        else GAMMA_FLIP_NARROW
-    )
-    # Dealer gamma AT SPOT is what defines the regime. The flip is only the price where
-    # that sign changes -- it is a landmark, not a prerequisite: with no crossing inside the
-    # window the regime is still known, only the flip level is not.
-    at_spot = gamma_at_price(profile, spot)
-    diag = {"curve_gamma_at_spot": at_spot}
-    if at_spot is None:
-        return None, GAMMA_FLIP_UNAVAILABLE, diag
-    # nearest crossing, EITHER direction; None when the curve does not cross in the window
-    return gamma_flip_from_profile(profile, spot), _verdict, diag
 
 
 # ── Max Pain — OI-weighted expiry settlement magnet ────────────────────────────
