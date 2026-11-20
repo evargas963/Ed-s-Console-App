@@ -29,7 +29,7 @@ DESK_LOOKBACK: dict[str, tuple[int | Literal["session"], str]] = {
     "15": (14400, "last 4 h"),
     "30": ("session", "this session"),
     "60": (172800, "last 2 days"),
-    "D": (1728000, "last 20 days"),
+    "D": (cross_store.CROSSES_HELD_SEC, "last 20 days"),
 }
 
 #: the chart draws the newest cross at each level, for the newest this-many levels (the queue
@@ -67,10 +67,7 @@ def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[
     and those are counted with their words (`markers_off_chart`, `markers_off_chart_text`).
     """
     start = _desk_window_start(tf, now)
-    crosses = cross_store.merged_recent(tk, 200)
-    in_window = sorted(
-        (c for c in crosses if c.cross.ts_utc >= start), key=lambda c: c.cross.ts_utc
-    )
+    in_window = sorted(cross_store.merged_since(tk, start), key=lambda c: c.cross.ts_utc)
     cross_items = _cross_items(in_window)
     marked = [it for it in cross_items if it["marker"]]
     chart = chart_bars(tk, tf, held_minutes(tk, limit), now)

@@ -20,7 +20,8 @@ from pathlib import Path
 from app.options.order_flow.state import MAX_TAPE_PRINTS
 from calc.liquidity_value_engine import HOLD_WINDOW_SESSIONS
 from calc.order_flow import OF_TAPE_WINDOW_5M_SEC
-from state import bar_store
+from push.desk import DESK_LOOKBACK
+from state import bar_store, cross_store
 from tests.feed_live_helper import price_history
 from time_et import sessions
 
@@ -69,3 +70,12 @@ def test_the_bars_hold_the_sessions_the_hold_rates_read_and_schwabs_extended_hou
     minutes = sum((end - start).total_seconds() for start, end in regular.regular) / 60.0
     extended = len(price_history("SPY", "1m")["body"]["candles"])
     assert HOLD_WINDOW_SESSIONS * minutes + extended <= bar_store.BARS_KEPT
+
+
+def test_the_crosses_held_cover_the_trade_desks_longest_window():
+    """Every Trade Desk window of crosses is within the time the crosses are held: a window in
+    seconds no longer, and a session window (one regular session) shorter than a day."""
+    seconds = [lb for lb, _words in DESK_LOOKBACK.values() if lb != "session"]
+    assert max(seconds) <= cross_store.CROSSES_HELD_SEC
+    assert any(lb == "session" for lb, _words in DESK_LOOKBACK.values())
+    assert cross_store.CROSSES_HELD_SEC >= 86400

@@ -385,8 +385,8 @@
         esc(moves.map(levelMove).join(" · ")) +
         "</b>" +
         (grew ? "Gamma grew most at " + esc(grew) : "No strike grew") +
-        (shrank ? "; shrank most at " + esc(shrank) + ". " : ". ") +
-        "Opened or closed? Tomorrow’s ΔOI confirms.</div>";
+        (shrank ? "; shrank most at " + esc(shrank) + "." : ".") +
+        "</div>";
     }
     if (m && m.busiest && m.busiest.length) {
       out +=
@@ -395,7 +395,7 @@
         "</b>" +
         "That is " +
         esc(orDash(WALL_WORDS[m.busiest_vs_walls])) +
-        ". Activity fact only — buyer/seller split stays unproven until the ΔOI test.</div>";
+        ".</div>";
     }
     return out;
   }
@@ -537,16 +537,15 @@
       '<span class="mig-chip' +
       (_migGhost ? " on" : "") +
       '" data-mig-ghost="1">GHOST</span></div>';
-    // A zero here has two causes: the session has traded nothing yet, or the chain behind these
-    // rows is stale (the served levels_state)
-    var totVol = mig.volume_total; // served: the expiry's session volume
-    var volNote = "";
-    if (totVol === 0) {
-      volNote =
-        strikesD.levels_state === "STALE"
-          ? '<div class="mig-vol-note stale">zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source badge above</div>'
-          : '<div class="mig-vol-note">no option volume yet this session — the counter resets at the new session and fills from the open</div>';
-    }
+    // what a session volume of 0 means, served (push.strikes._shown_migration)
+    var volZero = mig.volume_zero_text;
+    var volNote = volZero
+      ? '<div class="mig-vol-note' +
+        (strikesD.levels_state === "STALE" ? " stale" : "") +
+        '">' +
+        esc(volZero) +
+        "</div>"
+      : "";
     return (
       '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume ' +
       '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+Γ today ' +
