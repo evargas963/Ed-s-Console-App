@@ -242,6 +242,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   (`_prune_part`, the spill-progress row, `_finish_spill`) no longer retries without end: the failed
   item is kept as sent with its error in `stream_write_failures`, logged, and recording goes on
   (operator 2026-11-19).
+- FLIP-LABEL (NEXT): the gamma flip's chain-coverage label (TRUSTED / LEVEL_APPROX / NARROW,
+  `calc.math_levels.GAMMA_FLIP_TRUSTED_SPAN_PCT` 10% and `GAMMA_FLIP_MIN_SPAN_PCT` 5%) is removed:
+  every chain is asked with every strike (`strike_range="ALL"`), and neither threshold has a source.
+  The flip is where dealer gamma crosses zero over the strikes Schwab lists, else "-"; the regime
+  shows whenever dealer gamma at the price is known; the Trade Desk's Confidence row goes (operator
+  2026-11-19). Built with the Key Levels wall words (item 5).
 - ONE-30 (OPERATOR): an option contract's own SECURITY_STATUS is not read; inside its option window
   a Halted contract reads LIVE (`live_market_plane.not_trading`). Re-subscription snapshots resend
   old statuses, so taking the field needs a rule for which message is current.
@@ -251,10 +257,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
   read the price rows. Changing the bind is his setting.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
-  model gates on derived reads (the regime withheld under the flip's ±5% strike-span floor in
-  `calc.terrain_read`; GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta tolerance;
-  same-day expiries out of the 1-day move; wall candidates at 3× the median level; depth to 5
-  levels); a book side with no levels has no depth total.
+  model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
+  tolerance; same-day expiries out of the 1-day move; wall candidates at 3× the median level; depth
+  to 5 levels); a book side with no levels has no depth total.
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).
