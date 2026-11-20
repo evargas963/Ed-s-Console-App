@@ -217,6 +217,7 @@
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
+ "prior_value_area": null,
  "schema_version": 1,
  "snapshot_age_text": null,
  "snapshot_time_ct": null,
@@ -230,6 +231,7 @@
  "ticker": "SPY",
  "volume_profile": null,
  "vwap_series": null,
+ "vwap_text": null,
  "zero_dte": [
   {
    "carried": 765.0,

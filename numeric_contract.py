@@ -46,10 +46,11 @@ def schwab_number(value: Any) -> float | None:
 
 
 def schwab_count(value: Any) -> float | None:
-    """Return a Schwab volume, size or open interest as sent.
+    """Return a Schwab volume, size, open interest or strike as sent.
 
-    schwab_number, and None when negative (Schwab's field definition excludes it; none was sent
-    in 108 million captured messages, measured); a reported 0 is 0.
+    schwab_number, and None when negative (Schwab's field definition excludes it: a count is
+    never negative, none was sent in 108 million captured messages, measured; a strike is
+    written unsigned in the option symbol, Streamer API §3.2); a reported 0 is 0.
     """
     v = schwab_number(value)
     return v if v is not None and v >= 0.0 else None

@@ -142,6 +142,7 @@
   "mark_text": "760.18",
   "microprice": 760.1822222222222,
   "microprice_text": "760.18",
+  "no_book_text": null,
   "provenance": {
     "book_source": "NYSE_BOOK",
     "book_time_ms": 1790346600097.0,

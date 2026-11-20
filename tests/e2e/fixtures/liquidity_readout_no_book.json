@@ -70,6 +70,7 @@
   "mark_text": "760.18",
   "microprice": 760.1822222222222,
   "microprice_text": "760.18",
+  "no_book_text": "Schwab has sent no NYSE_BOOK book for SPY",
   "provenance": {
     "book_source": "unavailable",
     "book_time_ms": null,
