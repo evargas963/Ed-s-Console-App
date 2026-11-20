@@ -10,6 +10,8 @@ one, each valued at its own capture instant, so the numbers are whatever the act
 from __future__ import annotations
 
 import json
+import math
+from dataclasses import replace
 
 import pytest
 
@@ -180,7 +182,7 @@ def test_a_price_midway_between_two_strikes_takes_the_lower_strikes_iv_in_any_or
     at_lower = atm_sigma_by_expiry([c for c in chain if c.strike != upper], midway)
     forward = atm_sigma_by_expiry(chain, midway)
     assert forward == atm_sigma_by_expiry(list(reversed(chain)), midway)
-    front = min(k for k in forward if k[0] == chain[0].expiry)
+    front = chain[0].expiry
     assert forward[front] is not None and forward[front] == at_lower[front]
 
 
@@ -261,7 +263,7 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
             },
         ]
     )
-    assert atm_sigma_by_expiry(chain, 700.0) == {("2026-10-02", 1): None}
+    assert atm_sigma_by_expiry(chain, 700.0) == {"2026-10-02": None}
 
 
 def test_real_chain_carries_the_sigma_band() -> None:
@@ -299,6 +301,30 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     front = min(c.days_to_expiry for c in chain if c.days_to_expiry >= 1)
     front_exp = {c.expiry for c in chain if c.days_to_expiry == front}.pop()
     assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
+
+
+def test_an_expiry_whose_contracts_carry_two_dtes_is_one_expiry() -> None:
+    """One expiry's contracts sent with two daysToExpiration values are read as one expiry.
+
+    INDUCED: the real MRVL chain with the last contract of one expiry carrying no
+    daysToExpiration (Schwab's -999, read as None); no capture holds one (every expiry of every
+    captured chain carries one value). The expiry's put/call ratio is over all its contracts, its
+    ATM IV is the expiry's as sent, and its DTE, two values sent, is unknown: a book of the one
+    contract used to overwrite the expiry's.
+    """
+    chain = read_chain(MRVL.chain)
+    expiry = sorted({c.expiry for c in chain})[2]
+    last = max(i for i, c in enumerate(chain) if c.expiry == expiry)
+    induced = [*chain[:last], replace(chain[last], days_to_expiry=None), *chain[last + 1 :]]
+    snap = compute_terrain("MRVL", induced, MRVL.spot, now=MRVL.now, sessions=sessions())
+    as_sent = compute_terrain("MRVL", chain, MRVL.spot, now=MRVL.now, sessions=sessions())
+    legs = [c for c in chain if c.expiry == expiry]
+    puts = sum(c.open_interest for c in legs if c.side == "PUT")
+    calls = sum(c.open_interest for c in legs if c.side == "CALL")
+    assert calls > 0 and math.isclose(snap.pcr_by_expiry[expiry], puts / calls, rel_tol=1e-12)
+    assert snap.atm_iv_pct_by_expiry[expiry] == as_sent.atm_iv_pct_by_expiry[expiry] is not None
+    assert snap.expiry_dte[expiry] is None
+    assert snap.expiries == as_sent.expiries
 
 
 # ── RC-130: wall geometry state — the support/resistance claim is CONDITIONAL ────────────────

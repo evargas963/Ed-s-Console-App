@@ -235,14 +235,14 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
         now=datetime.fromtimestamp(et_ts("2026-10-01 10:15"), ET),
         sessions=held,
     )
-    assert put_call_volume_ratio(book) is not None
+    assert put_call_volume_ratio(book.values()) is not None
     unknown, _diag = compute_exposures_by_strike(
         [replace(ct, volume=None) if sym == HELD else ct for sym, ct in spy.items()],
         spot=SPY["spot"],
         now=datetime.fromtimestamp(et_ts("2026-10-01 10:15"), ET),
         sessions=held,
     )
-    assert put_call_volume_ratio(unknown) is None
+    assert put_call_volume_ratio(unknown.values()) is None
     assert all(
         getattr(ct, f) is None and ct.listing["greeksTime"] is None
         for ct in tsla.values()
