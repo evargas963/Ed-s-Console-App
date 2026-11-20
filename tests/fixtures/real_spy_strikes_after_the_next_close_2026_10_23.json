@@ -2552,12 +2552,6 @@
    }
   ]
  },
- "today_side_sums": {
-  "gex_above": 108386881.90773931,
-  "gex_above_text": "$108.39M",
-  "gex_below": -2827378107.3603463,
-  "gex_below_text": "-$2.83B"
- },
  "views": {
   "all": {
    "centre": 773.0,

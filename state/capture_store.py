@@ -16,7 +16,7 @@ from pathlib import Path
 from calibration.complete_chain_capture import StoredCapture, last_capture_per_day
 from instrument_identity import ticker_storage_key
 
-#: the market days of captures the levels read (the forces and the prior day: the two newest)
+#: the market days of captures the levels read (today's and the prior day: the two newest)
 CAPTURE_DAYS = 2
 
 #: ticker -> its captures, newest first, one per ET date (each a new list, never mutated)

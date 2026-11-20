@@ -149,18 +149,6 @@ def test_the_page_reads_no_route_only_its_socket():
     }
 
 
-def test_strike_side_sums_split_at_the_live_spot(held):
-    rows = held.snap.per_strike["all"]
-    below = [r for r in rows if r[0] < LIVE]
-    above = [r for r in rows if r[0] > LIVE]
-    assert below and above, "the real chain has strikes on both sides of the live price"
-    body = push_strikes.strikes(TK, time_et.now(), AUTO)
-    sums = body["today_side_sums"]
-    assert server.resolve_spot(TK, now=time_et.now())[0] == LIVE
-    assert sums["gex_below"] == sum(r[1] for r in below)
-    assert sums["gex_above"] == sum(r[1] for r in above)
-
-
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
     """Strike Detail's Net row: this expiry's column of the published surface, verbatim.
 

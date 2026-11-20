@@ -57,7 +57,7 @@ def test_every_module_of_the_repository_keeps_the_contract(head):
 def test_a_calculator_reaching_state_a_database_or_the_network_is_refused(head):
     """A Calculator importing State, the database or a socket is refused, each by its line."""
     reaches = {
-        "calc/math_forces.py": "import state.level_store\n",
+        "calc/option_book.py": "import state.level_store\n",
         "calc/terrain_engine.py": "import sqlite3\n",
         "calc/liquidity_value_engine.py": "from push import spot\n",
         "calc/order_flow.py": "import socket\n",
@@ -68,7 +68,7 @@ def test_a_calculator_reaching_state_a_database_or_the_network_is_refused(head):
     done = _lint(head)
     assert done.returncode != 0
     for importer in (
-        "head.calc.math_forces -> state",
+        "head.calc.option_book -> state",
         "head.calc.terrain_engine -> sqlite3",
         "head.calc.liquidity_value_engine -> push",
         "head.calc.order_flow -> socket",

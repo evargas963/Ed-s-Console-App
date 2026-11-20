@@ -655,12 +655,6 @@
         "max_abs_with_prior": 2968878.0308898254
       }
     },
-    "today_side_sums": {
-      "gex_below": 2740277.887098533,
-      "gex_above": 17986095.637566406,
-      "gex_below_text": "$2.74M",
-      "gex_above_text": "$17.99M"
-    },
     "max_abs_row": {
       "strike": 300.0,
       "value": 3846829.14087629,
@@ -3315,12 +3309,6 @@
         "max_abs": 2968878.0308898254,
         "max_abs_with_prior": 2968878.0308898254
       }
-    },
-    "today_side_sums": {
-      "gex_below": 2740277.887098533,
-      "gex_above": 17986095.637566406,
-      "gex_below_text": "$2.74M",
-      "gex_above_text": "$17.99M"
     },
     "max_abs_row": {
       "strike": 300.0,
@@ -9144,12 +9132,6 @@
         "max_abs": 3846829.14087629,
         "max_abs_with_prior": 3846829.14087629
       }
-    },
-    "today_side_sums": {
-      "gex_below": 2740277.887098533,
-      "gex_above": 17986095.637566406,
-      "gex_below_text": "$2.74M",
-      "gex_above_text": "$17.99M"
     },
     "max_abs_row": {
       "strike": 300.0,

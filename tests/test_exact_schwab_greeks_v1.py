@@ -6,8 +6,7 @@ schwab gives us everywhere".
 Schwab's option chain sends gamma, delta, theta, vega, rho and volatility rounded (Schwab: the
 rounding cannot be changed); its quotes endpoint sends the same contract's unrounded. The capture
 daemon's chain sweep, the one place a chain enters, never keeps the chain's Greeks: each contract
-takes its quote's, so the heatmap, the levels, the per-strike rows and the forces read them
-unchanged.
+takes its quote's, so the heatmap, the levels and the per-strike rows read them unchanged.
 
 Real data (tests/fixtures/real_spy_2026_11_20_chain_and_quotes.json): SPY's 2026-11-20 contracts
 from the capture daemon's full-chain capture of 2026-09-30 15:31:57 ET, and Schwab's quotes for

@@ -12,7 +12,7 @@ day-over-day migration and the level moves against the prior day's close.
 The Trade Desk's panels of the same instant come from the ticker's book messages of the 60 s
 before it, its CHART_EQUITY bars of the day and Schwab's newest /pricehistory answers
 (tests/fixtures/real_<ticker>_desk_rows_2026_11_12.json.gz), each through the console's own
-intake: the book, the liquidity zones, the session's price levels and the forces.
+intake: the book, the liquidity zones and the session's price levels.
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
 from push import desk as push_desk
-from push import forces as push_forces
 from push import levels as push_levels
 from push import liquidity as push_liquidity
 from push import strikes as push_strikes
@@ -136,8 +135,8 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
     `folder` holds the database the two captures are stored in. At the newer capture's instant:
     the strikes in the Auto and Wider windows, the levels (terrain), the heatmap (surface, Auto,
     every column and expiry; and asked for an expiry the chain does not list), the front and
-    the second expiry's chains, and the Trade Desk's book of each venue, liquidity zones and
-    forces, and at each of its timeframes the bars, the price levels and the attention queue
+    the second expiry's chains, and the Trade Desk's book of each venue and liquidity zones,
+    and at each of its timeframes the bars, the price levels and the attention queue
     (the day's level crosses held as a start loads them). Regenerate the browser tests' files with
     write_e2e_panels.
     """
@@ -254,7 +253,6 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
                     },
                     "liquidity": push_liquidity.liquidity_snapshot(tk, now),
-                    "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
                     "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
@@ -328,4 +326,3 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     marked = [it for it in panels["desk_newest_hour"]["items"] if it.get("marker")]
     off = [it for it in marked if it["ts"] < first]
     assert panels["desk_newest_hour"]["markers_off_chart"] == len(off) > 0
-    assert panels["forces"]["older_et_date"] == "2026-11-11"

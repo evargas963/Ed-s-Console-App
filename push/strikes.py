@@ -14,12 +14,10 @@ from calc.terrain_engine import (
     LevelMove,
     MigrationRow,
     PositioningMigration,
-    StrikeRow,
     level_moves,
     nearest_strike,
     per_strike_view,
     positioning_migration,
-    side_total,
 )
 from numeric_contract import dollars_text, strike_text
 from push.answers import unavailable
@@ -67,21 +65,6 @@ def migration_change_text(change: float | None) -> str | None:
     if change is None:
         return None
     return ("▲" if change >= 0 else "▼") + dollars_text(abs(change))
-
-
-def _side_sums(rows: list[StrikeRow], spot: float | None) -> dict[str, Any] | None:
-    """Return the GEX summed below and above `spot`, with their texts; None without both."""
-    if not rows or spot is None:
-        return None
-    # each row as _per_strike_rows made it: a finite strike, its GEX finite or None
-    below = side_total([r.value for r in rows if r.strike < spot])
-    above = side_total([r.value for r in rows if r.strike > spot])
-    return {
-        "gex_below": below,
-        "gex_above": above,
-        "gex_below_text": dollars_text(below),
-        "gex_above_text": dollars_text(above),
-    }
 
 
 def _scale_with_prior(
@@ -139,7 +122,7 @@ def terrain_strikes_payload(
     """Return the per-strike rows of the published levels at `now`, each windowed for its panel.
 
     Windowed by windowed: today's GEX and volume (all, near, far expiries), the Chart view's DEX
-    and OI, with each list's view; the side sums, the largest-GEX strike and the day-over-day
+    and OI, with each list's view; the largest-GEX strike and the day-over-day
     migration are of every strike.
     """
     # today's per-strike rows: the published levels' own (_publish_levels' `_per_strike`,
@@ -193,7 +176,6 @@ def terrain_strikes_payload(
         },
         # each scope's window: its centre strike and the largest |value| drawn
         "views": {sc: windows[sc][1] for sc in ("all", "near", "far")},
-        "today_side_sums": _side_sums(today["all"], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
         "max_abs_row": max_abs_served(today["all"], "gex", marks),
         "migration": {sc: _shown_scope(m) for sc, m in migration.items()},

@@ -52,6 +52,7 @@
         { id: "gamma", label: "Gamma" },
         { id: "vanna", label: "Vanna", note: "AGG BY STRIKE" },
         { id: "charm", label: "Charm", note: "AGG BY STRIKE" },
+        { id: "book", label: "Book" },
         { id: "dex", label: "Delta / DEX" },
         { id: "oi", label: "Open Interest" },
         { id: "flow", label: "Flow" },
@@ -457,7 +458,7 @@
   }
   // Which measure a given Options subview presents on the SAME strike x expiry grid the
   // Gamma tab already renders -- see `state.measure`'s own comment. A subview absent here
-  // (chain/flow/structures/vanna/charm — vanna/charm have no per-expiry surface yet) leaves
+  // (chain/flow/structures/vanna/charm/book — vanna/charm have no per-expiry surface yet) leaves
   // the measure untouched, so returning to Gamma after visiting Chain still shows whichever
   // measure was last selected there, exactly like `scope` already persists across subviews.
   var MEASURE_BY_SUBVIEW = { gamma: "gex", dex: "dex", oi: "oi" };

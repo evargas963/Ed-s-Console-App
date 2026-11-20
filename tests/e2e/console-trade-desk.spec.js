@@ -89,7 +89,7 @@ test("every chart is the one TradingView-style chart, with its controls", async 
 
 // 2026-09-29 RTH, measured in the operator's browser: a fresh desk load asked for every value twice
 // (start() ran on ed:view and ed:ticker; the second saw no bars yet and loaded again), and a
-// timeframe switch re-asked for the zones, strikes, forces and flow bars (and the terrain, now the
+// timeframe switch re-asked for the zones, strikes, options lean and flow bars (and the terrain, now the
 // socket's panel), none of which
 // depend on the timeframe -- 6.8 s to redraw.
 test("a desk load asks for each value once; a timeframe switch asks only for that timeframe and says it is loading", async ({
@@ -121,7 +121,14 @@ test("a desk load asks for each value once; a timeframe switch asks only for tha
   await expect
     .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars))
     .toBeGreaterThan(0);
-  const DESK = ["desk", "liquidity:deskmap", "forces", "book:deskmap", "bars:deskmap", "bars:flow"];
+  const DESK = [
+    "desk",
+    "liquidity:deskmap",
+    "option_book:desk",
+    "book:deskmap",
+    "bars:deskmap",
+    "bars:flow",
+  ];
   for (const name of DESK) expect(asks(name).length, name).toBe(1);
   expect(asks("bars:deskmap")[0].tf).toBe("5");
   expect(asks("bars:flow")[0].tf).toBe("1");
@@ -1558,7 +1565,7 @@ test.describe("Trade Desk renders served values", () => {
     expect(draws.slice(first).filter((d) => d !== wide)).toEqual([]);
   });
 
-  test("Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split", async ({
+  test("Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the flip note", async ({
     page,
   }) => {
     const errs = watchErrors(page);
@@ -1579,36 +1586,11 @@ test.describe("Trade Desk renders served values", () => {
       book: MICRO,
       liquidity: LIQ,
       bars: tfAt(BARS),
-      forces: {
-        ticker: "SPY",
-        available: true,
-        doi_below: 1200,
-        doi_above: null,
-        doi_below_text: "1,200",
-        doi_above_text: null,
-        dex_below_dollars: 5e8,
-        dex_above_dollars: null,
-        dex_below_text: "$500.00M",
-        dex_above_text: null,
-        charm_below: -1234567,
-        charm_above: null,
-        charm_below_text: "-1.23M",
-        charm_above_text: null,
-        older_et_date: "2026-10-07",
-      },
       terrain: Object.assign({}, TERRAIN, {
         call_wall: 772,
         call_wall_text: "772.00",
         call_wall_lean: null,
         flip_note: "the flip's note, as served",
-      }),
-      strikes: Object.assign({}, STRIKES, {
-        today_side_sums: {
-          gex_below: -1.2e9,
-          gex_above: null,
-          gex_below_text: "-$1.20B",
-          gex_above_text: null,
-        },
       }),
       levels: levelsAt(
         Object.assign({}, LEVELS, {
@@ -1625,16 +1607,9 @@ test.describe("Trade Desk renders served values", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText("3m");
     await expect(page.locator("#tdmChart .tvc-edge-top")).toContainText("GRC 837.58");
-    await expect(page.locator("#tdmCardOpt")).toContainText("GEX below / above");
     await expect(page.locator("#tdmCardOpt")).toContainText(
       "Γ flip note the flip's note, as served",
     ); // induced
-    await expect(page.locator("#tdmCardOpt")).toContainText("-$1.20B / -"); // GEX, one side not known, as served
-    await expect(page.locator("#tdmCardOpt")).toContainText(
-      "ΔOI since 2026-10-07 below / above 1,200 / -",
-    ); // from its served day
-    await expect(page.locator("#tdmCardOpt")).toContainText("-1.23M / -"); // charm, one side not known, as served
-    await expect(page.locator("#tdmCardOpt")).toContainText("$500.00M / -"); // DEX, one side not known, as served
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
     expect(errs).toEqual([]);
@@ -1649,13 +1624,11 @@ test.describe("Trade Desk renders served values", () => {
       await routeWatchlist(page, ["SPY"]);
       await mockPriceSocket(page, [], [], undefined, {
         terrain: terrain,
-        strikes: STRIKES,
         levels: levelsAt(LEVELS),
         desk: tfAt(EVENTS),
         book: MICRO,
         liquidity: LIQ,
         bars: tfAt(BARS),
-        forces: { available: false },
       });
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await expect(page.locator("#tdmCardOpt")).toContainText("775.00"); // the terrain panel has landed
