@@ -467,9 +467,9 @@ class Daemon:
     async def _took_chain(self, ticker: str, record: list[dict[str, Any]]) -> None:
         """Order a watchlist ticker's newest whole chain on the bus (its parts) at its live price.
 
-        The chain is the sweep's one read of it (complete_chain_capture.chain_messages); its
+        The chain is the sweep's one read of it (chain_sweep.chain_messages); its
         ladders are laid out on the program's pricing thread (server.chain_pricing), never on the
-        event loop, whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1); a ticker
+        event loop, whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4); a ticker
         removed meanwhile takes nothing. A failed fetch carries no contracts and changes nothing.
         """
         if ticker in self.watchlist and all("contracts" in part for part in record):

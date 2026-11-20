@@ -164,7 +164,7 @@ type ChainSettled = tuple[
 
 
 def assemble_chain_part(msg: dict[str, Any]) -> list[ChainSettled]:
-    """One chain message from the daemon (complete_chain_capture.chain_messages) -> what it settles.
+    """One chain message from the daemon (chain_sweep.chain_messages) -> what it settles.
 
     In order: a chain whose parts did not all arrive before the next one began
     (ticker, None, ts, reason, None, False); a fetch that failed (ticker, None, ts, Schwab's answer,

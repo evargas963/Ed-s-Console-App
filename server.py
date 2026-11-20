@@ -607,7 +607,7 @@ def restamp_off_the_loop() -> None:
     """Take the daemon's beat (the feed's callback, on the event loop) to the pricing thread.
 
     The surfaces are stamped where they are priced (chain_pricing), never on the event loop,
-    whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4.1). The restamp is at the
+    whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4). The restamp is at the
     instant it runs, as a pricing is (_price_waiting_chain): one that waited behind a pricing
     is judged by the beat of then, not by the time it was queued.
     """
@@ -1287,7 +1287,7 @@ def _price_chain(
             if captures:
                 _publish_levels(tk, captures=captures, now=now)
             return
-        # the chain as the sweep read it, once (complete_chain_capture.chain_messages)
+        # the chain as the sweep read it, once (chain_sweep.chain_messages)
         _publish_levels(tk, contracts, fetched_ts, chain_spot=spot, now=now)
         level_store.chain_priced(tk)
     except Exception as e:  # kept as the ticker's reason, and logged

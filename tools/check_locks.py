@@ -30,8 +30,8 @@ PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
 #: what Python can load, by any case of its suffix on Windows; not a `.pyi`, which type checkers
 #: alone read (importlib.machinery.all_suffixes)
 LOADABLE = (".py", ".pyw", ".ipynb", ".pyc", ".pyd", ".so")
-ROW = re.compile(r"^\|(?!\s*(?:ID|#)\s*\|)(?!\s*:?-)", re.M)
-ITEM = re.compile(r"^- [A-Z]+-\d+", re.M)
+#: a work item: each top-level bullet of ACTIVE_PROGRAM.md (a detail under one is indented)
+ITEM = re.compile(r"^- ", re.M)
 PATCH = re.compile(
     r"monkeypatch|mock\.|\bmock\b|mocker|\bMagicMock\b|\bMock\(|\bpatch\(|\bpatch\.|\bpin_clock\b",
     re.I,
@@ -118,7 +118,7 @@ def counts(tree: Path, rules: str) -> Counter:
             if _part(name) == "tests":
                 found["patching lines in tests"] += sum(1 for ln in lines if PATCH.search(ln))
     work_list = (tree / "ACTIVE_PROGRAM.md").read_text(encoding="utf-8")
-    found["open work items"] = len(ROW.findall(work_list)) + len(ITEM.findall(work_list))
+    found["open work items"] = len(ITEM.findall(work_list))
     (tree / COUNTED_RULES).write_text(rules, encoding="utf-8")
     try:
         for item in _ruff(tree, [n for n in names if n.endswith(PYTHON)]):

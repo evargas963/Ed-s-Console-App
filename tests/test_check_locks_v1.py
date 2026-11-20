@@ -29,7 +29,7 @@ def _repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     shutil.copy(ROOT / check_locks.RULES, repo)
-    (repo / "ACTIVE_PROGRAM.md").write_text("| ONE | NEXT | a row |\n", encoding="utf-8")
+    (repo / "ACTIVE_PROGRAM.md").write_text("- ONE (NEXT): an item\n", encoding="utf-8")
     (repo / "product.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "init", "-q", "-b", "main")
     _commit(repo)
@@ -50,11 +50,24 @@ def _refused(repo: Path) -> str:
 def test_a_finding_at_zero_is_refused_and_a_line_or_a_work_item_more_is_not(tmp_path):
     repo = _repo(tmp_path)
     write(repo, "product.py", "VALUE = 1\nOTHER = print('x')\n")
-    write(repo, "ACTIVE_PROGRAM.md", "| ONE | NEXT | a row |\n| TWO | LATER | a row |\n- P-1 x\n")
+    write(repo, "ACTIVE_PROGRAM.md", "- ONE (NEXT): an item\n- TWO (QUEUED): an item\n- P-1 x\n")
     refused = _refused(repo)
     assert "lines of product code" not in refused
     assert "open work items" not in refused
     assert "ruff T201: 0 -> 1" in refused
+
+
+def test_every_item_of_the_work_list_is_counted_and_a_detail_under_one_is_not(tmp_path):
+    repo = _repo(tmp_path)
+    write(
+        repo,
+        "ACTIVE_PROGRAM.md",
+        "# Work\n\nOne line per item.\n\n- ONE (NEXT): an item\n- STAND-INS (QUEUED; also P-1): x\n"
+        "  - a detail of it\n- RESEARCH: still designed\n",
+    )
+    _commit(repo)
+    rules = (repo / check_locks.RULES).read_text(encoding="utf-8")
+    assert check_locks.counts(repo, rules)["open work items"] == 3
 
 
 def test_only_size_may_rise_above_zero():

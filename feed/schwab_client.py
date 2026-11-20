@@ -356,8 +356,9 @@ def client_from_token_file_atomic(
 
     It is built as auth.client_from_access_functions builds it, with four differences: every
     token refresh is written atomically (schwab-py's writer rewrites the file in place), the
-    token is refreshed by one request at a time (OneRefreshSession), the session holds one
-    connection, and every request is logged once (request_sent, log_request).
+    token is refreshed by one request at a time (OneRefreshSession), the session holds
+    REQUESTS_AT_ONCE connections (CONNECTIONS), and every request is logged once (request_sent,
+    log_request).
     """
     resolved = _resolve_token_path(token_path)
     with token_file_lock(resolved):  # a sign-in being saved: read once it is
