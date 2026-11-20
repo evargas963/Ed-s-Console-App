@@ -125,6 +125,12 @@ test.describe("Options Book: the panel on the page's socket", () => {
     await page.locator(BOOK_PANE + " > .panel").screenshot({
       path: testInfo.outputPath("option-book.png"),
     });
+    // the same screen in the light palette: the theme is a token swap, nothing redrawn
+    await page.evaluate(() => window.EdTheme.setPref("light"));
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.locator(BOOK_PANE + " > .panel").screenshot({
+      path: testInfo.outputPath("option-book-light.png"),
+    });
     expect(errs).toEqual([]);
   });
 
