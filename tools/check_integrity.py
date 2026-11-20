@@ -82,21 +82,33 @@ def _test_functions(source: str):
             yield node
 
 
+def _held(node: ast.AST, loops: tuple[ast.For | ast.AsyncFor, ...]):
+    """Each assertion under `node`, read with the loops it runs in, innermost first: one inside
+    `for w in rows: assert w` reads `(w for w in rows)`, so what it iterates is what it names."""
+    for inner in ast.iter_child_nodes(node):
+        text = None
+        if isinstance(inner, ast.Assert):
+            text = ast.unparse(inner.test)
+        elif (
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Attribute)
+            and inner.func.attr.startswith("assert")
+        ):
+            text = ast.unparse(inner)
+        if text is not None:
+            for loop in reversed(loops):
+                text = f"({text} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)})"
+            yield text
+        if isinstance(inner, (ast.For, ast.AsyncFor)):
+            yield from _held(ast.Module(body=inner.body, type_ignores=[]), (*loops, inner))
+            yield from _held(ast.Module(body=inner.orelse, type_ignores=[]), loops)
+        else:
+            yield from _held(inner, loops)
+
+
 def python_assertions(source: str) -> dict[str, set[str]]:
     """{test name: its assertions, as the syntax tree reads them}."""
-    found: dict[str, set[str]] = {}
-    for node in _test_functions(source):
-        held = found.setdefault(node.name, set())
-        for inner in ast.walk(node):
-            if isinstance(inner, ast.Assert):
-                held.add(ast.unparse(inner.test))
-            elif (
-                isinstance(inner, ast.Call)
-                and isinstance(inner.func, ast.Attribute)
-                and inner.func.attr.startswith("assert")
-            ):
-                held.add(ast.unparse(inner))
-    return found
+    return {node.name: set(_held(node, ())) for node in _test_functions(source)}
 
 
 def _js_layout_aside(statement: str) -> str:
