@@ -95,7 +95,9 @@ def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
         datetime.fromtimestamp(ms / 1000, tz=UTC).date().isoformat() for ms in sent.values()
     } == {"2026-12-19"}
     assert NVDA["expiry"] == "2026-12-18"
-    assert body["last_trading_day_et"] == dict.fromkeys(sent, "2026-12-18")
+    on_ladder = {c["symbol"] for c in _on_ladder(body)}
+    assert on_ladder == set(sent)
+    assert {r["series"]["last_trading_day_et"] for r in body["ladder"]} == {"2026-12-18"}
 
 
 @pytest.mark.usefixtures("published")

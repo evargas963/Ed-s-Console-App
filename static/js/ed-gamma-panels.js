@@ -557,7 +557,7 @@
   // ---------- Structures — contract-safety metadata ------
   // the chain's fields (multiplier/nonStandard/deliverables/settlementType/
   // exerciseType/expirationType/lastTradingDay/pennyPilot) that the Chain ladder never
-  // surfaces -- one strike per row, both sides, no new computation, no second shape
+  // surfaces -- one ladder row per row, both sides, no new computation, no second shape
   // (the same chain panel Chain and Strike Detail are sent).
   function inStructures() {
     var s = window.EdShell.getState();
@@ -566,7 +566,7 @@
   function _flag(label, on) {
     return '<span class="st-flag' + (on ? " on" : "") + '">' + esc(label) + "</span>";
   }
-  // ADJUSTED DELIVERABLE: served per contract (Schwab's nonStandard flag, as sent)
+  // ADJUSTED DELIVERABLE: Schwab's nonStandard flag, as sent
   function renderStructures(host, d) {
     var src = document.getElementById("stSrc");
     if (src) src.textContent = "";
@@ -578,36 +578,34 @@
         "</div></div>";
       return;
     }
-    var ladder = d.ladder.filter(function (r) {
-      return r.first;
-    });
-    var rows = ladder
+    // every ladder row (a second listing at a strike has its own), its contract-level fields
+    // served once on the row (push.chain._series)
+    var rows = d.ladder
       .map(function (r) {
-        var rep = r.call || r.put; // settlement/exercise/expiration/multiplier are contract-level, same both sides at one strike/expiry
-        var lastDay = d.last_trading_day_et[rep.symbol]; // served: its date in ET
+        var s = r.series;
         var flags = [
-          _flag("NON-STD", rep.nonStandard === true),
-          _flag("PENNY", rep.pennyPilot === true),
-          _flag("ADJUSTED DELIVERABLE", d.adjusted_deliverable_symbols.indexOf(rep.symbol) !== -1),
+          _flag("NON-STD", s.nonStandard === true),
+          _flag("PENNY", s.pennyPilot === true),
+          _flag("ADJUSTED DELIVERABLE", s.nonStandard === true),
         ].join("");
         return (
           '<tr><td class="side">' +
           r.strike_text +
           "</td>" +
           "<td>" +
-          (rep.multiplier == null ? "-" : rep.multiplier) +
+          (s.multiplier == null ? "-" : s.multiplier) +
           "</td>" +
           "<td>" +
-          esc(orDash(rep.settlementType)) +
+          esc(orDash(s.settlementType)) +
           "</td>" +
           "<td>" +
-          esc(orDash(rep.exerciseType)) +
+          esc(orDash(s.exerciseType)) +
           "</td>" +
           "<td>" +
-          esc(orDash(rep.expirationType)) +
+          esc(orDash(s.expirationType)) +
           "</td>" +
           "<td>" +
-          (lastDay == null ? "-" : esc(lastDay)) +
+          esc(orDash(s.last_trading_day_et)) +
           "</td>" +
           "<td>" +
           flags +

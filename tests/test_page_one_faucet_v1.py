@@ -325,7 +325,12 @@ def test_chain_flags_are_served():
     """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
     body = push_chain.chain(TK, time_et.now(), {"expiry": EXPIRY})
     plain = [c["symbol"] for c in _CONTRACTS if len(c.get("optionDeliverablesList") or []) == 1]
-    assert plain and not set(plain) & set(body["adjusted_deliverable_symbols"])
+    on_plain = [
+        r["series"]["nonStandard"]
+        for r in body["ladder"]
+        if {leg["symbol"] for leg in (r["call"], r["put"]) if leg} <= set(plain)
+    ]
+    assert plain and on_plain and True not in on_plain
     assert body["has_duplicate_contracts"] is False
 
 
@@ -338,32 +343,97 @@ def test_an_index_option_is_not_flagged_adjusted_only_schwabs_nonstandard_would_
     board tickers. The flag is Schwab's, as sent: real $SPX contracts
     (tests/fixtures/real_spx_chain_contracts_2026_09_28.json, nonStandard false) are not flagged.
     """
-    fx = json.loads(
-        (Path(__file__).parent / "fixtures" / "real_spx_chain_contracts_2026_09_28.json").read_text(
-            encoding="utf-8"
-        )
+    contracts = _SPX["contracts"]
+    body = _spx_chain(contracts)
+    assert {c["nonStandard"] for c in contracts} == {False}
+    served = [c for r in body["ladder"] for c in (r["call"], r["put"]) if c]
+    assert len(served) == len(contracts)
+    assert {r["series"]["nonStandard"] for r in body["ladder"]} == {False}
+
+
+#: real $SPX contracts of 2026-10-16: at each of three strikes the AM-settled SPX listing and the
+#: PM-settled SPXW one
+_SPX = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_spx_chain_contracts_2026_09_28.json").read_text(
+        encoding="utf-8"
     )
-    at = datetime.fromtimestamp(fx["ts_utc"], ET)
+)
+
+
+def _spx_chain(contracts):
+    """Return the chain panel of 2026-10-16 after the levels are published from `contracts`."""
+    at = datetime.fromtimestamp(_SPX["ts_utc"], ET)
     lmp.record_feed_heartbeat(
         daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["$SPX"]})
     )
     lmp.record_from_level_one_equity(
         "$SPX",
-        {"LAST_PRICE": fx["spot"], "TRADE_TIME_MILLIS": int(fx["ts_utc"] * 1000)},
-        received_ts=fx["ts_utc"],
+        {"LAST_PRICE": _SPX["spot"], "TRADE_TIME_MILLIS": int(_SPX["ts_utc"] * 1000)},
+        received_ts=_SPX["ts_utc"],
     )
     try:
-        server._publish_levels("$SPX", read_chain(fx["contracts"]), fx["ts_utc"], now=at)
-        body = push_chain.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
+        server._publish_levels("$SPX", read_chain(contracts), _SPX["ts_utc"], now=at)
+        return push_chain.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
     finally:
         with level_store._lock:
             level_store._levels.pop("$SPX", None)
         lmp._by_ticker.pop("$SPX", None)
         lmp._fields_by_ticker.pop("$SPX", None)
         lmp.record_feed_down()
-    assert {c["nonStandard"] for c in fx["contracts"]} == {False}
-    served = [c for r in body["ladder"] for c in (r["call"], r["put"]) if c]
-    assert len(served) == len(fx["contracts"]) and body["adjusted_deliverable_symbols"] == []
+
+
+def _et_day(ms):
+    return datetime.fromtimestamp(ms / 1000, tz=ET).date().isoformat()
+
+
+def test_each_ladder_row_serves_its_listings_contract_fields_once():
+    """Structures reads one served value per field, on every ladder row.
+
+    The page read the call's fields, else the put's, and drew a strike's first row alone, so the
+    SPXW listing at a strike also listed as SPX (PM-settled, its last trading day the 16th, not
+    the 15th) was never shown. Each row now carries its legs' shared fields, as Schwab sent them.
+    """
+    body = _spx_chain(_SPX["contracts"])
+    want = {}
+    for c in _SPX["contracts"]:
+        want.setdefault(c["strikePrice"], []).append(
+            {
+                "multiplier": c["multiplier"],
+                "settlementType": c["settlementType"],
+                "exerciseType": c["exerciseType"],
+                "expirationType": c["expirationType"],
+                "nonStandard": c["nonStandard"],
+                "pennyPilot": c["pennyPilot"],
+                "last_trading_day_et": _et_day(c["lastTradingDay"]),
+            }
+        )
+    got = {}
+    for r in body["ladder"]:
+        got.setdefault(r["strike"], []).append(r["series"])
+    # each strike's two listings, a call and a put each, the two legs of a row sharing every field
+    assert {k: v[::2] for k, v in want.items()} == got
+    assert {k: v[::2] == v[1::2] for k, v in want.items()} == dict.fromkeys(want, True)
+    assert [(s["settlementType"], s["last_trading_day_et"]) for s in got[7690.0]] == [
+        ("A", "2026-10-15"),
+        ("P", "2026-10-16"),
+    ]
+
+
+def test_a_field_a_rows_call_and_put_differ_on_is_unknown_not_one_legs():
+    """INDUCED: Schwab has not sent a call and a put of one listing that differ.
+
+    SPXW's 7690 put is sent here with SPX's AM settlement: the row's settlement is "-", never the
+    call's; its other fields, which both legs share, stand.
+    """
+    put = "SPXW  261016P07690000"
+    contracts = [
+        dict(c, settlementType="A") if c["symbol"] == put else c for c in _SPX["contracts"]
+    ]
+    body = _spx_chain(contracts)
+    (row,) = [r for r in body["ladder"] if r["put"] and r["put"]["symbol"] == put]
+    assert row["series"]["settlementType"] is None
+    assert row["series"]["last_trading_day_et"] == "2026-10-16"
+    assert row["series"]["multiplier"] == 100.0
 
 
 def test_the_largest_gex_strike_is_served(held):

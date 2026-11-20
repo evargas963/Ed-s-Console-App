@@ -213,7 +213,7 @@ test.describe("ticker / expiry / measure controls", () => {
     await expect(page.locator(".wl-row")).toHaveCount(3);
     await page.evaluate(() => window.EdShell.addSymbol("ZQZQZ"));
     await expect(page.locator("#wlMsg")).toHaveText(
-      'ZQZQZ is not added: Schwab does not quote it ({"errors":{"invalidSymbols":["ZQZQZ"]}})',
+      'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["ZQZQZ"]}})',
     );
     await expect(page.locator(".wl-row")).toHaveCount(3);
     await page.locator('[data-rm="AMZN"]').click();
@@ -232,7 +232,7 @@ test.describe("ticker / expiry / measure controls", () => {
     await expect(page.locator("#watchlist")).not.toHaveClass(/wl-degraded/);
     await page.evaluate(() => window.EdShell.addSymbol("ZQZQZ"));
     const said =
-      'ZQZQZ is not added: Schwab does not quote it ({"errors":{"invalidSymbols":["ZQZQZ"]}})';
+      'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["ZQZQZ"]}})';
     await expect(page.locator("#wlMsg")).toHaveText(said);
     await page.clock.runFor(1500); // the watchdog's next look: no price row has come
     await expect(page.locator("#watchlist")).toHaveClass(/wl-degraded/);

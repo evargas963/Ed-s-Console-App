@@ -30489,267 +30489,6 @@
     "spot_time_ct": "Thu 11/12 09:30 AM CT",
     "expiry": "2026-11-12",
     "spot_strike": 757.0,
-    "adjusted_deliverable_symbols": [],
-    "last_trading_day_et": {
-      "SPY   261112C00600000": "2026-11-12",
-      "SPY   261112C00605000": "2026-11-12",
-      "SPY   261112C00610000": "2026-11-12",
-      "SPY   261112C00615000": "2026-11-12",
-      "SPY   261112C00620000": "2026-11-12",
-      "SPY   261112C00625000": "2026-11-12",
-      "SPY   261112C00630000": "2026-11-12",
-      "SPY   261112C00635000": "2026-11-12",
-      "SPY   261112C00640000": "2026-11-12",
-      "SPY   261112C00645000": "2026-11-12",
-      "SPY   261112C00650000": "2026-11-12",
-      "SPY   261112C00655000": "2026-11-12",
-      "SPY   261112C00660000": "2026-11-12",
-      "SPY   261112C00665000": "2026-11-12",
-      "SPY   261112C00670000": "2026-11-12",
-      "SPY   261112C00675000": "2026-11-12",
-      "SPY   261112C00680000": "2026-11-12",
-      "SPY   261112C00685000": "2026-11-12",
-      "SPY   261112C00690000": "2026-11-12",
-      "SPY   261112C00695000": "2026-11-12",
-      "SPY   261112C00700000": "2026-11-12",
-      "SPY   261112C00701000": "2026-11-12",
-      "SPY   261112C00702000": "2026-11-12",
-      "SPY   261112C00703000": "2026-11-12",
-      "SPY   261112C00704000": "2026-11-12",
-      "SPY   261112C00705000": "2026-11-12",
-      "SPY   261112C00706000": "2026-11-12",
-      "SPY   261112C00707000": "2026-11-12",
-      "SPY   261112C00708000": "2026-11-12",
-      "SPY   261112C00709000": "2026-11-12",
-      "SPY   261112C00710000": "2026-11-12",
-      "SPY   261112C00711000": "2026-11-12",
-      "SPY   261112C00712000": "2026-11-12",
-      "SPY   261112C00713000": "2026-11-12",
-      "SPY   261112C00714000": "2026-11-12",
-      "SPY   261112C00715000": "2026-11-12",
-      "SPY   261112C00716000": "2026-11-12",
-      "SPY   261112C00717000": "2026-11-12",
-      "SPY   261112C00718000": "2026-11-12",
-      "SPY   261112C00719000": "2026-11-12",
-      "SPY   261112C00720000": "2026-11-12",
-      "SPY   261112C00721000": "2026-11-12",
-      "SPY   261112C00722000": "2026-11-12",
-      "SPY   261112C00723000": "2026-11-12",
-      "SPY   261112C00724000": "2026-11-12",
-      "SPY   261112C00725000": "2026-11-12",
-      "SPY   261112C00726000": "2026-11-12",
-      "SPY   261112C00727000": "2026-11-12",
-      "SPY   261112C00728000": "2026-11-12",
-      "SPY   261112C00729000": "2026-11-12",
-      "SPY   261112C00730000": "2026-11-12",
-      "SPY   261112C00731000": "2026-11-12",
-      "SPY   261112C00732000": "2026-11-12",
-      "SPY   261112C00733000": "2026-11-12",
-      "SPY   261112C00734000": "2026-11-12",
-      "SPY   261112C00735000": "2026-11-12",
-      "SPY   261112C00736000": "2026-11-12",
-      "SPY   261112C00737000": "2026-11-12",
-      "SPY   261112C00738000": "2026-11-12",
-      "SPY   261112C00739000": "2026-11-12",
-      "SPY   261112C00740000": "2026-11-12",
-      "SPY   261112C00741000": "2026-11-12",
-      "SPY   261112C00742000": "2026-11-12",
-      "SPY   261112C00743000": "2026-11-12",
-      "SPY   261112C00744000": "2026-11-12",
-      "SPY   261112C00745000": "2026-11-12",
-      "SPY   261112C00746000": "2026-11-12",
-      "SPY   261112C00747000": "2026-11-12",
-      "SPY   261112C00748000": "2026-11-12",
-      "SPY   261112C00749000": "2026-11-12",
-      "SPY   261112C00750000": "2026-11-12",
-      "SPY   261112C00751000": "2026-11-12",
-      "SPY   261112C00752000": "2026-11-12",
-      "SPY   261112C00753000": "2026-11-12",
-      "SPY   261112C00754000": "2026-11-12",
-      "SPY   261112C00755000": "2026-11-12",
-      "SPY   261112C00756000": "2026-11-12",
-      "SPY   261112C00757000": "2026-11-12",
-      "SPY   261112C00758000": "2026-11-12",
-      "SPY   261112C00759000": "2026-11-12",
-      "SPY   261112C00760000": "2026-11-12",
-      "SPY   261112C00761000": "2026-11-12",
-      "SPY   261112C00762000": "2026-11-12",
-      "SPY   261112C00763000": "2026-11-12",
-      "SPY   261112C00764000": "2026-11-12",
-      "SPY   261112C00765000": "2026-11-12",
-      "SPY   261112C00766000": "2026-11-12",
-      "SPY   261112C00767000": "2026-11-12",
-      "SPY   261112C00768000": "2026-11-12",
-      "SPY   261112C00769000": "2026-11-12",
-      "SPY   261112C00770000": "2026-11-12",
-      "SPY   261112C00771000": "2026-11-12",
-      "SPY   261112C00772000": "2026-11-12",
-      "SPY   261112C00773000": "2026-11-12",
-      "SPY   261112C00774000": "2026-11-12",
-      "SPY   261112C00775000": "2026-11-12",
-      "SPY   261112C00776000": "2026-11-12",
-      "SPY   261112C00777000": "2026-11-12",
-      "SPY   261112C00778000": "2026-11-12",
-      "SPY   261112C00779000": "2026-11-12",
-      "SPY   261112C00780000": "2026-11-12",
-      "SPY   261112C00781000": "2026-11-12",
-      "SPY   261112C00782000": "2026-11-12",
-      "SPY   261112C00783000": "2026-11-12",
-      "SPY   261112C00784000": "2026-11-12",
-      "SPY   261112C00785000": "2026-11-12",
-      "SPY   261112C00786000": "2026-11-12",
-      "SPY   261112C00787000": "2026-11-12",
-      "SPY   261112C00788000": "2026-11-12",
-      "SPY   261112C00789000": "2026-11-12",
-      "SPY   261112C00790000": "2026-11-12",
-      "SPY   261112C00791000": "2026-11-12",
-      "SPY   261112C00792000": "2026-11-12",
-      "SPY   261112C00793000": "2026-11-12",
-      "SPY   261112C00794000": "2026-11-12",
-      "SPY   261112C00795000": "2026-11-12",
-      "SPY   261112C00796000": "2026-11-12",
-      "SPY   261112C00797000": "2026-11-12",
-      "SPY   261112C00798000": "2026-11-12",
-      "SPY   261112C00799000": "2026-11-12",
-      "SPY   261112C00800000": "2026-11-12",
-      "SPY   261112C00805000": "2026-11-12",
-      "SPY   261112C00810000": "2026-11-12",
-      "SPY   261112C00815000": "2026-11-12",
-      "SPY   261112C00820000": "2026-11-12",
-      "SPY   261112C00825000": "2026-11-12",
-      "SPY   261112C00830000": "2026-11-12",
-      "SPY   261112C00835000": "2026-11-12",
-      "SPY   261112C00840000": "2026-11-12",
-      "SPY   261112P00600000": "2026-11-12",
-      "SPY   261112P00605000": "2026-11-12",
-      "SPY   261112P00610000": "2026-11-12",
-      "SPY   261112P00615000": "2026-11-12",
-      "SPY   261112P00620000": "2026-11-12",
-      "SPY   261112P00625000": "2026-11-12",
-      "SPY   261112P00630000": "2026-11-12",
-      "SPY   261112P00635000": "2026-11-12",
-      "SPY   261112P00640000": "2026-11-12",
-      "SPY   261112P00645000": "2026-11-12",
-      "SPY   261112P00650000": "2026-11-12",
-      "SPY   261112P00655000": "2026-11-12",
-      "SPY   261112P00660000": "2026-11-12",
-      "SPY   261112P00665000": "2026-11-12",
-      "SPY   261112P00670000": "2026-11-12",
-      "SPY   261112P00675000": "2026-11-12",
-      "SPY   261112P00680000": "2026-11-12",
-      "SPY   261112P00685000": "2026-11-12",
-      "SPY   261112P00690000": "2026-11-12",
-      "SPY   261112P00695000": "2026-11-12",
-      "SPY   261112P00700000": "2026-11-12",
-      "SPY   261112P00701000": "2026-11-12",
-      "SPY   261112P00702000": "2026-11-12",
-      "SPY   261112P00703000": "2026-11-12",
-      "SPY   261112P00704000": "2026-11-12",
-      "SPY   261112P00705000": "2026-11-12",
-      "SPY   261112P00706000": "2026-11-12",
-      "SPY   261112P00707000": "2026-11-12",
-      "SPY   261112P00708000": "2026-11-12",
-      "SPY   261112P00709000": "2026-11-12",
-      "SPY   261112P00710000": "2026-11-12",
-      "SPY   261112P00711000": "2026-11-12",
-      "SPY   261112P00712000": "2026-11-12",
-      "SPY   261112P00713000": "2026-11-12",
-      "SPY   261112P00714000": "2026-11-12",
-      "SPY   261112P00715000": "2026-11-12",
-      "SPY   261112P00716000": "2026-11-12",
-      "SPY   261112P00717000": "2026-11-12",
-      "SPY   261112P00718000": "2026-11-12",
-      "SPY   261112P00719000": "2026-11-12",
-      "SPY   261112P00720000": "2026-11-12",
-      "SPY   261112P00721000": "2026-11-12",
-      "SPY   261112P00722000": "2026-11-12",
-      "SPY   261112P00723000": "2026-11-12",
-      "SPY   261112P00724000": "2026-11-12",
-      "SPY   261112P00725000": "2026-11-12",
-      "SPY   261112P00726000": "2026-11-12",
-      "SPY   261112P00727000": "2026-11-12",
-      "SPY   261112P00728000": "2026-11-12",
-      "SPY   261112P00729000": "2026-11-12",
-      "SPY   261112P00730000": "2026-11-12",
-      "SPY   261112P00731000": "2026-11-12",
-      "SPY   261112P00732000": "2026-11-12",
-      "SPY   261112P00733000": "2026-11-12",
-      "SPY   261112P00734000": "2026-11-12",
-      "SPY   261112P00735000": "2026-11-12",
-      "SPY   261112P00736000": "2026-11-12",
-      "SPY   261112P00737000": "2026-11-12",
-      "SPY   261112P00738000": "2026-11-12",
-      "SPY   261112P00739000": "2026-11-12",
-      "SPY   261112P00740000": "2026-11-12",
-      "SPY   261112P00741000": "2026-11-12",
-      "SPY   261112P00742000": "2026-11-12",
-      "SPY   261112P00743000": "2026-11-12",
-      "SPY   261112P00744000": "2026-11-12",
-      "SPY   261112P00745000": "2026-11-12",
-      "SPY   261112P00746000": "2026-11-12",
-      "SPY   261112P00747000": "2026-11-12",
-      "SPY   261112P00748000": "2026-11-12",
-      "SPY   261112P00749000": "2026-11-12",
-      "SPY   261112P00750000": "2026-11-12",
-      "SPY   261112P00751000": "2026-11-12",
-      "SPY   261112P00752000": "2026-11-12",
-      "SPY   261112P00753000": "2026-11-12",
-      "SPY   261112P00754000": "2026-11-12",
-      "SPY   261112P00755000": "2026-11-12",
-      "SPY   261112P00756000": "2026-11-12",
-      "SPY   261112P00757000": "2026-11-12",
-      "SPY   261112P00758000": "2026-11-12",
-      "SPY   261112P00759000": "2026-11-12",
-      "SPY   261112P00760000": "2026-11-12",
-      "SPY   261112P00761000": "2026-11-12",
-      "SPY   261112P00762000": "2026-11-12",
-      "SPY   261112P00763000": "2026-11-12",
-      "SPY   261112P00764000": "2026-11-12",
-      "SPY   261112P00765000": "2026-11-12",
-      "SPY   261112P00766000": "2026-11-12",
-      "SPY   261112P00767000": "2026-11-12",
-      "SPY   261112P00768000": "2026-11-12",
-      "SPY   261112P00769000": "2026-11-12",
-      "SPY   261112P00770000": "2026-11-12",
-      "SPY   261112P00771000": "2026-11-12",
-      "SPY   261112P00772000": "2026-11-12",
-      "SPY   261112P00773000": "2026-11-12",
-      "SPY   261112P00774000": "2026-11-12",
-      "SPY   261112P00775000": "2026-11-12",
-      "SPY   261112P00776000": "2026-11-12",
-      "SPY   261112P00777000": "2026-11-12",
-      "SPY   261112P00778000": "2026-11-12",
-      "SPY   261112P00779000": "2026-11-12",
-      "SPY   261112P00780000": "2026-11-12",
-      "SPY   261112P00781000": "2026-11-12",
-      "SPY   261112P00782000": "2026-11-12",
-      "SPY   261112P00783000": "2026-11-12",
-      "SPY   261112P00784000": "2026-11-12",
-      "SPY   261112P00785000": "2026-11-12",
-      "SPY   261112P00786000": "2026-11-12",
-      "SPY   261112P00787000": "2026-11-12",
-      "SPY   261112P00788000": "2026-11-12",
-      "SPY   261112P00789000": "2026-11-12",
-      "SPY   261112P00790000": "2026-11-12",
-      "SPY   261112P00791000": "2026-11-12",
-      "SPY   261112P00792000": "2026-11-12",
-      "SPY   261112P00793000": "2026-11-12",
-      "SPY   261112P00794000": "2026-11-12",
-      "SPY   261112P00795000": "2026-11-12",
-      "SPY   261112P00796000": "2026-11-12",
-      "SPY   261112P00797000": "2026-11-12",
-      "SPY   261112P00798000": "2026-11-12",
-      "SPY   261112P00799000": "2026-11-12",
-      "SPY   261112P00800000": "2026-11-12",
-      "SPY   261112P00805000": "2026-11-12",
-      "SPY   261112P00810000": "2026-11-12",
-      "SPY   261112P00815000": "2026-11-12",
-      "SPY   261112P00820000": "2026-11-12",
-      "SPY   261112P00825000": "2026-11-12",
-      "SPY   261112P00830000": "2026-11-12",
-      "SPY   261112P00835000": "2026-11-12",
-      "SPY   261112P00840000": "2026-11-12"
-    },
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
@@ -30827,7 +30566,16 @@
         "put_itm": true,
         "strike_text": "840",
         "net_gex": 6168.109067972105,
-        "net_gex_text": "$6.17K"
+        "net_gex_text": "$6.17K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 835.0,
@@ -30899,7 +30647,16 @@
         "put_itm": true,
         "strike_text": "835",
         "net_gex": 14128.2108849637,
-        "net_gex_text": "$14.13K"
+        "net_gex_text": "$14.13K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 830.0,
@@ -30971,7 +30728,16 @@
         "put_itm": true,
         "strike_text": "830",
         "net_gex": 32222.69813650355,
-        "net_gex_text": "$32.22K"
+        "net_gex_text": "$32.22K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 825.0,
@@ -31043,7 +30809,16 @@
         "put_itm": true,
         "strike_text": "825",
         "net_gex": 29838.732831057994,
-        "net_gex_text": "$29.84K"
+        "net_gex_text": "$29.84K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 820.0,
@@ -31115,7 +30890,16 @@
         "put_itm": true,
         "strike_text": "820",
         "net_gex": 41283.32905655482,
-        "net_gex_text": "$41.28K"
+        "net_gex_text": "$41.28K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 815.0,
@@ -31187,7 +30971,16 @@
         "put_itm": true,
         "strike_text": "815",
         "net_gex": 37418.48862320704,
-        "net_gex_text": "$37.42K"
+        "net_gex_text": "$37.42K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 810.0,
@@ -31259,7 +31052,16 @@
         "put_itm": true,
         "strike_text": "810",
         "net_gex": 57284.25230936745,
-        "net_gex_text": "$57.28K"
+        "net_gex_text": "$57.28K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 805.0,
@@ -31331,7 +31133,16 @@
         "put_itm": true,
         "strike_text": "805",
         "net_gex": 207362.2466455005,
-        "net_gex_text": "$207.36K"
+        "net_gex_text": "$207.36K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 800.0,
@@ -31403,7 +31214,16 @@
         "put_itm": true,
         "strike_text": "800",
         "net_gex": 91749.65928686605,
-        "net_gex_text": "$91.75K"
+        "net_gex_text": "$91.75K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 799.0,
@@ -31475,7 +31295,16 @@
         "put_itm": true,
         "strike_text": "799",
         "net_gex": 53497.71621698646,
-        "net_gex_text": "$53.50K"
+        "net_gex_text": "$53.50K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 798.0,
@@ -31547,7 +31376,16 @@
         "put_itm": true,
         "strike_text": "798",
         "net_gex": 30176.20050258632,
-        "net_gex_text": "$30.18K"
+        "net_gex_text": "$30.18K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 797.0,
@@ -31619,7 +31457,16 @@
         "put_itm": true,
         "strike_text": "797",
         "net_gex": 279712.8358888882,
-        "net_gex_text": "$279.71K"
+        "net_gex_text": "$279.71K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 796.0,
@@ -31691,7 +31538,16 @@
         "put_itm": true,
         "strike_text": "796",
         "net_gex": 284960.47740011057,
-        "net_gex_text": "$284.96K"
+        "net_gex_text": "$284.96K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 795.0,
@@ -31763,7 +31619,16 @@
         "put_itm": true,
         "strike_text": "795",
         "net_gex": 164118.3372977143,
-        "net_gex_text": "$164.12K"
+        "net_gex_text": "$164.12K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 794.0,
@@ -31835,7 +31700,16 @@
         "put_itm": true,
         "strike_text": "794",
         "net_gex": 196036.52683946103,
-        "net_gex_text": "$196.04K"
+        "net_gex_text": "$196.04K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 793.0,
@@ -31907,7 +31781,16 @@
         "put_itm": true,
         "strike_text": "793",
         "net_gex": 247712.9915969781,
-        "net_gex_text": "$247.71K"
+        "net_gex_text": "$247.71K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 792.0,
@@ -31979,7 +31862,16 @@
         "put_itm": true,
         "strike_text": "792",
         "net_gex": 138539.47191309003,
-        "net_gex_text": "$138.54K"
+        "net_gex_text": "$138.54K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 791.0,
@@ -32051,7 +31943,16 @@
         "put_itm": true,
         "strike_text": "791",
         "net_gex": 550507.2152425037,
-        "net_gex_text": "$550.51K"
+        "net_gex_text": "$550.51K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 790.0,
@@ -32123,7 +32024,16 @@
         "put_itm": true,
         "strike_text": "790",
         "net_gex": 672386.2094622176,
-        "net_gex_text": "$672.39K"
+        "net_gex_text": "$672.39K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 789.0,
@@ -32195,7 +32105,16 @@
         "put_itm": true,
         "strike_text": "789",
         "net_gex": 768575.0002985426,
-        "net_gex_text": "$768.58K"
+        "net_gex_text": "$768.58K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 788.0,
@@ -32267,7 +32186,16 @@
         "put_itm": true,
         "strike_text": "788",
         "net_gex": 347269.45426908444,
-        "net_gex_text": "$347.27K"
+        "net_gex_text": "$347.27K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 787.0,
@@ -32339,7 +32267,16 @@
         "put_itm": true,
         "strike_text": "787",
         "net_gex": 550859.2032662178,
-        "net_gex_text": "$550.86K"
+        "net_gex_text": "$550.86K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 786.0,
@@ -32411,7 +32348,16 @@
         "put_itm": true,
         "strike_text": "786",
         "net_gex": 334453.33591174136,
-        "net_gex_text": "$334.45K"
+        "net_gex_text": "$334.45K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 785.0,
@@ -32483,7 +32429,16 @@
         "put_itm": true,
         "strike_text": "785",
         "net_gex": 728409.4801952189,
-        "net_gex_text": "$728.41K"
+        "net_gex_text": "$728.41K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 784.0,
@@ -32555,7 +32510,16 @@
         "put_itm": true,
         "strike_text": "784",
         "net_gex": 302682.3635795741,
-        "net_gex_text": "$302.68K"
+        "net_gex_text": "$302.68K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 783.0,
@@ -32627,7 +32591,16 @@
         "put_itm": true,
         "strike_text": "783",
         "net_gex": 337802.52886392304,
-        "net_gex_text": "$337.80K"
+        "net_gex_text": "$337.80K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 782.0,
@@ -32699,7 +32672,16 @@
         "put_itm": true,
         "strike_text": "782",
         "net_gex": 274987.50251821097,
-        "net_gex_text": "$274.99K"
+        "net_gex_text": "$274.99K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 781.0,
@@ -32771,7 +32753,16 @@
         "put_itm": true,
         "strike_text": "781",
         "net_gex": 374362.93409066106,
-        "net_gex_text": "$374.36K"
+        "net_gex_text": "$374.36K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 780.0,
@@ -32843,7 +32834,16 @@
         "put_itm": true,
         "strike_text": "780",
         "net_gex": 1342021.5608639522,
-        "net_gex_text": "$1.34M"
+        "net_gex_text": "$1.34M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 779.0,
@@ -32915,7 +32915,16 @@
         "put_itm": true,
         "strike_text": "779",
         "net_gex": 1667057.0743710697,
-        "net_gex_text": "$1.67M"
+        "net_gex_text": "$1.67M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 778.0,
@@ -32987,7 +32996,16 @@
         "put_itm": true,
         "strike_text": "778",
         "net_gex": 422183.2270249264,
-        "net_gex_text": "$422.18K"
+        "net_gex_text": "$422.18K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 777.0,
@@ -33059,7 +33077,16 @@
         "put_itm": true,
         "strike_text": "777",
         "net_gex": 860261.9713640191,
-        "net_gex_text": "$860.26K"
+        "net_gex_text": "$860.26K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 776.0,
@@ -33131,7 +33158,16 @@
         "put_itm": true,
         "strike_text": "776",
         "net_gex": 851043.0852424463,
-        "net_gex_text": "$851.04K"
+        "net_gex_text": "$851.04K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 775.0,
@@ -33203,7 +33239,16 @@
         "put_itm": true,
         "strike_text": "775",
         "net_gex": 6266554.600356437,
-        "net_gex_text": "$6.27M"
+        "net_gex_text": "$6.27M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 774.0,
@@ -33275,7 +33320,16 @@
         "put_itm": true,
         "strike_text": "774",
         "net_gex": 1351711.007367588,
-        "net_gex_text": "$1.35M"
+        "net_gex_text": "$1.35M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 773.0,
@@ -33347,7 +33401,16 @@
         "put_itm": true,
         "strike_text": "773",
         "net_gex": 2182103.059557411,
-        "net_gex_text": "$2.18M"
+        "net_gex_text": "$2.18M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 772.0,
@@ -33419,7 +33482,16 @@
         "put_itm": true,
         "strike_text": "772",
         "net_gex": 4902029.2703131465,
-        "net_gex_text": "$4.90M"
+        "net_gex_text": "$4.90M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 771.0,
@@ -33503,7 +33575,16 @@
         "put_itm": null,
         "strike_text": "771",
         "net_gex": 7326440.474626167,
-        "net_gex_text": "$7.33M"
+        "net_gex_text": "$7.33M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 770.0,
@@ -33587,7 +33668,16 @@
         "put_itm": null,
         "strike_text": "770",
         "net_gex": 29421902.31873682,
-        "net_gex_text": "$29.42M"
+        "net_gex_text": "$29.42M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 769.0,
@@ -33671,7 +33761,16 @@
         "put_itm": null,
         "strike_text": "769",
         "net_gex": 13181835.18759672,
-        "net_gex_text": "$13.18M"
+        "net_gex_text": "$13.18M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 768.0,
@@ -33755,7 +33854,16 @@
         "put_itm": null,
         "strike_text": "768",
         "net_gex": 25917548.78425681,
-        "net_gex_text": "$25.92M"
+        "net_gex_text": "$25.92M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 767.0,
@@ -33839,7 +33947,16 @@
         "put_itm": null,
         "strike_text": "767",
         "net_gex": 44931709.07513264,
-        "net_gex_text": "$44.93M"
+        "net_gex_text": "$44.93M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 766.0,
@@ -33923,7 +34040,16 @@
         "put_itm": null,
         "strike_text": "766",
         "net_gex": 51431453.434925005,
-        "net_gex_text": "$51.43M"
+        "net_gex_text": "$51.43M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 765.0,
@@ -34007,7 +34133,16 @@
         "put_itm": null,
         "strike_text": "765",
         "net_gex": 120625205.36377093,
-        "net_gex_text": "$120.63M"
+        "net_gex_text": "$120.63M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 764.0,
@@ -34091,7 +34226,16 @@
         "put_itm": null,
         "strike_text": "764",
         "net_gex": 60461428.76484548,
-        "net_gex_text": "$60.46M"
+        "net_gex_text": "$60.46M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 763.0,
@@ -34175,7 +34319,16 @@
         "put_itm": null,
         "strike_text": "763",
         "net_gex": 113006127.21870969,
-        "net_gex_text": "$113.01M"
+        "net_gex_text": "$113.01M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 762.0,
@@ -34259,7 +34412,16 @@
         "put_itm": null,
         "strike_text": "762",
         "net_gex": -47191936.37968853,
-        "net_gex_text": "-$47.19M"
+        "net_gex_text": "-$47.19M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 761.0,
@@ -34343,7 +34505,16 @@
         "put_itm": null,
         "strike_text": "761",
         "net_gex": 133742982.20767489,
-        "net_gex_text": "$133.74M"
+        "net_gex_text": "$133.74M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 760.0,
@@ -34427,7 +34598,16 @@
         "put_itm": null,
         "strike_text": "760",
         "net_gex": 6328967.330907434,
-        "net_gex_text": "$6.33M"
+        "net_gex_text": "$6.33M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 759.0,
@@ -34511,7 +34691,16 @@
         "put_itm": null,
         "strike_text": "759",
         "net_gex": 73082713.94873983,
-        "net_gex_text": "$73.08M"
+        "net_gex_text": "$73.08M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 758.0,
@@ -34595,7 +34784,16 @@
         "put_itm": null,
         "strike_text": "758",
         "net_gex": -38210551.21969232,
-        "net_gex_text": "-$38.21M"
+        "net_gex_text": "-$38.21M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 757.0,
@@ -34679,7 +34877,16 @@
         "put_itm": null,
         "strike_text": "757",
         "net_gex": -161324805.0982418,
-        "net_gex_text": "-$161.32M"
+        "net_gex_text": "-$161.32M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 756.0,
@@ -34763,7 +34970,16 @@
         "put_itm": null,
         "strike_text": "756",
         "net_gex": -805098646.2411408,
-        "net_gex_text": "-$805.10M"
+        "net_gex_text": "-$805.10M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 755.0,
@@ -34847,7 +35063,16 @@
         "put_itm": null,
         "strike_text": "755",
         "net_gex": -296099790.2831459,
-        "net_gex_text": "-$296.10M"
+        "net_gex_text": "-$296.10M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 754.0,
@@ -34931,7 +35156,16 @@
         "put_itm": null,
         "strike_text": "754",
         "net_gex": -24920144.38129665,
-        "net_gex_text": "-$24.92M"
+        "net_gex_text": "-$24.92M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 753.0,
@@ -35015,7 +35249,16 @@
         "put_itm": null,
         "strike_text": "753",
         "net_gex": -176804415.03534964,
-        "net_gex_text": "-$176.80M"
+        "net_gex_text": "-$176.80M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 752.0,
@@ -35099,7 +35342,16 @@
         "put_itm": null,
         "strike_text": "752",
         "net_gex": -66873486.65115616,
-        "net_gex_text": "-$66.87M"
+        "net_gex_text": "-$66.87M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 751.0,
@@ -35183,7 +35435,16 @@
         "put_itm": null,
         "strike_text": "751",
         "net_gex": -43019112.79366298,
-        "net_gex_text": "-$43.02M"
+        "net_gex_text": "-$43.02M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 750.0,
@@ -35267,7 +35528,16 @@
         "put_itm": null,
         "strike_text": "750",
         "net_gex": -116426373.74444851,
-        "net_gex_text": "-$116.43M"
+        "net_gex_text": "-$116.43M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 749.0,
@@ -35351,7 +35621,16 @@
         "put_itm": null,
         "strike_text": "749",
         "net_gex": -45410881.25376047,
-        "net_gex_text": "-$45.41M"
+        "net_gex_text": "-$45.41M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 748.0,
@@ -35435,7 +35714,16 @@
         "put_itm": null,
         "strike_text": "748",
         "net_gex": -41218341.909441315,
-        "net_gex_text": "-$41.22M"
+        "net_gex_text": "-$41.22M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 747.0,
@@ -35519,7 +35807,16 @@
         "put_itm": null,
         "strike_text": "747",
         "net_gex": -42609621.58790406,
-        "net_gex_text": "-$42.61M"
+        "net_gex_text": "-$42.61M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 746.0,
@@ -35603,7 +35900,16 @@
         "put_itm": null,
         "strike_text": "746",
         "net_gex": -11952306.403692145,
-        "net_gex_text": "-$11.95M"
+        "net_gex_text": "-$11.95M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 745.0,
@@ -35687,7 +35993,16 @@
         "put_itm": null,
         "strike_text": "745",
         "net_gex": -22641746.815166157,
-        "net_gex_text": "-$22.64M"
+        "net_gex_text": "-$22.64M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 744.0,
@@ -35771,7 +36086,16 @@
         "put_itm": null,
         "strike_text": "744",
         "net_gex": -48891280.96310825,
-        "net_gex_text": "-$48.89M"
+        "net_gex_text": "-$48.89M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 743.0,
@@ -35855,7 +36179,16 @@
         "put_itm": null,
         "strike_text": "743",
         "net_gex": -9027311.82345318,
-        "net_gex_text": "-$9.03M"
+        "net_gex_text": "-$9.03M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 742.0,
@@ -35927,7 +36260,16 @@
         "put_itm": false,
         "strike_text": "742",
         "net_gex": -8118702.862207782,
-        "net_gex_text": "-$8.12M"
+        "net_gex_text": "-$8.12M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 741.0,
@@ -35999,7 +36341,16 @@
         "put_itm": false,
         "strike_text": "741",
         "net_gex": -3604624.374384267,
-        "net_gex_text": "-$3.60M"
+        "net_gex_text": "-$3.60M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 740.0,
@@ -36071,7 +36422,16 @@
         "put_itm": false,
         "strike_text": "740",
         "net_gex": -10461863.901215887,
-        "net_gex_text": "-$10.46M"
+        "net_gex_text": "-$10.46M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 739.0,
@@ -36143,7 +36503,16 @@
         "put_itm": false,
         "strike_text": "739",
         "net_gex": -6570363.200545251,
-        "net_gex_text": "-$6.57M"
+        "net_gex_text": "-$6.57M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 738.0,
@@ -36215,7 +36584,16 @@
         "put_itm": false,
         "strike_text": "738",
         "net_gex": -2586528.8883601907,
-        "net_gex_text": "-$2.59M"
+        "net_gex_text": "-$2.59M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 737.0,
@@ -36287,7 +36665,16 @@
         "put_itm": false,
         "strike_text": "737",
         "net_gex": -1294398.2651060454,
-        "net_gex_text": "-$1.29M"
+        "net_gex_text": "-$1.29M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 736.0,
@@ -36359,7 +36746,16 @@
         "put_itm": false,
         "strike_text": "736",
         "net_gex": -1535654.364162911,
-        "net_gex_text": "-$1.54M"
+        "net_gex_text": "-$1.54M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 735.0,
@@ -36431,7 +36827,16 @@
         "put_itm": false,
         "strike_text": "735",
         "net_gex": -4327720.748137883,
-        "net_gex_text": "-$4.33M"
+        "net_gex_text": "-$4.33M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 734.0,
@@ -36503,7 +36908,16 @@
         "put_itm": false,
         "strike_text": "734",
         "net_gex": -1644722.655755216,
-        "net_gex_text": "-$1.64M"
+        "net_gex_text": "-$1.64M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 733.0,
@@ -36575,7 +36989,16 @@
         "put_itm": false,
         "strike_text": "733",
         "net_gex": -1356633.7509787714,
-        "net_gex_text": "-$1.36M"
+        "net_gex_text": "-$1.36M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 732.0,
@@ -36647,7 +37070,16 @@
         "put_itm": false,
         "strike_text": "732",
         "net_gex": -781521.6870855188,
-        "net_gex_text": "-$781.52K"
+        "net_gex_text": "-$781.52K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 731.0,
@@ -36719,7 +37151,16 @@
         "put_itm": false,
         "strike_text": "731",
         "net_gex": -852430.579187997,
-        "net_gex_text": "-$852.43K"
+        "net_gex_text": "-$852.43K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 730.0,
@@ -36791,7 +37232,16 @@
         "put_itm": false,
         "strike_text": "730",
         "net_gex": -6204698.795016315,
-        "net_gex_text": "-$6.20M"
+        "net_gex_text": "-$6.20M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 729.0,
@@ -36863,7 +37313,16 @@
         "put_itm": false,
         "strike_text": "729",
         "net_gex": -1203727.2195744116,
-        "net_gex_text": "-$1.20M"
+        "net_gex_text": "-$1.20M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 728.0,
@@ -36935,7 +37394,16 @@
         "put_itm": false,
         "strike_text": "728",
         "net_gex": -668791.8744124824,
-        "net_gex_text": "-$668.79K"
+        "net_gex_text": "-$668.79K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 727.0,
@@ -37007,7 +37475,16 @@
         "put_itm": false,
         "strike_text": "727",
         "net_gex": -425076.3168402085,
-        "net_gex_text": "-$425.08K"
+        "net_gex_text": "-$425.08K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 726.0,
@@ -37079,7 +37556,16 @@
         "put_itm": false,
         "strike_text": "726",
         "net_gex": -2082299.9115341995,
-        "net_gex_text": "-$2.08M"
+        "net_gex_text": "-$2.08M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 725.0,
@@ -37151,7 +37637,16 @@
         "put_itm": false,
         "strike_text": "725",
         "net_gex": -3524542.5897056423,
-        "net_gex_text": "-$3.52M"
+        "net_gex_text": "-$3.52M",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 724.0,
@@ -37223,7 +37718,16 @@
         "put_itm": false,
         "strike_text": "724",
         "net_gex": -330930.7592836349,
-        "net_gex_text": "-$330.93K"
+        "net_gex_text": "-$330.93K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 723.0,
@@ -37295,7 +37799,16 @@
         "put_itm": false,
         "strike_text": "723",
         "net_gex": -221083.08448896883,
-        "net_gex_text": "-$221.08K"
+        "net_gex_text": "-$221.08K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 722.0,
@@ -37367,7 +37880,16 @@
         "put_itm": false,
         "strike_text": "722",
         "net_gex": -175584.0571647556,
-        "net_gex_text": "-$175.58K"
+        "net_gex_text": "-$175.58K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 721.0,
@@ -37439,7 +37961,16 @@
         "put_itm": false,
         "strike_text": "721",
         "net_gex": -160044.18234460877,
-        "net_gex_text": "-$160.04K"
+        "net_gex_text": "-$160.04K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 720.0,
@@ -37511,7 +38042,16 @@
         "put_itm": false,
         "strike_text": "720",
         "net_gex": -745666.841318775,
-        "net_gex_text": "-$745.67K"
+        "net_gex_text": "-$745.67K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 719.0,
@@ -37583,7 +38123,16 @@
         "put_itm": false,
         "strike_text": "719",
         "net_gex": -126847.31257517476,
-        "net_gex_text": "-$126.85K"
+        "net_gex_text": "-$126.85K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 718.0,
@@ -37655,7 +38204,16 @@
         "put_itm": false,
         "strike_text": "718",
         "net_gex": -402670.00785167905,
-        "net_gex_text": "-$402.67K"
+        "net_gex_text": "-$402.67K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 717.0,
@@ -37727,7 +38285,16 @@
         "put_itm": false,
         "strike_text": "717",
         "net_gex": -349640.4883719115,
-        "net_gex_text": "-$349.64K"
+        "net_gex_text": "-$349.64K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 716.0,
@@ -37799,7 +38366,16 @@
         "put_itm": false,
         "strike_text": "716",
         "net_gex": -158689.9859589505,
-        "net_gex_text": "-$158.69K"
+        "net_gex_text": "-$158.69K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 715.0,
@@ -37871,7 +38447,16 @@
         "put_itm": false,
         "strike_text": "715",
         "net_gex": -606199.5986453267,
-        "net_gex_text": "-$606.20K"
+        "net_gex_text": "-$606.20K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 714.0,
@@ -37943,7 +38528,16 @@
         "put_itm": false,
         "strike_text": "714",
         "net_gex": -194723.39017746746,
-        "net_gex_text": "-$194.72K"
+        "net_gex_text": "-$194.72K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 713.0,
@@ -38015,7 +38609,16 @@
         "put_itm": false,
         "strike_text": "713",
         "net_gex": -222122.2161961001,
-        "net_gex_text": "-$222.12K"
+        "net_gex_text": "-$222.12K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 712.0,
@@ -38087,7 +38690,16 @@
         "put_itm": false,
         "strike_text": "712",
         "net_gex": -186494.18280536344,
-        "net_gex_text": "-$186.49K"
+        "net_gex_text": "-$186.49K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 711.0,
@@ -38159,7 +38771,16 @@
         "put_itm": false,
         "strike_text": "711",
         "net_gex": -550405.5670401993,
-        "net_gex_text": "-$550.41K"
+        "net_gex_text": "-$550.41K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 710.0,
@@ -38231,7 +38852,16 @@
         "put_itm": false,
         "strike_text": "710",
         "net_gex": -568913.2503903144,
-        "net_gex_text": "-$568.91K"
+        "net_gex_text": "-$568.91K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 709.0,
@@ -38303,7 +38933,16 @@
         "put_itm": false,
         "strike_text": "709",
         "net_gex": -398110.12388309283,
-        "net_gex_text": "-$398.11K"
+        "net_gex_text": "-$398.11K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 708.0,
@@ -38375,7 +39014,16 @@
         "put_itm": false,
         "strike_text": "708",
         "net_gex": -318141.4900958812,
-        "net_gex_text": "-$318.14K"
+        "net_gex_text": "-$318.14K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 707.0,
@@ -38447,7 +39095,16 @@
         "put_itm": false,
         "strike_text": "707",
         "net_gex": -415254.83323441475,
-        "net_gex_text": "-$415.25K"
+        "net_gex_text": "-$415.25K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 706.0,
@@ -38519,7 +39176,16 @@
         "put_itm": false,
         "strike_text": "706",
         "net_gex": -150714.71550854133,
-        "net_gex_text": "-$150.71K"
+        "net_gex_text": "-$150.71K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 705.0,
@@ -38591,7 +39257,16 @@
         "put_itm": false,
         "strike_text": "705",
         "net_gex": -109584.47261466204,
-        "net_gex_text": "-$109.58K"
+        "net_gex_text": "-$109.58K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 704.0,
@@ -38663,7 +39338,16 @@
         "put_itm": false,
         "strike_text": "704",
         "net_gex": -99681.5694757889,
-        "net_gex_text": "-$99.68K"
+        "net_gex_text": "-$99.68K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 703.0,
@@ -38735,7 +39419,16 @@
         "put_itm": false,
         "strike_text": "703",
         "net_gex": -156981.81654686894,
-        "net_gex_text": "-$156.98K"
+        "net_gex_text": "-$156.98K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 702.0,
@@ -38807,7 +39500,16 @@
         "put_itm": false,
         "strike_text": "702",
         "net_gex": -130994.68888543171,
-        "net_gex_text": "-$130.99K"
+        "net_gex_text": "-$130.99K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 701.0,
@@ -38879,7 +39581,16 @@
         "put_itm": false,
         "strike_text": "701",
         "net_gex": -211368.7680814504,
-        "net_gex_text": "-$211.37K"
+        "net_gex_text": "-$211.37K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 700.0,
@@ -38951,7 +39662,16 @@
         "put_itm": false,
         "strike_text": "700",
         "net_gex": -267762.981892936,
-        "net_gex_text": "-$267.76K"
+        "net_gex_text": "-$267.76K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 695.0,
@@ -39023,7 +39743,16 @@
         "put_itm": false,
         "strike_text": "695",
         "net_gex": -144340.53332696916,
-        "net_gex_text": "-$144.34K"
+        "net_gex_text": "-$144.34K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 690.0,
@@ -39095,7 +39824,16 @@
         "put_itm": false,
         "strike_text": "690",
         "net_gex": -427071.97889896954,
-        "net_gex_text": "-$427.07K"
+        "net_gex_text": "-$427.07K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 685.0,
@@ -39167,7 +39905,16 @@
         "put_itm": false,
         "strike_text": "685",
         "net_gex": -47536.523601915644,
-        "net_gex_text": "-$47.54K"
+        "net_gex_text": "-$47.54K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 680.0,
@@ -39239,7 +39986,16 @@
         "put_itm": false,
         "strike_text": "680",
         "net_gex": -39421.712050668655,
-        "net_gex_text": "-$39.42K"
+        "net_gex_text": "-$39.42K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 675.0,
@@ -39311,7 +40067,16 @@
         "put_itm": false,
         "strike_text": "675",
         "net_gex": -13735.071345551878,
-        "net_gex_text": "-$13.74K"
+        "net_gex_text": "-$13.74K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 670.0,
@@ -39383,7 +40148,16 @@
         "put_itm": false,
         "strike_text": "670",
         "net_gex": -14694.814418329086,
-        "net_gex_text": "-$14.69K"
+        "net_gex_text": "-$14.69K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 665.0,
@@ -39455,7 +40229,16 @@
         "put_itm": false,
         "strike_text": "665",
         "net_gex": -30128.78991765339,
-        "net_gex_text": "-$30.13K"
+        "net_gex_text": "-$30.13K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 660.0,
@@ -39527,7 +40310,16 @@
         "put_itm": false,
         "strike_text": "660",
         "net_gex": -11093.767076196378,
-        "net_gex_text": "-$11.09K"
+        "net_gex_text": "-$11.09K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 655.0,
@@ -39599,7 +40391,16 @@
         "put_itm": false,
         "strike_text": "655",
         "net_gex": -13475.139256715784,
-        "net_gex_text": "-$13.48K"
+        "net_gex_text": "-$13.48K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 650.0,
@@ -39671,7 +40472,16 @@
         "put_itm": false,
         "strike_text": "650",
         "net_gex": -12266.57093106935,
-        "net_gex_text": "-$12.27K"
+        "net_gex_text": "-$12.27K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 645.0,
@@ -39743,7 +40553,16 @@
         "put_itm": false,
         "strike_text": "645",
         "net_gex": -3816.563561105446,
-        "net_gex_text": "-$3.82K"
+        "net_gex_text": "-$3.82K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 640.0,
@@ -39815,7 +40634,16 @@
         "put_itm": false,
         "strike_text": "640",
         "net_gex": -17441.289409246856,
-        "net_gex_text": "-$17.44K"
+        "net_gex_text": "-$17.44K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 635.0,
@@ -39887,7 +40715,16 @@
         "put_itm": false,
         "strike_text": "635",
         "net_gex": -5930.797978215219,
-        "net_gex_text": "-$5.93K"
+        "net_gex_text": "-$5.93K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 630.0,
@@ -39959,7 +40796,16 @@
         "put_itm": false,
         "strike_text": "630",
         "net_gex": -8108.535271005375,
-        "net_gex_text": "-$8.11K"
+        "net_gex_text": "-$8.11K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 625.0,
@@ -40031,7 +40877,16 @@
         "put_itm": false,
         "strike_text": "625",
         "net_gex": -2529.295041350826,
-        "net_gex_text": "-$2.53K"
+        "net_gex_text": "-$2.53K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 620.0,
@@ -40103,7 +40958,16 @@
         "put_itm": false,
         "strike_text": "620",
         "net_gex": -13187.853142110063,
-        "net_gex_text": "-$13.19K"
+        "net_gex_text": "-$13.19K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 615.0,
@@ -40175,7 +41039,16 @@
         "put_itm": false,
         "strike_text": "615",
         "net_gex": -14583.281361494479,
-        "net_gex_text": "-$14.58K"
+        "net_gex_text": "-$14.58K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 610.0,
@@ -40247,7 +41120,16 @@
         "put_itm": false,
         "strike_text": "610",
         "net_gex": -8228.008338675798,
-        "net_gex_text": "-$8.23K"
+        "net_gex_text": "-$8.23K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 605.0,
@@ -40319,7 +41201,16 @@
         "put_itm": false,
         "strike_text": "605",
         "net_gex": -884.7719300008778,
-        "net_gex_text": "-$885"
+        "net_gex_text": "-$885",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       },
       {
         "strike": 600.0,
@@ -40391,7 +41282,16 @@
         "put_itm": false,
         "strike_text": "600",
         "net_gex": -5582.389843779449,
-        "net_gex_text": "-$5.58K"
+        "net_gex_text": "-$5.58K",
+        "series": {
+          "multiplier": 100.0,
+          "settlementType": "P",
+          "exerciseType": "A",
+          "expirationType": "W",
+          "nonStandard": false,
+          "pennyPilot": true,
+          "last_trading_day_et": "2026-11-12"
+        }
       }
     ],
     "n_strikes": 129,

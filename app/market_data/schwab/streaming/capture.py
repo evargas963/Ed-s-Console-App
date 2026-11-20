@@ -122,6 +122,16 @@ ADDED, REMOVED, INVALID, NOT_CHECKED, ON_LIST, NOT_ON_LIST = (
     "already on the list",
     "not on the list",
 )
+#: the sentence the screen shows for each (`answer`: Schwab's /quotes answer to the check as
+#: sent, or why no check was made)
+WATCHLIST_TEXT = {
+    ADDED: "{ticker} is added to the watchlist",
+    REMOVED: "{ticker} is removed from the watchlist",
+    INVALID: "{ticker} is not added: Schwab does not quote it ({answer})",
+    NOT_CHECKED: "{ticker} is not added: it was not checked with Schwab ({answer})",
+    ON_LIST: "{ticker} is already on the watchlist",
+    NOT_ON_LIST: "{ticker} is not on the watchlist",
+}
 
 
 def stored_watchlist(db_path: str | Path) -> list[str]:
@@ -157,7 +167,8 @@ def watchlist_message(
     """Return the watchlist after one request as its bus record, made at `ts_recv`.
 
     The record holds the whole list, what happened to `ticker` (`op`), the console's request
-    id, and Schwab's /quotes answer to the check (an add) with its HTTP status, as sent.
+    id, and Schwab's /quotes answer to the check (an add) with its HTTP status, as sent, and the
+    sentence the screen shows for it (WATCHLIST_TEXT).
     """
     return WATCHLIST_TOPIC, {
         "src": WATCHLIST_SRC,
@@ -168,6 +179,7 @@ def watchlist_message(
         "request_id": request_id,
         "status": status,
         "answer": answer,
+        "text": WATCHLIST_TEXT[op].format(ticker=ticker, answer=json.dumps(answer)),
     }
 
 
