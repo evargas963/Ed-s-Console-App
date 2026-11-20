@@ -249,10 +249,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - LOCAL-SOCKETS (OPERATOR): the page's socket `/ws` binds every address of this PC
   (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
   read the price rows. Changing the bind is his setting.
-- OWN-PATH (OPERATOR; also RUNTIME-SEPARATION): move production (and its runtime state: database,
-  logs, token) out of the user profile to a folder of its own on C:. Needs the delete-protection
-  ACLs re-applied by the operator, the start shortcut, the `.venv` rebuilt, and one stop and start.
-  He schedules it.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (the regime withheld under the flip's ±5% strike-span floor in
   `calc.terrain_read`; GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta tolerance;
