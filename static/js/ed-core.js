@@ -1155,6 +1155,18 @@
     el.title = s ? s.why : "the daemon's Schwab sign-in, from its heartbeat";
     el.className = s ? "v " + s.cls : "v";
   }
+  // What the program left out since it started, as each heartbeat carries it: the line, its
+  // reason and its class are the program's (live_ui.left_out_line). None served: nothing was
+  // left out, and the cell is not shown.
+  function paintLeftOut(s) {
+    var el = document.getElementById("hLeftOut");
+    if (!el) return;
+    document.getElementById("hLeftOutKv").hidden = !s;
+    document.getElementById("hLeftOutSep").hidden = !s;
+    el.textContent = s ? s.line : "-";
+    el.title = s ? s.why : "";
+    el.className = s ? "v " + s.cls : "v";
+  }
   function openPriceSocket() {
     var ws;
     try {
@@ -1178,6 +1190,7 @@
       if (msg && msg.type === "feed") {
         paintRecord(msg.feed && msg.feed.writer);
         paintSignIn(msg.feed && msg.feed.sign_in);
+        paintLeftOut(msg.feed && msg.feed.left_out);
         if (msg.feed) paintSession(msg.feed.session, "");
         else paintSession(null, "session unknown: the daemon sent no status");
         ingestWatchlist(msg.feed);

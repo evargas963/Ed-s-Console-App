@@ -141,6 +141,31 @@ class Asked:
         return datetime.fromtimestamp(self.now, time_et.ET)
 
 
+def left_out_line(
+    apply_failures: int, tick_failures: int, page_refused: int
+) -> dict[str, str] | None:
+    """Return the header's count of what the program left out since it started, None when nothing.
+
+    Its `line` and `why` name each count above 0: the records the console failed to apply
+    (console_feed.Feed.apply_failures), the reprices its tick failed (Feed.tick_failures) and the
+    page frames this server could not take (`page_refused`); each one is logged with what arrived.
+    `cls` "neg".
+    """
+    counts = (
+        (apply_failures, "records not applied"),
+        (tick_failures, "reprices failed"),
+        (page_refused, "page frames refused"),
+    )
+    shown = [f"{n} {what}" for n, what in counts if n]
+    if not shown:
+        return None
+    return {
+        "line": " · ".join(shown),
+        "why": "counted since the program started; each is in the daemon's log with what arrived",
+        "cls": "neg",
+    }
+
+
 class _Client:
     __slots__ = ("ws", "symbols", "pending", "view", "panels", "wake")
 
@@ -214,9 +239,17 @@ class LiveUiServer:
         The status covers the Schwab socket, symbols held and refused per service, the watchlist
         and health; this is the console's one record of it. It carries this server's own counts
         (`page_socket`: its pages, the rows sent, the beats a page did not take, and what pages
-        sent that it could not take, `page_refused`).
+        sent that it could not take, `page_refused`), and the header's line of what the program
+        left out (left_out_line).
         """
-        hb = {**self.heartbeat_fn(self.clock()), "page_socket": dict(self.stats)}
+        status = self.heartbeat_fn(self.clock())
+        hb = {
+            **status,
+            "page_socket": dict(self.stats),
+            "left_out": left_out_line(
+                status["apply_failures"], status["tick_failures"], self.stats["page_refused"]
+            ),
+        }
         self.record_heartbeat(hb)
         return hb
 
