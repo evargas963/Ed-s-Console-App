@@ -7,7 +7,7 @@
     },
     {
       "category": "register",
-      "item": "every panel's served keys were checked against the derived register by hand on 2026-11-18 (12 rows added, the flip's confidence spans waiting on the operator); no machine check holds it: census.py checks only functions named compute_, bs_ or pick_, so a new served key with no row is not caught"
+      "item": "every panel's served keys were checked against the derived register by hand on 2026-11-18 (12 rows added; the flip's confidence and its spans deleted 2026-11-19); no machine check holds it: census.py checks only functions named compute_, bs_ or pick_, so a new served key with no row is not caught"
     },
     {
       "category": "tests not trusted",

@@ -31,7 +31,7 @@ import server
 import time_et
 from calc.math_exposure_core import bucket_metric, merge_exposure_books
 from calc.terrain_engine import compute_terrain
-from calc.terrain_read import GAMMA_FLIP_TRUSTED, build_terrain_read
+from calc.terrain_read import build_terrain_read
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from option_contract import read_chain
 from push import strike_bars as push_strike_bars
@@ -542,7 +542,7 @@ def test_an_unknown_gamma_at_spot_never_reads_as_short_gamma():
 
     Meanwhile the headline said "Short gamma -- trend regime. Follow breaks" -- advice from nothing.
     """
-    r = build_terrain_read(spot=100.0, flip_confidence=GAMMA_FLIP_TRUSTED, gamma_at_spot=None)
+    r = build_terrain_read(spot=100.0, gamma_at_spot=None)
     assert r.regime == "UNAVAILABLE" and "gamma" not in r.headline.lower().split("—")[0]
     assert "Short gamma" not in r.headline and "Long gamma" not in r.headline
 

@@ -17,9 +17,7 @@ import pytest
 
 import time_et
 from calc.math_levels import (
-    GAMMA_FLIP_UNAVAILABLE,
     _gamma_profile_totals,
-    compute_gamma_flip_v2,
     compute_gamma_profile,
     compute_gamma_support_levels,
     contract_inputs,
@@ -27,7 +25,7 @@ from calc.math_levels import (
     gamma_flip_from_profile,
 )
 from calc.terrain_engine import compute_terrain
-from option_contract import OptionContract, read_chain, read_contract
+from option_contract import OptionContract, read_chain
 from tests.real_chains import CRWD, SPY_0DTE, gamma_flip_worked_out, spy_0dte_book
 
 #: a REAL same-day-expiry SPY chain the capture daemon captured 2026-10-07 12:32 ET, valued at its
@@ -139,16 +137,6 @@ def test_flip_is_interpolated_within_the_profile_span() -> None:
         "here means the profile or crossing detection regressed"
     )
     assert prof[0][0] <= flip <= prof[-1][0]
-
-
-def test_flip_v2_fails_closed_without_inputs() -> None:
-    for contracts, spot in (
-        ([], 100.0),
-        (None, 100.0),
-        ([read_contract({"strikePrice": 100})], 0.0),
-    ):
-        flip, confidence, _diag = compute_gamma_flip_v2(contracts, spot, profile=[])
-        assert flip is None and confidence == GAMMA_FLIP_UNAVAILABLE
 
 
 def test_regime_is_defined_even_when_the_profile_never_crosses_zero() -> None:
