@@ -83,8 +83,6 @@ def compute_charm_by_strike(
     nothing, so a strike whose contracts all have none is 0. A settled one has no charm left.
     """
     out: dict[float, CharmBucket] = {}
-    if not contracts or not spot or spot <= 0:
-        return out
     tte = expiry_years(now, product, sessions)
     # each contract that counts: its strike, its side's slot, and its pricing inputs (NaN: it
     # cannot be priced, so its side's sum is not known)

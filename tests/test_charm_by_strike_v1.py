@@ -93,9 +93,15 @@ def test_two_strikes_with_the_same_charm_give_the_lower_strike_whatever_their_or
 
 
 def test_charm_by_strike_fails_closed() -> None:
+    """No contract gives no strike; a price the model cannot price at gives unknown charm.
+
+    The price 0 is INDUCED (compute_terrain asks only at a price above 0): every listed strike
+    stays, each one with open interest unknown, never 0.
+    """
     held = sessions()
     assert compute_charm_by_strike([], 100.0, now=NOW, sessions=held) == {}
-    assert compute_charm_by_strike(None, 100.0, now=NOW, sessions=held) == {}
     chain, _ = spy_0dte_book()
-    assert compute_charm_by_strike(chain, 0.0, now=NOW, sessions=held) == {}
+    at_zero = compute_charm_by_strike(chain, 0.0, now=NOW, sessions=held)
+    assert set(at_zero) == {c.strike for c in chain}
+    assert all(at_zero[c.strike]["net_charm"] is None for c in chain if c.open_interest)
     assert pick_charm_wall_strikes({}) == (None, None)
