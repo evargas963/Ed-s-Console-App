@@ -149,7 +149,9 @@ async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0):
     end = time_et.elapsed() + timeout
     while time_et.elapsed() < end:
         msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time_et.elapsed())))
-        for r in msg.get("rows") or []:
+        if msg["type"] == "symbols":  # the one frame with no rows (live_ui's protocol)
+            continue
+        for r in msg["rows"]:
             if r["ticker"] == sym and pred(r):
                 return msg, r
     raise AssertionError(f"no matching {sym} row within {timeout}s")
@@ -196,7 +198,9 @@ def test_an_unsubscribed_symbol_is_never_sent():
             except TimeoutError:
                 break
         assert any(m["type"] == "feed" for m in frames), "a beat came within the window"
-        assert all(r["ticker"] == "SPY" for m in frames for r in m.get("rows") or []), frames
+        assert all(
+            r["ticker"] == "SPY" for m in frames if m["type"] != "symbols" for r in m["rows"]
+        ), frames
 
     asyncio.run(_run(body))
 
