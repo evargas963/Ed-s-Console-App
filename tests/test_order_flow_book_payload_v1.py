@@ -209,6 +209,19 @@ def test_the_live_price_rows_fixture_is_the_daemons_rows():
     assert live["SPY"]["spot"] is not None and live["SPY"]["trade_time_ct"] is not None
 
 
+def test_the_book_serves_its_levels_and_no_size_outlier_label():
+    """Operator 2026-11-19: the book's "wall candidate" label and its 3x-the-median rule go.
+
+    The 3x had no source. Schwab's real SPY NYSE_BOOK: the payload serves each level as sent and
+    the ladder's scale (the largest size drawn), and no level is labeled or classified as a wall.
+    """
+    live = build_book_closed_payload()
+    assert "wall_candidates" not in live
+    assert "wall_candidates" not in live["classification"]
+    levels = live["depth_pressure"]["bid"] + live["depth_pressure"]["ask"]
+    assert levels and live["depth_pressure"]["max_volume"] == max(r["volume"] for r in levels)
+
+
 def test_the_feed_down_book_fixture_is_the_route_contract():
     """The same with the daemon's connection ended.
 

@@ -88,7 +88,7 @@ from push import strikes as push_strikes
 from push import surface as push_surface
 from push import tape as push_tape
 from push import terrain as push_terrain
-from push.asked import tf_asked, venue_asked
+from push.asked import tf_asked
 from push.spot import SPOT_SOURCE_NONE, SPOT_SOURCE_PLANE, resolve_spot
 from push.verdict import (
     terrain_cache_get,
@@ -1891,9 +1891,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
         push_contract.contract_asked(a.params), a.now
     ),
     "forces": lambda a: push_forces.forces(a.ticker),
-    "desk": lambda a: push_desk.desk_events_payload(
-        a.ticker, venue_asked(a.params), tf_asked(a.params), a.at
-    ),
+    "desk": lambda a: push_desk.desk_events_payload(a.ticker, tf_asked(a.params), a.at),
     "confluence": lambda a: push_confluence.confluence_payload(
         a.ticker, a.params.get("expiry"), a.at
     ),

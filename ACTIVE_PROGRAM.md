@@ -87,24 +87,15 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     the live spot from `resolve_spot`.
   - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
     `levels_ts_utc`, computed in push, not a calculator.
-  - M-02 `calc/liquidity_models.py` `volume_profile` drops bars with a missing high or low or
-    `hi < lo` uncounted; only missing volume is counted.
-  - M-05 `calc/liquidity_value_engine.py` `compute_session_vwap_series` skips bars with no volume
-    and counts none.
   - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
-  - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
-    served.
   - P-09 `static/js/ed-core.js` reports a failed watchlist send without its HTTP status; first-of
     reads (`r.call || r.put` in `ed-gamma-panels.js`, `r.label || r.id` in `ed-trade-desk.js`).
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
     shown on the page.
   - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
   - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
-  - P-22 `static/js/ed-gamma-flow.js` takes the Flow header's strike and expiry from page state, not
-    the `contract` panel.
-  - P-24 `static/js/ed-order-flow.js` matches walls to ladder levels on the page and shows one fixed
-    reason for every no-book cause.
+  - P-24 `static/js/ed-order-flow.js` shows one fixed reason for every no-book cause.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command
@@ -236,8 +227,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   read the price rows. Changing the bind is his setting.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
-  tolerance; same-day expiries out of the 1-day move; wall candidates at 3× the median level; depth
-  to 5 levels); a book side with no levels has no depth total.
+  tolerance; same-day expiries out of the 1-day move; depth to 5 levels); a book side with no
+  levels has no depth total.
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).

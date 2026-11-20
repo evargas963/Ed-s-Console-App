@@ -92,7 +92,7 @@ def _desk_events(tk, crosses, now, tf):
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
-        return push_desk.desk_events_payload(tk, "NYSE_BOOK", tf, now), stored
+        return push_desk.desk_events_payload(tk, tf, now), stored
     finally:
         cross_store._crosses.pop(tk, None)
 
@@ -143,33 +143,6 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
 _WED_EVENING = datetime(2026, 10, 7, 18, 0, tzinfo=time_et.ET)
 
 
-def test_a_book_wall_carries_its_books_time_and_says_when_the_book_is_not_live():
-    """Operator 2026-09-29: a stale or premarket book item shows its actual observation time.
-
-    It never appears live. The queue's size walls were stamped with the console's receive time and
-    read the same whether or not the book was live. Real TSLA NASDAQ book (its own BOOK_TIME),
-    applied by the console's own intake as the daemon pushes it; Schwab's feed is down.
-    """
-    fx = _load("real_equity_book.json")
-    tk, nat, venue = fx["ticker"], fx["book"]["native"], fx["book"]["service"]
-    ofls.clear_all_live_state()
-    try:
-        ofs._ingest_pushed(
-            f"book.{tk}",
-            {"symbol": tk, "ts_recv": fx["book"]["ts_recv"], "content": nat, "service": venue},
-        )
-        body = push_desk.desk_events_payload(tk, venue, "30", _WED_EVENING)
-    finally:
-        ofls.clear_all_live_state()
-    walls = [it for it in body["items"] if it["key"].startswith("wall")]
-    assert walls
-    for it in walls:
-        assert it["ts"] == nat["BOOK_TIME"] / 1000.0
-        # 00:00:03.232 UTC on 2026-09-26 is 19:00 the evening before in Chicago (CDT, UTC-5)
-        assert it["time_ct"] == "Fri 09/25 07:00 PM CT"
-        assert it["title"].endswith("(not live)") and it["warn"] is True
-
-
 def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     """SPY's level crosses of 2026-10-06 and 10-07 as the console recorded them.
 
@@ -191,7 +164,7 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
-        body = push_desk.desk_events_payload(tk, "NYSE_BOOK", "30", _WED_EVENING)
+        body = push_desk.desk_events_payload(tk, "30", _WED_EVENING)
     finally:
         cross_store._crosses.pop(tk, None)
     start = datetime(2026, 10, 7, 9, 30, tzinfo=time_et.ET).timestamp()
