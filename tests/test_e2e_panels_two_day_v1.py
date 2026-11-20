@@ -135,10 +135,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
 
     `folder` holds the database the two captures are stored in. At the newer capture's instant:
     the strikes in the Auto and Wider windows, the levels (terrain), the heatmap (surface, Auto,
-    every column and expiry; and asked for an expiry the chain does not list), the front
-    expiry's chain, and the Trade Desk's book of each venue, liquidity zones and forces, and at
-    each of its timeframes the bars, the price levels and the attention queue (the day's level
-    crosses held as a start loads them). Regenerate the browser tests' files with
+    every column and expiry; and asked for an expiry the chain does not list), the front and
+    the second expiry's chains, and the Trade Desk's book of each venue, liquidity zones and
+    forces, and at each of its timeframes the bars, the price levels and the attention queue
+    (the day's level crosses held as a start loads them). Regenerate the browser tests' files with
     write_e2e_panels.
     """
     tk = real.ticker
@@ -246,6 +246,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         else {}
                     ),
                     "chain": push_chain.chain(tk, at, {"expiry": None}),
+                    # the Chain tests' expiry switch: the chain's second expiry
+                    "chain_second_expiry": push_chain.chain(
+                        tk, at, {"expiry": real.captures[1]["rows"][1]["expiry"]}
+                    ),
                     "book": {
                         venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
                     },
@@ -300,6 +304,10 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     # what the set is for: a live screen, several expiries, a prior day compared
     gamma = ("strikes", "strikes_wider", "terrain", "surface", "surface_missing_expiry", "chain")
     assert {panels[name]["levels_state"] for name in gamma} == {"LIVE"}
+    # two expiries, each its own contracts
+    second = panels["chain_second_expiry"]
+    assert second["status"] == "ok" and second["expiry"] != panels["chain"]["expiry"]
+    assert second["ladder"][0]["call"]["symbol"] != panels["chain"]["ladder"][0]["call"]["symbol"]
     assert panels["surface_missing_expiry"]["view"]["missing_expiry"] == MISSING_EXPIRY
     assert len(panels["surface"]["expirations"]) == len(real.captures[1]["rows"])
     assert panels["strikes"]["migration"]["all"]["compared"] is True
