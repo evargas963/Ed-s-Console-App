@@ -81,8 +81,8 @@ def test_the_book_side_is_served_from_the_real_book():
     assert _tilt(readout["views"]["5"]["pct"]) == "OFFER_HEAVY"
 
 
-def _desk_events(tk, crosses, now, tf):
-    """Build the desk's queue at `now` on real crosses.
+def _desk_events(tk, crosses, now, tf, limit=12000):
+    """Build the desk's queue at `now` on real crosses, its chart asking `limit` minutes of bars.
 
     Written by the console's own writer under `tk` (a stand-in ticker no other test holds, so it
     has no live price either), loaded as the console's start loads them. Returns the queue and
@@ -101,7 +101,7 @@ def _desk_events(tk, crosses, now, tf):
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
-        return push_desk.desk_events_payload(tk, tf, now), stored
+        return push_desk.desk_events_payload(tk, tf, now, limit), stored
     finally:
         cross_store._crosses.pop(tk, None)
 
@@ -147,6 +147,54 @@ def test_each_cross_is_served_as_recorded_and_the_chart_draws_the_newest_at_each
     assert {it["key"] for it in items if it["marker"]} == want
 
 
+def test_a_marker_before_the_charts_first_bar_is_counted_and_worded():
+    """Register P-14: the chart left out a marker with no bar to stand on, uncounted.
+
+    Real SPY level crosses (2026-09-09..25) in the 60-minute desk's two-day window; Schwab's SPY
+    1-minute bars of 2026-09-24/25 held as the bar writer holds them, the chart's span the newest
+    of them, Friday's: a marker of Thursday's has no bar, and the desk panel counts and words
+    those. Stand-in: ticker ZZDESKOFF carries them.
+    """
+    tk = "ZZDESKOFF"
+    minutes = _load("real_spy_1m_bars_2026_09_24_25.json")["bars"]
+    friday = [
+        b
+        for b in minutes
+        if datetime.fromtimestamp(b["timestamp"] / 1000, ET).date().isoformat() == "2026-09-25"
+    ]
+    for b in minutes:
+        bar_store.keep_bar(
+            tk,
+            Candle(
+                ts=b["timestamp"] / 1000,
+                open=b["open"],
+                high=b["high"],
+                low=b["low"],
+                close=b["close"],
+                volume=b["volume"],
+            ),
+        )
+    try:
+        body, _rows = _desk_events(
+            tk,
+            _load("real_spy_level_crosses.json")["rows"],
+            datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET),
+            "60",
+            len(friday),
+        )
+    finally:
+        bar_store._bars.pop(tk, None)
+    first = friday[0]["timestamp"] / 1000  # the 60-minute chart's first bar starts there
+    marked = [it for it in body["items"] if it["dom"] == "LEVELS" and it["marker"]]
+    off = [it for it in marked if it["ts"] < first]
+    assert 0 < len(off) < len(marked)
+    assert body["markers_off_chart"] == len(off)
+    assert body["markers_off_chart_text"] == (
+        f"{len(off)} of {len(marked)} chart markers not drawn: their crosses are before the "
+        "chart's first bar, Fri 09/25 08:30 AM CT"
+    )
+
+
 #: Wednesday 2026-10-07 after the close: the desk's "this session" window opens at 09:30 ET, the
 #: regular open Schwab's /markets sent for that day (tests/conftest.py)
 _WED_EVENING = datetime(2026, 10, 7, 18, 0, tzinfo=time_et.ET)
@@ -173,7 +221,7 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     cross_store._crosses.pop(tk, None)
     cross_store.load([tk])
     try:
-        body = push_desk.desk_events_payload(tk, "30", _WED_EVENING)
+        body = push_desk.desk_events_payload(tk, "30", _WED_EVENING, 12000)
     finally:
         cross_store._crosses.pop(tk, None)
     start = datetime(2026, 10, 7, 9, 30, tzinfo=time_et.ET).timestamp()
