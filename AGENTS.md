@@ -166,13 +166,12 @@ allowed by a list and `gh api` only reads, in the forms
 ## Rules and what enforces them
 
 Each rule names what enforces it and where it runs. "(in force)" means it runs today: at commit
-(`.pre-commit-config.yaml`: the credential scan, the line-ending check, `ruff check .`,
-`ruff format --check .`), at push (the same file: compileall, `check_one_reader`,
-`check_end_to_end`, `check_integrity` and `check_locks` against `origin/main`, so nothing
-`hardening` or `locks` refuses leaves the machine) or in the required `hardening`
-(`.github/workflows/hardening.yml`), `pytest-full` or `pytest-windows`
-(`.github/workflows/pytest.yml`) job. "(locks)" means it runs in `.github/workflows/locks.yml`, a
-required job too.
+(`.pre-commit-config.yaml`: the credential scan, `ruff check .`, `ruff format --check .`), at push
+(the same file: compileall, `check_one_reader`, `check_end_to_end`, `check_integrity` and
+`check_locks` against `origin/main`, so nothing `hardening` or `locks` refuses leaves the machine)
+or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full` or
+`pytest-windows` (`.github/workflows/pytest.yml`) job. "(locks)" means it runs in
+`.github/workflows/locks.yml`, a required job too.
 
 1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
    incidents and dates go in the commit message. No patches: a defect is fixed where it is produced,
@@ -248,9 +247,10 @@ required job too.
    force)
 6. **One program, one path.** Schwab → program memory → pushed to the page. The databases are
    history, written by the Recorder, read at startup, after the close and for research, never for a
-   live screen. Enforced by: import-linter: `sqlite3` only in the Recorder and the startup loader; a
-   test that the launcher starts one process (step 3); the data path tests of `docs/DATA_FLOW.md` §2
-   (in force)
+   live screen. Enforced by: `sqlite3`, a banned name counted per product file in `locks.ruff.toml`,
+   so no module that does not hold it may start (locks), and refused in every Calculator by
+   import-linter (`locks.imports.toml`); a test that the launcher starts one process; the data path
+   tests of `docs/DATA_FLOW.md` §2 (in force)
 7. **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is
    treated the same, but in what Schwab is asked for first: the ticker a page shows comes first on
    the stream and on the request line (operator 2026-11-11: "when the ticker is switched then that
@@ -279,13 +279,13 @@ required job too.
     it reads no time of day and computes no shown value, and marks the push down when nothing
     arrives, which a stalled program cannot say itself (operator 2026-11-15: "yes to decision 2").
     Enforced by: the one clock: ruff `TID251` in `pyproject.toml`, every file but `time_et.py` (in
-    force with the one-clock PR that follows this one); that only an entry point takes the time —
-    `time_et.now` and `time_et.elapsed` counted per product file in `locks.ruff.toml` (locks):
-    today's entry points hold them, and a module at 0 (every calculator) may never start (step 2);
-    that a Calculator imports no State, Push, Feed, database or network — import-linter's "The
-    Calculators read no State, Push, Feed, database or network" in `locks.imports.toml`, on each
-    Calculator's own import statements (`tests/test_data_path_only_feed_v1.py`, locks); a chain
-    through another root module, and a global — no machine check, ENF-09
+    force); that only an entry point takes the time — `time_et.now` and `time_et.elapsed` counted
+    per product file in `locks.ruff.toml` (locks): today's entry points hold them, and a module at 0
+    (every calculator) may never start (step 2); that a Calculator imports no State, Push, Feed,
+    database or network — import-linter's "The Calculators read no State, Push, Feed, database or
+    network" in `locks.imports.toml`, on each Calculator's own import statements
+    (`tests/test_data_path_only_feed_v1.py`, locks); a chain through another root module, and a
+    global — no machine check, ENF-09
 12. **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose
     states are named constants. Enforced by: pyright 1.1.414 (`requirements-dev.txt`, the census's
     own pin), strict over the files `pyproject.toml` `[tool.pyright]` lists, in `hardening` (in
@@ -398,8 +398,8 @@ required job too.
     its source.
   - Every language the repository holds gets its standard checker, run over the whole repository
     (Python: ruff; JavaScript, HTML, CSS, JSON, YAML, Markdown: ESLint, html-validate, Stylelint and
-    Prettier; workflows: actionlint; TOML: taplo; Markdown: markdownlint): LINTERS, next after this
-    change.
+    Prettier; workflows: actionlint; TOML: taplo; Markdown: markdownlint, in its Prettier style,
+    Prettier alone setting a document's layout): LINTERS, in progress.
 
 ## Before writing code
 

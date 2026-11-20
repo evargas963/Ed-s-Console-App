@@ -7,11 +7,11 @@ Source and runtime state are separate concerns:
 
 Runtime state lives in the runtime root's ``data/`` and ``logs/`` (data_dir, logs_dir) and its
 ``schwab_token.json`` (config.token_path), each ignored by git, so a source update never touches
-it (docs/ARCHITECTURE.md §5), whatever the process's working directory. A standalone checkout is
-its own runtime root, so production's database, logs and token sit in its checkout. A linked Git
-worktree resolves runtime state to its primary worktree, as git itself names it.
-``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout directory, but may not
-select a linked source worktree.
+it (docs/ARCHITECTURE.md "Runtime state is not source"), whatever the process's working
+directory. A standalone checkout is its own runtime root, so production's database, logs and
+token sit in its checkout. A linked Git worktree resolves runtime state to its primary worktree,
+as git itself names it. ``ED_RUNTIME_ROOT`` may move runtime state to a dedicated non-checkout
+directory, but may not select a linked source worktree.
 
 This module imports nothing from `tools/` or `governance/`: it is on the runtime path and
 governance does not decide whether the desk may run. It reads the environment when asked
