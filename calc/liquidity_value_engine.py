@@ -832,8 +832,8 @@ def _prior_day_part(
     """Return the prior session's levels, its date and what is degraded in them.
 
     The date is None with no prior candle held; degraded, a prior session whose RTH bars do not
-    cover its regular window as Schwab's /markets sent it (a bar for each of its minutes), or
-    whose window is not held, so its POC and value area are from a partial tape. A prior session
+    cover its regular window as Schwab's /markets sent it (a bar for each of its minutes), so its
+    POC and value area are from a partial tape. A prior session
     whose RTH bars make no volume profile has its value area declared absent
     (`prior_value_area`), with why.
     """
@@ -865,17 +865,15 @@ def _prior_day_part(
         value_area,
     ]
     regular = _regular(sessions, day)
-    minutes = None if regular is None else int((regular[1] - regular[0]).total_seconds() // 60)
-    if minutes is not None and eng.rth_bars >= minutes:
+    if regular is None:  # no RTH bar is known: its value area is declared absent, none estimated
         return families, day, []
-    window = (
-        "its regular hours not held (Schwab's /markets)"
-        if minutes is None
-        else f"of its {minutes} regular-session minutes (Schwab's /markets)"
-    )
+    minutes = int((regular[1] - regular[0]).total_seconds() // 60)
+    if eng.rth_bars >= minutes:
+        return families, day, []
     degraded = (
-        f"prior_day: prior session {day} holds only {eng.rth_bars} RTH bars {window}; its POC "
-        "and value area are estimated from a partial tape"
+        f"prior_day: prior session {day} holds only {eng.rth_bars} RTH bars of its {minutes} "
+        "regular-session minutes (Schwab's /markets); its POC and value area are estimated from "
+        "a partial tape"
     )
     return families, day, [degraded]
 
