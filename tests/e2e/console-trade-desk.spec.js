@@ -429,7 +429,8 @@ test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's
   await expect(page.locator("#tdmCardLiq .liq-body")).toContainText("2,160");
   await expect(page.locator("#tdmCardLiq .liq-bar-h").first()).toHaveText("Bids800");
   // the stock's own book, named: its shares and the exchange's book, never an option's
-  await expect(page.locator("#tdmLiqTitle")).toHaveText("Liquidity · SPY shares · NYSE book");
+  await expect(page.locator("#tdmLiqTitle")).toHaveText("SPY shares");
+  await expect(page.locator('#tdmCardLiq [data-venue="NYSE_BOOK"]')).toHaveClass(/\bon\b/);
   await expect(page.locator("#tdmTrust")).toContainText(
     "BOOK " + CLOSED_BOOK.book_time_ct + " · NOT LIVE",
   );
@@ -438,7 +439,8 @@ test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's
   const comp = CLOSED_BOOK.readout.venues.COMPOSITE;
   await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
   await expect(page.locator("#tdmCardLiq .liq-pct")).toHaveText(comp.views.weighted.pct_text);
-  await expect(page.locator("#tdmLiqTitle")).toHaveText("Liquidity · SPY shares · Composite book");
+  await expect(page.locator("#tdmLiqTitle")).toHaveText("SPY shares");
+  await expect(page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]')).toHaveClass(/\bon\b/);
   await expect(page.locator("#tdmCardLiq .liq-body")).toContainText("2,160");
   await expect(page.locator("#tdmCardLiq .tdm-src")).toContainText(
     "Schwab NYSE_BOOK · composite, newest quote of each exchange",
