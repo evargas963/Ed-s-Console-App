@@ -87,18 +87,52 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     held = held_minutes(ticker, params.get("limit"))
     shown = chart_bars(ticker, tf, held, datetime.fromtimestamp(now, ET))
     return {
-        "bars": [
-            {
-                **_lpr.with_change(b),
-                "time_ct": ct_label(b["t"]),
-                "ticks": ct_ticks(b["t"]),
-                "v_text": count_text(b["v"]),
-                **{f"{k}_text": price_text(b[k]) for k in "ohlc"},
-            }
-            for b in shown
-        ],
+        "bars": [_served(b) for b in shown],
         "tf": tf,
         "last_bar": {"t": held[-1]["t"], "label": ct_label(held[-1]["t"])} if held else None,
+    }
+
+
+def _served(b: dict[str, Any]) -> dict[str, Any]:
+    """Return a chart bar as served: with its change, its start's labels and its texts."""
+    return {
+        **_lpr.with_change(b),
+        "time_ct": ct_label(b["t"]),
+        "ticks": ct_ticks(b["t"]),
+        "v_text": count_text(b["v"]),
+        **{f"{k}_text": price_text(b[k]) for k in "ohlc"},
+    }
+
+
+def forming(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+    """Return the `forming` panel at `now`: the chart bars at `tf` Schwab has not sent whole yet.
+
+    Sent with each price row and each new bar (server.PRICED_PANELS, BARS_PANELS) for the page to
+    draw over the `bars` panel's newest, as trading platforms move the newest bar with each trade.
+    Each minute built from the price row (calc.forming_bar, live_market_plane.built_minutes) that
+    Schwab has not sent its own bar for (state.bar_store: a held minute as new or newer drops
+    it), rolled up to `tf` with the minutes held in its chart bar (chart_bars): `bars`, oldest
+    first, none when every minute is Schwab's. The daily bar is today's daily candle
+    (daily_candles), none before Schwab sends it. `trade_time_ct`: the newest built trade's time.
+    """
+    tf = tf_asked(params)
+    at = datetime.fromtimestamp(now, ET)
+    if tf == "D":
+        daily = daily_candles(ticker, at)
+        today = [c for c in daily[-1:] if datetime.fromtimestamp(c.ts, ET).date() == at.date()]
+        return {"tf": tf, "bars": [_served(_bar_dict(c)) for c in today], "trade_time_ct": None}
+    newest = bar_store.bars_1m(ticker, int(tf))
+    built = [m for m in lmp.built_minutes(ticker) if not newest or m.ts > newest[-1].ts]
+    if not built:
+        return {"tf": tf, "bars": [], "trade_time_ct": None}
+    first = _tf_bucket_key(built[0].ts, tf)
+    minutes = [_bar_dict(c) for c in newest if _tf_bucket_key(c.ts, tf) == first] + [
+        _bar_dict(Candle(m.ts, m.open, m.high, m.low, m.close, m.volume)) for m in built
+    ]
+    return {
+        "tf": tf,
+        "bars": [_served(b) for b in chart_bars(ticker, tf, minutes, at)],
+        "trade_time_ct": ct_label(built[-1].trade_ts),
     }
 
 

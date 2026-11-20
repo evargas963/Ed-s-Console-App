@@ -1893,6 +1893,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "chain": lambda a: push_chain.chain(a.ticker, a.now, a.params),
     "levels": lambda a: push_levels.levels_payload(a.ticker, tf_asked(a.params), a.at),
     "bars": lambda a: push_bars.bars(a.ticker, a.now, a.params),
+    "forming": lambda a: push_bars.forming(a.ticker, a.now, a.params),
     "tape": lambda a: push_tape.tape(a.ticker, a.now),
     "book": lambda a: push_book.book(a.ticker, a.now, a.params),
     "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
@@ -1909,12 +1910,15 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "liquidity": lambda a: push_liquidity.liquidity_snapshot(a.ticker, a.at),
 }
 CHAIN_PANELS = ("expiries",)
-BARS_PANELS = ("bars", "liquidity", "desk")
+#: the panels a new bar moves; `forming` after `bars` (the socket sends them in name order), so the
+#: page draws the bars Schwab has not sent whole over the newest bars it has
+BARS_PANELS = ("bars", "liquidity", "desk", "forming")
 #: the chain screens show each contract's newest streamed values (push.chain), and the live price
 FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain")
 #: the panels an option contract's own quote or book moves: its Flow panel and the chain screens
 OPTION_PANELS = ("contract", "chain")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
 #: they are measured from; today's gap and open; each zone's side of the price and the zones
-#: nearest it): the socket sends them again with each of its price rows
-PRICED_PANELS = ("levels", "experimental", "liquidity")
+#: nearest it; the bar forming from its trades): the socket sends them again with each of its
+#: price rows
+PRICED_PANELS = ("levels", "experimental", "liquidity", "forming")

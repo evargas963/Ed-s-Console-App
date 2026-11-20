@@ -14,8 +14,8 @@
        axis resets it, Alt+R resets everything, the wheel over the plot zooms time.
      - the crosshair follows the mouse; the readout BOX appears only on click (pinned, with a
        close control) -- never a hover tooltip.
-   Every number drawn here is the server's (bars from the bars panel, levels from the levels panel +
-   the terrain panel). Choosing WHICH levels to draw (the nearest few inside the visible range) and
+   Every number drawn here is the server's (bars from the bars and forming panels, levels from the
+   levels panel + the terrain panel). Choosing WHICH levels to draw (the nearest few inside the visible range) and
    placing a 1m series point on the bar that contains it are presentation, not computation. */
 (function () {
   "use strict";
@@ -677,7 +677,7 @@
       lastValueVisible: false,
     });
     // the live Schwab LAST_PRICE (the header's value), drawn as its own line; the candles are
-    // Schwab's completed bars only
+    // Schwab's completed bars, and the bars forming from its trades over them (api.forming)
     var liveLine = null;
     // line mode: the closes as one line; the candles stay (transparent) so price lines keep their series
     var closeLine = chart.addSeries(LWC.LineSeries, {
@@ -749,7 +749,34 @@
       markersShown: [],
       markerSel: null,
       lastBarLabel: null,
+      served: null, // the bars panel's bars drawn
+      forming: { bars: [], time: null }, // the forming panel's bars drawn over them
     };
+    // a served bar as the chart holds it, and its points on the candle and line series
+    function barOf(b) {
+      return {
+        t: Number(b.t),
+        o: b.o,
+        h: b.h,
+        l: b.l,
+        c: b.c,
+        v: b.v,
+        chg: b.chg,
+        chg_text: b.chg_text,
+        time_ct: b.time_ct,
+        v_text: b.v_text,
+        o_text: b.o_text,
+        h_text: b.h_text,
+        l_text: b.l_text,
+        c_text: b.c_text,
+      };
+    }
+    function candleOf(b) {
+      return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c };
+    }
+    function closeOf(b) {
+      return { time: b.t, value: b.c };
+    }
 
     // ---- time <-> logical (bars are sorted, time = bar start in epoch seconds) ----
     function barIndexAt(t) {
@@ -929,7 +956,8 @@
         tfLbl +
         "</span>" +
         ohlcHtml(b) +
-        (S.lastBarLabel ? "<span>Last completed bar " + esc(S.lastBarLabel) + "</span>" : "");
+        (S.lastBarLabel ? "<span>Last completed bar " + esc(S.lastBarLabel) + "</span>" : "") +
+        (S.forming.time ? "<span>Forming · last trade " + esc(S.forming.time) + "</span>" : "");
     }
     function paintPin() {
       if (!S.pinned) {
@@ -1367,46 +1395,27 @@
         return P;
       },
       // Replace the whole series (ticker or timeframe change).
+      // A page that draws again with the bars it last passed (the same served array) keeps the
+      // forming bars drawn over them; new bars drop them until the `forming` panel that follows.
       setBars: function (bars, tf, symbol, lastBarLabel) {
         var changed = tf !== S.tf || symbol !== S.symbol;
         S.lastBarLabel = lastBarLabel;
-        S.bars = bars.map(function (b) {
-          return {
-            t: Number(b.t),
-            o: b.o,
-            h: b.h,
-            l: b.l,
-            c: b.c,
-            v: b.v,
-            chg: b.chg,
-            chg_text: b.chg_text,
-            time_ct: b.time_ct,
-            v_text: b.v_text,
-            o_text: b.o_text,
-            h_text: b.h_text,
-            l_text: b.l_text,
-            c_text: b.c_text,
-          };
-        });
-        heldLabels(
-          bars.map(function (b) {
-            return [Number(b.t), { ticks: b.ticks, full: b.time_ct }];
-          }),
-          heatLabels,
-        );
-        S.tf = tf;
-        S.symbol = symbol;
-        candles.setData(
-          S.bars.map(function (b) {
-            return { time: b.t, open: b.o, high: b.h, low: b.l, close: b.c };
-          }),
-        );
-        closeLine.setData(
-          S.bars.map(function (b) {
-            return { time: b.t, value: b.c };
-          }),
-        );
-        api.setVolume(S.bars);
+        if (changed || bars !== S.served) {
+          S.served = bars;
+          S.forming = { bars: [], time: null };
+          S.bars = bars.map(barOf);
+          heldLabels(
+            bars.map(function (b) {
+              return [Number(b.t), { ticks: b.ticks, full: b.time_ct }];
+            }),
+            heatLabels,
+          );
+          S.tf = tf;
+          S.symbol = symbol;
+          candles.setData(S.bars.map(candleOf));
+          closeLine.setData(S.bars.map(closeOf));
+          api.setVolume(S.bars);
+        }
         if (changed) {
           api.setLivePrice(null);
           S.pinned = null;
@@ -1424,6 +1433,22 @@
         draw.redraw();
         syncButtons();
         paintLevels(true);
+      },
+      // The `forming` panel (push.bars.forming) at the chart's timeframe: the bars Schwab has not
+      // sent whole, each drawn over the newest bar of its time or after it, as served
+      forming: function (d) {
+        if (d.tf !== S.tf) return;
+        S.forming = { bars: d.bars.map(barOf), time: d.trade_time_ct };
+        S.forming.bars.forEach(function (b) {
+          var last = S.bars[S.bars.length - 1];
+          if (last && b.t < last.t) return; // older than a bar drawn since: the chart's own
+          candles.update(candleOf(b));
+          closeLine.update(closeOf(b));
+          volume.update(api._volPoint(b));
+          if (last && b.t === last.t) S.bars[S.bars.length - 1] = b;
+          else S.bars.push(b);
+        });
+        paintLegend();
       },
       _volPoint: function (b) {
         return b.v == null
@@ -1566,6 +1591,10 @@
         var r = chart.timeScale().getVisibleLogicalRange();
         return {
           bars: S.bars.length,
+          // the newest candle the candle series draws, as the library holds it
+          lastCandle: (function (d) {
+            return d.length ? d[d.length - 1] : null;
+          })(candles.data()),
           tf: S.tf,
           symbol: S.symbol,
           from: r && r.from,
