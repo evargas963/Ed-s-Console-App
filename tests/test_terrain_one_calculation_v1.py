@@ -88,7 +88,13 @@ def test_every_value_is_what_it_was():
     assert sorted(terrains) == sorted(BEFORE)
     for tk, snap in terrains.items():
         was = _per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"})
-        _same(was, _per_strike_keys(canonical(snap), {}, {"by_expiry"}), tk)
+        now = _per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"})
+        _same(was, now, tk)
+        # the whole book's charm rows (new) are its charm map's nets, the map the record holds
+        nets = {k: b["net_charm"] for k, b in snap.charm_by_strike.items()}
+        assert snap.per_strike["charm"] == sorted(
+            (k, v) for k, v in nets.items() if v is not None
+        ), tk
 
 
 def test_each_value_is_computed_once_and_nothing_unread_is_computed():

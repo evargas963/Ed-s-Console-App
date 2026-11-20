@@ -70,7 +70,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         assert marked == [min(listed, key=lambda k: abs(k - last))]
         assert strikes["view"]["centre"] is not None and strikes["view"]["note"] is None
         for key in push_strike_bars.STRIKE_BAR_METHODS:
-            bars = push_strike_bars.strike_bar_payload(tk, key, "auto", None, 0, at)
+            bars = push_strike_bars.strike_bar_payload(tk, key, "auto", None, 0, None, at)
             assert bars["available"] and bars["spot"] == last and bars["view"]["note"] is None, key
     finally:
         _clear(tk)

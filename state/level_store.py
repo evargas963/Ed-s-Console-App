@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from calc.terrain_engine import StrikeValue, TerrainSnapshot
+from calc.terrain_engine import TerrainSnapshot
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
 
@@ -37,8 +37,6 @@ class PublishedLevels:
     #: every contract the heatmap's cells name, read once as it is published: the beat's restamp
     #: (server.restamp_open_surfaces) reads it every second for every ticker
     surface_symbols: frozenset[str]
-    vanna_rows: list[StrikeValue]
-    charm_rows: list[StrikeValue]
     #: the chain as Schwab sent it, and as priced with the values pushed since
     chain: list[OptionContract]
     priced_chain: list[OptionContract]

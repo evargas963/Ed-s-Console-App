@@ -50,8 +50,8 @@
       title: "OPTIONS",
       subs: [
         { id: "gamma", label: "Gamma" },
-        { id: "vanna", label: "Vanna", note: "AGG BY STRIKE" },
-        { id: "charm", label: "Charm", note: "AGG BY STRIKE" },
+        { id: "vanna", label: "Vanna" },
+        { id: "charm", label: "Charm" },
         { id: "book", label: "Book" },
         { id: "dex", label: "Delta / DEX" },
         { id: "oi", label: "Open Interest" },
@@ -151,8 +151,7 @@
     // PROJECTION (server.py project_gamma_surface) carry dex/vanna/oi/volume per cell
     // alongside gex -- one canonical faucet, more measures the SAME grid can present, not a
     // second computation or a second UI. This is that ONE measure switch: 'gex' | 'dex' |
-    // 'oi' | 'volume'. Vanna stays aggregate-only (see the Key Levels 'AGG $ ONLY' badge)
-    // since it has no per-expiry column.
+    // 'oi' | 'volume'. Vanna and charm are their own by-strike panels, at the expiry chosen.
     measure: "gex",
   };
   function normalizeState() {
@@ -210,6 +209,10 @@
   function renderSubnav() {
     var cfg = NAV[state.workspace];
     var sub = document.getElementById("subnav");
+    // the one controls block (symbol, expiry, measure, scope) is kept, never rebuilt: back to the
+    // view bar before the tabs are drawn again; renderViewbar places it
+    var held = sub.querySelector(".ctrls");
+    if (held) document.getElementById("viewbar").appendChild(held);
     var html = '<span class="wtitle">' + cfg.title + "</span>";
     cfg.subs.forEach(function (s) {
       var cls = "tab" + (s.state === "na" ? " na" : "") + (s.id === state.subview ? " on" : "");
@@ -270,8 +273,15 @@
       });
     });
     // keep the control bar for every options subview (the ticker/expiry dropdowns drive Chain too),
-    // even those with no view tabs; hide it only for workspaces that have neither views nor controls.
-    bar.style.display = views.length || state.workspace === "options" ? "" : "none";
+    // even those with no view tabs; hide it only for workspaces that have neither views nor
+    // controls. On the Trade Desk (its Right Now, Desk and Confluence follow the one expiry
+    // choice) the same controls stand at the end of its subnav row, so the Desk keeps the window's
+    // height below it. The measure belongs to the Options grid alone.
+    var deskRow = state.workspace === "trade-desk";
+    if (deskRow && ctrls) document.getElementById("subnav").appendChild(ctrls);
+    bar.style.display = !deskRow && (views.length || state.workspace === "options") ? "" : "none";
+    var measure = document.getElementById("measureSel");
+    if (measure) measure.parentElement.style.display = state.workspace === "options" ? "" : "none";
   }
 
   function showPane() {
@@ -458,7 +468,7 @@
   }
   // Which measure a given Options subview presents on the SAME strike x expiry grid the
   // Gamma tab already renders -- see `state.measure`'s own comment. A subview absent here
-  // (chain/flow/structures/vanna/charm/book — vanna/charm have no per-expiry surface yet) leaves
+  // (chain/flow/structures/vanna/charm/book — vanna/charm are by-strike lists, not the grid) leaves
   // the measure untouched, so returning to Gamma after visiting Chain still shows whichever
   // measure was last selected there, exactly like `scope` already persists across subviews.
   var MEASURE_BY_SUBVIEW = { gamma: "gex", dex: "dex", oi: "oi" };
