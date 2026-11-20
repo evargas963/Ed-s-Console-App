@@ -129,7 +129,7 @@ def build_readout_payload(
 def _sent_sizes(content: dict, side: str) -> list[float]:
     """A side's level sizes (TOTAL_VOLUME) as Schwab sent them, best price first."""
     key = "BID_PRICE" if side == "BIDS" else "ASK_PRICE"
-    levels = sorted(content.get(side, []), key=lambda lv: lv[key], reverse=side == "BIDS")
+    levels = sorted(content[side], key=lambda lv: lv[key], reverse=side == "BIDS")
     return [lv["TOTAL_VOLUME"] for lv in levels]
 
 
