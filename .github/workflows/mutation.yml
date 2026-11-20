@@ -67,6 +67,9 @@ jobs:
           mutmut export-cicd-stats
           cat mutants/mutmut-cicd-stats.json
           mutmut results | tee mutants/survivors.txt
+          # each surviving mutant's change, the test that would catch it is written from
+          grep ': survived' mutants/survivors.txt | cut -d: -f1 | xargs -r -n1 mutmut show \
+            | tee mutants/survivor_diffs.txt
 
       - name: Keep the results
         if: always()
@@ -76,5 +79,6 @@ jobs:
           path: |
             mutants/mutmut-cicd-stats.json
             mutants/survivors.txt
+            mutants/survivor_diffs.txt
             mutants/**/*.meta
           if-no-files-found: warn
