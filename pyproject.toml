@@ -157,6 +157,8 @@ pytest_add_cli_args_test_selection = [
   "--ignore-glob=tests/test_bootstrap_worktree_venv_*",
   "--ignore-glob=tests/test_runtime_governance_decoupling_*",
   "--ignore-glob=tests/test_schwab_field_inventory_*",
+  # the import contracts read the source's imports, which mutmut's instrumented copy adds to
+  "--ignore-glob=tests/test_data_path_only_feed_*",
   "-m",
   "not alone and not rail",
 ]
