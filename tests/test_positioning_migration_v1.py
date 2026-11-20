@@ -23,7 +23,7 @@ from state import level_store
 from tests.capture_store import store_capture
 
 #: the strikes panel's window as the page asks it: Auto, following the price
-_AUTO = {"scope": "auto", "centre": None, "shift": 0}
+_AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 _FX = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_pcg_two_day_chain.json").read_text(
         encoding="utf-8"
@@ -48,11 +48,11 @@ def two_days():
 
 def test_the_migration_matches_the_two_days_rows(two_days):
     (prior, prior_snap), (today, snap) = two_days
-    m = positioning_migration(today["all"], prior["all"], snap.call_wall, snap.put_wall)
-    prior_gex = {r.strike: r.value for r in prior["all"]}
+    m = positioning_migration(today["gex"], prior["gex"], snap.call_wall, snap.put_wall)
+    prior_gex = {r.strike: r.value for r in prior["gex"]}
     changes = {
         r.strike: r.value - prior_gex[r.strike]
-        for r in today["all"]
+        for r in today["gex"]
         if r.value is not None and prior_gex.get(r.strike) is not None
     }
     assert m["compared"] and len(changes) > 10
@@ -80,23 +80,23 @@ def test_the_migration_matches_the_two_days_rows(two_days):
 
 def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     (_prior, _), (today, snap) = two_days
-    m = positioning_migration(today["all"], [], snap.call_wall, snap.put_wall)
-    vols = {r.strike: r.volume for r in today["all"] if r.volume}
+    m = positioning_migration(today["gex"], [], snap.call_wall, snap.put_wall)
+    vols = {r.strike: r.volume for r in today["gex"] if r.volume}
     assert m["busiest"] == sorted(sorted(vols, key=lambda k: -vols[k])[:2])
-    assert m["volume_total"] == sum(r.volume for r in today["all"] if r.volume is not None)
+    assert m["volume_total"] == sum(r.volume for r in today["gex"] if r.volume is not None)
     # no prior day: nothing is compared, and no level's move is known
     assert not m["compared"] and [v.change for v in level_moves(snap, None)] == [None] * 3
 
 
 def _prior_gex(body: dict) -> dict:
     """Return the prior day's net GEX the migration compared, by strike."""
-    rows = body["migration"]["all"]["rows"]
+    rows = body["migration"]["rows"]
     return {r["strike"]: r["prior"] for r in rows if r["prior"] is not None}
 
 
 def _gex(per_strike: dict) -> dict:
     """Return a day's own net GEX by strike, from its per-strike rows."""
-    return {r.strike: r.value for r in per_strike["all"] if r.value is not None}
+    return {r.strike: r.value for r in per_strike["gex"] if r.value is not None}
 
 
 def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_days):
@@ -147,15 +147,13 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
             now=monday,
         )
         monday_prior = level_store.published_levels("PCG").prior_day.per_strike
-        monday_migration = push_strikes.strikes("PCG", monday.timestamp(), _AUTO)["migration"][
-            "all"
-        ]
+        monday_migration = push_strikes.strikes("PCG", monday.timestamp(), _AUTO)["migration"]
     finally:
         with level_store._lock:
             level_store._levels.pop("PCG", None)
     (thursday, _), (friday, _) = two_days  # the captures of 2026-09-24 and 2026-09-25
     assert _prior_gex(body) == pytest.approx(_gex(thursday))
-    m = body["migration"]["all"]
+    m = body["migration"]
     assert (
         m["compared"] and sum(1 for r in m["rows"] if r["change"]) > 10
     )  # real changes, not self vs self
@@ -166,7 +164,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
         assert r["change_text"] == want
     # the migration panel's one scale: the largest |GEX| today or the prior day among the strikes
     # drawn (every today bar too, whether or not the prior day lists its strike)
-    today_rows = body["today"]["all"]
+    today_rows = body["today"]
     drawn = {r["strike"] for r in today_rows}
     both = [
         abs(v)
@@ -176,7 +174,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
         if v is not None
     ]
     both += [abs(r["value"]) for r in today_rows if r["value"] is not None]
-    assert body["views"]["all"]["max_abs_with_prior"] == max(both)
+    assert body["view"]["max_abs_with_prior"] == max(both)
     assert _gex(monday_prior) == pytest.approx(_gex(friday))
     # Monday's own rows are priced (the chain came with its spot) and compared with Friday's
     assert monday_migration["compared"] and len(monday_migration["rows"]) > 10

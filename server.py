@@ -52,7 +52,6 @@ from calc.terrain_engine import (
     SCOPES,
     Book,
     ExpiryKey,
-    StrikeValue,
     TerrainSnapshot,
     compute_terrain,
 )
@@ -953,8 +952,6 @@ def _publish_levels(
         priced_at=priced_at,
         gamma_surface=surface,
         surface_symbols=surface_symbols,
-        vanna_rows=snap.per_strike["vanna"],
-        charm_rows=_charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         chain=chain,
         priced_chain=p.priced,
@@ -1039,15 +1036,6 @@ def _log_level_crosses(
         return
     cross_store.add(tk, [StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, ids)])
     _levels_changed(tk)
-
-
-def _charm_rows(snap: TerrainSnapshot) -> list[StrikeValue]:
-    """Each strike's net dealer charm from the published charm map (the charm walls' own)."""
-    return sorted(
-        StrikeValue(k, net)
-        for k, b in snap.charm_by_strike.items()
-        if (net := b["net_charm"]) is not None
-    )
 
 
 def _tick_ticker(sym: str) -> str | None:
@@ -1486,7 +1474,7 @@ def stop_terrain_loop() -> None:
 
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
-# capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
+# capture (the day-over-day migration), of every expiry and of each listed expiry.
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
 def _prior_capture(captures: list[StoredCapture], chain_ts: float) -> StoredCapture | None:
     """Return the previous market day's close capture before the day of the chain's.
@@ -1866,8 +1854,8 @@ def _publish_missing_price_levels(tickers: Iterable[str], now: datetime) -> None
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
-    "vanna": lambda a: push_strike_bars.strike_bars("vanna_rows", a.ticker, a.now, a.params),
-    "charm": lambda a: push_strike_bars.strike_bars("charm_rows", a.ticker, a.now, a.params),
+    "vanna": lambda a: push_strike_bars.strike_bars("vanna", a.ticker, a.now, a.params),
+    "charm": lambda a: push_strike_bars.strike_bars("charm", a.ticker, a.now, a.params),
     "terrain": lambda a: push_terrain.terrain(a.ticker, a.now),
     "strikes": lambda a: push_strikes.strikes(a.ticker, a.now, a.params),
     "surface": lambda a: push_surface.gamma_surface(
@@ -1887,9 +1875,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "desk": lambda a: push_desk.desk_events_payload(
         a.ticker, tf_asked(a.params), a.at, a.params.get("limit")
     ),
-    "confluence": lambda a: push_confluence.confluence_payload(
-        a.ticker, a.params.get("expiry"), a.at
-    ),
+    "confluence": lambda a: push_confluence.confluence(a.ticker, a.at, a.params),
     "liquidity": lambda a: push_liquidity.liquidity_snapshot(a.ticker, a.at),
 }
 CHAIN_PANELS = ("expiries",)

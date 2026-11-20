@@ -98,9 +98,12 @@ def _heat(at=_AT, **kw):
     )
 
 
-def _strikes(scope):
-    """Return the per-strike panels' answer at the captures' day, centred on the price."""
-    return push_strikes.terrain_strikes_payload(TK, scope, None, 0, _AT.timestamp())
+def _strikes(scope, expiry=None):
+    """Return the per-strike panels' answer at the captures' day, centred on the price.
+
+    At `expiry` chosen (None: All Expirations).
+    """
+    return push_strikes.terrain_strikes_payload(TK, scope, None, 0, expiry, _AT.timestamp())
 
 
 def _every_strike():
@@ -193,7 +196,7 @@ def test_with_no_live_price_the_window_says_it_is_not_around_the_price():
         c["spot"] for c in d["cells"]
     )
     strikes = _strikes("auto")
-    assert {v["note"] for v in strikes["views"].values() if v["centre"] is not None} == {
+    assert {v["note"] for v in (strikes["view"], strikes["measures"]["dex"]["view"])} == {
         strike_rows.WINDOW_NO_PRICE
     }
     every = _every_strike()
@@ -228,36 +231,37 @@ def test_expired_columns_are_drawn_labelled_and_never_counted():
 def test_every_per_strike_panel_is_served_its_window_and_scale():
     """Each per-strike list is the scope's rows around the price or the pan, scaled to its max.
 
-    GEX by strike (today: all, near, far), the chart's DEX and OI, the migration's scale with the
-    prior day, vanna and charm: each list is the scope's rows around the price or the pan, with
-    the largest |value| drawn as its scale.
+    GEX by strike (today, at All Expirations and at one expiry chosen), the chart's DEX and OI,
+    the migration's scale with the prior day, vanna and charm: each list is the scope's rows
+    around the price or the pan, with the largest |value| drawn as its scale.
     """
 
     def lists(body):
         return {
-            **{sc: body["today"][sc] for sc in ("all", "near", "far")},
+            "gex": body["today"],
             **{m: body["measures"][m]["rows"] for m in ("dex", "oi")},
         }
 
-    body = _strikes("auto")
-    every = lists(_strikes("all"))
-    assert every["all"] and every["dex"] and every["oi"]
-    for name, rows in lists(body).items():
-        view = body["measures"][name]["view"] if name in body["measures"] else body["views"][name]
-        assert len(rows) == min(SCOPE_ROWS["auto"], len(every[name])), name
-        assert all(r in every[name] for r in rows), name  # rows of the list, as published
-        known = [abs(r["value"]) for r in rows if r["value"] is not None]
-        assert view["max_abs"] == (max(known) if known else None), name
-        assert view["note"] is None or not rows, name
-    # no prior day is stored here: the migration's scale is today's
-    assert body["views"]["all"]["max_abs_with_prior"] == body["views"]["all"]["max_abs"] is not None
-    assert body["views"]["near"]["max_abs_with_prior"] is None  # no near-term rows
-    assert set(body["views"]) == {"all", "near", "far"}  # a measure's view is served once
+    for expiry in (None, "2026-11-20"):
+        body = _strikes("auto", expiry)
+        every = lists(_strikes("all", expiry))
+        assert every["gex"] and every["dex"] and every["oi"]
+        for name, rows in lists(body).items():
+            view = body["measures"][name]["view"] if name in body["measures"] else body["view"]
+            assert len(rows) == min(SCOPE_ROWS["auto"], len(every[name])), name
+            assert all(r in every[name] for r in rows), name  # rows of the list, as published
+            known = [abs(r["value"]) for r in rows if r["value"] is not None]
+            assert view["max_abs"] == (max(known) if known else None), name
+            assert view["note"] is None or not rows, name
+        # no prior day is stored here: the migration's scale is today's
+        assert body["view"]["max_abs_with_prior"] == body["view"]["max_abs"] is not None
+    # one expiry's rows are its own: fewer strikes than every expiry's together
+    assert len(_strikes("all", "2026-11-20")["today"]) <= len(_strikes("all")["today"])
     for key in push_strike_bars.STRIKE_BAR_METHODS:  # vanna, charm
 
         def bars(scope, centre=None, shift=0, key=key):
             return push_strike_bars.strike_bar_payload(
-                TK, key, scope, centre, shift, _AT.timestamp()
+                TK, key, scope, centre, shift, None, _AT.timestamp()
             )
 
         d = bars("auto")

@@ -57,8 +57,8 @@ _MARKETS = [
     json.loads((_FX / f"real_schwab_markets_{day}.json").read_text(encoding="utf-8"))["body"]
     for day in ("2026_11_11", "2026_11_12")
 ]
-#: the window a page asks: Auto, following the price
-AUTO = {"scope": "auto", "centre": None, "shift": 0}
+#: the window a page asks: Auto, following the price, at All Expirations
+AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 #: a date Schwab lists no expiry on in those chains (a Saturday)
 MISSING_EXPIRY = "2026-11-14"
 #: the timeframes the browser tests' charts draw (the Gamma chart opens at 1 minute, the desk and
@@ -216,6 +216,13 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 {
                     "strikes": push_strikes.strikes(tk, at, AUTO),
                     "strikes_wider": push_strikes.strikes(tk, at, {**AUTO, "scope": "wider"}),
+                    # the strikes at the chain's second expiry chosen, and at one it does not list
+                    "strikes_second_expiry": push_strikes.strikes(
+                        tk, at, {**AUTO, "expiry": real.captures[1]["rows"][1]["expiry"]}
+                    ),
+                    "strikes_missing_expiry": push_strikes.strikes(
+                        tk, at, {**AUTO, "expiry": MISSING_EXPIRY}
+                    ),
                     "terrain": push_terrain.terrain(tk, at),
                     "surface": push_surface.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
@@ -308,7 +315,17 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     assert second["ladder"][0]["call"]["symbol"] != panels["chain"]["ladder"][0]["call"]["symbol"]
     assert panels["surface_missing_expiry"]["view"]["missing_expiry"] == MISSING_EXPIRY
     assert len(panels["surface"]["expirations"]) == len(real.captures[1]["rows"])
-    assert panels["strikes"]["migration"]["all"]["compared"] is True
+    assert panels["strikes"]["migration"]["compared"] is True
+    # the strikes follow the expiry chosen; one not listed is said, never another's rows
+    chosen = real.captures[1]["rows"][1]["expiry"]
+    assert panels["strikes_second_expiry"]["expiry"] == chosen
+    assert panels["strikes_second_expiry"]["migration"]["compared"] is True
+    assert panels["strikes_missing_expiry"] == {
+        **panels["strikes_missing_expiry"],
+        "available": False,
+        "reason": f"the chain lists no contracts for {MISSING_EXPIRY}",
+    }
+    assert "today" not in panels["strikes_missing_expiry"]
     assert panels["terrain"]["spot"] == real.quote["native"]["LAST_PRICE"]
     # the desk: Schwab's books at the price, zones and session levels built from its bars
     assert {book["status"] for book in panels["book"].values()} == {"ok"}

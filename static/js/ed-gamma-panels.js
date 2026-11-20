@@ -223,7 +223,7 @@
       setGbsAsOf(null);
       if (host) window.EdShell.placeholder(host, "-");
     }
-    window.EdShell.showPanel("strikes:gbs", window.EdShell.windowParams(_gbsPan));
+    window.EdShell.showPanel("strikes:gbs", window.EdShell.windowAtExpiry(_gbsPan));
   }
   function drawGbs() {
     var host = document.getElementById("gbsBody");
@@ -254,7 +254,8 @@
   // ({strike, value, text, ...}, ascending), drawn highest strike first, each bar's length its
   // |value| against the served scale (view.max_abs). The strike labels pan the window
   // (wireStrikeAxis -> `reload`); a pan is never silent. `opts`: `top` html above the list,
-  // `attrs(r)` and `cells(r)` a row's extra attributes and cells. Each row carries its served
+  // `attrs(r)` and `cells(r)` a row's extra attributes and cells, `expiry` the served expiry the
+  // rows are (a click selects the strike in it; none: every expiry's). Each row carries its served
   // marks (the strike at the price, the walls), each drawn as its class.
   function drawStrikeBars(host, rows, view, pan, reload, opts) {
     window.EdShell.panServed(pan, view.centre);
@@ -317,8 +318,8 @@
     host.querySelectorAll(".gbs-row").forEach(function (rr) {
       // click a strike: every panel follows it
       rr.addEventListener("click", function () {
-        window.EdShell.setStrike(Number(rr.getAttribute("data-strike")), null);
-      }); // every expiry's row: no expiry
+        window.EdShell.setStrike(Number(rr.getAttribute("data-strike")), opts.expiry);
+      }); // the rows' own expiry; every expiry's row: null, no expiry
     });
     var firstRow = host.querySelector(".gbs-row");
     window.EdShell.wireStrikeAxis(
@@ -344,25 +345,26 @@
       return;
     }
     setGbsAsOf(d);
-    var rows = d.today && d.today.all;
-    if (!rows || !rows.length) {
+    // the chosen expiry's rows (every expiry's with none chosen), as served
+    var rows = d.today;
+    if (!rows.length) {
       host.innerHTML =
         '<div class="placeholder"><div class="sm">' +
         "no banked per-strike gamma for this symbol</div></div>";
       return;
     }
-    // the strikes panel is aggregate across expiries; with one expiry selected, say so
-    var expOn = window.EdShell.getExpiry();
-    // yesterday's change per strike as served (migration.all.rows' change_text)
+    // yesterday's change per strike, of the same expiry, as served (migration.rows' change_text)
     var chg = new Map(
-      d.migration.all.rows.map(function (m) {
+      d.migration.rows.map(function (m) {
         return [m.strike, m.change_text];
       }),
     );
     // rows: each strike's net GEX $ (value) and session volume with their texts; the volume is a
     // count, never coloured
-    drawStrikeBars(host, rows, d.views.all, _gbsPan, loadGbs, {
-      top: expOn ? '<div class="gbs-allexp">all expiries</div>' : "",
+    drawStrikeBars(host, rows, d.view, _gbsPan, loadGbs, {
+      top: "",
+      // a click selects the strike in the expiry these rows are (null: every expiry's)
+      expiry: d.expiry,
       attrs: function (r) {
         return ' data-volume="' + (r.volume == null ? "" : r.volume) + '"';
       },
@@ -514,7 +516,7 @@
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
   // The program sends the panel on the page's socket (server.strike_bars)
-  // while its tab is on, for the window it asks (the scope and its pan), at once and on each
+  // while its tab is on, for the window it asks (the scope and its pan, at the expiry chosen), at once and on each
   // change of the levels; nothing received yet for the ticker on screen is '-'.
   function _mkStrikeBar(kind, hostId, srcId) {
     function inSub() {
@@ -532,7 +534,8 @@
         return;
       }
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
-      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "" });
+      // the rows of the expiry served (null: every expiry's)
+      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "", expiry: d.expiry });
     }
     function ask() {
       if (!inSub()) {
@@ -547,7 +550,7 @@
         var host = document.getElementById(hostId);
         if (host) window.EdShell.placeholder(host, "-");
       }
-      window.EdShell.showPanel(kind, window.EdShell.windowParams(pan));
+      window.EdShell.showPanel(kind, window.EdShell.windowAtExpiry(pan));
     }
     document.addEventListener("ed:panel", function (e) {
       var host = document.getElementById(hostId);
@@ -838,10 +841,7 @@
       _obTicker = ticker();
       if (host) window.EdShell.placeholder(host, "-");
     }
-    window.EdShell.showPanel(
-      "option_book:book",
-      Object.assign(window.EdShell.windowParams(null), { expiry: window.EdShell.getExpiry() }),
-    );
+    window.EdShell.showPanel("option_book:book", window.EdShell.windowAtExpiry(null));
   }
   document.addEventListener("ed:panel", function (e) {
     var d = e.detail,
@@ -983,9 +983,11 @@
     loadStrike(det.strike == null ? null : det.strike, det.strike == null ? null : det.expiry);
   });
   document.addEventListener("ed:expiry", function () {
-    // #5: expiry filter -> Strike Detail uses it; Levels/GBS stay aggregate + disclose
+    // the expiry choice: Strike Detail and GEX by Strike follow it; Levels stay aggregate + disclose
     loadLevels();
-    drawGbs();
+    loadGbs(); // a new expiry is a new answer: the server sends that expiry's rows
+    loadVanna();
+    loadCharm();
     loadStructures(); // Structures is expiry-scoped, same as Chain/Strike Detail
     loadBook(); // and so is the Options Book
     var sel = window.EdShell.getState().selStrike;

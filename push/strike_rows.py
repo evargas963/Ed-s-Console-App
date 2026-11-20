@@ -5,7 +5,14 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
-from calc.terrain_engine import SCOPES, StrikeRow, StrikeValue, strike_window
+from calc.terrain_engine import (
+    SCOPES,
+    PerStrikeView,
+    StrikeRow,
+    StrikeRows,
+    StrikeValue,
+    strike_window,
+)
 from numeric_contract import compact_text, count_text, dollars_text, strike_text
 
 #: why a strike window is not around the price
@@ -20,8 +27,8 @@ VALUE_TEXT = {
     "gex": dollars_text,
     "dex": dollars_text,
     "oi": count_text,
-    "vanna_rows": compact_text,
-    "charm_rows": compact_text,
+    "vanna": compact_text,
+    "charm": compact_text,
 }
 
 #: each mark a strike row can carry, as the screen names it: the listed strike nearest the live
@@ -100,6 +107,22 @@ def served(row: BarRow, measure: str, marks: Mapping[str, float | None]) -> dict
     if isinstance(row, StrikeRow):
         out["volume_text"] = count_text(row.volume)
     return out
+
+
+def expiry_unreadable(params: dict[str, Any]) -> str | None:
+    """Return why `params` name no expiry choice; None when they do.
+
+    The page sends `expiry`: an expiry date, or None for All Expirations (null).
+    """
+    expiry = params.get("expiry")
+    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
+        return f"expiry {expiry!r} is not an expiry date or null"
+    return None
+
+
+def rows_of(view: PerStrikeView, expiry: str | None) -> StrikeRows | None:
+    """Return the rows of `expiry` (None: the whole book's); None when `view` lists no such one."""
+    return view if expiry is None else view["by_expiry"].get(expiry)
 
 
 def window_asked(params: dict[str, Any]) -> tuple[str, float | None, int] | str:

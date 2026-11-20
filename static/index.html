@@ -694,7 +694,8 @@
         background: none;
         color: var(--ed-ink-4);
       }
-      .viewbar .ctrls {
+      .viewbar .ctrls,
+      .subnav .ctrls {
         margin-left: auto;
         display: flex;
         align-items: center;
@@ -2205,6 +2206,13 @@
         border-color: var(--ed-accent);
         background: var(--ed-accent-bg);
       }
+      .mig-exp {
+        font-family: var(--ed-sans);
+        font-size: 10.5px;
+        font-weight: 600;
+        padding: 3px 0;
+        color: var(--ed-ink);
+      }
       .mig-top {
         margin-bottom: 4px;
       }
@@ -3193,12 +3201,8 @@
         <div class="subnav" id="subnav">
           <span class="wtitle" id="wsTitle">OPTIONS</span>
           <button type="button" class="tab on" data-sub="gamma">Gamma</button>
-          <button type="button" class="tab na" data-sub="vanna">
-            Vanna<span class="np">AGG ONLY</span>
-          </button>
-          <button type="button" class="tab na" data-sub="charm">
-            Charm<span class="np">WALLS ONLY</span>
-          </button>
+          <button type="button" class="tab" data-sub="vanna">Vanna</button>
+          <button type="button" class="tab" data-sub="charm">Charm</button>
           <button type="button" class="tab" data-sub="book">Book</button>
           <button type="button" class="tab na" data-sub="dex">Delta / DEX</button>
           <button type="button" class="tab na" data-sub="oi">OI</button>
@@ -3528,11 +3532,8 @@
               </div>
             </div>
 
-            <!-- OPTIONS / VANNA subview — dealer vanna exposure by strike (operator field-inventory
-             audit, 2026-09-13). Aggregate-by-strike tier only: Vanna has no per-expiry strike x
-             expiry SURFACE yet (see the Gamma > Multi-Map subview's own note) — this reuses the
-             SAME diverging-bar grammar GEX by Strike already uses, on math_exposure_core's
-             already-canonical call_vanna/put_vanna (RC-211's exact BS-vanna faucet). -->
+            <!-- OPTIONS / VANNA subview — dealer vanna exposure by strike at the expiry chosen,
+             in the same diverging-bar grammar GEX by Strike uses. -->
             <div class="sub-pane" data-sub-pane="vanna">
               <div class="panel">
                 <div class="panel-h">

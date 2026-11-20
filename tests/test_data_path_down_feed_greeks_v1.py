@@ -49,8 +49,8 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
         )
         out[at.hour] = _cached()
     rth, closed = out[11], out[22]
-    rth_row = next(r for r in rth.snap.per_strike["all"] if r[0] == strike)
-    closed_row = next(r for r in closed.snap.per_strike["all"] if r[0] == strike)
+    rth_row = next(r for r in rth.snap.per_strike["gex"] if r[0] == strike)
+    closed_row = next(r for r in closed.snap.per_strike["gex"] if r[0] == strike)
     assert rth.snap.spot == _SPOT and rth.spot_source == server.SPOT_SOURCE_PLANE
     sent = sum(ct["totalVolume"] for ct in _CONTRACTS if round(ct["strikePrice"], 2) == strike)
     assert rth_row[2] >= 999999 and closed_row[2] == rth_row[2] != sent
