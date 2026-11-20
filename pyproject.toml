@@ -174,3 +174,4 @@ pytest_add_cli_args_test_selection = [
   "-m",
   "not alone and not rail",
 ]
+pytest_add_cli_args = ["-vv"]
