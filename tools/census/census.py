@@ -1670,13 +1670,17 @@ for cat, rule, tool in (
     ),
 ):
     add(S, cat, rule, tool)
-WORK_ROW = re.compile(r"^\|\s*([A-Z][A-Z0-9-]+)\s*\|\s*([A-Z][A-Z ,0-9:-]*?)\s*\|", re.M)
+#: a work item, `- ID (STATE...): ...`; an item still being designed has no state
+WORK_ITEM = re.compile(r"^- ([A-Za-z][\w -]*?)(?: \(([A-Z ]+)[^)]*\))?:", re.M)
+WORK = [
+    (m.group(1), m.group(2) or "DESIGNING") for m in WORK_ITEM.finditer(TEXT["ACTIVE_PROGRAM.md"])
+]
 add(
     S,
     "open work rows, every status, by status below (reported)",
     "work list",
     "ACTIVE_PROGRAM.md",
-    count=sum(1 for m in WORK_ROW.finditer(TEXT["ACTIVE_PROGRAM.md"]) if m.group(1) != "ID"),
+    count=len(WORK),
 )
 for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
     f for f in FILES if f.startswith(".claude/rules/")
@@ -1691,15 +1695,8 @@ for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
             "regex",
             f"{f}:{line}: {' '.join(m.group(0).split())[:110]}",
         )
-for m in WORK_ROW.finditer(TEXT["ACTIVE_PROGRAM.md"]):
-    if m.group(1) != "ID":
-        add(
-            S,
-            f"open work rows: {m.group(2).strip()[:30]}",
-            "work list",
-            "ACTIVE_PROGRAM.md",
-            m.group(1),
-        )
+for item, status in WORK:
+    add(S, f"open work rows: {status.strip()}", "work list", "ACTIVE_PROGRAM.md", item)
 latest = {}
 for r_ in json.loads(
     run(
