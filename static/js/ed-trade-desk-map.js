@@ -779,6 +779,9 @@
       key = liqKey(),
       view = S.liqView;
     c.classList.toggle("liq-composite", key === "COMPOSITE");
+    // the stock's own book, never an option's: its ticker's shares and the book shown
+    $("tdmLiqTitle").textContent =
+      "Liquidity · " + orDash(m && m.ticker) + " shares · " + LIQ_NAME[key] + " book";
     c.querySelector("[data-liqvenue]").classList.toggle("on", key === "COMPOSITE");
     // the depth switch, first on the card whatever it shows
     var depth =
