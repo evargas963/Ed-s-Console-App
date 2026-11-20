@@ -256,9 +256,31 @@ class LiveUiServer:
     # -- browser side -----------------------------------------------------------------
 
     async def _send(self, c: _Client, payload: dict[str, Any]) -> None:
-        await c.ws.send_text(_json(payload))
+        await self._send_text(c, _json(payload))
         if "rows" in payload:  # a symbols frame carries none
             self.stats["rows_sent"] += len(payload["rows"])
+
+    async def _send_text(self, c: _Client, text: str) -> None:
+        """Send one frame to page `c`: the one way every frame (beat, rows, panels) reaches a page.
+
+        A page is served while it is in `self.clients`. Its connection ends at the first send that
+        finds it gone (starlette's WebSocketDisconnect, after which starlette refuses every send on
+        that socket) or when its read ends (serve_client): it leaves `self.clients` at once, so the
+        beat, which walks a copy of the pages taken before its sends, and its own pump send it
+        nothing more and end as on any disconnect.
+        """
+        if c not in self.clients:
+            raise WebSocketDisconnect(code=1006)
+        try:
+            await c.ws.send_text(text)
+        except WebSocketDisconnect:
+            self._ended(c)
+            raise
+
+    def _ended(self, c: _Client) -> None:
+        """Stop serving page `c`: its connection has ended."""
+        self.clients.discard(c)
+        self.stats["clients"] = len(self.clients)
 
     async def _pump(self, c: _Client) -> None:
         while True:
@@ -275,7 +297,7 @@ class LiveUiServer:
             ticker, shown = c.view
             for name in sorted(kinds & shown.keys()):
                 asked = Asked(ticker, self.clock(), shown[name])
-                await c.ws.send_text(await asyncio.to_thread(self._frame, name, asked))
+                await self._send_text(c, await asyncio.to_thread(self._frame, name, asked))
 
     def _frame(self, name: str, asked: Asked) -> str:
         """Return panel `name`'s frame as the page reads it: its producer's body, as JSON text.
@@ -382,11 +404,12 @@ class LiveUiServer:
                     e = t.exception()
                     log.info("live ui client ended: %s: %s", type(e).__name__, e)
         finally:
+            # its connection has ended: it leaves the pages before its tasks are awaited, so no
+            # beat sends to it meanwhile
+            self._ended(c)
             for t in (pump, read):
                 t.cancel()
             await asyncio.gather(pump, read, return_exceptions=True)
-            self.clients.discard(c)
-            self.stats["clients"] = len(self.clients)
 
     async def beat_loop(self) -> None:
         while True:
@@ -404,8 +427,9 @@ class LiveUiServer:
                 try:
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
                     await self._send(c, {"type": "feed", "feed": feed, "rows": rows})
-                except WebSocketDisconnect:  # its connection ended (a drop is PageSocket's log
-                    # line), and its handler ends with it (serve_client's)
+                except WebSocketDisconnect:  # its connection ended, now or since this beat took
+                    # its copy of the pages (a drop is PageSocket's log line), and its handler
+                    # ends with it (serve_client's)
                     self.stats["beat_send_failures"] += 1
                 except Exception as e:  # logged; the other browsers' beats go out
                     self.stats["beat_send_failures"] += 1

@@ -3789,12 +3789,13 @@
       "grew": [775.0, 770.0],
       "shrank": [756.0, 760.0],
       "busiest": [757.0, 760.0],
-      "busiest_vs_walls": "INSIDE_WALLS",
+      "busiest_vs_walls": null,
       "volume_total": 2683916.0,
       "grew_text": "775/770",
       "shrank_text": "756/760",
       "busiest_text": "757\u2013760",
-      "note": null
+      "note": null,
+      "volume_zero_text": null
     },
     "level_moves": [
       {
@@ -7896,12 +7897,13 @@
       "grew": [775.0, 770.0],
       "shrank": [756.0, 760.0],
       "busiest": [757.0, 760.0],
-      "busiest_vs_walls": "INSIDE_WALLS",
+      "busiest_vs_walls": null,
       "volume_total": 2683916.0,
       "grew_text": "775/770",
       "shrank_text": "756/760",
       "busiest_text": "757\u2013760",
-      "note": null
+      "note": null,
+      "volume_zero_text": null
     },
     "level_moves": [
       {
@@ -9497,7 +9499,8 @@
       "grew_text": "766/740",
       "shrank_text": "760/755",
       "busiest_text": "756\u2013757",
-      "note": null
+      "note": null,
+      "volume_zero_text": null
     },
     "level_moves": [
       {

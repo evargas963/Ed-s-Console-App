@@ -428,6 +428,9 @@ test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's
   // Schwab's top-5 totals as served (800 and 2,160 shares), the last numbers kept
   await expect(page.locator("#tdmCardLiq .liq-body")).toContainText("2,160");
   await expect(page.locator("#tdmCardLiq .liq-bar-h").first()).toHaveText("Bids800");
+  // the stock's own book, named: its shares and the exchange's book, never an option's
+  await expect(page.locator("#tdmLiqTitle")).toHaveText("SPY shares");
+  await expect(page.locator('#tdmCardLiq [data-venue="NYSE_BOOK"]')).toHaveClass(/\bon\b/);
   await expect(page.locator("#tdmTrust")).toContainText(
     "BOOK " + CLOSED_BOOK.book_time_ct + " · NOT LIVE",
   );
@@ -436,6 +439,8 @@ test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's
   const comp = CLOSED_BOOK.readout.venues.COMPOSITE;
   await page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]').click();
   await expect(page.locator("#tdmCardLiq .liq-pct")).toHaveText(comp.views.weighted.pct_text);
+  await expect(page.locator("#tdmLiqTitle")).toHaveText("SPY shares");
+  await expect(page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]')).toHaveClass(/\bon\b/);
   await expect(page.locator("#tdmCardLiq .liq-body")).toContainText("2,160");
   await expect(page.locator("#tdmCardLiq .tdm-src")).toContainText(
     "Schwab NYSE_BOOK · composite, newest quote of each exchange",
@@ -1245,7 +1250,9 @@ test.describe("Trade Desk renders served values", () => {
       "Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Γ flip 760.77 → 761.22 (+0.45)",
     );
     await expect(body).toContainText("Gamma grew most at 775/770");
-    await expect(body).toContainText("inside the wall range");
+    // the busiest strikes 757 and 760 against the put wall at 760: one below it, one at it, so
+    // where they sit is not one place and is not known ("-"), never "inside" by default
+    await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
     expect(errs).toEqual([]);
   });
 
