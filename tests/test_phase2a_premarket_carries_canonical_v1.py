@@ -1,14 +1,10 @@
-"""RC-322 — the pre-open exits must CARRY the canonical snapshot, not recompute it.
+"""RC-322 — before the open the zones CARRY the canonical snapshot, never recompute it.
 
-`build_live_snapshot` consumes the Phase 2A snapshot when `canonical` is supplied, and every
-live serving path supplies it. But it returns early at two guards — session date in the
-future, and clock before the RTH open — and both of those called
-`build_premarket_snapshot(ticker, bars, session_date, config)` with NO canonical argument.
-That builder then ran `get_previous_day_levels` and `get_overnight_levels` itself, so on
-those paths the canonical snapshot was built, materialized on /api/levels, and discarded by
-the surface standing next to it: a second faucet for overnight and prior-day levels.
+The zones' one builder (`build_zone_snapshot`) runs no level helper of its own: before the
+session's regular open it clusters the prior-day and overnight levels the snapshot holds, so
+those levels and the ones /api/levels serves are one value.
 
-These drive the REAL builders on ONE canonical snapshot and require identical values.
+These drive the REAL builder on ONE canonical snapshot and require identical values.
 """
 
 from __future__ import annotations
@@ -19,9 +15,8 @@ from pathlib import Path
 from calc.liquidity_value_engine import (
     PlaybookConfig,
     bars_from_candles,
-    build_live_snapshot,
-    build_premarket_snapshot,
     build_price_level_snapshot,
+    build_zone_snapshot,
 )
 from calc.micro_structure import Candle
 from tests.conftest import most_recent_trading_day_et
@@ -91,13 +86,26 @@ def _canonical(session: date, bars: list):
     )
 
 
+def _pre_open(session: date) -> datetime:
+    """Return 09:00 ET on `session`, before its regular open."""
+    return datetime(session.year, session.month, session.day, 9, 0, tzinfo=ET)
+
+
 def test_premarket_carries_every_phase2a_level_unchanged():
-    """One computation, two builders, identical values."""
+    """One computation, the zones and the levels, identical values; absent stays absent."""
     session = most_recent_trading_day_et()
     bars = _bars(session)
     canon = _canonical(session, bars)
 
-    carried = build_premarket_snapshot("SPY", PlaybookConfig(), canonical=canon, price=None)
+    carried = build_zone_snapshot(
+        "SPY",
+        PlaybookConfig(),
+        canonical=canon,
+        now=_pre_open(session),
+        extra_levels=[],
+        price=None,
+        sessions=sessions(),
+    )
     got = _published(carried)
     for level_id in _PHASE2A_IDS:
         want = canon.price(level_id)
@@ -114,18 +122,17 @@ def test_premarket_carries_every_phase2a_level_unchanged():
 
 
 def test_the_live_builder_before_the_open_carries_the_snapshot():
-    """Before the session's open the live builder returns the premarket shape.
+    """Before the session's open the one builder returns the premarket shape.
 
     From the same snapshot (ONE-09: no recompute path remains).
     """
     session = most_recent_trading_day_et()
     canon = _canonical(session, _bars(session))
-    pre_open = datetime(session.year, session.month, session.day, 9, 0, tzinfo=ET)
-    out = build_live_snapshot(
+    out = build_zone_snapshot(
         "SPY",
         PlaybookConfig(),
         canonical=canon,
-        now=pre_open,
+        now=_pre_open(session),
         extra_levels=[],
         price=None,
         sessions=sessions(),
