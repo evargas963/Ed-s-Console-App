@@ -177,8 +177,9 @@ class EdDB:
         configure_sqlite_connection(conn, busy_timeout_ms=int(timeout_sec * 1000))
         return conn
 
-    def get_recent_crosses(self, ticker: str, n: int = 20) -> list[StoredCross]:
-        """Return the most recent level crosses, each the row the Recorder stored.
+    def get_recent_crosses(self, ticker: str, within_sec: float) -> list[StoredCross]:
+        """Return the level crosses within `within_sec` of the ticker's newest, newest first,
+        each the row the Recorder stored.
 
         None stored yet (no database, or no level_crosses table before the Recorder's first
         start) is no cross.
@@ -195,10 +196,10 @@ class EdDB:
                 f"""
                 SELECT {cols} FROM level_crosses
                 WHERE ticker = ?
+                  AND ts_utc >= (SELECT MAX(ts_utc) FROM level_crosses WHERE ticker = ?) - ?
                 ORDER BY ts_utc DESC
-                LIMIT ?
             """,
-                (ticker, n),
+                (ticker, ticker, within_sec),
             ).fetchall()
         return [StoredCross(**dict(r)) for r in rows]
 

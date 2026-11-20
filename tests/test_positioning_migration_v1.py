@@ -88,6 +88,30 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
     assert not m["compared"] and [v.change for v in level_moves(snap, None)] == [None] * 3
 
 
+def test_where_the_busiest_strikes_sit_is_said_only_when_it_is_known(two_days):
+    """The busiest strikes against the walls, on PCG's real rows; the walls are INDUCED around them.
+
+    Above the call wall, below the put wall, inside both, and, when a wall is not known or the two
+    busiest strikes are on both sides of it, not known (None): never "inside" by default.
+    """
+    (_prior, _), (today, _snap) = two_days
+    rows = today["gex"]
+    low, high = positioning_migration(rows, [], None, None)["busiest"]
+    assert low < high, "the two busiest strikes differ: the straddle case would be vacuous"
+
+    def where(call: float | None, put: float | None) -> str | None:
+        return positioning_migration(rows, [], call, put)["busiest_vs_walls"]
+
+    assert where(low - 1, None) == "ABOVE_CALL_WALL"
+    assert where(None, high + 1) == "BELOW_PUT_WALL"
+    assert where(high, low) == "INSIDE_WALLS"
+    assert where(high, None) is None, "the put wall not known"
+    assert where(None, None) is None
+    assert where((low + high) / 2, low - 1) is None, (
+        "the busiest are on both sides of the call wall"
+    )
+
+
 def _prior_gex(body: dict) -> dict:
     """Return the prior day's net GEX the migration compared, by strike."""
     rows = body["migration"]["rows"]

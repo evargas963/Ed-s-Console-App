@@ -793,6 +793,9 @@
       key = liqKey(),
       view = S.liqView;
     c.classList.toggle("liq-composite", key === "COMPOSITE");
+    // the stock's own book, never an option's: its ticker's shares (the exchange is the lit
+    // venue button beside it); the title's place fits no more on the 1920×950 Desk
+    $("tdmLiqTitle").textContent = orDash(m && m.ticker) + " shares";
     c.querySelector("[data-liqvenue]").classList.toggle("on", key === "COMPOSITE");
     // the depth switch, first on the card whatever it shows
     var depth =

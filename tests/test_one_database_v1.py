@@ -24,6 +24,7 @@ import db_authority
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from db import EdDB, LevelCrossEvent
+from state.cross_store import CROSSES_HELD_SEC
 from stream_spine import CAPTURE_STORED, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.test_data_path_rules_v1 import _EVENTS
@@ -118,4 +119,6 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
     }
     (got,) = last_capture_per_day(db, "SPY", 1)
     assert len(got.contracts) == len(SPY["chain"])
-    assert edb.get_recent_crosses("SPY")[0].spot_at_cross == SPY["spot"]
+    assert (
+        edb.get_recent_crosses("SPY", within_sec=CROSSES_HELD_SEC)[0].spot_at_cross == SPY["spot"]
+    )
