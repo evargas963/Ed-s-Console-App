@@ -122,7 +122,8 @@ def _first_trade_in(minute: float) -> float:
         m["ts_recv"]
         for m in _MSGS
         if m["service"] == "LEVELONE_EQUITIES"
-        and m["native"].get("TRADE_TIME_MILLIS", 0) >= minute * 1000
+        and "TRADE_TIME_MILLIS" in m["native"]
+        and m["native"]["TRADE_TIME_MILLIS"] >= minute * 1000
     )
 
 

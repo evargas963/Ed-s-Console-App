@@ -66,9 +66,8 @@ test("the liquidity map keeps the forming candle when another panel redraws it",
   deskPanels().forming = F.forming_late;
   await openView(page, "liquidity", "map", "");
   const chart = () => page.evaluate(() => window.EdLiquidityMap.state());
-  await expect
-    .poll(async () => ((await chart()) || {}).lastCandle)
-    .toEqual(candle(F.forming_late.bars[0]));
+  await expect.poll(chart).not.toBeNull();
+  await expect.poll(async () => (await chart()).lastCandle).toEqual(candle(F.forming_late.bars[0]));
   sock.changed("liquidity");
   await expect.poll(async () => (await chart()).zones).toBe(REAL.liquidity.zones.length);
   expect((await chart()).lastCandle).toEqual(candle(F.forming_late.bars[0]));
