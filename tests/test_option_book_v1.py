@@ -155,7 +155,7 @@ def write_option_book_panels() -> None:
 
 def _resting(symbol: str, side: str) -> float:
     """A contract's resting size on `side` ("BIDS", "ASKS"): its book's levels' TOTAL_VOLUME."""
-    return float(sum(level["TOTAL_VOLUME"] for level in BOOKS[symbol].get(side) or []))
+    return float(sum(level["TOTAL_VOLUME"] for level in BOOKS[symbol][side]))
 
 
 def _volume(symbol: str) -> float:
