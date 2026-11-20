@@ -7,8 +7,13 @@ Vendor contract (authenticated LEVELONE_EQUITIES, probed in RTH):
 
 TRADE_TIME_MILLIS is a vendor event clock, not a unique trade id and not
 receive order. Same vendor-ms + different price or size are distinct
-observations. Adjacent identical (time, price, size) is a LEVELONE
-restatement/heartbeat, not a proven second print.
+observations. Schwab streams LEVELONE as Change (Streamer API §1.5): only the
+fields that changed, so a new trade changes at least one of the three, and a
+second trade identical in all three changes none and is not sent (its only
+trace, TOTAL_VOLUME, also moves alone for trades that set no last price). An
+adjacent identical (time, price, size) is a restatement: a subscription's whole
+record, or the bus's merged record re-sent on a quote change
+(docs/derived_register.md, "A print on the tape").
 
 Local receive_seq / server_received_ts distinguish received updates. They
 are not native trade identity.

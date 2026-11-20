@@ -37,6 +37,7 @@ from app.options.order_flow.streaming import (
 )
 from calc.liquidity_value_engine import (
     bars_from_candles,
+    levels_start,
 )
 from calc.math_exposure_core import (
     Bucket,
@@ -1814,18 +1815,21 @@ def _publish_price_levels(ticker: str, now: datetime) -> None:
     Materialized for the market's session at `now` (market_session_date: today's while a session
     is open, the newest one's while Closed) from its completed Schwab 1m bars, by the bar writer
     after each of the ticker's bars, and by the levels loop for a ticker with none yet for the
-    session (a restart, a new session). The routes read what it published
+    session (a restart, a new session). It reads the bars from the prior session's regular open
+    on (levels_start), the oldest a level reads. The routes read what it published
     (canonical_price_level_snapshot). A failed build is logged; the routes serve the last
     published snapshot with its as-of time, or say the levels are absent.
     """
     tk = ticker_storage_key(ticker)
     before = canonical_price_level_snapshot(tk, now)
+    day, daily = market_session_date(now), bar_store.series(tk, "1d")
     try:
+        start = levels_start(daily, day, sessions()).timestamp()
         snap = materialize_price_level_snapshot(
             tk,
-            market_session_date(now),
-            bars_from_candles(bar_store.bars_1m(tk, 2500)),
-            daily=bar_store.series(tk, "1d"),
+            day,
+            bars_from_candles(bar_store.bars_from(tk, start)),
+            daily=daily,
             bar_source=BAR_SOURCE,
         )
     except Exception as e:  # logged; the ticker's next bar builds them

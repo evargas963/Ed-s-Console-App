@@ -1244,7 +1244,7 @@ def test_d6_only_schwabs_recorded_bars_reach_the_chart_and_the_levels_never_the_
             }
             levels_input = {
                 b["timestamp"] / 1000: (b["open"], b["high"], b["low"], b["close"], b["volume"])
-                for b in bars_from_candles(bar_store.bars_1m(tk, 2500))
+                for b in bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
                 if b["timestamp"] / 1000 in recorded or b["timestamp"] / 1000 in old
             }
             assert served == recorded == levels_input, tk

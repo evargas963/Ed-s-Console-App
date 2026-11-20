@@ -1,0 +1,308 @@
+{
+  "source": "production data/ed.db stream_quotes_raw (LEVELONE_EQUITIES messages as recorded), AMD, read-only 2026-11-20: every message of AMD in receive order from the last one that carried LAST_PRICE, LAST_SIZE and TRADE_TIME_MILLIS before a subscription's whole record (assetMainType) that restated the held trade, through the next message that carried a trade",
+  "messages": [
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002800.086597,
+      "schwab_ts": 1795002800051,
+      "item": {
+        "key": "AMD",
+        "52": 1,
+        "54": 346162.158837,
+        "LAST_PRICE": 513.5,
+        "TOTAL_VOLUME": 346162,
+        "LAST_SIZE": 1,
+        "LAST_ID": "D",
+        "NET_CHANGE": 10.09,
+        "TRADE_TIME_MILLIS": 1795002799757,
+        "LAST_MIC_ID": "XADF",
+        "NET_CHANGE_PERCENT": 2.00433,
+        "POST_MARKET_NET_CHANGE": 10.09,
+        "POST_MARKET_NET_CHANGE_PERCENT": 2.00433
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002802.092005,
+      "schwab_ts": 1795002802058,
+      "item": {
+        "key": "AMD",
+        "55": 40,
+        "BID_PRICE": 513.07,
+        "BID_SIZE": 40,
+        "BID_ID": "Q",
+        "MARK": 513.07,
+        "QUOTE_TIME_MILLIS": 1795002801256,
+        "BID_TIME_MILLIS": 1795002801256,
+        "ASK_TIME_MILLIS": 1795002801256,
+        "BID_MIC_ID": "XNAS",
+        "MARK_CHANGE": 9.66,
+        "MARK_CHANGE_PERCENT": 1.918913
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002805.1014144,
+      "schwab_ts": 1795002805067,
+      "item": {
+        "key": "AMD",
+        "ASK_PRICE": 513.85,
+        "QUOTE_TIME_MILLIS": 1795002804421,
+        "BID_TIME_MILLIS": 1795002804421,
+        "ASK_TIME_MILLIS": 1795002804421
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002806.1055264,
+      "schwab_ts": 1795002806071,
+      "item": {
+        "key": "AMD",
+        "ASK_PRICE": 513.86,
+        "QUOTE_TIME_MILLIS": 1795002805403,
+        "BID_TIME_MILLIS": 1795002805403,
+        "ASK_TIME_MILLIS": 1795002805403
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002810.1197143,
+      "schwab_ts": 1795002810086,
+      "item": {
+        "key": "AMD",
+        "55": 400,
+        "BID_PRICE": 513.06,
+        "BID_SIZE": 400,
+        "BID_ID": "P",
+        "MARK": 513.06,
+        "QUOTE_TIME_MILLIS": 1795002809516,
+        "BID_TIME_MILLIS": 1795002809516,
+        "ASK_TIME_MILLIS": 1795002809516,
+        "BID_MIC_ID": "ARCX",
+        "MARK_CHANGE": 9.65,
+        "MARK_CHANGE_PERCENT": 1.916927
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002812.1271973,
+      "schwab_ts": 1795002812092,
+      "item": {
+        "key": "AMD",
+        "55": 440,
+        "BID_SIZE": 440,
+        "QUOTE_TIME_MILLIS": 1795002811348,
+        "BID_TIME_MILLIS": 1795002811348,
+        "ASK_TIME_MILLIS": 1795002811348
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002815.1360688,
+      "schwab_ts": 1795002815102,
+      "item": {
+        "key": "AMD",
+        "55": 400,
+        "ASK_PRICE": 513.9,
+        "BID_SIZE": 400,
+        "QUOTE_TIME_MILLIS": 1795002814476,
+        "BID_TIME_MILLIS": 1795002814476,
+        "ASK_TIME_MILLIS": 1795002814476
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002816.138723,
+      "schwab_ts": 1795002816104,
+      "item": {
+        "key": "AMD",
+        "54": 346163.158837,
+        "55": 440,
+        "ASK_PRICE": 513.95,
+        "BID_SIZE": 440,
+        "TOTAL_VOLUME": 346163,
+        "QUOTE_TIME_MILLIS": 1795002815669,
+        "TRADE_TIME_MILLIS": 1795002815201,
+        "BID_TIME_MILLIS": 1795002815669,
+        "ASK_TIME_MILLIS": 1795002815669
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002817.1421993,
+      "schwab_ts": 1795002817108,
+      "item": {
+        "key": "AMD",
+        "54": 346164.158837,
+        "LAST_PRICE": 513.57,
+        "TOTAL_VOLUME": 346164,
+        "LAST_ID": "P",
+        "NET_CHANGE": 10.16,
+        "TRADE_TIME_MILLIS": 1795002816236,
+        "LAST_MIC_ID": "ARCX",
+        "NET_CHANGE_PERCENT": 2.018236,
+        "POST_MARKET_NET_CHANGE": 10.16,
+        "POST_MARKET_NET_CHANGE_PERCENT": 2.018236
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002827.010397,
+      "schwab_ts": 1795002826862,
+      "item": {
+        "key": "AMD",
+        "delayed": false,
+        "assetMainType": "EQUITY",
+        "assetSubType": "COE",
+        "cusip": "007903107",
+        "52": 1,
+        "53": 2217800,
+        "54": 346164.158837,
+        "55": 80,
+        "56": 40,
+        "BID_PRICE": 513.12,
+        "ASK_PRICE": 514,
+        "LAST_PRICE": 513.57,
+        "BID_SIZE": 80,
+        "ASK_SIZE": 40,
+        "ASK_ID": "Q",
+        "BID_ID": "Q",
+        "TOTAL_VOLUME": 346164,
+        "LAST_SIZE": 1,
+        "HIGH_PRICE": 0,
+        "LOW_PRICE": 0,
+        "CLOSE_PRICE": 503.41,
+        "EXCHANGE_ID": "Q",
+        "MARGINABLE": true,
+        "DESCRIPTION": "ADVANCED MICRO DEVIC",
+        "LAST_ID": "P",
+        "OPEN_PRICE": 0,
+        "NET_CHANGE": 10.16,
+        "HIGH_PRICE_52_WEEK": 658.52,
+        "LOW_PRICE_52_WEEK": 188.22,
+        "PE_RATIO": 107.61867,
+        "DIVIDEND_AMOUNT": 0,
+        "DIVIDEND_YIELD": 0,
+        "NAV": 0,
+        "EXCHANGE_NAME": "Nasdaq",
+        "DIVIDEND_DATE": "",
+        "REGULAR_MARKET_QUOTE": true,
+        "REGULAR_MARKET_TRADE": false,
+        "REGULAR_MARKET_LAST_PRICE": 503.41,
+        "REGULAR_MARKET_LAST_SIZE": 2217800,
+        "REGULAR_MARKET_NET_CHANGE": -0.87,
+        "SECURITY_STATUS": "Normal",
+        "MARK": 513.12,
+        "QUOTE_TIME_MILLIS": 1795002825572,
+        "TRADE_TIME_MILLIS": 1795002816236,
+        "REGULAR_MARKET_TRADE_MILLIS": 1794949200053,
+        "BID_TIME_MILLIS": 1795002825572,
+        "ASK_TIME_MILLIS": 1795002825572,
+        "ASK_MIC_ID": "XNAS",
+        "BID_MIC_ID": "XNAS",
+        "LAST_MIC_ID": "ARCX",
+        "NET_CHANGE_PERCENT": 2.018236,
+        "REGULAR_MARKET_CHANGE_PERCENT": -0.172523,
+        "MARK_CHANGE": 9.71,
+        "MARK_CHANGE_PERCENT": 1.928845,
+        "HTB_QUANTITY": 10849898,
+        "HTB_RATE": 0,
+        "HARD_TO_BORROW": 0,
+        "IS_SHORTABLE": 1,
+        "POST_MARKET_NET_CHANGE": 10.16,
+        "POST_MARKET_NET_CHANGE_PERCENT": 2.018236
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002827.9173448,
+      "schwab_ts": 1795002827869,
+      "item": {
+        "key": "AMD",
+        "55": 40,
+        "BID_PRICE": 513.13,
+        "ASK_PRICE": 514.49,
+        "BID_SIZE": 40,
+        "MARK": 513.13,
+        "QUOTE_TIME_MILLIS": 1795002827008,
+        "BID_TIME_MILLIS": 1795002827008,
+        "ASK_TIME_MILLIS": 1795002827008,
+        "MARK_CHANGE": 9.72,
+        "MARK_CHANGE_PERCENT": 1.930832
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002831.9509466,
+      "schwab_ts": 1795002831893,
+      "item": {
+        "key": "AMD",
+        "55": 80,
+        "BID_PRICE": 513.2,
+        "BID_SIZE": 80,
+        "MARK": 513.2,
+        "QUOTE_TIME_MILLIS": 1795002831251,
+        "BID_TIME_MILLIS": 1795002831251,
+        "ASK_TIME_MILLIS": 1795002831251,
+        "MARK_CHANGE": 9.79,
+        "MARK_CHANGE_PERCENT": 1.944737
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002832.9783437,
+      "schwab_ts": 1795002832899,
+      "item": {
+        "key": "AMD",
+        "55": 40,
+        "56": 280,
+        "BID_PRICE": 513.21,
+        "ASK_PRICE": 514.5,
+        "BID_SIZE": 40,
+        "ASK_SIZE": 280,
+        "ASK_ID": "P",
+        "MARK": 513.21,
+        "QUOTE_TIME_MILLIS": 1795002832002,
+        "BID_TIME_MILLIS": 1795002832002,
+        "ASK_TIME_MILLIS": 1795002832002,
+        "ASK_MIC_ID": "ARCX",
+        "MARK_CHANGE": 9.8,
+        "MARK_CHANGE_PERCENT": 1.946723
+      }
+    },
+    {
+      "service": "LEVELONE_EQUITIES",
+      "symbol": "AMD",
+      "ts_recv": 1795002833.9396095,
+      "schwab_ts": 1795002833905,
+      "item": {
+        "key": "AMD",
+        "52": 100,
+        "54": 346264.158837,
+        "LAST_PRICE": 513.4874,
+        "TOTAL_VOLUME": 346264,
+        "LAST_SIZE": 100,
+        "LAST_ID": "D",
+        "NET_CHANGE": 10.0774,
+        "TRADE_TIME_MILLIS": 1795002832692,
+        "LAST_MIC_ID": "XADF",
+        "NET_CHANGE_PERCENT": 2.001828,
+        "POST_MARKET_NET_CHANGE": 10.0774,
+        "POST_MARKET_NET_CHANGE_PERCENT": 2.001828
+      }
+    }
+  ]
+}

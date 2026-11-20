@@ -3,7 +3,7 @@
 (The console's 1-minute bars -- Schwab's price history and its streamed bars, held in the
 console's memory -- are the ONE bar history, so this stamp guards every level read.)
 
-WHAT WAS MEASURED: the >=LEVELS_PRIOR_SESSION_MIN_BARS floor existed only on the
+WHAT WAS MEASURED: the prior session's coverage floor existed only on the
 accumulator path (t12/RC-227), while the banked fallback fires precisely WHEN coverage
 is low — MTA sessions banked at 188/236/316 of 390 RTH bars served next-day PDH/PDL as
 prior-day fact from a tape missing up to half the session, silently. The fix stamps the
@@ -66,6 +66,7 @@ def test_thin_banked_prior_session_is_stamped_degraded():
         assert stamps and "prior session 2026-10-02" in stamps[0], (tk, snap.degraded)
         assert "estimated from a partial tape" in stamps[0], (tk, stamps)
         assert "291" in stamps[0], (tk, stamps)
+        assert "of its 390 regular-session minutes" in stamps[0], (tk, stamps)
 
 
 def test_full_banked_prior_session_carries_no_stamp():
