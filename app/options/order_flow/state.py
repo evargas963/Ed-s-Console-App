@@ -2,7 +2,8 @@
 app/options/order_flow/state.py — In-memory live order flow state from streaming.
 
 Keeps recent book snapshots and tape prints from Schwab streaming; each symbol's top of book,
-Greeks and volume are read from its record on the daemon's bus (streamed_record), never kept here.
+Greeks and volume are its record's on the daemon's bus, read once when the record changed
+(stream_spine.streamed_record), never kept here.
 Feeds OrderFlowEngine with content.* structure for book_imbalance_5 and cum_delta_proxy.
 """
 
@@ -26,21 +27,10 @@ from calc.l1_trade_observation import (
     is_adjacent_restatement,
     vendor_triple,
 )
-from calc.order_flow import Book, Exchanges, Json, Level
+from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
-from numeric_contract import schwab_count, schwab_number
-from option_contract import (
-    NO_GREEKS,
-    NO_TOP,
-    Received,
-    Streamed,
-    StreamedGreeks,
-    StreamedTop,
-    quote_values,
-    streamed_greeks,
-    streamed_top,
-)
-from stream_spine import FIELD_DELTA, held_key
+from option_contract import Streamed, StreamedTop, quote_values
+from stream_spine import NOT_STREAMED, held_key, read_book, streamed_record
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -48,94 +38,6 @@ MAX_TAPE_PRINTS = 500
 _PRINT_FIELDS = (VENDOR_LAST_PRICE, VENDOR_LAST_SIZE, VENDOR_TRADE_TIME)
 
 log = logging.getLogger(__name__)
-
-
-def streamed_volume(content: dict[str, Any]) -> float | None:
-    """Return a LEVELONE record's TOTAL_VOLUME as sent; None when not sent or not a count.
-
-    The one reader of it (this state and the chain sweep); a reported 0 is 0 (AGENTS.md rule 2).
-    """
-    return schwab_count(content.get("TOTAL_VOLUME"))
-
-
-def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
-    """Return a LEVELONE record on the bus (topic, record) as what the stream holds of it.
-
-    Its top of book, and its Greeks, volatility and volume, each with the time its own field was
-    received (the record's field_ts: a message carries only the fields that changed); a Greek
-    Schwab sends as -999 is no value. NO_TOP and NO_GREEKS when the bus holds no record.
-    """
-    if record is None:
-        return Streamed(NO_TOP, NO_GREEKS)
-    topic, rec = record
-    content = rec[FIELD_DELTA[topic.split(".", 1)[0]]]
-    received = {f: stamp[1] for f, stamp in rec["field_ts"].items()}
-    greeks = streamed_greeks(content)
-    sent = {name: Received(v, received[name.upper()]) for name, v in greeks.items()}
-    volume = streamed_volume(content)
-    if volume is not None:
-        sent["total_volume"] = Received(volume, received["TOTAL_VOLUME"])
-    return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
-
-
-def read_book(content_item: dict[str, Any], service: str) -> Book | None:
-    """Read a Schwab book message; this is its one reader.
-
-    None when it carries neither side (a side Schwab sent no levels for is empty).
-    """
-    if content_item.get("BIDS") is None and content_item.get("ASKS") is None:
-        return None
-    return Book(
-        service,
-        schwab_number(content_item.get("BOOK_TIME")),
-        tuple(_side_levels(content_item, "BIDS")),
-        tuple(_side_levels(content_item, "ASKS")),
-    )
-
-
-def _side_levels(content_item: dict[str, Any], side: str) -> list[Level]:
-    """Return one side of a Schwab book, "BIDS" or "ASKS".
-
-    (price, TOTAL_VOLUME, the level's per-exchange sizes) for each level, as sent. A level
-    without a number for both price and size is not a level.
-    """
-    price_key, size_key = (
-        ("BID_PRICE", "BID_VOLUME") if side == "BIDS" else ("ASK_PRICE", "ASK_VOLUME")
-    )
-    raw: Json = content_item.get(side)
-    if not raw:
-        return []
-    out: list[Level] = []
-    for level in raw if isinstance(raw, list) else [raw]:
-        for lv in level if isinstance(level, list) else [level]:
-            if not isinstance(lv, dict):
-                continue
-            p = schwab_number(lv.get(price_key))
-            v = schwab_count(lv.get("TOTAL_VOLUME"))
-            if p is not None and v is not None:
-                out.append((p, v, _exchange_sizes(lv.get(side), size_key)))
-    return out
-
-
-def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
-    """Return a level's own rows, one per exchange or market maker, as sent.
-
-    Each row is (EXCHANGE, BID_VOLUME or ASK_VOLUME, its quote time;
-    docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2, "Quote time in
-    milliseconds", which schwab-py names SEQUENCE; None when not sent). None when the level
-    carries none, or a row lacks its code or size.
-    """
-    if not isinstance(rows, list) or not rows:
-        return None
-    out: list[tuple[str, float, float | None]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            return None
-        code, size = row.get("EXCHANGE"), schwab_count(row.get(size_key))
-        if not isinstance(code, str) or not code or size is None:
-            return None
-        out.append((code, size, schwab_number(row.get("SEQUENCE"))))
-    return tuple(out)
 
 
 class OrderFlowState:
@@ -168,7 +70,7 @@ class OrderFlowState:
         """Apply one Schwab book observation to this state instance.
 
         It comes from `service`: NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK. The book as read once
-        (read_book) is returned; None when the message carries no book.
+        (stream_spine.read_book) is returned; None when the message carries no book.
         """
         if not content_item:
             return None
@@ -361,6 +263,6 @@ def streamed_values(symbols: Iterable[str]) -> dict[str, Streamed]:
     out: dict[str, Streamed] = {}
     for sym in symbols:
         held = _LIVE_STATE.streamed("LEVELONE_OPTIONS", sym)
-        if held.top is not NO_TOP or held.greeks is not NO_GREEKS:
+        if held is not NOT_STREAMED:
             out[sym] = held
     return out

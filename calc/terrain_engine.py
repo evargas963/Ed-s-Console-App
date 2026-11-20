@@ -410,15 +410,21 @@ def positioning_migration(
     shrank = [k for k, c in changes if c < 0][-2:]
     vols = [(r.strike, r.volume) for r in today if r.volume]
     busiest = sorted(k for k, _v in sorted(vols, key=lambda kv: kv[1], reverse=True)[:2])
+    # where the busiest strikes sit against the walls; None when that is not known: no busiest
+    # strike, a wall not known, or the busiest strikes on both sides of a wall
     where = None
-    if busiest:
-        where = (
-            "ABOVE_CALL_WALL"
-            if call_wall is not None and min(busiest) > call_wall
-            else "BELOW_PUT_WALL"
-            if put_wall is not None and max(busiest) < put_wall
-            else "INSIDE_WALLS"
-        )
+    if busiest and call_wall is not None and min(busiest) > call_wall:
+        where = "ABOVE_CALL_WALL"
+    elif busiest and put_wall is not None and max(busiest) < put_wall:
+        where = "BELOW_PUT_WALL"
+    elif (
+        busiest
+        and call_wall is not None
+        and put_wall is not None
+        and put_wall <= min(busiest)
+        and max(busiest) <= call_wall
+    ):
+        where = "INSIDE_WALLS"
     return {
         "rows": rows,
         "compared": bool(changes),

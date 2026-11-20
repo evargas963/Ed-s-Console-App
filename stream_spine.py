@@ -36,9 +36,21 @@ from pathlib import Path
 from typing import IO, Any, cast, override
 
 import time_et
+from calc.order_flow import Book, Exchanges, Json, Level
 from calibration.complete_chain_capture import ensure_schema, store_capture_message
 from db_authority import canonical_db_path
 from json_blob_codec import decode_text_blob, encode_text_blob
+from numeric_contract import schwab_count, schwab_number
+from option_contract import (
+    NO_GREEKS,
+    NO_TOP,
+    Received,
+    Streamed,
+    StreamedGreeks,
+    StreamedTop,
+    streamed_greeks,
+    streamed_top,
+)
 from time_et import ET, ct_label
 
 log = logging.getLogger(__name__)
@@ -367,6 +379,103 @@ LOG_END: tuple[str, Any] = ("", None)
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
 #: by the key of the Schwab item in the message: their current record merges field by field
 FIELD_DELTA = {"quote": "native", "optquote": "content"}
+#: what the stream holds of a symbol it has sent nothing of
+NOT_STREAMED = Streamed(NO_TOP, NO_GREEKS)
+
+
+def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -> Streamed:
+    """Read a LEVELONE record's fields (`content`, each received at its `stamps` time).
+
+    Its top of book, and its Greeks, volatility and volume, each with the time its own field was
+    received (a message carries only the fields that changed); a Greek Schwab sends as -999 is no
+    value, and TOTAL_VOLUME is a count as sent (a reported 0 is 0, AGENTS.md rule 2). Read once
+    per version of the record, on its first read (streamed_record).
+    """
+    sent = {
+        name: Received(v, stamps[name.upper()][1]) for name, v in streamed_greeks(content).items()
+    }
+    volume = schwab_count(content.get("TOTAL_VOLUME"))
+    if volume is not None:
+        sent["total_volume"] = Received(volume, stamps["TOTAL_VOLUME"][1])
+    return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
+
+
+def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
+    """Return what the stream holds of a LEVELONE record on the bus, (topic, record).
+
+    Its fields read on the first read of this version of the record (read_streamed) and held in
+    it as `streamed`; NOT_STREAMED when the bus holds no record. A version is never changed: a
+    message makes a new record (MessageBus._newest), so a read on any thread reads one version
+    whole, and two first reads at once read the same fields and hold equal values.
+    """
+    if record is None:
+        return NOT_STREAMED
+    topic, rec = record
+    held: Streamed | None = rec["streamed"]
+    if held is None:
+        held = read_streamed(rec[FIELD_DELTA[topic.split(".", 1)[0]]], rec["field_ts"])
+        rec["streamed"] = held
+    return held
+
+
+def read_book(content_item: dict[str, Any], service: str) -> Book | None:
+    """Read a Schwab book message; this is its one reader.
+
+    None when it carries neither side (a side Schwab sent no levels for is empty).
+    """
+    if content_item.get("BIDS") is None and content_item.get("ASKS") is None:
+        return None
+    return Book(
+        service,
+        schwab_number(content_item.get("BOOK_TIME")),
+        tuple(_side_levels(content_item, "BIDS")),
+        tuple(_side_levels(content_item, "ASKS")),
+    )
+
+
+def _side_levels(content_item: dict[str, Any], side: str) -> list[Level]:
+    """Return one side of a Schwab book, "BIDS" or "ASKS".
+
+    (price, TOTAL_VOLUME, the level's per-exchange sizes) for each level, as sent. A level
+    without a number for both price and size is not a level.
+    """
+    price_key, size_key = (
+        ("BID_PRICE", "BID_VOLUME") if side == "BIDS" else ("ASK_PRICE", "ASK_VOLUME")
+    )
+    raw: Json = content_item.get(side)
+    if not raw:
+        return []
+    out: list[Level] = []
+    for level in raw if isinstance(raw, list) else [raw]:
+        for lv in level if isinstance(level, list) else [level]:
+            if not isinstance(lv, dict):
+                continue
+            p = schwab_number(lv.get(price_key))
+            v = schwab_count(lv.get("TOTAL_VOLUME"))
+            if p is not None and v is not None:
+                out.append((p, v, _exchange_sizes(lv.get(side), size_key)))
+    return out
+
+
+def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
+    """Return a level's own rows, one per exchange or market maker, as sent.
+
+    Each row is (EXCHANGE, BID_VOLUME or ASK_VOLUME, its quote time;
+    docs/schwab/schwab_streamer_api.pdf §4 Book Market Makers: field 2, "Quote time in
+    milliseconds", which schwab-py names SEQUENCE; None when not sent). None when the level
+    carries none, or a row lacks its code or size.
+    """
+    if not isinstance(rows, list) or not rows:
+        return None
+    out: list[tuple[str, float, float | None]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return None
+        code, size = row.get("EXCHANGE"), schwab_count(row.get(size_key))
+        if not isinstance(code, str) or not code or size is None:
+            return None
+        out.append((code, size, schwab_number(row.get("SEQUENCE"))))
+    return tuple(out)
 
 
 def current_key(topic: str, msg: Payload) -> str:
@@ -460,9 +569,10 @@ class MessageBus:
     """Every Schwab message is published once.
 
     It becomes its topic's current record -- the newest by Schwab's time (`schwab_ts`, the
-    frame's timestamp; a chain by its fetch time): a LEVELONE message merged field by field, a
-    book, bar or news item whole, a chain whole once all its parts are in -- and each reader
-    takes it by its policy (LOG or LATEST).
+    frame's timestamp; a chain by its fetch time): a LEVELONE message merged field by field, its
+    fields read on the first read of each version (streamed_record), a book, bar or news item whole,
+    a chain whole once all its parts are in -- and each reader takes it by its policy (LOG or
+    LATEST).
     """
 
     def __init__(self) -> None:
@@ -516,20 +626,18 @@ class MessageBus:
             return True
         stamp = (t, msg.get("ts_recv"))
         if held is None:
-            self.current[key] = (
-                topic,
-                {**msg, body_key: dict(body), "field_ts": dict.fromkeys(body, stamp)},
-            )
-            return True
-        rec = held[1]
-        merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
-        took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
-        if not took:
-            return False
-        for f in took:
-            merged[f], stamps[f] = body[f], stamp
-        top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time: its newest
-        self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps})
+            merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
+        else:
+            rec = held[1]
+            merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
+            took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
+            if not took:
+                return False
+            for f in took:
+                merged[f], stamps[f] = body[f], stamp
+            top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time
+        # a new version of the record, whose fields are read on its first read (streamed_record)
+        self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps, "streamed": None})
         return True
 
     def _chain(self, key: str, topic: str, msg: dict[str, Any]) -> bool:

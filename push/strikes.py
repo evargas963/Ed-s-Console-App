@@ -34,7 +34,7 @@ from push.strike_rows import (
     window_asked,
     windowed,
 )
-from push.verdict import terrain_cache_get
+from push.verdict import LEVELS_STALE, terrain_cache_get
 
 
 def _served_migration(row: MigrationRow) -> dict[str, Any]:
@@ -105,14 +105,28 @@ ALL_EXPIRATIONS = "All Expirations"
 NO_PRIOR_DAY = "The first day-over-day comparison lands after the next wide morning capture."
 #: why the migration compares nothing while both days are held but no strike is known on both
 NO_STRIKE_ON_BOTH_DAYS = "No strike has a net GEX on both days."
+#: what a session volume of 0 means, by the chain's verdict: a stale chain's rows are its snapshot
+ZERO_VOLUME_STALE = (
+    "zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source "
+    "badge above"
+)
+ZERO_VOLUME = (
+    "no option volume yet this session — the counter resets at the new session and fills from "
+    "the open"
+)
 
 
-def _shown_migration(m: PositioningMigration, note: str | None) -> dict[str, Any]:
+def _shown_migration(
+    m: PositioningMigration, note: str | None, levels_state: str
+) -> dict[str, Any]:
     """The migration as the screen shows it, with `note`: why it compares nothing (None: it does).
 
-    Each row with its change's text (_served_migration), and the strikes that grew, shrank and
-    traded most, each list as the screen shows it.
+    Each row with its change's text (_served_migration), the strikes that grew, shrank and traded
+    most, each list as the screen shows it, and what a session volume of 0 means (None unless 0).
     """
+    zero = None
+    if m["volume_total"] == 0:
+        zero = ZERO_VOLUME_STALE if levels_state == LEVELS_STALE else ZERO_VOLUME
     return {
         **m,
         "rows": [_served_migration(r) for r in m["rows"]],
@@ -120,6 +134,7 @@ def _shown_migration(m: PositioningMigration, note: str | None) -> dict[str, Any
         "shrank_text": "/".join(map(strike_text, m["shrank"])),
         "busiest_text": "–".join(map(strike_text, m["busiest"])),
         "note": note,
+        "volume_zero_text": zero,
     }
 
 
@@ -225,7 +240,9 @@ def terrain_strikes_payload(
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
         "max_abs_row": max_abs_served(today["gex"], "gex", marks),
         "migration": _shown_migration(
-            migration, _not_compared(migration, prior_day is not None, prior, expiry)
+            migration,
+            _not_compared(migration, prior_day is not None, prior, expiry),
+            verdict["levels_state"],
         ),
         # the call wall, put wall and gamma flip today against the prior day's own, each with its
         # texts as the screen shows them
