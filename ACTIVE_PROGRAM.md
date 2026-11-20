@@ -110,8 +110,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     shown on the page.
   - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
   - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
-  - P-22 `static/js/ed-gamma-flow.js` takes the Flow header's strike and expiry from page state, not
-    the `contract` panel.
   - P-24 `static/js/ed-order-flow.js` matches walls to ladder levels on the page and shows one fixed
     reason for every no-book cause.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a

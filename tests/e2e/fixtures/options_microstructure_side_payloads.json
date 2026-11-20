@@ -68,6 +68,7 @@
       "bid": [],
       "max_volume": null
     },
+    "expiry": "2026-10-23",
     "flow": {
       "classification": {
         "cum_delta_proxy": "PROXY",
@@ -132,6 +133,7 @@
       },
       "subscription_state": "SUBSCRIBED"
     },
+    "strike_text": "761",
     "top_feed_label": "LIVE",
     "top_of_book": {
       "ask": 2.03,
@@ -215,6 +217,7 @@
       "bid": [],
       "max_volume": null
     },
+    "expiry": "2026-10-23",
     "flow": {
       "classification": {
         "cum_delta_proxy": "PROXY",
@@ -279,6 +282,7 @@
       },
       "subscription_state": "SUBSCRIBED"
     },
+    "strike_text": "762",
     "top_feed_label": "LIVE",
     "top_of_book": {
       "ask": 3.06,

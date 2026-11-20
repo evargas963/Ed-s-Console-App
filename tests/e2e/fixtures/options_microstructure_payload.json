@@ -104,6 +104,7 @@
     ],
     "max_volume": 289.0
   },
+  "expiry": null,
   "flow": {
     "classification": {
       "cum_delta_proxy": "PROXY",
@@ -168,6 +169,7 @@
     },
     "subscription_state": "SUBSCRIBED"
   },
+  "strike_text": null,
   "top_feed_label": "NOT LIVE",
   "top_of_book": {
     "ask": 0.61,

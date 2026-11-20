@@ -186,7 +186,8 @@ test.describe("D — Gamma Flow subview", () => {
     const other = await page.context().newPage();
     await setup(other, tsla);
     await selectCallAndOpenFlow(other);
-    await expect(other.locator("#flowBody .fl-meta")).toHaveText(/^- · 367.5/);
+    // no chain the console holds lists the TSLA contract: no side, strike or expiry is served
+    await expect(other.locator("#flowBody .fl-meta")).toHaveText("-");
   });
 
   test("the selected contract is named once to stream; its served state on the badge; classifications + no signed flow", async ({
