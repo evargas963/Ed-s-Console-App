@@ -46,10 +46,6 @@ type Cluster = tuple[float, float, float, list[str], list[tuple[float, str]]]
 #: one point of the session VWAP series: (bar_epoch_sec, vwap)
 type VwapPoint = tuple[float, float]
 
-#: a prior session with fewer 1-minute RTH bars than this (of ~390) is disclosed as partial on the
-#: price levels built from it
-LEVELS_PRIOR_SESSION_MIN_BARS: int = 300
-
 #: the opening range: the first this many minutes from the regular open
 OPENING_RANGE_MINUTES: int = 15
 
@@ -164,6 +160,25 @@ def prior_session(daily: list[Candle], session_date: date) -> Candle | None:
     """
     before = [c for c in daily if datetime.fromtimestamp(c.ts, ET).date() < session_date]
     return max(before, key=lambda c: c.ts) if before else None
+
+
+def levels_start(
+    daily: list[Candle], session_date: date, sessions: Mapping[str, Session]
+) -> datetime:
+    """Return when the oldest bar the levels of `session_date` read can begin.
+
+    The prior session's (prior_session) regular open as Schwab's /markets sent it: its RTH bars,
+    the overnight window after its close and the session's own bars all begin there or later.
+    With no prior session, or its hours not held, the levels read only the session date's bars:
+    its 00:00 ET.
+    """
+    prior = prior_session(daily, session_date)
+    regular = (
+        None if prior is None else _regular(sessions, datetime.fromtimestamp(prior.ts, ET).date())
+    )
+    if regular is not None:
+        return regular[0]
+    return datetime(session_date.year, session_date.month, session_date.day, tzinfo=ET)
 
 
 def get_previous_day_levels(
@@ -816,9 +831,10 @@ def _prior_day_part(
 ) -> tuple[list[_Family | _Absent], date | None, list[str]]:
     """Return the prior session's levels, its date and what is degraded in them.
 
-    The date is None with no prior candle held; degraded, a prior session with fewer than
-    LEVELS_PRIOR_SESSION_MIN_BARS RTH bars, whose POC and value area are from a partial tape. A
-    prior session whose RTH bars make no volume profile has its value area declared absent
+    The date is None with no prior candle held; degraded, a prior session whose RTH bars do not
+    cover its regular window as Schwab's /markets sent it (a bar for each of its minutes), so its
+    POC and value area are from a partial tape. A prior session
+    whose RTH bars make no volume profile has its value area declared absent
     (`prior_value_area`), with why.
     """
     if prior is None:
@@ -848,12 +864,16 @@ def _prior_day_part(
         ),
         value_area,
     ]
-    if eng.rth_bars >= LEVELS_PRIOR_SESSION_MIN_BARS:
+    regular = _regular(sessions, day)
+    if regular is None:  # no RTH bar is known: its value area is declared absent, none estimated
+        return families, day, []
+    minutes = int((regular[1] - regular[0]).total_seconds() // 60)
+    if eng.rth_bars >= minutes:
         return families, day, []
     degraded = (
-        f"prior_day: prior session {day} holds only {eng.rth_bars} of >= "
-        f"{LEVELS_PRIOR_SESSION_MIN_BARS} RTH bars; its POC and value area are "
-        "estimated from a partial tape"
+        f"prior_day: prior session {day} holds only {eng.rth_bars} RTH bars of its {minutes} "
+        "regular-session minutes (Schwab's /markets); its POC and value area are estimated from "
+        "a partial tape"
     )
     return families, day, [degraded]
 
@@ -971,8 +991,8 @@ def build_price_level_snapshot(
 
     Absent input stays absent: a family with no bars in its window is declared in
     `families_absent` and its ids are simply not present. Nothing substitutes spot,
-    zero, or a neighbouring level. A prior session with fewer than
-    LEVELS_PRIOR_SESSION_MIN_BARS RTH bars is disclosed in `degraded`, never filled.
+    zero, or a neighbouring level. A prior session whose RTH bars do not cover its regular window
+    (Schwab's /markets) is disclosed in `degraded`, never filled.
     """
     as_of: float | None = max((b["_dt"].timestamp() for b in bars_norm), default=None)
     basis = f"1m bars ({bar_source}); Schwab streamed bars"

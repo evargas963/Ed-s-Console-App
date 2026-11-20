@@ -95,6 +95,42 @@ def test_adjacent_identical_restatement_suppressed():
     assert _cvd(content) == 10
 
 
+def test_schwabs_whole_record_restating_the_held_trade_is_no_second_print():
+    """AMD's LEVELONE_EQUITIES messages of 2026-11-18 06:53:20-06:53:53 ET, as Schwab sent them.
+
+    Real data (tests/fixtures/real_amd_levelone_restated_2026_11_18.json). Schwab streams only
+    the fields that changed (Streamer API §1.5, delivery Change): a trade at the held price and
+    size carries its new TRADE_TIME_MILLIS alone; a quote's change carries no trade field. At
+    06:53:47 the subscription's whole record (it carries assetMainType, as a delta never does)
+    restates the held trade, every field equal. The tape keeps each trade once: four, each a step
+    of Schwab's TOTAL_VOLUME by its size (worked out here from the messages), and the restating
+    record and the quote changes none.
+    """
+    sent = json.loads(
+        (
+            Path(__file__).parent / "fixtures" / "real_amd_levelone_restated_2026_11_18.json"
+        ).read_text(encoding="utf-8")
+    )["messages"]
+    trades = [m["item"] for m in sent if "TRADE_TIME_MILLIS" in m["item"]]
+    whole = [m["item"] for m in sent if "assetMainType" in m["item"]]
+    assert len(whole) == 1 and whole[0] in trades
+    volumes = [t["TOTAL_VOLUME"] for t in trades if t is not whole[0]]
+    bus, state = MessageBus(), OrderFlowState()
+    state.current = bus.current
+    for m in sent:
+        apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"], m["schwab_ts"]))
+    tape = state.prints("AMD")
+    assert [(p["time_millis"], p["price"], p["size"]) for p in tape] == [
+        (1795002799757, 513.5, 1),
+        (1795002815201, 513.5, 1),
+        (1795002816236, 513.57, 1),
+        (1795002832692, 513.4874, 100),
+    ]
+    assert [b - a for a, b in zip(volumes, volumes[1:], strict=False)] == [
+        p["size"] for p in tape[1:]
+    ]
+
+
 def test_non_adjacent_identical_triple_retained():
     content = _tape("L1D", (P, 10, 1000), (P + 0.1, 4, 1000), (P, 10, 1000))
     out = content

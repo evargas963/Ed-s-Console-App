@@ -245,13 +245,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   it. Enforced by: `tests/test_forming_bar_v1.py`, `tests/e2e/console-forming-bar.spec.js`.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Producer
   `server._publish_price_levels`, from the bar store's bars after each bar, for the market's session
-  (`time_et.market_session_date`) → `state/price_level_store.py` → the `levels` panel
-  (`push.levels.levels_payload`) and the liquidity zones (`push.liquidity.liquidity_snapshot`). The
-  `levels` panel and the liquidity zones are sent again with each price row
-  (`server.PRICED_PANELS`), since each level's distance and each zone's side are from the live
-  price. What the Trade Desk chart draws from them is served whole: the prior session's value area
-  band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume profile's POC label
-  (`volume_profile.poc_label`).
+  (`time_et.market_session_date`), reading every bar from the prior session's regular open as
+  Schwab's /markets sent it (`calc.liquidity_value_engine.levels_start`; a prior session whose bars
+  do not cover that window is disclosed as partial) → `state/price_level_store.py` → the `levels`
+  panel (`push.levels.levels_payload`) and the liquidity zones
+  (`push.liquidity.liquidity_snapshot`). The `levels` panel and the liquidity zones are sent again
+  with each price row (`server.PRICED_PANELS`), since each level's distance and each zone's side are
+  from the live price. What the Trade Desk chart draws from them is served whole: the prior
+  session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume
+  profile's POC label (`volume_profile.poc_label`).
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
   watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`),
   taking those answers again for `chain_sweep.CHAINS_AGAIN_SEC`; `/chains` and `/quotes` requests go
@@ -318,11 +320,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_strikes_follow_the_expiry_v1.py`, `tests/test_data_path_confluence_v1.py`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
-- **Tape.** Each print is signed by Lee and Ready against the bid and ask its record held
-  (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned print is no value, with
-  its share served beside each sum. The options tape (`push.tape.tape`) lists the newest trade first
-  by Schwab's trade time. Enforced by: `tests/test_tape_lee_ready_v1.py`,
-  `tests/test_options_flow_tape_v1.py`.
+- **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept
+  before it (derived register, "A print on the tape"). Each print is signed by Lee and Ready against
+  the bid and ask its record held (`calc.l1_trade_observation.trade_sign`), marked estimated; an
+  unsigned print is no value, with its share served beside each sum. The options tape
+  (`push.tape.tape`) lists the newest trade first by Schwab's trade time. Enforced by:
+  `tests/test_tape_lee_ready_v1.py`, `tests/test_options_flow_tape_v1.py`.
 - **Level crosses.** On each streamed equity quote (`server._on_stream_tick`) the four levels of
   `server.CROSS_LEVELS` (gamma flip, call wall, put wall, largest gamma strike) are checked for a
   cross between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses
