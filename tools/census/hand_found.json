@@ -32,10 +32,6 @@
     {
       "category": "needs market",
       "item": "live update speed: the chain ladder showed SPY's 730 call a median 4.4 s (max 8.8 s) behind Schwab, 23 changes measured 2026-11-18 13:55 CT, marked LIVE; its fields are Schwab's own but served from the last reprice, and a full SPY reprice takes 1.4-2.7 s on a pricing thread 90% busy. The fix (serve them from the stream as received) is the operator's decision"
-    },
-    {
-      "category": "contradiction: rule vs doc",
-      "item": "AGENTS.md:54,128 no fake data, no stand-ins vs ACTIVE_PROGRAM.md:95 STAND-INS records operator-allowed made-up values"
     }
   ]
 }
