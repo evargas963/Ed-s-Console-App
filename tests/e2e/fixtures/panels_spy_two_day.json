@@ -569,12 +569,6 @@
         "max_abs_with_prior": 262549017.7139306
       }
     },
-    "today_side_sums": {
-      "gex_below": -15575020274.15338,
-      "gex_above": 7946305059.139635,
-      "gex_below_text": "-$15.58B",
-      "gex_above_text": "$7.95B"
-    },
     "max_abs_row": {
       "strike": 775.0,
       "value": 1503567229.88173,
@@ -9908,12 +9902,6 @@
         "max_abs": 836589614.3321368,
         "max_abs_with_prior": 836589614.3321368
       }
-    },
-    "today_side_sums": {
-      "gex_below": -15575020274.15338,
-      "gex_above": 7946305059.139635,
-      "gex_below_text": "-$15.58B",
-      "gex_above_text": "$7.95B"
     },
     "max_abs_row": {
       "strike": 775.0,
@@ -61874,24 +61862,6 @@
       }
     ],
     "hold_note": "Over the last 60 completed sessions held: a touch is a 1-minute bar reaching the level from one side, once per approach; it held when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels hold about half the time, so only the difference means anything. '-' below 100 touches. A past frequency, not a forecast."
-  },
-  "forces": {
-    "ticker": "SPY",
-    "available": true,
-    "doi_below": 38479.0,
-    "doi_above": 367663.0,
-    "doi_below_text": "38,479",
-    "doi_above_text": "367,663",
-    "dex_below_dollars": 136000417247.35608,
-    "dex_above_dollars": 90751618744.42938,
-    "dex_below_text": "$136.00B",
-    "dex_above_text": "$90.75B",
-    "charm_below": -6180495.155832752,
-    "charm_above": -3104662.327556224,
-    "charm_below_text": "-6.18M",
-    "charm_above_text": "-3.10M",
-    "older_et_date": "2026-11-11",
-    "method": "OI side totals of the chain now less the prior day's close capture, both split at the chain's price; DEX = net_dex_dollars side sums on the chain now; CHARM = dealer-signed net_charm side sums on the chain now"
   },
   "levels": {
     "1": {

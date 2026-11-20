@@ -239,8 +239,53 @@
     });
     return svg;
   }
+  // a half dial, as the options lean's gauge draws it, in a 200 x 112 box: `zones` equal arcs from
+  // the left end (the first zone) over the top to the right end (the last), each classed "z<i>",
+  // and the needle at the served angle `deg` from upright, positive to the right (none when null).
+  // The SVG's inner markup.
+  function gauge(deg, zones) {
+    var cx = 100,
+      cy = 100,
+      r = 82,
+      gap = 1.2,
+      step = 180 / zones;
+    function at(a) {
+      var t = (a * Math.PI) / 180;
+      return (cx + r * Math.cos(t)).toFixed(2) + " " + (cy - r * Math.sin(t)).toFixed(2);
+    }
+    var svg = "";
+    for (var i = 0; i < zones; i++) {
+      var a0 = 180 - step * i - (i ? gap : 0),
+        a1 = 180 - step * (i + 1) + (i < zones - 1 ? gap : 0);
+      svg +=
+        '<path class="z' + i + '" d="M' + at(a0) + " A" + r + " " + r + " 0 0 1 " + at(a1) + '"/>';
+    }
+    if (deg != null)
+      svg +=
+        '<g class="needle" transform="rotate(' +
+        Number(deg).toFixed(2) +
+        " " +
+        cx +
+        " " +
+        cy +
+        ')"><path d="M' +
+        (cx - 3.2) +
+        " " +
+        cy +
+        " L" +
+        cx +
+        " " +
+        (cy - r + 10) +
+        " L" +
+        (cx + 3.2) +
+        " " +
+        cy +
+        ' Z"/></g>';
+    return svg + '<circle class="hub" cx="' + cx + '" cy="' + cy + '" r="6"/>';
+  }
 
   window.EdDraw = {
+    gauge: gauge,
     strength: strength,
     barWidth: barWidth,
     bySign: bySign,

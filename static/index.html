@@ -2465,6 +2465,345 @@
         background: var(--ed-proxy-bg);
         border: 1px solid var(--ed-warn);
       }
+      /* Options Book (the option_book panel): calls | strike | puts, each cell its served number
+     on a bar against the served scale (resting bid green, resting ask red, volume grey); then the
+     summary's split bars and the options lean's gauge. Every number and word is served. */
+      #opbBody {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        padding: 0;
+      }
+      .ob {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+      .ob-scroll {
+        flex: 1;
+        overflow: auto;
+        min-height: 0;
+      }
+      .ob-t {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-family: var(--ed-sans);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+      .ob-t th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: var(--ed-panel);
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ed-ink-3);
+        padding: 9px 12px 7px;
+        border-bottom: 1px solid var(--ed-edge);
+        white-space: nowrap;
+      }
+      .ob-t th.c {
+        text-align: right;
+      }
+      .ob-t th.p {
+        text-align: left;
+      }
+      .ob-n {
+        position: relative;
+        width: 14%;
+        height: 29px;
+        padding: 0 12px;
+        border-bottom: 1px solid var(--ed-edge-soft);
+        color: var(--ed-ink);
+        white-space: nowrap;
+      }
+      .ob-n.c {
+        text-align: right;
+      }
+      .ob-n.p {
+        text-align: left;
+      }
+      .ob-n i {
+        position: absolute;
+        top: 5px;
+        bottom: 5px;
+        max-width: calc(100% - 12px);
+        border-radius: 2px;
+      }
+      .ob-n.c i {
+        right: 6px;
+      }
+      .ob-n.p i {
+        left: 6px;
+      }
+      .ob-n span {
+        position: relative;
+        font-weight: 500;
+      }
+      .ob-n.bid i {
+        background: color-mix(in srgb, var(--ed-pos) 34%, transparent);
+      }
+      .ob-n.ask i {
+        background: color-mix(in srgb, var(--ed-neg) 34%, transparent);
+      }
+      .ob-n.vol i {
+        background: color-mix(in srgb, var(--ed-ink-3) 26%, transparent);
+      }
+      .ob-n.vol span {
+        color: var(--ed-ink-2);
+      }
+      .ob-n.nl span {
+        color: var(--ed-stale);
+      }
+      .ob-k {
+        width: 12%;
+        text-align: center;
+        font-weight: 700;
+        color: var(--ed-ink);
+        background: var(--ed-panel-2);
+        border-left: 1px solid var(--ed-edge);
+        border-right: 1px solid var(--ed-edge);
+        border-bottom: 1px solid var(--ed-edge-soft);
+        white-space: nowrap;
+      }
+      .ob-t th.ob-k {
+        text-align: center;
+        background: var(--ed-panel-2);
+      }
+      .ob-row:hover td {
+        background: var(--ed-panel-2);
+      }
+      .ob-row:hover td.ob-k {
+        background: var(--ed-panel-3);
+      }
+      .ob-row.mark-spot td {
+        background: var(--ed-panel-3);
+        border-top: 1px solid var(--ed-accent-edge);
+        border-bottom: 1px solid var(--ed-accent-edge);
+      }
+      .ob-row.mark-spot td.ob-k {
+        color: var(--ed-accent-2);
+        background: var(--ed-accent-bg);
+      }
+      .ob-mark {
+        margin-left: 6px;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        vertical-align: 1px;
+        color: var(--ed-accent-2);
+        border: 1px solid var(--ed-accent-edge);
+      }
+      .ob-foot {
+        flex: none;
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr);
+        gap: 22px;
+        padding: 12px 16px 14px;
+        border-top: 1px solid var(--ed-edge);
+        background: var(--ed-panel);
+      }
+      .ob-h {
+        font-size: 11.5px;
+        font-weight: 700;
+        letter-spacing: var(--ed-title-spacing);
+        font-stretch: var(--ed-title-stretch);
+        text-transform: uppercase;
+        color: var(--ed-ink-2);
+        margin-bottom: 8px;
+      }
+      .ob-split {
+        margin-bottom: 11px;
+      }
+      .ob-split-t {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ed-ink);
+      }
+      .ob-split-n {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 2px 0 4px;
+        font-size: 12px;
+        color: var(--ed-ink-3);
+        font-variant-numeric: tabular-nums;
+      }
+      .ob-split-n em {
+        font-style: normal;
+        color: var(--ed-ink-2);
+      }
+      .ob-split-n b {
+        color: var(--ed-ink);
+        font-weight: 600;
+      }
+      .ob-split-n small {
+        font-size: 11.5px;
+        color: var(--ed-ink-2);
+      }
+      .ob-split-track {
+        display: flex;
+        gap: 2px;
+        height: 10px;
+        border-radius: 3px;
+        overflow: hidden;
+        background: var(--ed-edge-soft);
+      }
+      .ob-split-track i {
+        display: block;
+        height: 100%;
+      }
+      .ob-split.rest .l {
+        background: var(--ed-pos);
+      }
+      .ob-split.rest .r {
+        background: var(--ed-neg);
+      }
+      .ob-split.vol .l {
+        background: var(--ed-ink-3);
+      }
+      .ob-split.vol .r {
+        background: color-mix(in srgb, var(--ed-ink-3) 45%, transparent);
+      }
+      .ob-note {
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--ed-ink-3);
+      }
+      .ob-lean {
+        border-left: 1px solid var(--ed-edge-soft);
+        padding-left: 20px;
+      }
+      /* the options lean's gauge: five zone arcs, the needle at the served angle, the served value
+     and zone word, and the three served readings beneath (Options Book and the Trade Desk card) */
+      .olg {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .olg-dial {
+        display: block;
+        width: 100%;
+        max-width: 250px;
+        height: auto;
+        overflow: visible;
+      }
+      .olg-dial path {
+        fill: none;
+        stroke-width: 15;
+      }
+      .olg-dial .z0 {
+        stroke: var(--ed-neg);
+      }
+      .olg-dial .z1 {
+        stroke: color-mix(in srgb, var(--ed-neg) 55%, var(--ed-panel-3));
+      }
+      .olg-dial .z2 {
+        stroke: var(--ed-edge-strong);
+      }
+      .olg-dial .z3 {
+        stroke: color-mix(in srgb, var(--ed-pos) 55%, var(--ed-panel-3));
+      }
+      .olg-dial .z4 {
+        stroke: var(--ed-pos);
+      }
+      .olg-dial .needle path {
+        fill: var(--ed-ink);
+        stroke: none;
+      }
+      .olg-dial .hub {
+        fill: var(--ed-ink);
+        stroke: var(--ed-panel);
+        stroke-width: 2.5;
+      }
+      .olg-ends {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        max-width: 250px;
+        margin-top: 2px;
+        font-size: 10.5px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--ed-ink-3);
+      }
+      .olg-read {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        margin-top: 4px;
+      }
+      .olg-v {
+        font-size: 26px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        color: var(--ed-ink);
+      }
+      .olg-z {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--ed-ink-2);
+      }
+      .olg-v.z0,
+      .olg-v.z1,
+      .olg-z.z0,
+      .olg-z.z1 {
+        color: var(--ed-neg-ink);
+      }
+      .olg-v.z3,
+      .olg-v.z4,
+      .olg-z.z3,
+      .olg-z.z4 {
+        color: var(--ed-pos-ink);
+      }
+      .olg-parts {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px 14px;
+        margin-top: 6px;
+        font-size: 11.5px;
+        color: var(--ed-ink-3);
+      }
+      .olg-parts b {
+        color: var(--ed-ink);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .olg.compact {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        column-gap: 14px;
+      }
+      .olg.compact .olg-dial,
+      .olg.compact .olg-ends {
+        max-width: 132px;
+      }
+      .olg.compact .olg-ends {
+        display: none;
+      }
+      .olg.compact .olg-read {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0;
+      }
+      .olg.compact .olg-v {
+        font-size: 20px;
+      }
+      .olg.compact .olg-parts {
+        width: 100%;
+        margin-top: 2px;
+        font-size: 11px;
+      }
       /* Levels view (D) — serializes the levels panel; no computation */
       .lv-head {
         display: flex;
@@ -2860,6 +3199,7 @@
           <button type="button" class="tab na" data-sub="charm">
             Charm<span class="np">WALLS ONLY</span>
           </button>
+          <button type="button" class="tab" data-sub="book">Book</button>
           <button type="button" class="tab na" data-sub="dex">Delta / DEX</button>
           <button type="button" class="tab na" data-sub="oi">OI</button>
           <button type="button" class="tab" data-sub="flow">Flow</button>
@@ -3215,8 +3555,8 @@
               </div>
             </div>
 
-            <!-- OPTIONS / CHARM subview — dealer charm exposure by strike, the SAME faucet
-             the forces panel's charm_below/charm_above already sum (calc.math_levels.compute_charm_by_strike). -->
+            <!-- OPTIONS / CHARM subview — dealer charm exposure by strike
+             (calc.math_levels.compute_charm_by_strike). -->
             <div class="sub-pane" data-sub-pane="charm">
               <div class="panel">
                 <div class="panel-h">
@@ -3231,6 +3571,30 @@
                     <div class="sm">
                       Net dealer charm (call_charm − put_charm) per strike, pushed on the page's
                       socket.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- OPTIONS / BOOK subview — each strike's call and put: Schwab's resting book (every
+             OPTIONS_BOOK level summed) and volume today, the summary and the options lean; all
+             served by the option_book panel (push.option_book). -->
+            <div class="sub-pane" data-sub-pane="book">
+              <div class="panel">
+                <div class="panel-h">
+                  <span class="hticker" id="opbTicker">-</span><span class="t">Options Book</span
+                  ><span class="sub" id="opbCtx"></span>
+                  <div class="r">
+                    <span id="opbSrc"></span><span class="prov native">OPTIONS_BOOK</span
+                    ><span class="prov derived">DERIVED</span>
+                  </div>
+                </div>
+                <div class="panel-b" id="opbBody">
+                  <div class="placeholder">
+                    <div class="sm">
+                      Resting bid and ask of each call and put (Schwab's book, every level summed)
+                      and volume today, pushed on the page's socket.
                     </div>
                   </div>
                 </div>
@@ -3356,7 +3720,7 @@
                         type="button"
                         class="tdm-open"
                         data-drill="options"
-                        title="Options · Gamma"
+                        title="Options · Book"
                       >
                         Open tab ›
                       </button>
@@ -3379,6 +3743,7 @@
                       <figcaption></figcaption>
                     </figure>
                     <div class="tdm-rows"></div>
+                    <div class="tdm-lean"></div>
                   </div>
                   <div class="tdm-card panel" id="tdmCardVol">
                     <div class="tdm-card-h">

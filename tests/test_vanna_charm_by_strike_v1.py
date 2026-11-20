@@ -2,8 +2,8 @@
 
 Operator field-inventory audit, 2026-09-13: both wrap ALREADY-canonical, already-tested faucets --
 math_exposure_core.compute_exposures_by_strike's own call_vanna/put_vanna (RC-211's exact
-BS-vanna faucet) and calc.math_levels.compute_charm_by_strike (the same function the forces panel's
-charm_below/charm_above already sum) -- read off the snapshot _publish_levels last
+BS-vanna faucet) and calc.math_levels.compute_charm_by_strike -- read off the snapshot
+_publish_levels last
 published (the vanna_rows/charm_rows of the PublishedLevels record it holds),
 zero extra vendor calls or pricing. These tests
 prove the wiring, not the math (bs_vanna_array/bs_charm_array/compute_charm_by_strike are proven

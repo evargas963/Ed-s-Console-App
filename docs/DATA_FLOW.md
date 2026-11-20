@@ -197,6 +197,20 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   set, taken only while all six arrived in this hold (`option_contract.streamed_greek_set`,
   `capture.Daemon.option_record`). Enforced by: `tests/test_data_path_option_quote_time_v1.py`,
   `tests/test_data_path_rest_one_connection_v1.py`.
+- **Options Book** (each contract's resting book and volume, their summary and the options lean).
+  One expiry of the published chain with each contract's newest values (`push.chain.expiry_asked`,
+  the chain screens' own), each contract's newest OPTIONS_BOOK (`order_flow.state.newest_book`) and
+  the live price → the one producer, `calc.option_book` (a Calculator: each side's levels summed,
+  the summary over the rows whose call and put both have a book, the lean; registered in
+  `docs/derived_register.md`) → the `option_book` panel (`push.option_book.option_book`, every text
+  formatted there), sent again on each quote or book of the ticker or its contracts
+  (`server.FLOW_PANELS`, `server.OPTION_PANELS`) and each publication of its levels
+  (`server.LEVELS_PANELS`). Its lifecycle owner is the order-flow state's books (State) and the
+  levels producer's chain; when the OPTIONS_BOOK feed stops, the last books stand and the panel says
+  NOT LIVE or OFFLINE with why and the oldest book's time; a contract with no book held is "-",
+  never 0. Read by the Options Book subview at the selected expiry and the Trade Desk's Options
+  Positioning card (its gauge) at the front one. Enforced by: `tests/test_option_book_v1.py`,
+  `tests/e2e/console-options-book.spec.js`.
 - **The option contracts streamed (the option rule).** `capture.Daemon.pick_options` orders what is
   asked on LEVELONE_OPTIONS and OPTIONS_BOOK: the Flow panel's contract, then every ticker's kept
   contracts, then every contract of the tickers a page shows, then every other ticker's; each
@@ -242,12 +256,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_records_stand_v1.py`, `tests/test_canonical_gex_input_validity_v1.py`,
   `tests/test_capture_store_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once`).
-- **Levels** (walls, flip, GEX, vanna, charm, max pain, the forces). One producer,
-  `server._publish_levels`, called only on the pricing thread (`server._price_chain`): for each
-  delivered chain, for a reprice at most once a second (`server.REPRICE_EVERY_SEC`) while a page
-  shows the ticker and its quotes or contracts tick, and at startup from the newest stored captures
-  (`state.capture_store`) → `state/level_store.py` → the panels of `server.LEVELS_PANELS`, marked
-  changed by `server._levels_changed`. Streamed values are laid over the chain
+- **Levels** (walls, flip, GEX, vanna, charm, max pain). One producer, `server._publish_levels`,
+  called only on the pricing thread (`server._price_chain`): for each delivered chain, for a reprice
+  at most once a second (`server.REPRICE_EVERY_SEC`) while a page shows the ticker and its quotes or
+  contracts tick, and at startup from the newest stored captures (`state.capture_store`) →
+  `state/level_store.py` → the panels of `server.LEVELS_PANELS`, marked changed by
+  `server._levels_changed`. Streamed values are laid over the chain
   (`calc.math_exposure_core.overlay_streamed_contract_fields`). After the ticker's option close the
   chain is valued at that close (`time_et.valuation_instant`) and the close values stand until the
   next open. The verdict (`push.verdict.terrain_staleness`): LIVE, CLOSE, STALE past two of the
@@ -281,9 +295,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   are stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
   `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
   `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
-  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of
-  the span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`).
-  Enforced by: `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
+  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of the
+  span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`). Enforced by:
+  `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
   chain expiry date within a year (`ChainSweep.fetch_markets`) → the bus (`markets.<date>`) → the
   Recorder (`stream_markets_raw`) and `time_et.record_markets`. At startup the recorded answers are

@@ -9,6 +9,7 @@ Structures each ask it with their own expiry.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import live_market_plane as lmp
@@ -18,8 +19,9 @@ from calc.terrain_engine import LadderRow, chain_ladder, nearest_strike
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
 from option_contract import OptionContract, chain_row
 from push.spot import resolve_spot
-from push.verdict import terrain_cache_get
+from push.verdict import LevelsVerdict, terrain_cache_get
 from state import level_store
+from state.level_store import PublishedLevels
 from time_et import ct_label, et_date_str_from_ts_utc
 
 # the program's one log (capture._start_log: the day's file and the window)
@@ -144,6 +146,53 @@ def _listing(contracts: list[OptionContract]) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class ExpiryAsked:
+    """One expiry of a ticker's chain as a panel's `params` ask for it (expiry_asked).
+
+    The levels these come from (None before the first) and their verdict; the expiry (the asked
+    one, else the chain's front one; None with neither); its contracts with the newest values
+    Schwab sent (_newest), or why there are none (`reason`, the contracts then empty).
+    """
+
+    held: PublishedLevels | None
+    verdict: LevelsVerdict
+    expiry: str | None
+    contracts: list[OptionContract]
+    reason: str | None
+
+
+def expiry_asked(t: str, now: float, params: dict[str, Any]) -> ExpiryAsked:
+    """Return the expiry `params` ask for of ticker `t`'s chain at `now`, with its contracts.
+
+    `params["expiry"]`: the selected expiry, or None for the chain's front one, the levels' first
+    listed. Each contract as the levels priced it, with the newest values Schwab sent since: the
+    screen shows Schwab's value when it arrives, not at the next pricing.
+    """
+    expiry = params.get("expiry")
+    # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
+    held, verdict = terrain_cache_get(t, now)
+    listed = held.snap.expiries if held is not None else None
+    requested = expiry.strip()[:10] if isinstance(expiry, str) and expiry.strip() else None
+    resolved = requested or (listed[0] if listed else None)
+
+    def why(reason: str) -> ExpiryAsked:
+        return ExpiryAsked(held, verdict, resolved, [], reason)
+
+    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
+        return why(f"expiry {expiry!r} is not an expiry date or null")
+    if held is None:
+        return why(level_store.chain_failure(t) or NO_CHAIN_YET)
+    if not held.priced_chain:
+        return why(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
+    if resolved is None:
+        return why("no listed expiry for this ticker")
+    priced = [c for c in held.priced_chain if c.expiry == resolved]
+    if not priced:
+        return why(f"the chain lists no contracts for {resolved}")
+    return ExpiryAsked(held, verdict, resolved, _newest(priced, held.computed_ts_utc, now), None)
+
+
 def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return one expiry of the ticker's full chain at `now`, from the chain the daemon delivered.
 
@@ -158,14 +207,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     reason when no chain is held. `ticker` is the levels' own key.
     """
     t = ticker
-    expiry = params.get("expiry")
-    # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
-    held, verdict = terrain_cache_get(t, now)
-    listed = held.snap.expiries if held is not None else None
-    requested = expiry.strip()[:10] if isinstance(expiry, str) and expiry.strip() else None
-    resolved_expiry = requested or (listed[0] if listed else None)
-
-    def _unavailable(reason: str) -> dict[str, Any]:
+    asked = expiry_asked(t, now, params)
+    held, verdict, resolved_expiry = asked.held, asked.verdict, asked.expiry
+    if asked.reason is not None or held is None or resolved_expiry is None:
         return {
             "ticker": t,
             "spot": None,
@@ -173,23 +217,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             "ladder": [],
             "status": "unavailable",
             **verdict,
-            "scope": {"kind": "unavailable", "reason": reason},
+            "scope": {"kind": "unavailable", "reason": asked.reason},
         }
-
-    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
-        return _unavailable(f"expiry {expiry!r} is not an expiry date or null")
-    if held is None:
-        return _unavailable(level_store.chain_failure(t) or NO_CHAIN_YET)
-    if not held.priced_chain:
-        return _unavailable(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
-    if resolved_expiry is None:
-        return _unavailable("no listed expiry for this ticker")
-    # the contracts as the levels priced them (_publish_levels), each with the newest values
-    # Schwab sent since: the screen shows Schwab's value when it arrives, not at the next pricing
-    priced = [c for c in held.priced_chain if c.expiry == resolved_expiry]
-    if not priced:
-        return _unavailable(f"the chain lists no contracts for {resolved_expiry}")
-    response_contracts = _newest(priced, held.computed_ts_utc, now)
+    response_contracts = asked.contracts
     shown = _shown(response_contracts)
     live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)

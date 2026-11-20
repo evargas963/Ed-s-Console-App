@@ -33,7 +33,7 @@ def book(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     return order_flow_microstructure(ticker, venue_asked(params), now)
 
 
-def _when_age(when: str | None, sec: float | None) -> str | None:
+def when_age(when: str | None, sec: float | None) -> str | None:
     """Return a clock's time and its age as the screen shows them ("Fri 09/25 06:59 PM CT · 4s").
 
     Either alone when the other is missing; None when both are.
@@ -55,8 +55,8 @@ def stamp_book_times(payload: dict[str, Any]) -> None:
     payload["book_age_text"] = (
         None if ages["book_age_sec"] is None else age_text(ages["book_age_sec"])
     )
-    payload["book_when_age_text"] = _when_age(payload["book_time_ct"], ages["book_age_sec"])
-    payload["quote_when_age_text"] = _when_age(payload["quote_time_ct"], ages["quote_age_sec"])
+    payload["book_when_age_text"] = when_age(payload["book_time_ct"], ages["book_age_sec"])
+    payload["quote_when_age_text"] = when_age(payload["quote_time_ct"], ages["quote_age_sec"])
 
 
 def _no_book_text(label: str, outage: str | None, ticker: str, venue: str) -> str | None:

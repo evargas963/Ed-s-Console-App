@@ -35,10 +35,10 @@ jobs:
           - liquidity_models
           - liquidity_value_engine
           - math_exposure_core
-          - math_forces
           - math_levels
           - math_volatility
           - micro_structure
+          - option_book
           - order_flow
           - terrain_atr
           - terrain_engine

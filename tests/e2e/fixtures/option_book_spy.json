@@ -1,0 +1,1112 @@
+{
+  "auto": {
+    "ticker": "SPY",
+    "available": true,
+    "expiry": "2026-11-19",
+    "spot": 736.695,
+    "spot_text": "736.70",
+    "levels_state": "LIVE",
+    "levels_stale_reason": "",
+    "levels_age_text": "0s",
+    "levels_time_ct": "Thu 11/19 09:01 AM CT",
+    "view": {
+      "centre": 737.0,
+      "centre_text": "737",
+      "note": null
+    },
+    "rows": [
+      {
+        "strike": 742.0,
+        "strike_text": "742",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00742000",
+          "bid": 3091.0,
+          "ask": 2709.0,
+          "volume": 32283.0,
+          "bid_text": "3,091",
+          "ask_text": "2,709",
+          "volume_text": "32,283",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00742000",
+          "bid": 350.0,
+          "ask": 413.0,
+          "volume": 2059.0,
+          "bid_text": "350",
+          "ask_text": "413",
+          "volume_text": "2,059",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 741.0,
+        "strike_text": "741",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00741000",
+          "bid": 3611.0,
+          "ask": 1708.0,
+          "volume": 30254.0,
+          "bid_text": "3,611",
+          "ask_text": "1,708",
+          "volume_text": "30,254",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00741000",
+          "bid": 327.0,
+          "ask": 351.0,
+          "volume": 2819.0,
+          "bid_text": "327",
+          "ask_text": "351",
+          "volume_text": "2,819",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 740.0,
+        "strike_text": "740",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00740000",
+          "bid": 1752.0,
+          "ask": 2370.0,
+          "volume": 73239.0,
+          "bid_text": "1,752",
+          "ask_text": "2,370",
+          "volume_text": "73,239",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00740000",
+          "bid": 233.0,
+          "ask": 480.0,
+          "volume": 9194.0,
+          "bid_text": "233",
+          "ask_text": "480",
+          "volume_text": "9,194",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 739.0,
+        "strike_text": "739",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00739000",
+          "bid": 2107.0,
+          "ask": 2535.0,
+          "volume": 47064.0,
+          "bid_text": "2,107",
+          "ask_text": "2,535",
+          "volume_text": "47,064",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00739000",
+          "bid": 714.0,
+          "ask": 852.0,
+          "volume": 18069.0,
+          "bid_text": "714",
+          "ask_text": "852",
+          "volume_text": "18,069",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 738.0,
+        "strike_text": "738",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00738000",
+          "bid": 1951.0,
+          "ask": 425.0,
+          "volume": 43971.0,
+          "bid_text": "1,951",
+          "ask_text": "425",
+          "volume_text": "43,971",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00738000",
+          "bid": 705.0,
+          "ask": 727.0,
+          "volume": 30301.0,
+          "bid_text": "705",
+          "ask_text": "727",
+          "volume_text": "30,301",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 737.0,
+        "strike_text": "737",
+        "summed": true,
+        "marks": [
+          {
+            "kind": "spot",
+            "label": "SPOT"
+          }
+        ],
+        "call": {
+          "symbol": "SPY   261119C00737000",
+          "bid": 1098.0,
+          "ask": 927.0,
+          "volume": 26484.0,
+          "bid_text": "1,098",
+          "ask_text": "927",
+          "volume_text": "26,484",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00737000",
+          "bid": 507.0,
+          "ask": 1163.0,
+          "volume": 43264.0,
+          "bid_text": "507",
+          "ask_text": "1,163",
+          "volume_text": "43,264",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 736.0,
+        "strike_text": "736",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00736000",
+          "bid": 1270.0,
+          "ask": 1389.0,
+          "volume": 14842.0,
+          "bid_text": "1,270",
+          "ask_text": "1,389",
+          "volume_text": "14,842",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00736000",
+          "bid": 895.0,
+          "ask": 1547.0,
+          "volume": 45098.0,
+          "bid_text": "895",
+          "ask_text": "1,547",
+          "volume_text": "45,098",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 735.0,
+        "strike_text": "735",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00735000",
+          "bid": 832.0,
+          "ask": 180.0,
+          "volume": 8098.0,
+          "bid_text": "832",
+          "ask_text": "180",
+          "volume_text": "8,098",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00735000",
+          "bid": 990.0,
+          "ask": 1099.0,
+          "volume": 41554.0,
+          "bid_text": "990",
+          "ask_text": "1,099",
+          "volume_text": "41,554",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 734.0,
+        "strike_text": "734",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00734000",
+          "bid": 361.0,
+          "ask": 250.0,
+          "volume": 3612.0,
+          "bid_text": "361",
+          "ask_text": "250",
+          "volume_text": "3,612",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00734000",
+          "bid": 1775.0,
+          "ask": 2200.0,
+          "volume": 22587.0,
+          "bid_text": "1,775",
+          "ask_text": "2,200",
+          "volume_text": "22,587",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 733.0,
+        "strike_text": "733",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00733000",
+          "bid": 638.0,
+          "ask": 464.0,
+          "volume": 4328.0,
+          "bid_text": "638",
+          "ask_text": "464",
+          "volume_text": "4,328",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00733000",
+          "bid": 1662.0,
+          "ask": 2551.0,
+          "volume": 25254.0,
+          "bid_text": "1,662",
+          "ask_text": "2,551",
+          "volume_text": "25,254",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 732.0,
+        "strike_text": "732",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00732000",
+          "bid": 441.0,
+          "ask": 474.0,
+          "volume": 2732.0,
+          "bid_text": "441",
+          "ask_text": "474",
+          "volume_text": "2,732",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00732000",
+          "bid": 2914.0,
+          "ask": 2887.0,
+          "volume": 18727.0,
+          "bid_text": "2,914",
+          "ask_text": "2,887",
+          "volume_text": "18,727",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      }
+    ],
+    "scales": {
+      "resting": 3611.0,
+      "volume": 73239.0
+    },
+    "summary": {
+      "summed_text": "11 strikes 732\u2013742: those whose call and put both have a Schwab book",
+      "left_out_text": null,
+      "calls": {
+        "left": 17152.0,
+        "right": 13431.0,
+        "left_share": 0.5608344505117222,
+        "right_share": 0.4391655494882778,
+        "left_text": "17,152",
+        "right_text": "13,431",
+        "left_share_text": "56%",
+        "right_share_text": "44%"
+      },
+      "puts": {
+        "left": 11072.0,
+        "right": 14270.0,
+        "left_share": 0.43690316470681084,
+        "right_share": 0.5630968352931892,
+        "left_text": "11,072",
+        "right_text": "14,270",
+        "left_share_text": "44%",
+        "right_share_text": "56%"
+      },
+      "volume": {
+        "left": 286907.0,
+        "right": 258926.0,
+        "left_share": 0.5256314660344831,
+        "right_share": 0.4743685339655169,
+        "left_text": "286,907",
+        "right_text": "258,926",
+        "left_share_text": "53%",
+        "right_share_text": "47%"
+      }
+    },
+    "lean": {
+      "value": 0.09970850122626296,
+      "value_text": "+0.10",
+      "zone": "Neutral",
+      "zone_index": 2,
+      "needle_deg": 8.973765110363667,
+      "calls": 0.1216689010234444,
+      "calls_text": "+0.12",
+      "puts": 0.12619367058637834,
+      "puts_text": "+0.13",
+      "volume": 0.05126293206896615,
+      "volume_text": "+0.05"
+    },
+    "zones": ["Defensive", "Leaning defensive", "Neutral", "Leaning constructive", "Constructive"],
+    "books_held_text": "22 of 22 contracts shown have a Schwab book",
+    "book_state": "LIVE",
+    "book_outage": null,
+    "book_oldest_text": "oldest book Thu 11/19 09:01 AM CT \u00b7 2s"
+  },
+  "wider": {
+    "ticker": "SPY",
+    "available": true,
+    "expiry": "2026-11-19",
+    "spot": 736.695,
+    "spot_text": "736.70",
+    "levels_state": "LIVE",
+    "levels_stale_reason": "",
+    "levels_age_text": "0s",
+    "levels_time_ct": "Thu 11/19 09:01 AM CT",
+    "view": {
+      "centre": 737.0,
+      "centre_text": "737",
+      "note": null
+    },
+    "rows": [
+      {
+        "strike": 748.0,
+        "strike_text": "748",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00748000",
+          "bid": null,
+          "ask": null,
+          "volume": 18901.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "18,901",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00748000",
+          "bid": null,
+          "ask": null,
+          "volume": 348.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "348",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 747.0,
+        "strike_text": "747",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00747000",
+          "bid": null,
+          "ask": null,
+          "volume": 19945.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "19,945",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00747000",
+          "bid": null,
+          "ask": null,
+          "volume": 673.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "673",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 746.0,
+        "strike_text": "746",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00746000",
+          "bid": null,
+          "ask": null,
+          "volume": 49145.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "49,145",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00746000",
+          "bid": null,
+          "ask": null,
+          "volume": 1260.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "1,260",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 745.0,
+        "strike_text": "745",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00745000",
+          "bid": null,
+          "ask": null,
+          "volume": 40361.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "40,361",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00745000",
+          "bid": null,
+          "ask": null,
+          "volume": 1082.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "1,082",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 744.0,
+        "strike_text": "744",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00744000",
+          "bid": null,
+          "ask": null,
+          "volume": 35167.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "35,167",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00744000",
+          "bid": null,
+          "ask": null,
+          "volume": 1018.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "1,018",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 743.0,
+        "strike_text": "743",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00743000",
+          "bid": null,
+          "ask": null,
+          "volume": 29036.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "29,036",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00743000",
+          "bid": null,
+          "ask": null,
+          "volume": 1206.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "1,206",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 742.0,
+        "strike_text": "742",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00742000",
+          "bid": 3091.0,
+          "ask": 2709.0,
+          "volume": 32283.0,
+          "bid_text": "3,091",
+          "ask_text": "2,709",
+          "volume_text": "32,283",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00742000",
+          "bid": 350.0,
+          "ask": 413.0,
+          "volume": 2059.0,
+          "bid_text": "350",
+          "ask_text": "413",
+          "volume_text": "2,059",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 741.0,
+        "strike_text": "741",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00741000",
+          "bid": 3611.0,
+          "ask": 1708.0,
+          "volume": 30254.0,
+          "bid_text": "3,611",
+          "ask_text": "1,708",
+          "volume_text": "30,254",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00741000",
+          "bid": 327.0,
+          "ask": 351.0,
+          "volume": 2819.0,
+          "bid_text": "327",
+          "ask_text": "351",
+          "volume_text": "2,819",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 740.0,
+        "strike_text": "740",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00740000",
+          "bid": 1752.0,
+          "ask": 2370.0,
+          "volume": 73239.0,
+          "bid_text": "1,752",
+          "ask_text": "2,370",
+          "volume_text": "73,239",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00740000",
+          "bid": 233.0,
+          "ask": 480.0,
+          "volume": 9194.0,
+          "bid_text": "233",
+          "ask_text": "480",
+          "volume_text": "9,194",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 739.0,
+        "strike_text": "739",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00739000",
+          "bid": 2107.0,
+          "ask": 2535.0,
+          "volume": 47064.0,
+          "bid_text": "2,107",
+          "ask_text": "2,535",
+          "volume_text": "47,064",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00739000",
+          "bid": 714.0,
+          "ask": 852.0,
+          "volume": 18069.0,
+          "bid_text": "714",
+          "ask_text": "852",
+          "volume_text": "18,069",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 738.0,
+        "strike_text": "738",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00738000",
+          "bid": 1951.0,
+          "ask": 425.0,
+          "volume": 43971.0,
+          "bid_text": "1,951",
+          "ask_text": "425",
+          "volume_text": "43,971",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00738000",
+          "bid": 705.0,
+          "ask": 727.0,
+          "volume": 30301.0,
+          "bid_text": "705",
+          "ask_text": "727",
+          "volume_text": "30,301",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 737.0,
+        "strike_text": "737",
+        "summed": true,
+        "marks": [
+          {
+            "kind": "spot",
+            "label": "SPOT"
+          }
+        ],
+        "call": {
+          "symbol": "SPY   261119C00737000",
+          "bid": 1098.0,
+          "ask": 927.0,
+          "volume": 26484.0,
+          "bid_text": "1,098",
+          "ask_text": "927",
+          "volume_text": "26,484",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00737000",
+          "bid": 507.0,
+          "ask": 1163.0,
+          "volume": 43264.0,
+          "bid_text": "507",
+          "ask_text": "1,163",
+          "volume_text": "43,264",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 736.0,
+        "strike_text": "736",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00736000",
+          "bid": 1270.0,
+          "ask": 1389.0,
+          "volume": 14842.0,
+          "bid_text": "1,270",
+          "ask_text": "1,389",
+          "volume_text": "14,842",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00736000",
+          "bid": 895.0,
+          "ask": 1547.0,
+          "volume": 45098.0,
+          "bid_text": "895",
+          "ask_text": "1,547",
+          "volume_text": "45,098",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 735.0,
+        "strike_text": "735",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00735000",
+          "bid": 832.0,
+          "ask": 180.0,
+          "volume": 8098.0,
+          "bid_text": "832",
+          "ask_text": "180",
+          "volume_text": "8,098",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00735000",
+          "bid": 990.0,
+          "ask": 1099.0,
+          "volume": 41554.0,
+          "bid_text": "990",
+          "ask_text": "1,099",
+          "volume_text": "41,554",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 734.0,
+        "strike_text": "734",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00734000",
+          "bid": 361.0,
+          "ask": 250.0,
+          "volume": 3612.0,
+          "bid_text": "361",
+          "ask_text": "250",
+          "volume_text": "3,612",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00734000",
+          "bid": 1775.0,
+          "ask": 2200.0,
+          "volume": 22587.0,
+          "bid_text": "1,775",
+          "ask_text": "2,200",
+          "volume_text": "22,587",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 733.0,
+        "strike_text": "733",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00733000",
+          "bid": 638.0,
+          "ask": 464.0,
+          "volume": 4328.0,
+          "bid_text": "638",
+          "ask_text": "464",
+          "volume_text": "4,328",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00733000",
+          "bid": 1662.0,
+          "ask": 2551.0,
+          "volume": 25254.0,
+          "bid_text": "1,662",
+          "ask_text": "2,551",
+          "volume_text": "25,254",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 732.0,
+        "strike_text": "732",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00732000",
+          "bid": 441.0,
+          "ask": 474.0,
+          "volume": 2732.0,
+          "bid_text": "441",
+          "ask_text": "474",
+          "volume_text": "2,732",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 2s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00732000",
+          "bid": 2914.0,
+          "ask": 2887.0,
+          "volume": 18727.0,
+          "bid_text": "2,914",
+          "ask_text": "2,887",
+          "volume_text": "18,727",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 1s"
+        }
+      },
+      {
+        "strike": 731.0,
+        "strike_text": "731",
+        "summed": true,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00731000",
+          "bid": 395.0,
+          "ask": 186.0,
+          "volume": 5016.0,
+          "bid_text": "395",
+          "ask_text": "186",
+          "volume_text": "5,016",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 22s"
+        },
+        "put": {
+          "symbol": "SPY   261119P00731000",
+          "bid": 2024.0,
+          "ask": 2542.0,
+          "volume": 17119.0,
+          "bid_text": "2,024",
+          "ask_text": "2,542",
+          "volume_text": "17,119",
+          "book_live": true,
+          "book_when_text": "Thu 11/19 09:01 AM CT \u00b7 21s"
+        }
+      },
+      {
+        "strike": 730.0,
+        "strike_text": "730",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00730000",
+          "bid": null,
+          "ask": null,
+          "volume": 2351.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "2,351",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00730000",
+          "bid": null,
+          "ask": null,
+          "volume": 29813.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "29,813",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 729.0,
+        "strike_text": "729",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00729000",
+          "bid": null,
+          "ask": null,
+          "volume": 1493.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "1,493",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00729000",
+          "bid": null,
+          "ask": null,
+          "volume": 16445.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "16,445",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 728.0,
+        "strike_text": "728",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00728000",
+          "bid": null,
+          "ask": null,
+          "volume": 838.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "838",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00728000",
+          "bid": null,
+          "ask": null,
+          "volume": 20633.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "20,633",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 727.0,
+        "strike_text": "727",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00727000",
+          "bid": null,
+          "ask": null,
+          "volume": 649.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "649",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00727000",
+          "bid": null,
+          "ask": null,
+          "volume": 21487.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "21,487",
+          "book_live": null,
+          "book_when_text": null
+        }
+      },
+      {
+        "strike": 726.0,
+        "strike_text": "726",
+        "summed": false,
+        "marks": [],
+        "call": {
+          "symbol": "SPY   261119C00726000",
+          "bid": null,
+          "ask": null,
+          "volume": 514.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "514",
+          "book_live": null,
+          "book_when_text": null
+        },
+        "put": {
+          "symbol": "SPY   261119P00726000",
+          "bid": null,
+          "ask": null,
+          "volume": 10518.0,
+          "bid_text": null,
+          "ask_text": null,
+          "volume_text": "10,518",
+          "book_live": null,
+          "book_when_text": null
+        }
+      }
+    ],
+    "scales": {
+      "resting": 3611.0,
+      "volume": 73239.0
+    },
+    "summary": {
+      "summed_text": "12 strikes 731\u2013742: those whose call and put both have a Schwab book",
+      "left_out_text": "11 rows shown without a Schwab book on both sides: not summed",
+      "calls": {
+        "left": 17547.0,
+        "right": 13617.0,
+        "left_share": 0.5630535232961109,
+        "right_share": 0.4369464767038891,
+        "left_text": "17,547",
+        "right_text": "13,617",
+        "left_share_text": "56%",
+        "right_share_text": "44%"
+      },
+      "puts": {
+        "left": 13096.0,
+        "right": 16812.0,
+        "left_share": 0.437876153537515,
+        "right_share": 0.5621238464624849,
+        "left_text": "13,096",
+        "right_text": "16,812",
+        "left_share_text": "44%",
+        "right_share_text": "56%"
+      },
+      "volume": {
+        "left": 291923.0,
+        "right": 276045.0,
+        "left_share": 0.5139779001633895,
+        "right_share": 0.4860220998366105,
+        "left_text": "291,923",
+        "right_text": "276,045",
+        "left_share_text": "51%",
+        "right_share_text": "49%"
+      }
+    },
+    "lean": {
+      "value": 0.09277017994799024,
+      "value_text": "+0.09",
+      "zone": "Neutral",
+      "zone_index": 2,
+      "needle_deg": 8.34931619531912,
+      "calls": 0.1261070465922218,
+      "calls_text": "+0.13",
+      "puts": 0.12424769292496991,
+      "puts_text": "+0.12",
+      "volume": 0.027955800326778975,
+      "volume_text": "+0.03"
+    },
+    "zones": ["Defensive", "Leaning defensive", "Neutral", "Leaning constructive", "Constructive"],
+    "books_held_text": "24 of 46 contracts shown have a Schwab book",
+    "book_state": "LIVE",
+    "book_outage": null,
+    "book_oldest_text": "oldest book Thu 11/19 09:01 AM CT \u00b7 22s"
+  }
+}
