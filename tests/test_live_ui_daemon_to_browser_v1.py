@@ -69,6 +69,7 @@ from numeric_contract import compact_text, count_text, dollars_text, strike_text
 from option_contract import read_chain
 from push import chain as push_chain
 from push import verdict as push_verdict
+from push.spot import resolve_spot
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from
@@ -841,16 +842,33 @@ def _published_rows(tk, key) -> list:
     """Return the rows the levels producer published for `tk` (its vanna_rows or charm_rows).
 
     As the panel serves them: each by name, with its strike as listed and its value as the screen
-    shows it (compact_text: delta-shares).
+    shows it (compact_text: delta-shares), and its mark (_marks: the price's strike of these rows).
     """
+    rows = getattr(level_store.published_levels(tk), key)
+    marks = _marks(tk, [r.strike for r in rows])
     return [
         {
             "strike": r.strike,
             "value": r.value,
             "strike_text": strike_text(r.strike),
             "text": compact_text(r.value),
+            "marks": marks(r.strike),
         }
-        for r in getattr(level_store.published_levels(tk), key)
+        for r in rows
+    ]
+
+
+def _marks(tk, listed, **walls):
+    """Return a row's marks by its strike, worked out here, each with its name on the screen.
+
+    The listed strike nearest the live price, then the `walls` given (call, put).
+    """
+    live = resolve_spot(tk, now=time_et.now())[0]
+    spot = None if live is None else min(listed, key=lambda k: abs(k - live))
+    at = {"spot": spot, **walls}
+    labels = {"spot": "SPOT", "call": "Call wall", "put": "Put wall"}
+    return lambda strike: [
+        {"kind": kind, "label": labels[kind]} for kind, k in at.items() if k == strike
     ]
 
 
@@ -1198,8 +1216,11 @@ def _per_strike(tk) -> list:
     """Today's rows (strike, net GEX $ per 1%, volume) the producer published for `tk`.
 
     As the panel serves them: each by name, with its strike and its two numbers as the screen
-    shows them.
+    shows them, and its marks (_marks: the price's strike, the published walls).
     """
+    snap = level_store.published_levels(tk).snap
+    rows = snap.per_strike["all"]
+    marks = _marks(tk, [r.strike for r in rows], call=snap.call_wall, put=snap.put_wall)
     return [
         {
             "strike": r.strike,
@@ -1208,8 +1229,9 @@ def _per_strike(tk) -> list:
             "strike_text": strike_text(r.strike),
             "text": dollars_text(r.value),
             "volume_text": count_text(r.volume),
+            "marks": marks(r.strike),
         }
-        for r in level_store.published_levels(tk).snap.per_strike["all"]
+        for r in rows
     ]
 
 

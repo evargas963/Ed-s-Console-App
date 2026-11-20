@@ -168,26 +168,34 @@ def terrain_strikes_payload(
     }
     for sc in ("all", "near", "far"):
         windows[sc][1]["max_abs_with_prior"] = _scale_with_prior(windows[sc], migration[sc])
+    # every row's marks, in every list: the strike at the price (of every expiry's strikes) and
+    # the walls of the levels these rows are
+    marks = {
+        "spot": nearest_strike([r.strike for r in today["all"]], live_spot),
+        "call": walls[0],
+        "put": walls[1],
+    }
     return {
         "ticker": tk,
-        # each strike's net GEX $ and volume, by name, with their texts (served)
-        "today": {sc: [served(r, "gex") for r in windows[sc][0]] for sc in ("all", "near", "far")},
+        # each strike's net GEX $ and volume, by name, with their texts and marks (served)
+        "today": {
+            sc: [served(r, "gex", marks) for r in windows[sc][0]] for sc in ("all", "near", "far")
+        },
         # the Chart view's DEX and OI profiles: each measure's window (terrain_engine
         # _per_strike_measure_rows) and its largest-magnitude row, on screen or not (the label)
         "measures": {
             m: {
-                "rows": [served(r, m) for r in windows[m][0]],
+                "rows": [served(r, m, marks) for r in windows[m][0]],
                 "view": windows[m][1],
-                "max_abs_row": max_abs_served(rows, m),
+                "max_abs_row": max_abs_served(rows, m, marks),
             }
             for m, rows in measures.items()
         },
         # each scope's window: its centre strike and the largest |value| drawn
         "views": {sc: windows[sc][1] for sc in ("all", "near", "far")},
         "today_side_sums": _side_sums(today["all"], live_spot),
-        "spot_strike": nearest_strike([r.strike for r in today["all"]], live_spot),
         # the row with the largest net GEX magnitude, on screen or not (the chart labels it)
-        "max_abs_row": max_abs_served(today["all"], "gex"),
+        "max_abs_row": max_abs_served(today["all"], "gex", marks),
         "migration": {sc: _shown_scope(m) for sc, m in migration.items()},
         # the call wall, put wall and gamma flip today against the prior day's own, each with its
         # texts as the screen shows them

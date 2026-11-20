@@ -1416,7 +1416,7 @@ test.describe("Trade Desk renders served values", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     await intercept(page);
     // induced: SPY's real rows with today's GEX and volume of the strike at the price (757) not known
-    const K = STRIKES.spot_strike;
+    const K = STRIKES.today.all.find((r) => r.marks.some((m) => m.kind === "spot")).strike;
     const today = STRIKES.today.all.map((r) =>
       r.strike === K
         ? {
@@ -1426,6 +1426,7 @@ test.describe("Trade Desk renders served values", () => {
             volume: null,
             text: null,
             volume_text: null,
+            marks: r.marks,
           }
         : r,
     );
@@ -1457,6 +1458,30 @@ test.describe("Trade Desk renders served values", () => {
     expect(await row.locator(".gbs-bar").evaluate((el) => el.style.width)).toBe("0%");
     await expect(row.locator(".mig-ghost")).toHaveCount(0);
     expect(errors).toEqual([]);
+  });
+
+  test("Right Now: each row draws the marks the server serves it (the price's strike, the walls)", async ({
+    page,
+  }) => {
+    await intercept(page);
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "right-now");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#tdMigration .gbs-k")).toHaveText(listed(STRIKES));
+    // SPY's real rows, high strikes on top: 757 the price's strike, 760 the put wall
+    const served = STRIKES.today.all.slice().reverse();
+    expect(served.filter((r) => r.marks.length).map((r) => r.strike)).toEqual([760, 757]);
+    const rows = page.locator("#tdMigration .mig-row");
+    for (let i = 0; i < served.length; i++) {
+      const marks = served[i].marks;
+      await expect(rows.nth(i).locator(".mig-mark")).toHaveText(marks.map((m) => m.label));
+      await expect(rows.nth(i)).toHaveClass(
+        ["gbs-row", "mig-row"].concat(marks.map((m) => "mark-" + m.kind)).join(" "),
+      );
+    }
   });
 
   test("Right Now: a panel landing after a scope change draws only the new window", async ({
