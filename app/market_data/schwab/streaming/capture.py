@@ -614,7 +614,9 @@ class Daemon:
     def status(self, now: float) -> dict[str, Any]:
         """Return what the console and browsers are told every second (live_ui's beat).
 
-        It is taken at `now`, which the header shows as `clock_ct` and `day_ct`.
+        It is taken at `now`, which the header shows as `clock_ct` and `day_ct`. It carries the
+        console's counts of the bus records it failed to apply and of its tick callback's
+        failures (console_feed.Feed).
         """
         # open while a stream exists and Schwab sent a frame within DEAD_SEC; why not, only when not
         socket_open = self.connection.socket_open(now)
@@ -633,6 +635,8 @@ class Daemon:
             "health": self.health.report(now),
             "writer": self.writer.status() if self.writer is not None else None,
             "sign_in": sign_in_line(self.chains.waiting) if self.chains is not None else None,
+            "apply_failures": console_feed.FEED.apply_failures,
+            "tick_failures": console_feed.FEED.tick_failures,
         }
 
     async def run(self, schwab_client: Callable[[], Client], stop: asyncio.Event) -> None:
