@@ -232,8 +232,8 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `server._publish_price_levels`, from the bar store's bars after each bar, for the market's session
   (`time_et.market_session_date`) → `state/price_level_store.py` → the `levels` panel
   (`push.levels.levels_payload`) and the liquidity zones (`push.liquidity.liquidity_snapshot`). The
-  `levels` panel is sent again with each price row (`server.PRICED_PANELS`), since each level's
-  distance is from the live price. What the Trade Desk chart draws from them is served whole: the
+  `levels` panel and the liquidity zones are sent again with each price row
+  (`server.PRICED_PANELS`), since each level's distance and each zone's side are from the live price. What the Trade Desk chart draws from them is served whole: the
   prior session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the
   volume profile's POC label (`volume_profile.poc_label`).
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each

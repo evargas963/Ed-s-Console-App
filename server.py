@@ -1900,6 +1900,6 @@ FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain", "option_book")
 #: the Options Book
 OPTION_PANELS = ("contract", "chain", "option_book")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
-#: they are measured from; today's gap and open): the socket sends them again with each of its
-#: price rows
-PRICED_PANELS = ("levels", "experimental")
+#: they are measured from; today's gap and open; each zone's side of the price and the zones
+#: nearest it): the socket sends them again with each of its price rows
+PRICED_PANELS = ("levels", "experimental", "liquidity")
