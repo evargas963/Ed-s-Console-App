@@ -1595,7 +1595,7 @@
           lastCandle: (function (d) {
             return d.length ? d[d.length - 1] : null;
           })(candles.data()),
-          // and its volume point (no value: no volume bar drawn)
+          // the newest volume bar drawn (a candle with no volume has none)
           lastVolume: (function (d) {
             return d.length ? d[d.length - 1] : null;
           })(volume.data()),
