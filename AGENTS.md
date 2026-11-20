@@ -38,13 +38,14 @@ breaks it stops and goes to the operator.
 
 Read before writing a change: the parts it touches of `docs/DATA_FLOW.md` (the data and its
 producers), `docs/ARCHITECTURE.md` (where code lives), `ACTIVE_PROGRAM.md` (the work order) and
-`docs/PRACTICES.md` (the Schwab field list). Rules for one area load with its files
-(`.claude/rules/`); procedures are skills (`.claude/skills/`).
+`docs/SOURCES.md` (the source documents and the Schwab field list). Rules for one area load with its
+files (`.claude/rules/`); procedures are skills (`.claude/skills/`).
 
-Every requirement in this file's sections after the Shared rules (whose Standard of care is
-judgment, not things to build), in `.claude/rules/` and in `docs/DATA_FLOW.md` names what enforces
-it: a test, hook or required check, or "no machine check" and the item in `ACTIVE_PROGRAM.md` (an
-ENF item or STANDARD-CHECKS) that builds one. Enforced by: no machine check — ENF-12.
+Every requirement in this file's sections after the Shared rules (whose Standard of care the
+numbered rules hold, each naming the items it serves), in `.claude/rules/` and in
+`docs/DATA_FLOW.md` names what enforces it: a test, hook or required check, or "no machine check"
+and the item in `ACTIVE_PROGRAM.md` (an ENF item or STANDARD-CHECKS) that builds one. Enforced by:
+no machine check — ENF-12.
 
 ## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
 
@@ -76,20 +77,31 @@ Every value has exactly one producer and any number of consumers.
 
 ### Standard of care
 
-Hold EdWebConsole to how a financial institution handles systems with real money on the line. These
-are judgments to apply to every proposal, not things to build:
+Hold EdWebConsole to how a financial institution handles systems with real money on the line (BCBS
+239: one authoritative source; accurate, complete and timely data; every difference explained).
+These are judgments to apply to every proposal; the rules below say how each is held.
 
-- System of record: Schwab is the statement. Our data matches it, and any difference is reported,
-  never plugged.
-- Records stand: received data is never overwritten or deleted. A correction is a new, labeled
-  entry. Data is deleted only by the keep rule Ed sets.
-- Unknowns surface: an unknown shows as unknown, never estimated or filled in.
-- Change control: no change reaches production without Ed's approval, and one approval covers the
-  change.
-- Verification: the agent that builds a change verifies it end to end and answers for it, with the
-  test suite in CI as the check (operator 2026-11-05: "you and you alone are responsible for
-  auditing and fixing end to end"; reviewers are not used until it is shown they catch what needs to
-  be caught).
+1. System of record: Schwab is the statement. Our data matches it, and any difference is reported,
+   never plugged.
+2. One producer per value: each Schwab field is read once, where it arrives; each derived value is
+   computed once, by its one producer.
+3. As sent: Schwab's data is taken as Schwab sends it; only what Schwab does not send is derived,
+   and each derived value is in the register.
+4. A wrong number is worse than "-": an unknown shows as unknown, never a fallback, default,
+   estimate or substitute.
+5. Live and honest: every value shows its time; a value that stops stands marked with its age, and
+   the header says OFFLINE during an outage. How live the screen is gets measured, not assumed.
+6. Records stand: received data is never overwritten or deleted. A correction is a new, labeled
+   entry. Data is deleted only by the keep rule Ed sets.
+7. Nothing is dropped silently: every value left out is counted and said, and no error is swallowed.
+8. The page draws what it is served; it computes nothing.
+9. Fixed at the source, end to end, Schwab to the screen: never a patch, wrapper or fallback.
+10. Everything is repo wide, and every ticker is treated the same.
+11. Change control: a change reaches production once its required checks pass on real data (a test
+    that failed before passes after, CI green, the screen checked); Ed decides what is his. The
+    agent that builds a change verifies it end to end and answers for it. Credentials are protected.
+12. Facts rest on source documents: what Schwab sends, accepts or limits is settled by Schwab's own
+    documents, and a limit not found there is our defect until shown otherwise.
 
 ### EdWebConsole requirements
 
@@ -160,20 +172,20 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
 `pytest-windows` (`.github/workflows/pytest.yml`) job. "(locks)" means it runs in
 `.github/workflows/locks.yml`, a required job too.
 
-1. **Simple.** Fewest files, functions and hops that do the job. No prose in code: history,
-   incidents and dates go in the commit message. No patches: a defect is fixed where it is produced,
-   by changing or deleting that code, never by a guard, wrapper, flag, special case or check around
-   it; if that takes a restructure, the restructure is the fix. Every fix is end to end: Schwab to
-   the screen. Nothing new (process, cache, helper, file, check) without a job its existing owner
-   cannot do, shown in the PR; an existing piece that cannot show one is removed. A change deletes
-   what it replaces, in the same PR; a register, audit, report or check lives only while it has a
-   job, and once answered, it is deleted. Enforced by: `tools/check_end_to_end.py` in `locks`, over
-   the whole repository (every patch shape of product code counted on the base and the head) and on
-   each line a change adds (in force); that a defect is fixed at its source — the builder's own
-   audit (rule 14), no machine check; two constructs `check_end_to_end` allows: the running total
-   `d[k] = d.get(k, 0) + x` (the sum of nothing is 0, a real value), and the program's port setting,
-   exactly `os.environ.get("<name>", "<digits>")` for `ED_CONSOLE_PORT`, the one port the program
-   listens on, with its written default, which a test points at a free port of its own
+1. **Simple** (serves 9). Fewest files, functions and hops that do the job. No prose in code:
+   history, incidents and dates go in the commit message. No patches: a defect is fixed where it is
+   produced, by changing or deleting that code, never by a guard, wrapper, flag, special case or
+   check around it; if that takes a restructure, the restructure is the fix. Every fix is end to
+   end: Schwab to the screen. Nothing new (process, cache, helper, file, check) without a job its
+   existing owner cannot do, shown in the PR; an existing piece that cannot show one is removed. A
+   change deletes what it replaces, in the same PR; a register, audit, report or check lives only
+   while it has a job, and once answered, it is deleted. Enforced by: `tools/check_end_to_end.py` in
+   `locks`, over the whole repository (every patch shape of product code counted on the base and the
+   head) and on each line a change adds (in force); that a defect is fixed at its source — the
+   builder's own audit (rule 14), no machine check; two constructs `check_end_to_end` allows: the
+   running total `d[k] = d.get(k, 0) + x` (the sum of nothing is 0, a real value), and the program's
+   port setting, exactly `os.environ.get("<name>", "<digits>")` for `ED_CONSOLE_PORT`, the one port
+   the program listens on, with its written default, which a test points at a free port of its own
    (`check_end_to_end.PORT_SETTINGS`); ruff `S110` (a catch-all `except` passed in silence) and
    `BLE` (a catch-all `except` that neither records its traceback nor re-raises) over the whole
    repository (in force); ruff `C90` complexity cap and `TRY` (but `TRY003`, which flags a built-in
@@ -181,25 +193,25 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    `check_end_to_end` is deleted once a standard tool refuses every shape its docstring lists
    (swallowing excepts, missing values replaced or repaired, the page's patch shapes) — the shapes
    left — STANDARD-CHECKS
-2. **Schwab fields as sent.** Not a number: absent, -999, text, NaN or infinity, a value Schwab's
-   own field definition excludes (a negative volume or size). Everything else is taken as sent, a
-   gamma included whatever its size; a reported 0 is 0. No other bounds, no substitution. What
-   Schwab sends or accepts is settled by Schwab's own documentation,
+2. **Schwab fields as sent** (serves 1, 3, 12). Not a number: absent, -999, text, NaN or infinity, a
+   value Schwab's own field definition excludes (a negative volume or size). Everything else is
+   taken as sent, a gamma included whatever its size; a reported 0 is 0. No other bounds, no
+   substitution. What Schwab sends or accepts is settled by Schwab's own documentation,
    `docs/schwab/schwab_market_data_api_spec.pdf` (with
    `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and
    /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf`, cited by section; a limit not
    stated there or in Schwab's own reply is our defect until shown otherwise. Enforced by:
    `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`,
    `tests/test_gamma_as_sent_v1.py` (in force)
-3. **One producer.** Each value served, stored or shown has one producer; consumers carry its result
-   and never select, compute, repair or relabel it. A second authority for the same value is banned
-   whatever it is called: helper, parser, resolver or cache. One module reads each Schwab field.
-   Each value is received once: what Schwab pushes (Schwab Streamer API §1.5, delivery Change, Whole
-   or All Sequence) is taken from the push and never asked for again, and REST is asked only for
-   what the stream does not send; where two endpoints send the same field, the pushed one is its
-   producer. Open interest is the exception: the OCC's once-a-day figure, its producer the chain for
-   every contract, which holds the day's figure all day, while the stream's OPEN_INTEREST arrives
-   near 06:30 ET and for some contracts never updates. Enforced by:
+3. **One producer** (serves 2). Each value served, stored or shown has one producer; consumers carry
+   its result and never select, compute, repair or relabel it. A second authority for the same value
+   is banned whatever it is called: helper, parser, resolver or cache. One module reads each Schwab
+   field. Each value is received once: what Schwab pushes (Schwab Streamer API §1.5, delivery
+   Change, Whole or All Sequence) is taken from the push and never asked for again, and REST is
+   asked only for what the stream does not send; where two endpoints send the same field, the pushed
+   one is its producer. Open interest is the exception: the OCC's once-a-day figure, its producer
+   the chain for every contract, which holds the day's figure all day, while the stream's
+   OPEN_INTEREST arrives near 06:30 ET and for some contracts never updates. Enforced by:
    `tests/test_data_path_rest_one_connection_v1.py`: a contract Schwab streams is not asked for on
    /quotes and takes the stream's Greeks as one set, and an option record ends with its connection
    (in force); a streamed contract's open interest, volume and quote fields, which `/chains` still
@@ -207,18 +219,18 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    ENF-12; `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a second
    reader (in force); the fields already read by more than one module
    (`python -m tools.check_one_reader --list`) — ENF-23
-4. **The page draws; it computes nothing.** Every number, total, choice, comparison and date it
-   shows is served. It gets data only from the one push. Enforced by: ESLint's
+4. **The page draws; it computes nothing** (serves 8). Every number, total, choice, comparison and
+   date it shows is served. It gets data only from the one push. Enforced by: ESLint's
    `no-restricted-globals`: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport
    module, `static/js/ed-core.js`, and `Date` and `Intl` in every page script, every time it shows
    served (`time_et.ct_label`, `ct_ticks`) (`tools/census/eslint.config.mjs`, a count in the census;
    a failing job with LINTERS); and `Math`, `.sort(` and `.reduce(` outside the drawing module
    (`static/js/ed-draw.js`) and the chart (`static/js/ed-tv-chart.js`) (the same config, a count in
    the census)
-5. **The numbers.** Every value comes from its one producer and matches what Schwab sent.
-   Calculations keep every digit and use every contract; rounding happens only on screen. Every
-   value is shown with its time. While it updates it is live; when it stops, for any reason, the
-   last value stands, marked not live with its time and age, and everything computed from it is
+5. **The numbers** (serves 4, 5, 7). Every value comes from its one producer and matches what Schwab
+   sent. Calculations keep every digit and use every contract; rounding happens only on screen.
+   Every value is shown with its time. While it updates it is live; when it stops, for any reason,
+   the last value stands, marked not live with its time and age, and everything computed from it is
    marked too; during a feed outage the header says OFFLINE. While the program's push to the page
    has stopped, the time stands with no age (the page computes none, and the last age served is not
    the age now) and the header says OFFLINE. A value never received, or sent invalid, shows "-".
@@ -226,33 +238,33 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
    `tests/test_gamma_exposure_honest_absence_v1.py`, `tests/test_data_path_heatmap_absent_v1.py` (in
    force)
-6. **One program, one path.** Schwab → program memory → pushed to the page. The databases are
-   history, written by the Recorder, read at startup, after the close and for research, never for a
-   live screen. Enforced by: `sqlite3`, a banned name counted per product file in `locks.ruff.toml`,
-   so no module that does not hold it may start (locks), and refused in every Calculator by
-   import-linter (`locks.imports.toml`); a test that the launcher starts one process; the data path
-   tests of `docs/DATA_FLOW.md` §2 (in force)
-7. **All tickers.** Measure and report across every watchlist ticker, never one. Every ticker is
-   treated the same, but in what Schwab is asked for first: the ticker a page shows comes first on
-   the stream and on the request line, and the others may lag. Enforced by: the order:
+6. **One program, one path** (serves 2, 6). Schwab → program memory → pushed to the page. The
+   databases are history, written by the Recorder, read at startup, after the close and for
+   research, never for a live screen. Enforced by: `sqlite3`, a banned name counted per product file
+   in `locks.ruff.toml`, so no module that does not hold it may start (locks), and refused in every
+   Calculator by import-linter (`locks.imports.toml`); a test that the launcher starts one process;
+   the data path tests of `docs/DATA_FLOW.md` §2 (in force)
+7. **All tickers** (serves 10). Measure and report across every watchlist ticker, never one. Every
+   ticker is treated the same, but in what Schwab is asked for first: the ticker a page shows comes
+   first on the stream and on the request line, and the others may lag. Enforced by: the order:
    `tests/test_option_contract_rule_v1.py`, `tests/test_data_path_rules_v1.py` (in force); the rest
    — no machine check, ENF-05
-8. **Clocks.** Market logic in ET; the page shows Central Time. The market's sessions are Schwab's
-   /markets answers, and before a day's first window the pre-market begins with the first stock
-   trade Schwab streams that was made that day; no session table is typed by hand. Enforced by:
-   `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`, which refuses a clock
+8. **Clocks** (serves 5). Market logic in ET; the page shows Central Time. The market's sessions are
+   Schwab's /markets answers, and before a day's first window the pre-market begins with the first
+   stock trade Schwab streams that was made that day; no session table is typed by hand. Enforced
+   by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`, which refuses a clock
    time typed in product code (in force)
-9. **Real data.** Tests run on captured Schwab data (`tests/fixtures/`) through the real code; no
-   stand-ins, no patches of the code under test. Enforced by: `tools/check_locks.py`: patching lines
-   in tests may not rise (locks); stand-ins left in the tests — STAND-INS
-10. **Only Feed talks to Schwab.** Enforced by: import-linter on `locks.imports.toml` for Schwab's
-    clients (locks); `locks.ruff.toml` banned names, per product file, for `http.client`,
+9. **Real data** (serves 11). Tests run on captured Schwab data (`tests/fixtures/`) through the real
+   code; no stand-ins, no patches of the code under test. Enforced by: `tools/check_locks.py`:
+   patching lines in tests may not rise (locks); stand-ins left in the tests — STAND-INS
+10. **Only Feed talks to Schwab** (serves 2). Enforced by: import-linter on `locks.imports.toml` for
+    Schwab's clients (locks); `locks.ruff.toml` banned names, per product file, for `http.client`,
     `urllib.request` and `websockets` (locks); a call made through Feed's own client
     (`feed/schwab_client.py`) from outside Feed — import-linter's "Only the daemon reaches Feed" in
     `locks.imports.toml` (`tests/test_data_path_only_feed_v1.py`, locks)
-11. **Calculators are pure.** They take `now` and their inputs; they read no clock, database, global
-    or network. Only an entry point (a route, a loop, a stream handler) reads the clock. One clock,
-    repo wide: the computer's clock is read in `time_et.py` alone (`time_et.now`,
+11. **Calculators are pure** (serves 2, 5). They take `now` and their inputs; they read no clock,
+    database, global or network. Only an entry point (a route, a loop, a stream handler) reads the
+    clock. One clock, repo wide: the computer's clock is read in `time_et.py` alone (`time_et.now`,
     `time_et.elapsed`), and the page reads none. Its one timer is the price push's silence watch
     (`static/js/ed-core.js` `PRICE_SILENCE_MS`, 3 s against the program's 1 s beat): it reads no
     time of day and computes no shown value, and marks the push down when nothing arrives, which a
@@ -264,43 +276,44 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     Calculators read no State, Push, Feed, database or network" in `locks.imports.toml`, on each
     Calculator's own import statements (`tests/test_data_path_only_feed_v1.py`, locks); a chain
     through another root module, and a global — no machine check, ENF-09
-12. **Typed records across boundaries.** A value that crosses a module boundary is a dataclass whose
-    states are named constants. Enforced by: pyright 1.1.414 (`requirements-dev.txt`, the census's
-    own pin), strict over the files `pyproject.toml` `[tool.pyright]` lists, in `hardening` (in
-    force on every product module); schwab-py and authlib ship no types, so Feed's calls into them
-    read the stubs in `typings/`, which state only what Feed uses: mypy's stubtest checks each
-    signature against the installed libraries in `hardening`, and every name Feed takes from them is
-    imported for real by Feed's tests (in force)
-13. **Python's guidelines.** PEP 8 and PEP 257 as `ruff format` and ruff's rules read them; PEP 20
-    as the shape. Imports at the top, with no exception: the daemon runs under `python` in its
-    window, so an error while it loads shows there, and `capture_main` imports it at the top. Ruff
-    `PLC0415` holds the rule (locks). One formatter per format (price, Central Time, dollars), on
-    the server (no machine check — ENF-11). Enforced by: `ruff format` and ruff `UP`, `W`, `S110`,
-    `BLE`, `E` (`E501`: lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I`
-    (import order) and the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`,
-    `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`,
-    `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix
-    is unsafe deselected, in `pyproject.toml`, and `SIM115`, whose findings are mostly files held
-    open past the function, which a `with` would close); ruff `TRY` (but `TRY003`, rule 1), `C90`
-    and `PLC0415` as one-way counts (locks)
-14. **The builder answers for the change.** The agent that builds a change audits it end to end,
-    Schwab to the screen, the right amount, not too much and not too little: it moves a value onto
-    the one wire and deletes what it replaces; product code that grows beside the old path, a new
-    helper, label, gate or branch beside it, or a deleted function back under a new name, is a patch
-    and is not merged; a construct a check refused is fixed, never reshaped to pass; coverage of
-    live code is not dropped. Tests are written with the wiring, on real data. No reviewer verdict
-    or review record is required. Enforced by: the test suite in `pytest-full` and `pytest-windows`
-    (in force); the audit itself — no machine check
-15. **Tests are not taken from.** An assertion of a surviving test is not lost, a test is not
-    skipped and deferred-work markers are not added, with no opt-out of any kind. A deleted test
-    goes with the code it tested, and so does an assertion with the function it calls or the value
-    it reads: what is deleted is no longer tested, in the same change. Enforced by:
+12. **Typed records across boundaries** (serves 11). A value that crosses a module boundary is a
+    dataclass whose states are named constants. Enforced by: pyright 1.1.414
+    (`requirements-dev.txt`, the census's own pin), strict over the files `pyproject.toml`
+    `[tool.pyright]` lists, in `hardening` (in force on every product module); schwab-py and authlib
+    ship no types, so Feed's calls into them read the stubs in `typings/`, which state only what
+    Feed uses: mypy's stubtest checks each signature against the installed libraries in `hardening`,
+    and every name Feed takes from them is imported for real by Feed's tests (in force)
+13. **Python's guidelines** (serves 11; the order's best practice). PEP 8 and PEP 257 as
+    `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top, with no
+    exception: the daemon runs under `python` in its window, so an error while it loads shows there,
+    and `capture_main` imports it at the top. Ruff `PLC0415` holds the rule (locks). One formatter
+    per format (price, Central Time, dollars), on the server (no machine check — ENF-11). Enforced
+    by: `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100 columns;
+    `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe
+    fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no
+    fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731`
+    and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and
+    `SIM115`, whose findings are mostly files held open past the function, which a `with` would
+    close); ruff `TRY` (but `TRY003`, rule 1), `C90` and `PLC0415` as one-way counts (locks)
+14. **The builder answers for the change** (serves 9, 11). The agent that builds a change audits it
+    end to end, Schwab to the screen, the right amount, not too much and not too little: it moves a
+    value onto the one wire and deletes what it replaces; product code that grows beside the old
+    path, a new helper, label, gate or branch beside it, or a deleted function back under a new
+    name, is a patch and is not merged; a construct a check refused is fixed, never reshaped to
+    pass; coverage of live code is not dropped. Tests are written with the wiring, on real data. No
+    reviewer verdict or review record is required. Enforced by: the test suite in `pytest-full` and
+    `pytest-windows` (in force); the audit itself — no machine check
+15. **Tests are not taken from** (serves 11). An assertion of a surviving test is not lost, a test
+    is not skipped and deferred-work markers are not added, with no opt-out of any kind. A deleted
+    test goes with the code it tested, and so does an assertion with the function it calls or the
+    value it reads: what is deleted is no longer tested, in the same change. Enforced by:
     `tools/check_integrity.py` in `locks`, a net loss per test by its name, an assertion that names
     a function or a record's key the change deleted from the product not counted
     (`tests/test_check_integrity_v1.py`, locks); the rest — the builder's audit, no machine check
-16. **An agent never changes repository settings:** branch protection, rulesets and required checks
-    are the operator's, applied in GitHub. Enforced by: `tools/operator_law_guard.py`: `gh` by a
-    list, `gh api` only reads (`tests/test_operator_law_guard_action_bans_v1.py`)
+16. **An agent never changes repository settings** (serves 11): branch protection, rulesets and
+    required checks are the operator's, applied in GitHub. Enforced by:
+    `tools/operator_law_guard.py`: `gh` by a list, `gh api` only reads
+    (`tests/test_operator_law_guard_action_bans_v1.py`)
 
 ## Fix what you find
 
