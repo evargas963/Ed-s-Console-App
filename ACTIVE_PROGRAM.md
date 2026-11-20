@@ -93,8 +93,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
     served.
-  - M-22 `book_net_gex` sums only strikes with a known `net_gex_1pct` and does not say how many it
-    left out.
   - M-24 `calc.math_levels.compute_charm_by_strike` returns `{}` with no reason when spot is missing
     (a branch `compute_terrain` makes unreachable: delete it).
   - M-27 `calc.math_levels.gamma_at_price` returns the end point's value for a price outside the
