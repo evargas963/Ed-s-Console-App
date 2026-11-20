@@ -566,7 +566,7 @@ def test_a_thin_side_is_read_over_the_levels_it_has_with_the_weights_renormalize
     assert full["venues"]["NYSE_BOOK"]["levels_text"] is None
 
 
-# ── words: zones, sentence ───────────────────────────────────────────────────────────────────
+# ── words: tilts, sentence ───────────────────────────────────────────────────────────────────
 
 
 def _steady(readout: dict, venue: str, view: str) -> dict:
@@ -577,7 +577,7 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
 
 
 @pytest.mark.parametrize(
-    ("row", "venue", "view", "pct", "zone"),
+    ("row", "venue", "view", "pct", "tilt"),
     [
         (16, "NYSE_BOOK", "1", 0.0, "BALANCED"),
         (16, "NYSE_BOOK", "weighted", 9.524, "BALANCED"),
@@ -590,16 +590,16 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
         (18, "NYSE_BOOK", "1", -76.190, "OFFER_HEAVY"),
     ],
 )
-def test_the_zone_turns_at_10_percent(row, venue, view, pct, zone):
+def test_the_tilt_turns_at_10_percent(row, venue, view, pct, tilt):
     """Schwab's readouts of 2026-11-02 10:00-10:02:30 ET on each side of the 10% line.
 
-    Held ten seconds: 10% exactly (NYSE_BOOK's 1,760 / 1,440 shares) is the side's zone, and
+    Held ten seconds: 10% exactly (NYSE_BOOK's 1,760 / 1,440 shares) is the side's tilt, and
     so is every value past it.
     """
     w = _steady(_replayed()[1][row][1], venue, view)
     # each case is stated to three decimals: half the last one
     assert w["pct"] == pytest.approx(pct, abs=5e-4)
-    assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
+    assert (w["tilt"], w["side_word"]) == (tilt, e.TILT_WORDS[tilt])
 
 
 _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text(encoding="utf-8"))[
@@ -608,29 +608,29 @@ _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text
 
 
 @pytest.mark.parametrize(
-    ("case", "line", "pct", "zone"),
+    ("case", "line", "pct", "tilt"),
     [
         ("under 10", 10.0, 9.996, "BALANCED"),
         ("under -10", -10.0, -9.989, "BALANCED"),
     ],
 )
-def test_the_zones_on_the_books_nearest_the_line(case, line, pct, zone):
+def test_the_tilts_on_the_books_nearest_the_line(case, line, pct, tilt):
     """The two books held, over SPY's whole 2026-11-02 session, nearest the 10% line.
 
     When a venue and view read nearest inside it (9.996%, -9.989%, to three decimals as the other
-    zone tests state them), held ten seconds: just inside the line is not past it.
+    tilt tests state them), held ten seconds: just inside the line is not past it.
     """
     c = _LINES[case]
     readout = _readout({svc: content for _ts, svc, content in c["books"]})
     w = _steady(readout, c["venue"], c["view"])
     assert w["pct"] == pytest.approx(pct, abs=5e-4)
     assert abs(w["pct"]) < abs(line)
-    assert (w["zone"], w["side_word"]) == (zone, e.ZONE_WORDS[zone])
+    assert (w["tilt"], w["side_word"]) == (tilt, e.TILT_WORDS[tilt])
 
 
-def test_no_value_has_no_zone():
+def test_no_value_has_no_tilt():
     w = _steady(_NO_BOOK, "NYSE_BOOK", "weighted")
-    assert (w["pct"], w["zone"]) == (None, None)
+    assert (w["pct"], w["tilt"]) == (None, None)
 
 
 def test_the_sentence_four_cases_from_the_flat_shares():
@@ -651,56 +651,56 @@ def test_the_sentence_four_cases_from_the_flat_shares():
     assert _steady(_NO_BOOK, "NYSE_BOOK", "1")["sentence"] is None
 
 
-# ── over time: the zone's hold, flips, the lean windows ──────────────────────────────────────
+# ── over time: the tilt's hold, flips, the lean windows ──────────────────────────────────────
 
 
 @pytest.mark.parametrize(
-    ("runs", "zone", "held"),
+    ("runs", "tilt", "held"),
     [
         # two seconds of bid heavy books are shown as they are; BALANCED again from 1012: at
         # 1021 it has held 9 seconds
         ((("bal", 10), ("bid", 2), ("bal", 10)), "BALANCED", 9),
-        # bid heavy from second 1010: the zone changes that second; at 1019 it has held 9
+        # bid heavy from second 1010: the tilt changes that second; at 1019 it has held 9
         ((("bal", 10), ("bid", 10)), "BID_HEAVY", 9),
         # through BALANCED (1010-1012) to offer heavy from 1013: held 9 at 1022
         ((("bid", 10), ("bal", 3), ("offer", 10)), "OFFER_HEAVY", 9),
         # a single second across and back is shown: bid heavy again from 1011, held 9 at 1020
         ((("bid", 10), ("offer", 1), ("bid", 10)), "BID_HEAVY", 9),
-        # past 70% is still its side's zone, dated from when the value entered the side (1010)
+        # past 70% is still its side's tilt, dated from when the value entered the side (1010)
         ((("bal", 10), ("bid", 3), ("very_bid", 10)), "BID_HEAVY", 12),
     ],
 )
-def test_a_zone_is_the_values_own_dated_from_the_second_it_entered(runs, zone, held):
-    """INDUCED times: Schwab's readouts of 2026-11-02 by the zone of NYSE_BOOK's touch.
+def test_a_tilt_is_the_values_own_dated_from_the_second_it_entered(runs, tilt, held):
+    """INDUCED times: Schwab's readouts of 2026-11-02 by the tilt of NYSE_BOOK's touch.
 
     One a second from second 1000.
     """
     w = _touch_card(*runs)
-    assert (w["zone"], w["held_sec"]) == (zone, held)
+    assert (w["tilt"], w["held_sec"]) == (tilt, held)
 
 
-def test_an_unknown_value_starts_the_zone_over():
+def test_an_unknown_value_starts_the_tilt_over():
     """INDUCED times: BALANCED books 1000-1004, no book 1005-1014, BALANCED again from 1015.
 
-    The zone is dated from 1015, not from the first value known, and says so (held 9 at 1024).
+    The tilt is dated from 1015, not from the first value known, and says so (held 9 at 1024).
     """
     w = _touch_card(("bal", 5), ("none", 10), ("bal", 10))
-    assert (w["zone"], w["held_sec"], w["held_open"]) == ("BALANCED", 9, False)
+    assert (w["tilt"], w["held_sec"], w["held_open"]) == ("BALANCED", 9, False)
 
 
-def _zone_of(pct: float | None) -> str | None:
-    """Return a percentage's zone by its definition (the register's line, OF_ZONE_LEANING_PCT)."""
+def _tilt_of(pct: float | None) -> str | None:
+    """Return a percentage's tilt by its definition (the register's line, OF_TILT_PCT)."""
     if pct is None:
         return None
-    if abs(pct) < e.OF_ZONE_LEANING_PCT:
+    if abs(pct) < e.OF_TILT_PCT:
         return "BALANCED"
     return "BID_HEAVY" if pct > 0 else "OFFER_HEAVY"
 
 
-def test_on_schwabs_books_the_zone_is_the_headlines_own_dated_from_when_it_entered():
+def test_on_schwabs_books_the_tilt_is_the_headlines_own_dated_from_when_it_entered():
     """Every venue and view of the captured books, read at each second.
 
-    The zone shown is the zone of the headline (the 2-minute series' last value) that second,
+    The tilt shown is the tilt of the headline (the 2-minute series' last value) that second,
     and is dated from the second the headline entered it.
     """
     readout, points = _replayed()
@@ -709,19 +709,19 @@ def test_on_schwabs_books_the_zone_is_the_headlines_own_dated_from_when_it_enter
         for v in (*e.BOOK_VENUES, e.COMPOSITE):
             for view in e.READOUT_VIEWS:
                 w = card["venues"][v]["views"][view]
-                series, zone = w["lean"]["2m"]["values"], w["zone"]
+                series, tilt = w["lean"]["2m"]["values"], w["tilt"]
                 assert series[-1] == w["pct"]
-                assert zone == _zone_of(w["pct"]), (v, view, s)
-                at = None if zone is None else len(series) - 1 - w["held_sec"]
+                assert tilt == _tilt_of(w["pct"]), (v, view, s)
+                at = None if tilt is None else len(series) - 1 - w["held_sec"]
                 if at is not None and at >= 0:
-                    assert _zone_of(series[at]) == zone, (v, view, s)
-                    assert at == 0 or _zone_of(series[at - 1]) != zone, (v, view, s)
+                    assert _tilt_of(series[at]) == tilt, (v, view, s)
+                    assert at == 0 or _tilt_of(series[at - 1]) != tilt, (v, view, s)
 
 
-def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
+def test_held_is_at_least_when_the_tilt_stood_from_the_first_value_kept():
     """INDUCED: one of Schwab's books, recorded again 400 s later with nothing between.
 
-    A quiet ticker: the first still stands at the window's start, so the zone has held at least
+    A quiet ticker: the first still stands at the window's start, so the tilt has held at least
     the window, and says so.
     """
     history.LEAN.forget("SPY")
@@ -743,7 +743,7 @@ def test_held_is_at_least_when_the_zone_stood_from_the_first_value_kept():
 def test_held_is_at_least_when_the_values_began_inside_the_window():
     """The console started inside the window.
 
-    The zone standing since the first value known has held at least that long, never exactly.
+    The tilt standing since the first value known has held at least that long, never exactly.
     """
     _readout, points = _replayed()
     end = int(points[19][0])
@@ -778,7 +778,7 @@ def test_the_lean_windows_are_two_and_five_minutes_and_none_is_one():
     assert (len(lean["2m"]["values"]), len(lean["5m"]["values"])) == (121, 61)
 
 
-#: Schwab's readouts of 2026-11-02 (replay index) by the zone of NYSE_BOOK's touch: +33% bid
+#: Schwab's readouts of 2026-11-02 (replay index) by the tilt of NYSE_BOOK's touch: +33% bid
 #: heavy, -33% offer heavy, 0% balanced (80 / 80), +71% and -76% very one-sided
 _TOUCH = {"bid": 2, "offer": 0, "bal": 16, "very_bid": 4, "very_offer": 18}
 
@@ -789,7 +789,7 @@ def _replayed() -> tuple[dict, list]:
 
 
 def _touch_card(*runs: tuple[str, int]) -> dict:
-    """INDUCED times: Schwab's readouts named by the zone of NYSE_BOOK's touch.
+    """INDUCED times: Schwab's readouts named by the tilt of NYSE_BOOK's touch.
 
     Each run of them one a second (`none`: no book); the card's NYSE_BOOK touch view after the
     last.

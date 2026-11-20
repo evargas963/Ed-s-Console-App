@@ -160,8 +160,8 @@
       "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth. NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
       "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
       "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
-      "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
-      "zones": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
+      "tilt": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back.",
+      "weights": "Headline weights by price level from the touch: 0.43, 0.26, 0.16, 0.10, 0.06 (exp(-0.5\u00b7(k-1)), normalized; renormalized over the levels a thin side has). Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable."
     },
     "disagree": {
       "1": false,
@@ -406,9 +406,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 360.0,
-            "total_text": "360",
-            "zone": "OFFER_HEAVY"
+            "total_text": "360"
           },
           "3": {
             "ask_text": "2,080",
@@ -626,9 +626,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.02",
             "span_bid_text": "0.02",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 2480.0,
-            "total_text": "2,480",
-            "zone": "OFFER_HEAVY"
+            "total_text": "2,480"
           },
           "5": {
             "ask_text": "2,160",
@@ -846,9 +846,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.19",
             "span_bid_text": "0.04",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 2960.0,
-            "total_text": "2,960",
-            "zone": "OFFER_HEAVY"
+            "total_text": "2,960"
           },
           "weighted": {
             "ask_text": "2,160",
@@ -1066,9 +1066,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.19",
             "span_bid_text": "0.04",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 2960.0,
-            "total_text": "2,960",
-            "zone": "OFFER_HEAVY"
+            "total_text": "2,960"
           }
         }
       },
@@ -1308,9 +1308,9 @@
             "side_word": null,
             "span_ask_text": null,
             "span_bid_text": null,
+            "tilt": null,
             "total_depth": null,
-            "total_text": null,
-            "zone": null
+            "total_text": null
           },
           "3": {
             "ask_text": null,
@@ -1528,9 +1528,9 @@
             "side_word": null,
             "span_ask_text": null,
             "span_bid_text": null,
+            "tilt": null,
             "total_depth": null,
-            "total_text": null,
-            "zone": null
+            "total_text": null
           },
           "5": {
             "ask_text": null,
@@ -1748,9 +1748,9 @@
             "side_word": null,
             "span_ask_text": null,
             "span_bid_text": null,
+            "tilt": null,
             "total_depth": null,
-            "total_text": null,
-            "zone": null
+            "total_text": null
           },
           "weighted": {
             "ask_text": null,
@@ -1968,9 +1968,9 @@
             "side_word": null,
             "span_ask_text": null,
             "span_bid_text": null,
+            "tilt": null,
             "total_depth": null,
-            "total_text": null,
-            "zone": null
+            "total_text": null
           }
         }
       },
@@ -2210,9 +2210,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 360.0,
-            "total_text": "360",
-            "zone": "OFFER_HEAVY"
+            "total_text": "360"
           },
           "3": {
             "ask_text": "2,080",
@@ -2430,9 +2430,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.02",
             "span_bid_text": "0.02",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 2480.0,
-            "total_text": "2,480",
-            "zone": "OFFER_HEAVY"
+            "total_text": "2,480"
           },
           "5": {
             "ask_text": "2,160",
@@ -2650,9 +2650,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.19",
             "span_bid_text": "0.04",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 2960.0,
-            "total_text": "2,960",
-            "zone": "OFFER_HEAVY"
+            "total_text": "2,960"
           },
           "weighted": {
             "ask_text": "2,160",
@@ -2870,9 +2870,9 @@
             "side_word": "OFFER HEAVY",
             "span_ask_text": "0.19",
             "span_bid_text": "0.04",
+            "tilt": "OFFER_HEAVY",
             "total_depth": 2960.0,
-            "total_text": "2,960",
-            "zone": "OFFER_HEAVY"
+            "total_text": "2,960"
           }
         }
       }

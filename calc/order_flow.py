@@ -471,7 +471,7 @@ OF_LEVEL_WEIGHTS: tuple[float, ...] = tuple(w / sum(_RAW_WEIGHTS) for w in _RAW_
 #: the headline percentage reads BALANCED under this, else the side it leans to (Bookmap's
 #: Imbalance indicator shows the ratio in the buyer's or seller's colour from 10%;
 #: docs/SOURCES.md bookmap-imbalance)
-OF_ZONE_LEANING_PCT: float = 10.0
+OF_TILT_PCT: float = 10.0
 #: the lean sparklines: (name, window in seconds, one point every this many seconds)
 OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
     ("2m", int(OF_TAPE_WINDOW_2M_SEC), 1),
@@ -479,8 +479,8 @@ OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
 )
 #: the one-second values kept: the longest window
 OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC)
-ZONE_WORDS = {"BID_HEAVY": "BID HEAVY", "BALANCED": "BALANCED", "OFFER_HEAVY": "OFFER HEAVY"}
-#: a zone's side, for flips: BALANCED is none
+TILT_WORDS = {"BID_HEAVY": "BID HEAVY", "BALANCED": "BALANCED", "OFFER_HEAVY": "OFFER HEAVY"}
+#: a tilt's side, for flips: BALANCED is none
 _SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
 #: the detail panel's words
 READOUT_DETAIL = {
@@ -488,8 +488,8 @@ READOUT_DETAIL = {
     + ", ".join(f"{w:.2f}" for w in OF_LEVEL_WEIGHTS)
     + f" (exp(-{OF_LEVEL_DECAY}·(k-1)), normalized; renormalized over the levels a thin side has)."
     " Starting weights from a vendor study (VisualHFT, touch-weighted), adjustable.",
-    "zones": f"The headline is the book's percentage each second, as it is. BALANCED under"
-    f" {OF_ZONE_LEANING_PCT:.0f}%; BID or OFFER HEAVY from {OF_ZONE_LEANING_PCT:.0f}%"
+    "tilt": f"The headline is the book's percentage each second, as it is. BALANCED under"
+    f" {OF_TILT_PCT:.0f}%; BID or OFFER HEAVY from {OF_TILT_PCT:.0f}%"
     " (Bookmap's colour-switch line): direction only, not strength. A flip is a change of"
     " side, bid to offer or back.",
     "construction": "Composite: every exchange's and market maker's quote from the books Schwab"
@@ -677,47 +677,47 @@ def _standing(
     return out
 
 
-def _zone(pct: float | None) -> str | None:
+def _tilt(pct: float | None) -> str | None:
     if pct is None:
         return None
-    if abs(pct) < OF_ZONE_LEANING_PCT:
+    if abs(pct) < OF_TILT_PCT:
         return "BALANCED"
     return "BID_HEAVY" if pct > 0 else "OFFER_HEAVY"
 
 
-def _zones(values: list[float | None], first: int) -> list[tuple[str | None, int | None]]:
-    """Return each second's zone and the second the value entered it; (None, None) while unknown."""
+def _tilts(values: list[float | None], first: int) -> list[tuple[str | None, int | None]]:
+    """Return each second's tilt and the second the value entered it; (None, None) while unknown."""
     shown: list[tuple[str | None, int | None]]
     shown, since, prev = [], None, None
     for k, value in enumerate(values):
-        zone = _zone(value)
-        if zone != prev:
-            since = None if zone is None else first + k
-        prev = zone
-        shown.append((zone, since))
+        tilt = _tilt(value)
+        if tilt != prev:
+            since = None if tilt is None else first + k
+        prev = tilt
+        shown.append((tilt, since))
     return shown
 
 
 def _flips(shown: list[tuple[str | None, int | None]], first: int, last: int) -> int:
     """Count the flips arriving in the two minutes to second `last`.
 
-    A flip is the zone (`_zones`, from
+    A flip is the tilt (`_tilts`, from
     second `first`) reaching the side opposite the one it last held, bid to offer or back.
     BALANCED is no side, so bid, BALANCED, offer is one flip, on arrival; the first lean is none;
     after an unknown value the count of sides starts over.
     """
     flips, held = 0, None
-    for k, (zone, _since) in enumerate(shown):
-        if zone is None:
+    for k, (tilt, _since) in enumerate(shown):
+        if tilt is None:
             held = None
-        elif zone in _SIDE:
+        elif tilt in _SIDE:
             if (
                 held is not None
-                and _SIDE[zone] != held
+                and _SIDE[tilt] != held
                 and first + k > last - OF_TAPE_WINDOW_2M_SEC
             ):
                 flips += 1
-            held = _SIDE[zone]
+            held = _SIDE[tilt]
     return flips
 
 
@@ -764,8 +764,8 @@ def _card_view(
     """Return one venue's view on the Liquidity card, standing at its end second `last`."""
     first = last - OF_LEAN_KEPT_SEC
     sm = _standing(points, v, view, first, last)
-    shown = _zones(sm, first)
-    zone, since = shown[-1]
+    shown = _tilts(sm, first)
+    tilt, since = shown[-1]
     known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
     bid, ask = snap.get("bid_total"), snap.get("ask_total")
     held = None if since is None else last - since
@@ -773,8 +773,8 @@ def _card_view(
         **{k: snap.get(k) for k in ("bid_total", "ask_total", "difference", "total_depth")},
         "pct": sm[-1],
         "pct_text": percent_text(sm[-1]),
-        "zone": zone,
-        "side_word": ZONE_WORDS.get(zone) if zone else None,
+        "tilt": tilt,
+        "side_word": TILT_WORDS.get(tilt) if tilt else None,
         "held_sec": held,
         "held_open": since is not None and since == known_from,
         "held_text": None if held is None else f"HELD {'≥' if since == known_from else ''}{held}s",
@@ -811,8 +811,8 @@ def readout_card(
 
     The headline (the percentage standing at
     the venue's end second: now while its book is live, else its last value's), its
-    zone and side word, the seconds the zone has held (held_open: at
-    least that long, the zone standing since the first value known), the flat totals, the
+    tilt and side word, the seconds the tilt has held (held_open: at
+    least that long, the tilt standing since the first value known), the flat totals, the
     sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
     in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts
     kept, (receive time,
@@ -825,7 +825,7 @@ def readout_card(
         for view in READOUT_VIEWS:
             snap: dict[str, Any] = r["views"][view] if "views" in r else {}
             if end is None:
-                views[view] = {"pct": None, "zone": None}
+                views[view] = {"pct": None, "tilt": None}
                 continue
             views[view] = _card_view(r, snap, points, v, view, int(end))
         touch = r["views"]["1"]["pct"] if "views" in r else None

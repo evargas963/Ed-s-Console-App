@@ -77,31 +77,36 @@ Every value has exactly one producer and any number of consumers.
 
 ### Standard of care
 
-Hold EdWebConsole to how a financial institution handles systems with real money on the line (BCBS
-239: one authoritative source; accurate, complete and timely data; every difference explained).
-These are judgments to apply to every proposal; the rules below say how each is held.
+Run Ed Console the way a bank runs a system with real money on it (the banks' own standard, BCBS
+239: one trusted source, accurate, complete and on time, every difference explained). These twelve
+points are what that means here; the numbered rules below say how each one is kept.
 
-1. System of record: Schwab is the statement. Our data matches it, and any difference is reported,
-   never plugged.
-2. One producer per value: each Schwab field is read once, where it arrives; each derived value is
-   computed once, by its one producer.
-3. As sent: Schwab's data is taken as Schwab sends it; only what Schwab does not send is derived,
-   and each derived value is in the register.
-4. A wrong number is worse than "-": an unknown shows as unknown, never a fallback, default,
-   estimate or substitute.
-5. Live and honest: every value shows its time; a value that stops stands marked with its age, and
-   the header says OFFLINE during an outage. How live the screen is gets measured, not assumed.
-6. Records stand: received data is never overwritten or deleted. A correction is a new, labeled
-   entry. Data is deleted only by the keep rule Ed sets.
-7. Nothing is dropped silently: every value left out is counted and said, and no error is swallowed.
-8. The page draws what it is served; it computes nothing.
-9. Fixed at the source, end to end, Schwab to the screen: never a patch, wrapper or fallback.
-10. Everything is repo wide, and every ticker is treated the same.
-11. Change control: a change reaches production once its required checks pass on real data (a test
-    that failed before passes after, CI green, the screen checked); Ed decides what is his. The
-    agent that builds a change verifies it end to end and answers for it. Credentials are protected.
-12. Facts rest on source documents: what Schwab sends, accepts or limits is settled by Schwab's own
-    documents, and a limit not found there is our defect until shown otherwise.
+1. Schwab is the record. Our numbers match Schwab's; if they ever differ, we say so and never paper
+   over it.
+2. One source for each number. Each Schwab field is read once, where it arrives. Each number we
+   calculate is calculated once, in one place.
+3. Schwab's data as Schwab sends it. We calculate only what Schwab does not send, and each such
+   calculation is listed in the register.
+4. A wrong number is worse than "-". A value we don't know shows "-", never a guess, a default or a
+   stand-in.
+5. Live and honest. Every value shows its time. A value that stops updating stays on screen marked
+   with its age, and the header says OFFLINE during an outage. How live the screen is gets measured,
+   not assumed.
+6. Records are never changed. What Schwab sent is never overwritten or deleted; a correction is a
+   new, labeled entry. Data is deleted only by the keep rule Ed sets.
+7. Nothing disappears silently. Anything left out is counted and shown, and no error is hidden.
+8. The page only draws. Every number, choice and comparison it shows comes from the program; the
+   page calculates nothing.
+9. Fix the cause, end to end. Find the cause, fix it where it starts, and prove it from Schwab to
+   the screen. No patches or workarounds.
+10. Everything, everywhere. Every rule applies to the whole repository and to every ticker the same
+    way.
+11. Change control. A change goes live only after its checks pass: a test that failed before passes
+    after, every required CI check is green, and the screen is checked. Ed decides what is his: what
+    the screen shows, request rates, limits, settings and money. The agent that builds a change
+    checks it end to end and answers for it. Credentials are kept safe.
+12. Facts come from the source. What Schwab sends, accepts or limits is settled by Schwab's own
+    documents. A limit we can't find there is our bug until shown otherwise.
 
 ### EdWebConsole requirements
 
