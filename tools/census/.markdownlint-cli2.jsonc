@@ -1,4 +1,6 @@
-// markdownlint's default rules, lines at most 100 columns (AGENTS.md rule 13).
+// markdownlint's default rules, but those Prettier settles as the one Markdown formatter
+// (markdownlint's own style/prettier.json: "Disables rules that may conflict with Prettier"), line
+// length among them (operator 2026-11-19: "i don't care about the 100 characters or length").
 {
-  "config": { "default": true, "MD013": { "line_length": 100 } },
+  "config": { "default": true, "extends": "markdownlint/style/prettier" },
 }
