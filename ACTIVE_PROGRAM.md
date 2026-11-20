@@ -77,7 +77,44 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Queued
 
-- STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES, P1-6): each hand-built check goes once a
+- P1-6 (QUEUED): found defects, each checked against the code on 2026-11-19 and fixed at its source
+  with a test that fails before:
+  - S-23 `push/strikes.py` `_side_sums` splits the per-strike GEX (priced at the snapshot's spot) by
+    the live spot from `resolve_spot`.
+  - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
+    `levels_ts_utc`, computed in push, not a calculator.
+  - M-02 `calc/liquidity_models.py` `volume_profile` drops bars with a missing high or low or
+    `hi < lo` uncounted; only missing volume is counted.
+  - M-05 `calc/liquidity_value_engine.py` `compute_session_vwap_series` skips bars with no volume
+    and counts none.
+  - M-11 `build_price_level_snapshot`: a prior day whose `pd_poc`/`pd_vah`/`pd_val` are None loses
+    those levels silently (`_level_values`); `families_absent` does not list them.
+  - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
+    `calc.math_levels` rejects a strike ≤ 0 as INVALID.
+  - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
+    served.
+  - M-22 `book_net_gex` sums only strikes with a known `net_gex_1pct` and does not say how many it
+    left out.
+  - M-24 `calc.math_levels.compute_charm_by_strike` returns `{}` with no reason when spot is missing
+    (a branch `compute_terrain` makes unreachable: delete it).
+  - M-27 `calc.math_levels.gamma_at_price` returns the end point's value for a price outside the
+    profile.
+  - M-32 `calc/terrain_engine.py`: the per-expiry PCR, volume PCR, DTE and ATM IV maps key by date
+    alone over books keyed (date, dte); same-date books overwrite.
+  - O-13 `app/options/order_flow/streaming.py` drops malformed messages silently; `live_ui` logs a
+    bad page frame but does not count it.
+  - O-18 `app/options/order_flow/history.py`: a minimum axis width of 0.01 of our own.
+  - P-09 `static/js/ed-core.js` reports a failed watchlist send without its HTTP status; first-of
+    reads (`r.call || r.put` in `ed-gamma-panels.js`, `r.label || r.id` in `ed-trade-desk.js`).
+  - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
+    shown on the page.
+  - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
+  - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
+  - P-22 `static/js/ed-gamma-flow.js` takes the Flow header's strike and expiry from page state, not
+    the `contract` panel.
+  - P-24 `static/js/ed-order-flow.js` matches walls to ladder levels on the page and shows one fixed
+    reason for every no-book cause.
+- STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command
   guards. Before `check_end_to_end` can go, every old patch shape it counts is fixed at its source,
