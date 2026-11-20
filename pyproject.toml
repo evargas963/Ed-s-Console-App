@@ -99,3 +99,44 @@ markers = [
   "alone: a limit on the wall clock, which CI runs with no test workers beside it",
   "rail: guards production or the credentials rather than an app value (tools/check_tests_serve_app.py)",
 ]
+
+# Mutation testing (mutmut, https://github.com/boxed/mutmut): how many deliberate mistakes in the
+# code the tests catch. Run by .github/workflows/mutation.yml on Linux (mutmut needs fork). The
+# code it mutates; everything else the tests read is copied beside it.
+[tool.mutmut]
+source_paths = ["calc/"]
+also_copy = [
+  "app/",
+  "calibration/",
+  "docs/",
+  "feed/",
+  "push/",
+  "state/",
+  "static/",
+  "tests/",
+  "tools/",
+  "typings/",
+  "config.py",
+  "db.py",
+  "db_authority.py",
+  "instrument_identity.py",
+  "json_blob_codec.py",
+  "launch.py",
+  "live_market_plane.py",
+  "live_price_rows.py",
+  "numeric_contract.py",
+  "open_gap.py",
+  "option_contract.py",
+  "runtime_layout.py",
+  "server.py",
+  "stream_spine.py",
+  "time_et.py",
+  "AGENTS.md",
+  "ACTIVE_PROGRAM.md",
+  "CLAUDE.md",
+  "locks.imports.toml",
+  "locks.ruff.toml",
+  "requirements.txt",
+  "requirements-dev.txt",
+]
+pytest_add_cli_args_test_selection = ["tests/", "--ignore=tests/e2e", "-m", "not alone and not rail"]

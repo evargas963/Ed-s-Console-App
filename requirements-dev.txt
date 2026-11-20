@@ -11,3 +11,5 @@ mypy==2.4.1
 import-linter==2.15
 grimp==3.18
 numpy==2.3.5
+# mutation testing, run by .github/workflows/mutation.yml (Linux: it needs fork)
+mutmut==3.8.1

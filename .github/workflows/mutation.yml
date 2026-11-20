@@ -1,0 +1,56 @@
+---
+name: Mutation
+
+# Mutation testing (mutmut): deliberate mistakes in the code pyproject.toml's [tool.mutmut] names,
+# each run against the tests that reach it; a mistake no test catches survives and shows where a
+# test is too weak. A measurement, run by hand or by pushing a mutation/* branch; it gates nothing.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["mutation/**"]
+
+env:
+  CI: "true"
+  ED_CI_OFFLINE: "1"
+  ED_CONSOLE_ALLOW_NONCANONICAL_DB: "1"
+  SCHWAB_API_KEY: "ci-not-live-placeholder"
+  SCHWAB_APP_SECRET: "ci-not-live-placeholder"
+
+permissions:
+  contents: read
+
+jobs:
+  mutmut:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Set up the tools
+        uses: ./.github/actions/set-up-tools
+
+      - name: Install Python dependencies
+        run: uv pip install --system -r requirements-dev.txt -r requirements.txt
+
+      - name: Run the mutants
+        run: mutmut run --max-children "$(nproc)"
+
+      - name: The score
+        if: success() || failure()
+        run: |
+          mutmut export-cicd-stats
+          cat mutants/mutmut-cicd-stats.json
+
+      - name: Keep the results
+        if: success() || failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mutmut-results
+          path: |
+            mutants/mutmut-cicd-stats.json
+            mutants/**/*.meta
+          if-no-files-found: warn
