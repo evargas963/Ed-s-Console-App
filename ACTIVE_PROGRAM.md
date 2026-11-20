@@ -11,6 +11,15 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## In progress
 
+- SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
+  "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
+  program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests
+  first: mutation testing (`.github/workflows/mutation.yml`, mutmut, `calc/` first, then all the
+  Python) and the per-test coverage CI records (`--cov-context=test`) show each test's worth; a test
+  that catches no mistake another test misses and covers no line of its own is deleted, and a weak
+  one is strengthened. Then each capture in `tests/fixtures/` kept only while a test reads it, and
+  the check tools under STANDARD-CHECKS. `tools/check_locks.py` reports every part's size on every
+  pull request.
 - ONE-DB (IN PROGRESS): one database, `data/ed.db` (`db_authority.canonical_db_path`), every column
   tied to its writer, reader and Schwab field. Left: `stream_feed_status`'s `socket_open` and
   `schwab_last_frame_ts` (the same in every service's row of a round); `level_crosses`' `ts_et`,
