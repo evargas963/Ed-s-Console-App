@@ -182,7 +182,7 @@ class LiveUiServer:
         )
         self.stats = stats
         self.clients: set[_Client] = set()
-        stats.update(clients=0, rows_sent=0, beat_send_failures=0)
+        stats.update(clients=0, rows_sent=0, beat_send_failures=0, page_refused=0)
 
     # -- plane side -------------------------------------------------------------------
 
@@ -212,9 +212,11 @@ class LiveUiServer:
         """Return the daemon's whole status, recorded here and sent with every beat.
 
         The status covers the Schwab socket, symbols held and refused per service, the watchlist
-        and health; this is the console's one record of it.
+        and health; this is the console's one record of it. It carries this server's own counts
+        (`page_socket`: its pages, the rows sent, the beats a page did not take, and what pages
+        sent that it could not take, `page_refused`).
         """
-        hb = self.heartbeat_fn(self.clock())
+        hb = {**self.heartbeat_fn(self.clock()), "page_socket": dict(self.stats)}
         self.record_heartbeat(hb)
         return hb
 
@@ -267,12 +269,12 @@ class LiveUiServer:
             try:
                 loaded: object = json.loads(frame)
             except (TypeError, ValueError) as e:
-                log.warning("live ui: a page frame that is not JSON (%s): %.200r", e, frame)
+                self._refused("live ui: a page frame that is not JSON (%s): %.200r", e, frame)
                 continue
             req = cast(dict[str, Any], loaded) if isinstance(loaded, dict) else {}
             raw: object = req.get("symbols") if req.get("op") == "subscribe" else None
             if not isinstance(raw, list):
-                log.warning(
+                self._refused(
                     "live ui: a page frame that is not a subscribe with symbols: %.200r", frame
                 )
                 continue
@@ -281,7 +283,7 @@ class LiveUiServer:
             keys, identity = [], []
             for s in cast(list[object], raw):
                 if not isinstance(s, str) or not (k := ticker_storage_key(s)):
-                    log.warning("live ui: a subscribed symbol not a string, or blank: %.200r", s)
+                    self._refused("live ui: a subscribed symbol not a string, or blank: %.200r", s)
                     continue
                 identity.append({"requested": s, "key": k, "display": display_symbol(k)})
                 if k not in keys:
@@ -311,17 +313,22 @@ class LiveUiServer:
                 }
             c.wake.set()
 
+    def _refused(self, what: str, *arrived: object) -> None:
+        """Count what a page sent that this server cannot take, and log it with what arrived."""
+        self.stats["page_refused"] += 1
+        log.warning(what, *arrived)
+
     def _shown(self, shown: Any) -> dict[str, dict[str, Any]]:
         """Return the panels a subscribe names that the program has, each with its parameters."""
         if not isinstance(shown, dict):
-            log.warning("live ui: a subscribe's panels not an object: %.200r", shown)
+            self._refused("live ui: a subscribe's panels not an object: %.200r", shown)
             return {}
         out: dict[str, dict[str, Any]] = {}
         for name, params in cast(dict[str, object], shown).items():
             if kind_of(name) in self.panels and isinstance(params, dict):
                 out[name] = cast(dict[str, Any], params)
             else:
-                log.warning(
+                self._refused(
                     "live ui: a subscribed panel unknown, or its parameters not an object: "
                     "%.200r %.200r",
                     name,

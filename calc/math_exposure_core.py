@@ -817,22 +817,22 @@ def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
     return puts / calls if calls > 0 else None
 
 
-def put_call_oi_ratio(exposures: dict[float, Bucket]) -> float | None:
-    """Total put OI / total call OI of the book -- the positions held.
+def put_call_oi_ratio(buckets: Iterable[Bucket]) -> float | None:
+    """Total put OI / total call OI of the strike buckets -- the positions held.
 
     None if any strike's OI is unknown or call OI is 0.
     """
-    return _put_call_ratio(strike_oi_legs(b) for b in exposures.values())
+    return _put_call_ratio(strike_oi_legs(b) for b in buckets)
 
 
-def put_call_volume_ratio(exposures: dict[float, Bucket]) -> float | None:
-    """Total put volume / total call volume of the book -- today's trading.
+def put_call_volume_ratio(buckets: Iterable[Bucket]) -> float | None:
+    """Total put volume / total call volume of the strike buckets -- today's trading.
 
     Cboe's convention (https://cdn.cboe.com/resources/us/options/market_statistics/daily/cone/archive/html/2002-05-17.html).
     None when any contract in the book did not report its volume, or no call traded. A strike with
     no call (or put) contract listed has no volume on that side, not a zero.
     """
-    return _put_call_ratio(strike_volume_legs(b) for b in exposures.values())
+    return _put_call_ratio(strike_volume_legs(b) for b in buckets)
 
 
 def exposures_have_dollar_gex(exposures: dict[float, Bucket]) -> bool:

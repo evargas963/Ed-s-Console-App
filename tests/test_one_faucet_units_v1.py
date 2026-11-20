@@ -116,12 +116,14 @@ def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_
         100.0: {"call_volume": 400.0, "put_volume": 300.0, "volume_unreported": 0},
         105.0: {"call_volume": 100.0, "put_volume": 200.0, "volume_unreported": 0},
     }
-    assert put_call_volume_ratio(book) == pytest.approx(500.0 / 500.0)
+    assert put_call_volume_ratio(book.values()) == pytest.approx(500.0 / 500.0)
     book[105.0]["volume_unreported"] = 1
-    assert put_call_volume_ratio(book) is None, "a contract with no volume is not zero volume"
+    assert put_call_volume_ratio(book.values()) is None, (
+        "a contract with no volume is not zero volume"
+    )
     book[105.0]["volume_unreported"] = 0
     book[110.0] = {"call_volume": 0.0, "put_volume": 50.0, "volume_unreported": 0}
-    assert put_call_volume_ratio(book) == pytest.approx(550.0 / 500.0)
+    assert put_call_volume_ratio(book.values()) == pytest.approx(550.0 / 500.0)
 
 
 def test_a_book_that_priced_no_vanna_serves_absent_not_zero():
