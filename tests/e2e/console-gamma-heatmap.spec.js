@@ -699,6 +699,8 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     // the flags are the row's served nonStandard (false) and pennyPilot (true)
     expect([s.nonStandard, s.pennyPilot]).toEqual([false, true]);
     await expect(rows.nth(i).locator(".st-flag.on")).toHaveText(["PENNY"]);
+    // one flag per Schwab field: nonStandard is NON-STD alone (operator 2026-11-20)
+    await expect(rows.nth(i).locator(".st-flag")).toHaveText(["NON-STD", "PENNY"]);
   });
 
   test("Strike Detail's Net GEX$ is this expiry's value from the chain panel, never GEX-by-Strike's all-expiry total", async ({

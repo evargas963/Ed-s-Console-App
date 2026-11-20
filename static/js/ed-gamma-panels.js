@@ -566,7 +566,7 @@
   function _flag(label, on) {
     return '<span class="st-flag' + (on ? " on" : "") + '">' + esc(label) + "</span>";
   }
-  // ADJUSTED DELIVERABLE: Schwab's nonStandard flag, as sent
+  // NON-STD: Schwab's nonStandard flag, as sent (a non-standard, adjusted deliverable)
   function renderStructures(host, d) {
     var src = document.getElementById("stSrc");
     if (src) src.textContent = "";
@@ -586,7 +586,6 @@
         var flags = [
           _flag("NON-STD", s.nonStandard === true),
           _flag("PENNY", s.pennyPilot === true),
-          _flag("ADJUSTED DELIVERABLE", s.nonStandard === true),
         ].join("");
         return (
           '<tr><td class="side">' +
