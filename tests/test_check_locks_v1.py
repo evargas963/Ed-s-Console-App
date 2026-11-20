@@ -101,7 +101,6 @@ def test_no_ignore_file_or_excluded_folder_hides_a_finding(tmp_path):
     "name",
     [
         "windows.pyw",
-        "stub.pyi",
         "book.ipynb",
         "upper.PY",
         "compiled.pyc",
@@ -126,6 +125,15 @@ def test_a_module_in_a_package_is_inside_them(tmp_path):
     write(repo, "part/inner/__init__.py", "")
     write(repo, "part/inner/module.py", "VALUE = 1\n")
     write(repo, "root_module.py", "VALUE = 1\n")
+    assert _refused(repo) == ""
+
+
+def test_a_type_stub_python_never_loads_is_not_counted(tmp_path):
+    """A `.pyi` is read by type checkers alone: no loader of Python's takes it
+    (importlib.machinery.all_suffixes), so it imports nothing when the program runs."""
+    repo = _repo(tmp_path)
+    write(repo, "typings/lib/__init__.pyi", "VALUE: int\n")
+    write(repo, "typings/lib/Part.PYI", "VALUE: int\n")
     assert _refused(repo) == ""
 
 

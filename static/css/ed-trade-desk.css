@@ -709,7 +709,7 @@
   color: var(--ed-ink-2);
 }
 
-/* the operator's option 1 (2026-11-04): a wider Liquidity card, the four 312 px; a card whose
+/* a wider Liquidity card, the four 312 px; a card whose
    served lines need more grows the row, the four together, so nothing is cut */
 .tdm-cards {
   display: grid;

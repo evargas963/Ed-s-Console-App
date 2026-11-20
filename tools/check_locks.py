@@ -27,8 +27,9 @@ REFUSED = 3
 FREE = ("bytes of", "lines of", "open work items")
 DATA = (".json", ".md", ".mdc", ".csv", ".txt", ".png", ".ico", ".pdf", ".webmanifest", ".lock")
 PYTHON = (".py", ".pyi", ".pyw", ".ipynb")
-#: what Python can load, by any case of its suffix on Windows
-LOADABLE = (*PYTHON, ".pyc", ".pyd", ".so")
+#: what Python can load, by any case of its suffix on Windows; not a `.pyi`, which type checkers
+#: alone read (importlib.machinery.all_suffixes)
+LOADABLE = (".py", ".pyw", ".ipynb", ".pyc", ".pyd", ".so")
 ROW = re.compile(r"^\|(?!\s*(?:ID|#)\s*\|)(?!\s*:?-)", re.M)
 ITEM = re.compile(r"^- [A-Z]+-\d+", re.M)
 PATCH = re.compile(

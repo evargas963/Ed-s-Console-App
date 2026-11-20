@@ -4,7 +4,7 @@ Each capture the chain sweep (feed/chain_sweep.py) takes -- the first chain of e
 at or after its option market's close, once a day (chain_sweep.capture_slot) -- is written by the
 Recorder (stream_spine.CaptureWriter.store_capture, store_capture_message) in one transaction,
 one row per expiry, compressed, with Schwab's own underlying price, before the console hears of
-the chain (operator 2026-11-01: "Yes, store first"). Schwab has no past option chains, so a
+the chain: stored first. Schwab has no past option chains, so a
 chain not saved is gone. The console reads each ticker's two newest days' captures
 (last_capture_per_day) as StoredCapture records.
 """
