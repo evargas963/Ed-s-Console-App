@@ -475,8 +475,10 @@ def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
     assert set(got) == {"PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL"} | {
         "OVERNIGHT_HIGH",
         "OVERNIGHT_LOW",
+        "GAMMA_CALL_WALL",
     }
     assert (got["PDH"], got["PDL"], got["PDC"]) == (prior.high, prior.low, prior.close)
+    assert got["GAMMA_CALL_WALL"] == 671.0
     assert got["OVERNIGHT_HIGH"] == max(b["high"] for b in overnight)
     assert got["OVERNIGHT_LOW"] == min(b["low"] for b in overnight)
 
@@ -484,8 +486,12 @@ def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
     first15 = [b for b in held if opening <= b["timestamp"] / 1000 < opening + 15 * 60]
     got = {s["label"]: s["value"] for z in live.zones for s in z.source_levels}
     assert live.snapshot_type == SnapshotType.LIVE and live.summary is not None
-    assert "PDC" not in got and got["GAMMA_CALL_WALL"] == 671.0
+    assert got["GAMMA_CALL_WALL"] == 671.0
     assert (got["PDH"], got["PDL"]) == (prior.high, prior.low)
+    assert got["PDC"] == prior.close
+    overnight = [b for b in held if overnight_from <= b["timestamp"] / 1000 < opening]
+    assert got["OVERNIGHT_HIGH"] == max(b["high"] for b in overnight)
+    assert got["OVERNIGHT_LOW"] == min(b["low"] for b in overnight)
     assert (got["ORB_HIGH"], got["ORB_LOW"]) == (
         max(b["high"] for b in first15),
         min(b["low"] for b in first15),

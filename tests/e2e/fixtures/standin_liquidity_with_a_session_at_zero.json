@@ -60,18 +60,19 @@
     {
       "zone_label": "-",
       "zone_side": "value",
-      "zone_low": 764.35,
+      "zone_low": 763.99,
       "zone_high": 765.65,
-      "zone_low_text": "764.35",
+      "zone_low_text": "763.99",
       "zone_high_text": "765.65",
-      "anchor": 765.0,
+      "anchor": 764.8199999999999,
       "source_levels": [
+        { "label": "PDC", "value": 763.99, "value_text": "763.99" },
         { "label": "PD_POC", "value": 764.35, "value_text": "764.35" },
         { "label": "OVERNIGHT_HIGH", "value": 764.98, "value_text": "764.98" },
         { "label": "PD_VAH", "value": 765.34, "value_text": "765.34" },
         { "label": "PDH", "value": 765.65, "value_text": "765.65" }
       ],
-      "confluence_score": 4,
+      "confluence_score": 5,
       "interpretation_notes": "No live price: the side of the price is not known"
     }
   ],
