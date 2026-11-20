@@ -153,7 +153,7 @@ def test_heatmap_per_strike_rows_and_levels_are_one_computation():
     _daemon()
     snap = _put_chain()
     c = _cached()
-    assert c.snap.per_strike is snap.per_strike and c.vanna_rows == snap.per_strike["vanna"]
+    assert c.snap.per_strike is snap.per_strike  # vanna and charm rows are its rows too
     assert c.snap.gamma_flip == snap.gamma_flip and c.snap.call_wall == snap.call_wall
     full, _ = merge_exposure_books(snap.books.values())
     checked = 0
@@ -486,13 +486,13 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     _daemon(at=valued.timestamp())  # live when the chain is published
     snap = server._publish_levels(TK, _RECORDS, _T, chain_spot=(_SPOT, _T), now=valued)
     _daemon(at=time_et.now())  # live now, as the routes read it
-    every = {"scope": "all", "centre": None, "shift": 0}
-    charm = push_strike_bars.strike_bars("charm_rows", TK, time_et.now(), every)
+    every = {"scope": "all", "centre": None, "shift": 0, "expiry": None}
+    charm = push_strike_bars.strike_bars("charm", TK, time_et.now(), every)
     assert charm["available"] and charm["spot"] == snap.spot
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )
-    vanna = push_strike_bars.strike_bars("vanna_rows", TK, time_et.now(), every)
+    vanna = push_strike_bars.strike_bars("vanna", TK, time_et.now(), every)
     assert vanna["available"] and vanna["rows"]
 
 

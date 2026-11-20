@@ -14,7 +14,6 @@ from typing import Any
 from calc.terrain_engine import (
     LevelMove,
     MigrationRow,
-    PerStrikeView,
     PositioningMigration,
     StrikeRows,
     level_moves,
@@ -26,7 +25,15 @@ from numeric_contract import dollars_text, strike_text
 from push.answers import unavailable
 from push.expiries import expiry_label
 from push.spot import resolve_spot
-from push.strike_rows import BarRow, max_abs_served, served, window_asked, windowed
+from push.strike_rows import (
+    BarRow,
+    expiry_unreadable,
+    max_abs_served,
+    rows_of,
+    served,
+    window_asked,
+    windowed,
+)
 from push.verdict import terrain_cache_get
 
 
@@ -127,10 +134,10 @@ def strikes(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     asked = window_asked(params)
     if isinstance(asked, str):
         return unavailable(ticker, asked)
-    expiry = params.get("expiry")
-    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
-        return unavailable(ticker, f"expiry {expiry!r} is not an expiry date or null")
-    return terrain_strikes_payload(ticker, *asked, expiry, now)
+    unreadable = expiry_unreadable(params)
+    if unreadable is not None:
+        return unavailable(ticker, unreadable)
+    return terrain_strikes_payload(ticker, *asked, params["expiry"], now)
 
 
 def _not_compared(
@@ -148,11 +155,6 @@ def _not_compared(
     if prior is None:
         return f"The prior day's chain lists no contracts for {expiry}."
     return NO_STRIKE_ON_BOTH_DAYS
-
-
-def _rows_of(view: PerStrikeView, expiry: str | None) -> StrikeRows | None:
-    """Return the rows of `expiry` (None: the whole book's); None when `view` lists no such one."""
-    return view if expiry is None else view["by_expiry"].get(expiry)
 
 
 def terrain_strikes_payload(
@@ -173,11 +175,11 @@ def terrain_strikes_payload(
     # prior day's levels are set with every chain the levels are published from.
     snap = None if levels is None else levels.snap
     prior_day = None if levels is None else levels.prior_day
-    no_book = per_strike_view({}, {})
-    today = no_book if snap is None else _rows_of(snap.per_strike, expiry)
+    no_book = per_strike_view({}, {}, {}, {})
+    today = no_book if snap is None else rows_of(snap.per_strike, expiry)
     if today is None:
         return unavailable(tk, f"the chain lists no contracts for {expiry}", **verdict)
-    prior = None if prior_day is None else _rows_of(prior_day.per_strike, expiry)
+    prior = None if prior_day is None else rows_of(prior_day.per_strike, expiry)
     # a prior day that holds no levels, or lists no contract of this expiry, holds no book of it:
     # the producer's view of no book, so no strike is compared
     prior_book = no_book if prior is None else prior

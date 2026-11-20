@@ -3,7 +3,6 @@
 (function () {
   "use strict";
 
-  var expiry = null;
   var selectedStrike = null;
   var pinned = null;
   var lastRows = [];
@@ -77,9 +76,13 @@
   }
 
   // The matrix is the `confluence` panel (server.confluence) on the page's socket while this view
-  // is on, for the picked expiry, at once and each time the chain or the levels change.
+  // is on, at the page's one expiry choice (null, All Expirations: the program ranks the front
+  // expiry still open), at once and each time the chain or the levels change.
   function load() {
-    window.EdShell.showPanel("confluence", isMatrix() ? (expiry ? { expiry: expiry } : {}) : null);
+    window.EdShell.showPanel(
+      "confluence",
+      isMatrix() ? { expiry: window.EdShell.getExpiry() } : null,
+    );
   }
 
   document.addEventListener("ed:panel", function (e) {
@@ -402,27 +405,8 @@
     if (!box) return;
     bind();
     lastBody = body;
-    var names = Array.isArray(body.expiries) ? body.expiries : [];
-    var held = false;
-    names.forEach(function (e) {
-      if (e.expiry === expiry) held = true;
-    });
-    if (body.expiry && (expiry == null || !held)) expiry = body.expiry;
-    var pick = "";
-    if (names.length) {
-      pick = '<label class="expiry-pick">Expiry<select id="cmExp">';
-      names.forEach(function (e) {
-        pick +=
-          '<option value="' +
-          esc(e.expiry) +
-          '"' +
-          (e.expiry === expiry ? " selected" : "") +
-          ">" +
-          esc(e.label) +
-          "</option>";
-      });
-      pick += "</select></label>";
-    }
+    // the expiry the program ranked, as served (the one chosen, else the front one still open)
+    var pick = body.expiry ? '<span class="cm-exp">Expiry ' + esc(body.expiry) + "</span>" : "";
     var rows = Array.isArray(body.rows) ? body.rows : [];
     var peaks = body.peaks,
       heat = window.EdShell.heatColors(); // each column's served scale
@@ -604,16 +588,6 @@
       '</div><div class="levelread" id="cmRead">Hover or focus a level; click to pin its line. Escape clears the selection.</div><div class="legend"><span><i class="scale"></i> Red − / green + · brighter = larger magnitude within each column.</span><span>OI, Opt Vol, Gross GEX, IV and composite: green intensity = size only. P/C: red put-heavy / green call-heavy.</span></div><div class="detail" id="cmDetail"></div>' +
       (notes.length ? '<p class="foot">' + esc(notes.join(" ")) + "</p>" : "") +
       "</div>";
-    var sel = document.getElementById("cmExp");
-    if (sel) {
-      sel.addEventListener("change", function () {
-        if (sel.value === expiry) return;
-        expiry = sel.value;
-        selectedStrike = null;
-        pinned = null;
-        load();
-      });
-    }
     showDetail(kept);
     highlight(pinned);
     requestAnimationFrame(position);
@@ -623,8 +597,13 @@
     selectedStrike = null;
     load();
   });
+  // a new expiry chosen is a new ranking: its own strikes
+  document.addEventListener("ed:expiry", function () {
+    selectedStrike = null;
+    pinned = null;
+    load();
+  });
   document.addEventListener("ed:ticker", function () {
-    expiry = null;
     selectedStrike = null;
     pinned = null;
     load();

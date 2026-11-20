@@ -47,16 +47,16 @@ def test_rows_are_the_shape_the_panel_renders():
     Never rebuilt from these numbers into contracts and run through the exposure engine again.
     """
     ps = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW, sessions=sessions()).per_strike
-    # the whole book's GEX, the Chart view's DEX and OI rows and the Vanna panel's rows, and each
-    # listed expiry's own, the rows a chosen expiry shows
-    assert set(ps) == {"gex", "dex", "oi", "vanna", "by_expiry"}, (
+    # the whole book's GEX, the Chart view's DEX and OI rows and the Vanna and Charm panels' rows,
+    # and each listed expiry's own, the rows a chosen expiry shows
+    assert set(ps) == {"gex", "dex", "oi", "vanna", "charm", "by_expiry"}, (
         f"each book needs its rows; a missing one is an empty panel. got {sorted(ps)}"
     )
     books = {"all": ps, **ps["by_expiry"]}
     for book, view in books.items():
-        for scope in ("gex", "dex", "oi", "vanna"):
+        for scope in ("gex", "dex", "oi", "vanna", "charm"):
             for r in view[scope]:
-                assert len(r) == (2 if scope in ("dex", "oi", "vanna") else 3), (
+                assert len(r) == (2 if scope in ("dex", "oi", "vanna", "charm") else 3), (
                     f"{book} {scope}: row {r} has the wrong shape"
                 )
                 assert all(isinstance(x, (int, float)) for x in r), (

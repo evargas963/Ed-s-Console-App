@@ -24,8 +24,10 @@ import pytest
 
 import server
 import time_et
+from calc.math_exposure_core import bucket_metric, merge_exposure_books
 from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
+from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from state import level_store
 
@@ -200,3 +202,36 @@ def test_with_no_prior_day_the_migration_says_so(published):
     level_store.publish(TK, replace(published, prior_day=None))
     m = _strikes(CHOSEN)["migration"]
     assert not m["compared"] and m["note"] == push_strikes.NO_PRIOR_DAY
+
+
+def _bars(key: str, expiry: str | None) -> dict[float, float]:
+    body = push_strike_bars.strike_bars(key, TK, FRIDAY["ts_utc"], {**EVERY, "expiry": expiry})
+    assert body["expiry"] == expiry
+    return {r["strike"]: r["value"] for r in body["rows"]}
+
+
+def test_vanna_and_charm_by_strike_are_the_chosen_expirys_alone(published):
+    """Each expiry's vanna is the net vanna of its own priced contracts, its charm its own map's.
+
+    The producer priced each expiry once (snap.books by (expiry, DTE), snap.charm_by_expiry):
+    the chosen expiry's rows are those of its contracts alone; All Expirations the whole book's.
+    """
+    snap = published.snap
+    for expiry in sorted({c["expirationDate"][:10] for c in FRIDAY["contracts"]}):
+        own, _ = merge_exposure_books(b for (e, _d), b in snap.books.items() if e == expiry)
+        want = {k: v for k, b in own.items() if (v := bucket_metric(b, "net_vanna")) is not None}
+        assert _bars("vanna", expiry) == want, expiry
+        charm = snap.charm_by_expiry[expiry]
+        want = {k: b["net_charm"] for k, b in charm.items() if b["net_charm"] is not None}
+        assert _bars("charm", expiry) == want, expiry
+    whole = {
+        k: b["net_charm"] for k, b in snap.charm_by_strike.items() if b["net_charm"] is not None
+    }
+    assert _bars("charm", None) == whole
+    assert _bars("charm", CHOSEN) != whole  # one expiry is not every one
+    assert (
+        push_strike_bars.strike_bars(
+            "vanna", TK, FRIDAY["ts_utc"], {**EVERY, "expiry": NOT_LISTED}
+        )["reason"]
+        == f"the chain lists no contracts for {NOT_LISTED}"
+    )

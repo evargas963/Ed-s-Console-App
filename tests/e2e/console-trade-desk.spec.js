@@ -1540,6 +1540,9 @@ test.describe("Trade Desk renders served values", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const panel = page.locator("#tdMigration");
     await expect(panel.locator(".mig-exp")).toHaveText("All Expirations");
+    // the one expiry dropdown stands on the Trade Desk too; the Options grid's measure does not
+    await expect(page.locator("#expSel")).toBeVisible();
+    await expect(page.locator("#measureSel")).toBeHidden();
     await expect(panel.locator(".gbs-v")).toHaveText(drawn(STRIKES.today, "text"));
     await expect(panel.locator("[data-mig-scope]")).toHaveCount(0); // no fixed DTE chips
     await page.evaluate((e) => window.EdShell.setExpiry(e), ONE.expiry);

@@ -1,35 +1,49 @@
-"""The per-strike bar panels: Vanna and Charm, each strike's published value in the asked window."""
+"""The per-strike bar panels: Vanna and Charm, each strike's value at the expiry chosen."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from calc.terrain_engine import nearest_strike
 from push.answers import unavailable
 from push.spot import resolve_spot
-from push.strike_rows import served, window_asked, windowed
+from push.strike_rows import expiry_unreadable, rows_of, served, window_asked, windowed
 from state.level_store import published_levels
 
+#: a per-strike bar panel's rows in the published levels' per-strike view
+type BarKey = Literal["vanna", "charm"]
+
 #: each per-strike bar panel's published rows and how they are made
-STRIKE_BAR_METHODS = {
-    "vanna_rows": "the published levels' exposure book -> call_vanna - put_vanna",
-    "charm_rows": "the published levels' charm map -> call_charm - put_charm",
+STRIKE_BAR_METHODS: dict[BarKey, str] = {
+    "vanna": "the published levels' exposure book -> call_vanna - put_vanna",
+    "charm": "the published levels' charm map -> call_charm - put_charm",
 }
 
 
 def strike_bar_payload(
-    tk: str, key: str, scope: str, centre: float | None, shift: int, now: float
+    tk: str,
+    key: BarKey,
+    scope: str,
+    centre: float | None,
+    shift: int,
+    expiry: str | None,
+    now: float,
 ) -> dict[str, Any]:
-    """Return a per-strike bar panel's answer at `now` (vanna, charm).
+    """Return a per-strike bar panel's answer at `now` (vanna, charm) of `expiry`.
 
-    The published rows `key`, windowed for the panel (windowed), each as the page draws it
-    (served: delta-shares, compact, the row at the price marked), with the live price.
+    The published rows `key` of `expiry` (None: every expiry's, the whole book), windowed for the
+    panel (windowed), each as the page draws it (served: delta-shares, compact, the row at the
+    price marked), with the live price. An expiry the published chain does not list is answered
+    with why, never another expiry's rows.
     """
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
     if levels is None:
         return unavailable(tk, "no levels published for this ticker yet")
-    rows = levels.vanna_rows if key == "vanna_rows" else levels.charm_rows
+    book = rows_of(levels.snap.per_strike, expiry)
+    if book is None:
+        return unavailable(tk, f"the chain lists no contracts for {expiry}")
+    rows = book[key]
     spot = resolve_spot(tk, now=now)[0]
     spot_strike = nearest_strike([r.strike for r in rows], spot)
     win, view = windowed(rows, spot_strike, scope, centre, shift)
@@ -37,6 +51,7 @@ def strike_bar_payload(
         "ticker": tk,
         "available": bool(rows),
         "spot": spot,
+        "expiry": expiry,
         "rows": [served(r, key, {"spot": spot_strike}) for r in win],
         "view": view,
         "scope": scope,
@@ -45,14 +60,18 @@ def strike_bar_payload(
     }
 
 
-def strike_bars(key: str, tk: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+def strike_bars(key: BarKey, tk: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for.
 
-    "vanna_rows": net_vanna = call_vanna - put_vanna per strike, across every expiry (the Vanna
-    panel). "charm_rows": the charm walls' own map, net_charm = call_charm - put_charm per strike,
-    delta-shares/day (the Charm panel).
+    "vanna": net_vanna = call_vanna - put_vanna per strike (the Vanna panel). "charm": the charm
+    walls' own map, net_charm = call_charm - put_charm per strike, delta-shares/day (the Charm
+    panel). Each of the expiry the page chose (`expiry`: an expiry date, or None for every
+    expiry).
     """
     asked = window_asked(params)
     if isinstance(asked, str):
         return unavailable(tk, asked)
-    return strike_bar_payload(tk, key, *asked, now)
+    unreadable = expiry_unreadable(params)
+    if unreadable is not None:
+        return unavailable(tk, unreadable)
+    return strike_bar_payload(tk, key, *asked, params["expiry"], now)
