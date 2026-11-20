@@ -25,55 +25,22 @@ const SIDES = require("./fixtures/options_microstructure_side_payloads.json");
 const SPY_CHAIN = require("../fixtures/real_spy_option_contract_type_2026_10_23.json").chain;
 const SPY_CALL = "SPY   261023C00761000";
 const SPY_PUT = "SPY   261023P00762000";
-const { served } = require("./fixtures/served_chain");
+// the chain panels as the program serves them on SPY's 2026-10-23 close capture at the call's first
+// quote (it lists the two contracts) and on TSLA's complete 2026-08-31 chain (it lists SELECTED),
+// held to the producer by test_the_chain_e2e_panels_are_the_producers_own
+const CHAINS = require("./fixtures/chain_panels_spy_tsla.json");
 const { routeWatchlist } = require("./fixtures/watchlist");
 // the Gamma page's levels, strikes and heatmap as the server sends them on CRWD's real chain
 // (held to the server by tests/test_vanna_charm_by_strike_v1.py)
 const REAL = require("./fixtures/vanna_charm_panels_crwd.json");
 
 const SELECTED = FIXTURE.contract; // 'TSLA  260831C00367500'
-const OTHER = "TSLA  260831P00367500";
 
 // Presentation formatting only (mirrors ed-gamma-flow.js num()/int(): fixed decimals / rounding).
 const fmt = (n, d) => Number(n).toFixed(d);
 const rowV = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .v');
 const rowTag = (page, k) => page.locator('#flowBody .fl-row[data-k="' + k + '"] .fl-tag');
 
-function chain(ctx) {
-  if (ctx.sides) {
-    // STAND-IN (named, ACTIVE_PROGRAM STAND-INS): the envelope's status and scope
-    return {
-      ticker: SPY_CHAIN.ticker,
-      spot: SPY_CHAIN.spot,
-      expiry: SPY_CHAIN.expiry,
-      status: "ok",
-      scope: { kind: "complete_single_expiry" },
-      contracts: SPY_CHAIN.contracts,
-    };
-  }
-  // STAND-IN (named, ACTIVE_PROGRAM STAND-INS): Schwab's TSLA 2026-08-31 chain was not kept.
-  function ct(side, k, sym) {
-    return {
-      putCall: side,
-      strikePrice: k,
-      symbol: sym,
-      openInterest: 10,
-      totalVolume: 5,
-      volatility: 12,
-      delta: side === "CALL" ? 0.5 : -0.5,
-      gamma: 0.01,
-      expirationDate: "2026-08-31",
-    };
-  }
-  return {
-    ticker: "TSLA",
-    spot: 367,
-    expiry: "2026-08-31",
-    status: "ok",
-    scope: { kind: "complete_single_expiry" },
-    contracts: [ct("CALL", 367.5, SELECTED), ct("PUT", 367.5, OTHER)],
-  };
-}
 /** The real route payload with this test's plane overlaid; `mutate` (optional) edits a deep copy
  *  for negative controls. Nothing else in the payload is invented here. */
 function microFor(plane, mutate) {
@@ -117,7 +84,7 @@ async function setup(page, ctx) {
       if (ctx.hangMicro) return undefined;
       return ctx.sides ? SIDES[params.contract] : microFor(ctx.plane, ctx.mutate);
     },
-    chain: () => served(chain(ctx)),
+    chain: () => (ctx.sides ? CHAINS.spy_call_first_quote : CHAINS.tsla),
     terrain: REAL.terrain,
     strikes: REAL.strikes,
     surface: REAL.surface,
