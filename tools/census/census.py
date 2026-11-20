@@ -1670,11 +1670,9 @@ for cat, rule, tool in (
     ),
 ):
     add(S, cat, rule, tool)
-#: a work item, `- ID (STATE...): ...`; an item still being designed has no state
-WORK_ITEM = re.compile(r"^- ([A-Za-z][\w -]*?)(?: \(([A-Z ]+)[^)]*\))?:", re.M)
-WORK = [
-    (m.group(1), m.group(2) or "DESIGNING") for m in WORK_ITEM.finditer(TEXT["ACTIVE_PROGRAM.md"])
-]
+#: a work item, `- ID (STATE...): ...`
+WORK_ITEM = re.compile(r"^- ([A-Za-z][\w -]*?) \(([A-Z ]+)[^)]*\):", re.M)
+WORK = [m.groups() for m in WORK_ITEM.finditer(TEXT["ACTIVE_PROGRAM.md"])]
 add(
     S,
     "open work rows, every status, by status below (reported)",

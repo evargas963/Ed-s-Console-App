@@ -264,22 +264,22 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Designing (nothing is built until the operator decides)
 
-- RESEARCH: quant formulas that decide stock, calls, puts or spreads, run on the stored chain
-  history; where it lives is undecided.
-- PLAN: Trade Desk → Plan.
-- QUANT: studies on the recorded data, after the census, each making a screen message rest on
-  measured evidence: event studies at levels, look-forward returns by served value, calibration of
-  the one-day move, implied against realized volatility, regime detection, order-flow decay, the
-  same study over every ticker, and the data's own gaps. Each with a fixed design, walk-forward
-  testing and a multiple-testing correction; a study that finds nothing changes or removes the
-  message it tested.
-- OI-STREAM: the stream's OPEN_INTEREST misses some contracts' daily update; left: the other
-  recorded days, why, and what a change in open interest says for trading.
-- PORTFOLIO: Portfolio / Risk, from Schwab's account API, fetched by Feed.
-- VOL-GAMMA: option volume in the gamma read (for example volume-weighted gamma for same-day
-  expiries).
-- DESK-GAPS: Trade Desk elements with no canonical value yet, each keeping its place and saying why:
-  high- and low-volume nodes; absorption, liquidity pull and replenishment (need per-trade prints
-  the stream does not carry); R1/R2/S1/S2; severity and each card's 1-hour change. The tick-rule
-  trade-side estimate (`calc/order_flow.py`, labelled PROXY in Options → Flow) is still to be
-  deleted.
+- RESEARCH (DESIGNING): quant formulas that decide stock, calls, puts or spreads, run on the stored
+  chain history; where it lives is undecided.
+- PLAN (DESIGNING): Trade Desk → Plan.
+- QUANT (DESIGNING): studies on the recorded data, after the census, each making a screen message
+  rest on measured evidence: event studies at levels, look-forward returns by served value,
+  calibration of the one-day move, implied against realized volatility, regime detection, order-flow
+  decay, the same study over every ticker, and the data's own gaps. Each with a fixed design,
+  walk-forward testing and a multiple-testing correction; a study that finds nothing changes or
+  removes the message it tested.
+- OI-STREAM (DESIGNING): the stream's OPEN_INTEREST misses some contracts' daily update; left: the
+  other recorded days, why, and what a change in open interest says for trading.
+- PORTFOLIO (DESIGNING): Portfolio / Risk, from Schwab's account API, fetched by Feed.
+- VOL-GAMMA (DESIGNING): option volume in the gamma read (for example volume-weighted gamma for
+  same-day expiries).
+- DESK-GAPS (DESIGNING): Trade Desk elements with no canonical value yet, each keeping its place and
+  saying why: high- and low-volume nodes; absorption, liquidity pull and replenishment (need
+  per-trade prints the stream does not carry); R1/R2/S1/S2; severity and each card's 1-hour change.
+  The tick-rule trade-side estimate (`calc/order_flow.py`, labelled PROXY in Options → Flow) is
+  still to be deleted.
