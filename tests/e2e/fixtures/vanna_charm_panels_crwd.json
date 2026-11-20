@@ -3,6 +3,7 @@
     "ticker": "CRWD",
     "available": true,
     "spot": 269.395,
+    "expiry": null,
     "rows": [
       {
         "strike": 257.5,
@@ -101,6 +102,7 @@
     "ticker": "CRWD",
     "available": true,
     "spot": 269.395,
+    "expiry": null,
     "rows": [
       {
         "strike": 257.5,

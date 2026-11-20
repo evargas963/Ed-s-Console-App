@@ -23,7 +23,7 @@ from numeric_contract import price_text
 from push.answers import unavailable
 from push.levels import pin_note
 from push.spot import price_mark, resolve_spot
-from push.strike_rows import window
+from push.strike_rows import expiry_unreadable, window
 from push.verdict import LevelsVerdict, terrain_staleness
 from state.level_store import published_levels
 from state.price_level_store import canonical_price_level_snapshot
@@ -41,17 +41,7 @@ def _expiry_order(item: tuple[str, float | None]) -> tuple[int, float, str]:
 def _confluence_expiries(books: dict[ExpiryKey, Book]) -> list[dict[str, Any]]:
     """Each expiry of the chain with Schwab's daysToExpiration, the key of its book."""
     found = {str(exp)[:10]: dte for exp, dte in books if exp}
-    listed: list[dict[str, Any]] = []
-    for exp, dte in sorted(found.items(), key=_expiry_order):
-        label = exp
-        if isinstance(dte, (int, float)) and float(dte) == 0:
-            label = "0DTE · " + exp
-        elif isinstance(dte, (int, float)) and float(dte) == int(dte):
-            label = exp + " · " + str(int(dte))
-        elif isinstance(dte, (int, float)):
-            label = exp + " · " + str(dte)
-        listed.append({"expiry": exp, "dte": dte, "label": label})
-    return listed
+    return [{"expiry": exp, "dte": dte} for exp, dte in sorted(found.items(), key=_expiry_order)]
 
 
 #: Pill text for the chain's option levels. Same-day copies take "0D " in front.
@@ -218,8 +208,21 @@ def _chain_status(verdict: LevelsVerdict, fetched: float, now: float) -> str:
     return " · ".join(parts)
 
 
+def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]:
+    """Return the `confluence` panel at the page's one expiry choice (`params["expiry"]`)."""
+    unreadable = expiry_unreadable(params)
+    if unreadable is not None:
+        return unavailable(tk, unreadable, **_rail([], []))
+    return confluence_payload(tk, params["expiry"], now)
+
+
 def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, Any]:
-    """Return the ranking of the priced chain, for the expiry the operator picks."""
+    """Return the ranking of the priced chain, for the expiry the operator picks.
+
+    `expiry`: the page's one expiry choice. None (All Expirations) is the front expiry still open:
+    the matrix ranks one expiry, its preset set by that expiry's days to expiration. An expiry
+    the chain does not list as open is answered with why, never another expiry's ranking.
+    """
     published = published_levels(tk)
     if published is None or not published.snap.books or published.snap.spot is None:
         return unavailable(tk, "no priced chain is held for this ticker", **_rail([], []))
@@ -229,18 +232,20 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     if not listed:
         return unavailable(tk, "no expiry on this chain is still open", **_rail([], []))
     chosen = expiry
-    if not isinstance(chosen, str) or chosen < today:
+    if chosen is None:
+        # All Expirations: the matrix ranks one expiry by its days to expiration (its preset),
+        # so it shows the front one still open
         live_listed = [e for e in listed if e["dte"] is not None and e["dte"] >= 0]
         chosen = (live_listed or listed)[0]["expiry"]
     match = next((e for e in listed if e["expiry"] == chosen), None)
     if match is None or match["dte"] is None:
         absent = match is None
         reason = (
-            "that expiry is not on the priced chain"
+            f"the chain lists no open contracts for {chosen}"
             if absent
             else "that expiry did not carry days to expiration"
         )
-        return unavailable(tk, reason, expiries=listed, **_rail([], []))
+        return unavailable(tk, reason, expiry=chosen, **_rail([], []))
     stored = _ranked_matrix(live, priced_at, chosen, match["dte"])
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
@@ -265,7 +270,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             "available": True,
             "reason": None,
             "expiry": chosen,
-            "expiries": listed,
             "spot_as_of_ts_utc": live_ts,
             # the distances and the spot line are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),

@@ -489,7 +489,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
     weights = in_score_weights(body["preset"])
     assert weights["FLOWM"] == 0 and weights["DGEXM"] == 0 and "weights_in_score" not in body
-    assert body["expiries"][0]["label"] == "0DTE · 2026-10-22"
+    assert body["expiry"] == "2026-10-22"
     checked = grossed = 0
     for row in body["rows"]:
         bucket = book[row["strike"]]
@@ -836,20 +836,26 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     """MRVL's full chain captured Wednesday 2026-10-07 still holds Friday's 2026-10-09 expiry.
 
-    On Sunday the matrix opens on the next one, and a request for Friday's opens there too.
+    On Sunday, with no expiry chosen (All Expirations), the matrix ranks the front one still
+    open: the matrix ranks one expiry, its preset set by that expiry's days to expiration. Friday's
+    expiry chosen is said, never answered with the next one's ranking.
     """
     tk = "MRVL"
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
         _publish_mrvl()
-        opened = push_confluence.confluence_payload(tk, None, _SUNDAY)
-        asked = push_confluence.confluence_payload(tk, listed[0], _SUNDAY)
+        opened = push_confluence.confluence(tk, _SUNDAY, {"expiry": None})
+        asked = push_confluence.confluence(tk, _SUNDAY, {"expiry": listed[0]})
+        unread = push_confluence.confluence(tk, _SUNDAY, {})
     finally:
         level_store._levels.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
     assert (opened["available"], opened["expiry"]) == (True, "2026-10-16")
-    assert "2026-10-09" not in [e["expiry"] for e in opened["expiries"]]
-    assert (asked["available"], asked["expiry"]) == (True, "2026-10-16")
+    assert "expiries" not in opened  # the page's one dropdown lists them, not the matrix
+    assert (asked["available"], asked["expiry"]) == (False, "2026-10-09")
+    assert asked["reason"] == "the chain lists no open contracts for 2026-10-09"
+    assert "rows" not in asked
+    assert unread["reason"] == "expiry None is not an expiry date or null"
 
 
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():

@@ -261,7 +261,7 @@ def test_every_per_strike_panel_is_served_its_window_and_scale():
 
         def bars(scope, centre=None, shift=0, key=key):
             return push_strike_bars.strike_bar_payload(
-                TK, key, scope, centre, shift, _AT.timestamp()
+                TK, key, scope, centre, shift, None, _AT.timestamp()
             )
 
         d = bars("auto")
