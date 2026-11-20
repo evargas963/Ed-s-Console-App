@@ -39,14 +39,16 @@ jobs:
       - name: Run the mutants
         run: mutmut run --max-children "$(nproc)"
 
+      # the score and the results of every mutant tested are kept however the run ends, a
+      # cancelled one included
       - name: The score
-        if: success() || failure()
+        if: always()
         run: |
           mutmut export-cicd-stats
           cat mutants/mutmut-cicd-stats.json
 
       - name: Keep the results
-        if: success() || failure()
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: mutmut-results
