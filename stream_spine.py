@@ -1475,8 +1475,12 @@ class CaptureWriter:
         self.last_failure_ts: float | None = None
         self.unrecorded = 0
         #: (kind, ticker, ts_utc) -> told when that message's batch is committed, with its outcome
-        #: (_stored_first: a capture or a price's crosses)
-        self._waiters: dict[tuple[str, str, float], tuple[threading.Event, list[Outcome]]] = {}
+        #: (_stored_first: a capture or a price's crosses); optional on_done runs after the wait
+        #: (HELD path: a late close capture keep into State)
+        self._waiters: dict[
+            tuple[str, str, float],
+            tuple[threading.Event, list[Outcome], Callable[[str], None] | None],
+        ] = {}
         self.error: str | None = None
         self.error_ts: float | None = None
         self.left_on_disk: list[dict[str, str | int]] = []
@@ -1589,14 +1593,21 @@ class CaptureWriter:
         with self._lock:
             self._committed([(item, out)])
 
-    def store_capture(self, msg: dict[str, Any], wait_sec: float) -> str:
+    def store_capture(
+        self,
+        msg: dict[str, Any],
+        wait_sec: float,
+        on_done: Callable[[str], None] | None = None,
+    ) -> str:
         """Write a chain capture (capture_message) and wait up to `wait_sec` for its commit.
 
         Another thread: the chain sweep, which tells the console of the chain only after this
         returns (store first). Returns CAPTURE_STORED, CAPTURE_REFUSED or CAPTURE_HELD
-        (_stored_first).
+        (_stored_first). `on_done`, when given, is called with that eventual STORED or REFUSED
+        once the batch commits — including after a HELD return, so the sweep can keep a late
+        close capture into State.
         """
-        return self._stored_first(CAPTURE, msg, wait_sec)[0]
+        return self._stored_first(CAPTURE, msg, wait_sec, on_done=on_done)[0]
 
     def store_crosses(self, msg: dict[str, Any], wait_sec: float) -> tuple[str, tuple[int, ...]]:
         """Write a price's level crosses and wait up to `wait_sec` for their commit.
@@ -1609,7 +1620,13 @@ class CaptureWriter:
         outcome, out = self._stored_first(CROSS, msg, wait_sec)
         return outcome, out.values[2] if outcome == CAPTURE_STORED else ()
 
-    def _stored_first(self, kind: str, msg: dict[str, Any], wait_sec: float) -> tuple[str, Any]:
+    def _stored_first(
+        self,
+        kind: str,
+        msg: dict[str, Any],
+        wait_sec: float,
+        on_done: Callable[[str], None] | None = None,
+    ) -> tuple[str, Any]:
         """Write `msg`, a message of a kind stored first, and wait up to `wait_sec` for its commit.
 
         Returns (CAPTURE_STORED, its RowWritten) once committed with at least one row,
@@ -1626,7 +1643,7 @@ class CaptureWriter:
             if self.state == WRITER_DEAD:
                 self.unrecorded += 1
                 return CAPTURE_REFUSED, None
-            self._waiters[(kind, msg["ticker"], msg["ts_utc"])] = (done, result)
+            self._waiters[(kind, msg["ticker"], msg["ts_utc"])] = (done, result, on_done)
             if not standalone:
                 self._q.put(item)
         if standalone:
@@ -1657,7 +1674,9 @@ class CaptureWriter:
         """Count a batch that is in the database: its rows and kept failures; the writer records.
 
         The caller holds the lock, so a batch is counted written and stops being held at one time.
+        Each capture's `on_done` runs after the lock is released.
         """
+        done_callbacks: list[tuple[Callable[[str], None], str]] = []
         for item, out in batch:
             if isinstance(out, RowWritten):
                 self.rows_written += 1
@@ -1671,10 +1690,19 @@ class CaptureWriter:
             ):
                 waiter = self._waiters.pop((kind, msg["ticker"], msg["ts_utc"]), None)
                 if waiter is not None:
+                    stored = isinstance(out, RowWritten) and bool(out.values[2])
+                    outcome = CAPTURE_STORED if stored else CAPTURE_REFUSED
                     waiter[1].append(out)
                     waiter[0].set()
+                    if waiter[2] is not None:
+                        done_callbacks.append((waiter[2], outcome))
         if self.state == WRITER_BLOCKED:
             self.state, self.error, self.error_ts = WRITER_RECORDING, None, None
+        for callback, outcome in done_callbacks:
+            try:
+                callback(outcome)
+            except Exception:
+                log.exception("stream writer: capture on_done failed after %s", outcome)
 
     def status(self) -> dict[str, Any]:
         """Return the writer's WriterStatus, as the heartbeat carries it."""

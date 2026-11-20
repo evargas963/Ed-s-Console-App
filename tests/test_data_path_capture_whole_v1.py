@@ -190,6 +190,75 @@ def test_a_capture_the_database_does_not_take_in_time_is_held_and_written_after(
     assert writer.status()["rows_written"] == 1, "the capture, written once"
 
 
+def test_a_held_close_capture_is_kept_into_state_once_the_recorder_commits(tmp_path, monkeypatch):
+    """After the close no second chain is asked; a HELD close must still reach capture_store.
+
+    INDUCED CONDITION: exclusive lock so the sweep's wait returns HELD and the chain is
+    delivered as capture=False; once unlocked the Recorder commits and on_done keeps the close
+    into State so overnight forces see that prior day without a restart.
+    """
+    from state import capture_store
+
+    monkeypatch.setattr(cs, "CAPTURE_WAIT_SEC", 0.5)
+    db = tmp_path / "ed_console.db"
+    prior_ts = _BEGUN - 24 * 3600.0
+    CaptureWriter(db).store_capture(
+        cch.capture_message(
+            "MRVL",
+            prior_ts,
+            (10.0, prior_ts),
+            [
+                {"expiry": e, "spot": 10.0, "contracts": cts, "chains_answer": None}
+                for e, cts in _chain().by_expiry.items()
+            ],
+        ),
+        10.0,
+    )
+    assert [c.ts_utc for c in capture_store.captures(db, "MRVL")] == [prior_ts]
+
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.05)
+    flags: list[bool] = []
+    sweep = cs.ChainSweep(
+        db,
+        ["MRVL"],
+        lambda _topic, msg: flags.append(bool(msg["capture"])),
+        clock=lambda: _BEGUN,
+        failures=writer,
+        streamed=lambda _symbol: None,
+    )
+    release, locked = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        other = sqlite3.connect(str(db))
+        try:
+            other.execute("BEGIN EXCLUSIVE")
+            locked.set()
+            release.wait(10)
+            other.commit()
+        finally:
+            other.close()
+
+    def body(w: CaptureWriter) -> list[float]:
+        holder = threading.Thread(target=hold, daemon=True)
+        holder.start()
+        locked.wait(10)
+        sweep.deliver(_chain())
+        release.set()
+        holder.join(10)
+        deadline = datetime.now(ET).timestamp() + 10.0
+        while datetime.now(ET).timestamp() < deadline:
+            held = capture_store.captures(db, "MRVL")
+            if held and held[0].ts_utc == _BEGUN:
+                return [c.ts_utc for c in held]
+            writer.status()  # the stop path is not yet; spin until on_done keeps
+        return [c.ts_utc for c in capture_store.captures(db, "MRVL")]
+
+    kept = asyncio.run(_running(writer, body))
+    assert flags and flags[0] is False  # delivered as no capture during the wait
+    assert kept[0] == _BEGUN  # late commit kept the close into State
+    assert _BEGUN in {c.ts_utc for c in cch.last_capture_per_day(db, "MRVL", 2)}
+
+
 def test_a_dead_writer_refuses_the_capture_and_counts_it_not_recorded(tmp_path):
     """INDUCED CONDITION: a _Defect message ends the writer thread before the capture comes."""
     db = tmp_path / "ed.db"

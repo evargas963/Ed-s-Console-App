@@ -29,7 +29,7 @@ from typing import Any
 from schwab.client import Client
 
 import time_et
-from calibration.complete_chain_capture import capture_message
+from calibration.complete_chain_capture import StoredCapture, capture_message
 from feed.schwab_client import (
     QUOTES_BATCH_MAX,
     REQUESTS_AT_ONCE,
@@ -51,7 +51,12 @@ from option_contract import (
     streamed_quote,
 )
 from state import capture_store
-from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter, streamed_record
+from stream_spine import (
+    CAPTURE_REFUSED,
+    CAPTURE_STORED,
+    CaptureWriter,
+    streamed_record,
+)
 from time_et import (
     CLOSED,
     ET,
@@ -861,7 +866,7 @@ class ChainSweep:
         contracts = chain.contracts()
         captured = False  # a chain whose history is not stored is no capture
         try:
-            captured = self._write_history(chain)
+            captured = self._write_history(chain, contracts)
         except Exception as e:  # the chain still goes to the console; the failure is kept and shown
             log.warning(
                 "chain history for %s not written, kept as delivered: %s: %s",
@@ -917,22 +922,27 @@ class ChainSweep:
                 len(contracts),
             )
 
-    def _write_history(self, chain: _Chain) -> bool:
+    def _write_history(self, chain: _Chain, contracts: list[dict[str, Any]]) -> bool:
         """Write the chain history; whether the chain was stored as its day's close capture.
 
         A chain begun at or after the ticker's option close, the first one that day for this
         ticker (a chain begun before the close is not the close capture, whenever it ends), one
         row per expiry with the underlying price of that expiry's answer, at the time the chain
         began, every row in one transaction. Stored when at least one of its expiries' rows was
-        written.
+        written. A capture held past the wait still keeps into State once the Recorder commits
+        (`on_done`), because after the close no later chain is asked for (chain_due).
         """
         slot = capture_slot(chain.started, chain.ticker)
-        return slot is not None and self._write_window(chain, slot)
+        return slot is not None and self._write_window(chain, slot, contracts)
 
-    def _write_window(self, chain: _Chain, slot: float) -> bool:
+    def _write_window(
+        self, chain: _Chain, slot: float, contracts: list[dict[str, Any]]
+    ) -> bool:
         """Store the chain as window `slot`'s capture if it is the window's first for its ticker.
 
-        Whether it was stored (_write_history).
+        Whether it was stored within the wait (_write_history). A HELD capture is still this
+        window's claim; when the Recorder later commits it, `on_done` keeps it into
+        state.capture_store so overnight forces see the close without a restart.
         """
         ticker = chain.ticker
         if ticker not in self._written:
@@ -955,7 +965,15 @@ class ChainSweep:
                 for expiry, cts in chain.by_expiry.items()
             ],
         )
-        outcome = self.failures.store_capture(capture, CAPTURE_WAIT_SEC)
+        kept = StoredCapture.taken(
+            chain.started, (chain.spot, chain.spot_ts), read_chain(contracts)
+        )
+
+        def on_done(outcome: str) -> None:
+            if outcome == CAPTURE_STORED:
+                capture_store.keep(ticker, kept)
+
+        outcome = self.failures.store_capture(capture, CAPTURE_WAIT_SEC, on_done=on_done)
         if outcome == CAPTURE_REFUSED:
             self._written[ticker] = before  # not stored: the window's next chain, if any, tries
         return outcome == CAPTURE_STORED
