@@ -1596,26 +1596,11 @@
   font-weight: 600;
 }
 
-.cm-page .expiry-pick {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
+.cm-page .cm-exp {
   font-size: 11px;
   color: #fff;
   font-weight: 600;
   flex: none;
-}
-
-.cm-page select {
-  background: #142031;
-  color: #fff;
-  padding: 6px 8px;
-  border: 1px solid #2b3c54;
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .cm-page button {

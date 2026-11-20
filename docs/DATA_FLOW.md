@@ -299,17 +299,23 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   the strike the operator panned to; with neither, the middle of the chain, with the note
   `push.strike_rows.WINDOW_NO_PRICE`. The page sends the scope and pan and picks nothing.
 - **One expiry choice.** The strike views follow the expiry the operator picks in the one expiry
-  dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`): the heatmap, GEX by
-  Strike, the Chart's GEX, DEX and OI profiles, Right Now's migration, and the Options Book and the
-  Desk map's options lean (an expiry each, so none chosen is the front one, as on the chain screens:
-  `push.chain.expiry_asked`). A listed expiry's rows are its contracts alone, by Schwab's
-  expirationDate (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the
-  whole book); All Expirations (null) is the whole book; an expiry the chain does not list is
-  answered with why, never another expiry's rows (`push.strikes.terrain_strikes_payload`). The
+  dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`), shown on the
+  Options and the Trade Desk bars: the heatmap, GEX by Strike, the Chart's GEX, DEX and OI profiles,
+  Vanna and Charm by strike, Right Now's migration, and the Options Book and the Desk map's options
+  lean (an expiry each, so none chosen is the front one, as on the chain screens:
+  `push.chain.expiry_asked`), and the Confluence matrix (one expiry ranked by its days to
+  expiration, so none chosen is the front one still open: `push.confluence.confluence_payload`). A
+  listed expiry's rows are its contracts alone, by Schwab's expirationDate
+  (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the whole book, its
+  charm the expiry's own charm map); All Expirations (null) is the whole book; an expiry the chain
+  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). The
   migration compares the same expiry on the prior day; where that day did not list it, no strike is
-  compared and the migration says why. No fixed DTE bucket of ours stands in for the choice.
-  Enforced by: `tests/test_strikes_follow_the_expiry_v1.py`,
-  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`.
+  compared and the migration says why. No fixed DTE bucket of ours stands in for the choice. The
+  walls, the flip and their moves since the prior close stay the whole book's: they are defined over
+  every contract, and Key Levels says all-exp beside a chosen expiry. Enforced by:
+  `tests/test_strikes_follow_the_expiry_v1.py`, `tests/test_data_path_confluence_v1.py`,
+  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
+  `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
 - **Tape.** Each print is signed by Lee and Ready against the bid and ask its record held
   (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned print is no value, with
   its share served beside each sum. The options tape (`push.tape.tape`) lists the newest trade first

@@ -516,7 +516,7 @@
 
   // ---------- Vanna / Charm by strike: the same bar list (drawStrikeBars), each its own pan ----------
   // The program sends the panel on the page's socket (server.strike_bars)
-  // while its tab is on, for the window it asks (the scope and its pan), at once and on each
+  // while its tab is on, for the window it asks (the scope and its pan, at the expiry chosen), at once and on each
   // change of the levels; nothing received yet for the ticker on screen is '-'.
   function _mkStrikeBar(kind, hostId, srcId) {
     function inSub() {
@@ -534,7 +534,8 @@
         return;
       }
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
-      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "", expiry: null }); // every expiry's rows
+      // the rows of the expiry served (null: every expiry's)
+      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "", expiry: d.expiry });
     }
     function ask() {
       if (!inSub()) {
@@ -549,7 +550,7 @@
         var host = document.getElementById(hostId);
         if (host) window.EdShell.placeholder(host, "-");
       }
-      window.EdShell.showPanel(kind, window.EdShell.windowParams(pan));
+      window.EdShell.showPanel(kind, window.EdShell.windowAtExpiry(pan));
     }
     document.addEventListener("ed:panel", function (e) {
       var host = document.getElementById(hostId);
@@ -985,6 +986,8 @@
     // the expiry choice: Strike Detail and GEX by Strike follow it; Levels stay aggregate + disclose
     loadLevels();
     loadGbs(); // a new expiry is a new answer: the server sends that expiry's rows
+    loadVanna();
+    loadCharm();
     loadStructures(); // Structures is expiry-scoped, same as Chain/Strike Detail
     loadBook(); // and so is the Options Book
     var sel = window.EdShell.getState().selStrike;

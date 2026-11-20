@@ -15,7 +15,8 @@ const PANELS = require("./fixtures/vanna_charm_panels_crwd.json");
 
 // server.strike_bars' answer for a ticker with no levels published yet
 const NO_LEVELS = { available: false, reason: "no levels published for this ticker yet" };
-const AUTO = { scope: "auto", centre: null, shift: 0 };
+// the window a tab asks, at the page's one expiry choice (null: All Expirations)
+const AUTO = { scope: "auto", centre: null, shift: 0, expiry: null };
 
 function frame(kind, ticker, body) {
   return JSON.stringify(Object.assign({}, body, { type: kind, ticker: served(ticker).key }));
@@ -110,7 +111,7 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
     await page.evaluate(() => window.EdShell.setScope("all"));
     await expect
       .poll(() => s.last().panels.vanna)
-      .toEqual({ scope: "all", centre: null, shift: 0 });
+      .toEqual({ scope: "all", centre: null, shift: 0, expiry: null });
     // drag the strike labels two rows down: two rows from the centre on screen (the one sent)
     const label = page.locator("#vnBody .gbs-k").first();
     const box = await label.boundingBox();
@@ -121,11 +122,42 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
     await page.mouse.up();
     await expect
       .poll(() => s.last().panels.vanna)
-      .toEqual({ scope: "all", centre: PANELS.vanna.view.centre, shift: 2 });
+      .toEqual({ scope: "all", centre: PANELS.vanna.view.centre, shift: 2, expiry: null });
     await label.dblclick();
     await expect
       .poll(() => s.last().panels.vanna)
-      .toEqual({ scope: "all", centre: null, shift: 0 });
+      .toEqual({ scope: "all", centre: null, shift: 0, expiry: null });
+  });
+
+  test("the expiry chosen is the one each tab asks, and an expiry not listed is said", async ({
+    page,
+  }) => {
+    // the producer's own words for an expiry CRWD's chain does not list (push.strike_bars)
+    const NOT_LISTED = "2026-10-17";
+    const s = await open(page, "vanna", (ws, req) => {
+      if (req.ticker !== "CRWD" || !req.panels.vanna) return;
+      ws.send(
+        frame(
+          "vanna",
+          "CRWD",
+          req.panels.vanna.expiry === NOT_LISTED
+            ? { available: false, reason: "the chain lists no contracts for " + NOT_LISTED }
+            : PANELS.vanna,
+        ),
+      );
+    });
+    await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));
+    await page.evaluate((e) => window.EdShell.setExpiry(e), NOT_LISTED);
+    await expect
+      .poll(() => s.last().panels.vanna)
+      .toEqual(Object.assign({}, AUTO, { expiry: NOT_LISTED }));
+    await expect(page.locator("#vnBody")).toContainText(
+      "the chain lists no contracts for " + NOT_LISTED,
+    );
+    await expect(page.locator("#vnBody .gbs-row")).toHaveCount(0);
+    await page.evaluate(() => window.EdShell.setExpiry(""));
+    await expect.poll(() => s.last().panels.vanna).toEqual(AUTO);
+    await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));
   });
 
   test('a ticker switch shows "-" until the new ticker\'s panel; a late one for the ticker left is ignored', async ({
@@ -202,7 +234,7 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
         expiries: {},
         "terrain:levels": {},
         "levels:kl": { tf: "1" },
-        "strikes:gbs": Object.assign({}, AUTO, { expiry: null }), // at All Expirations
+        "strikes:gbs": AUTO,
         tape: {},
         surface: Object.assign({}, AUTO, { cols: expect.any(Number), expiry: null }),
       });

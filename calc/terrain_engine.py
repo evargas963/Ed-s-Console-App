@@ -114,9 +114,10 @@ class MeasureRows(TypedDict):
 
 
 class StrikeRows(MeasureRows):
-    """One book's per-strike rows: its GEX rows beside its DEX, OI and net vanna rows."""
+    """One book's per-strike rows: its GEX rows beside its DEX, OI, net vanna and net charm rows."""
 
     gex: list[StrikeRow]
+    charm: list[StrikeValue]
 
 
 class PerStrikeView(StrikeRows):
@@ -225,9 +226,11 @@ class TerrainSnapshot:
     #: The LIVE per-strike map the walls were picked from; the per-strike panel reads it, at
     #: no additional vendor cost — the chain is already in hand. Kept OUT of to_dict() for the
     #: same reason as `profile`: too heavy for every poll; the strikes endpoint reads it directly.
-    #: per_strike_view's rows (the whole book's gex, dex, oi and vanna, and each expiry's own);
+    #: per_strike_view's rows (the whole book's gex, dex, oi, vanna and charm, and each expiry's);
     #: with no book priced, each is empty.
-    per_strike: PerStrikeView = field(default_factory=lambda: per_strike_view({}, {}), repr=False)
+    per_strike: PerStrikeView = field(
+        default_factory=lambda: per_strike_view({}, {}, {}, {}), repr=False
+    )
     #: The exposure_books every number above was priced from ({(expiry, dte): (book, diag)}):
     #: the gamma-surface grid is shaped from them, so levels, per-strike rows and heatmap
     #: cells come from one pricing pass.
@@ -594,27 +597,43 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
     return {"dex": dex, "oi": oi, "vanna": vanna}
 
 
-def _strike_rows(exposures: dict[float, Bucket]) -> StrikeRows:
-    """Return one book's GEX rows (_per_strike_rows) and DEX, OI and vanna rows."""
-    return {"gex": _per_strike_rows(exposures), **_per_strike_measure_rows(exposures)}
+def _strike_rows(exposures: dict[float, Bucket], charm: dict[float, CharmBucket]) -> StrikeRows:
+    """Return one book's GEX rows (_per_strike_rows), DEX, OI and vanna rows, and charm rows.
+
+    A charm row is each strike's net dealer charm of `charm` (compute_charm_by_strike's map, the
+    charm walls' own), ascending; a strike whose net charm is not known has no row.
+    """
+    return {
+        "gex": _per_strike_rows(exposures),
+        **_per_strike_measure_rows(exposures),
+        "charm": sorted(
+            StrikeValue(k, net) for k, b in charm.items() if (net := b["net_charm"]) is not None
+        ),
+    }
 
 
-def per_strike_view(books: dict[ExpiryKey, Book], exposures: dict[float, Bucket]) -> PerStrikeView:
+def per_strike_view(
+    books: dict[ExpiryKey, Book],
+    exposures: dict[float, Bucket],
+    charm_by_expiry: dict[str | None, dict[float, CharmBucket]],
+    charm_by_strike: dict[float, CharmBucket],
+) -> PerStrikeView:
     """Return the per-strike rows of the whole book and of each listed expiry, from one pricing.
 
-    The whole book is `exposures`, the merge of the chain's exposure_books `books`; an expiry's
-    rows are the merge of its own books alone (its contracts under whatever daysToExpiration
-    Schwab sent them). A contract with no expiry date is in the whole book only: it belongs to
-    no expiry a page can choose.
+    The whole book is `exposures`, the merge of the chain's exposure_books `books`, with its charm
+    map `charm_by_strike` (the merge of `charm_by_expiry`); an expiry's rows are the merge of its
+    own books alone (its contracts under whatever daysToExpiration Schwab sent them) and its own
+    charm map. A contract with no expiry date is in the whole book only: it belongs to no expiry
+    a page can choose.
     """
     by_date: dict[str, list[Book]] = {}
     for (expiry, _dte), book in books.items():
         if expiry is not None:
             by_date.setdefault(expiry, []).append(book)
     return {
-        **_strike_rows(exposures),
+        **_strike_rows(exposures, charm_by_strike),
         "by_expiry": {
-            expiry: _strike_rows(merge_exposure_books(dated)[0])
+            expiry: _strike_rows(merge_exposure_books(dated)[0], charm_by_expiry[expiry])
             for expiry, dated in sorted(by_date.items())
         },
     }
@@ -928,7 +947,9 @@ def compute_terrain(
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),
         # the LIVE per-strike map, computed from THIS chain; session volume is carried alongside.
-        per_strike=per_strike_view(books, exposures),
+        per_strike=per_strike_view(
+            books, exposures, by_expiry["charm_by_expiry"], by_expiry["charm_by_strike"]
+        ),
         books=books,
         **by_expiry,
         **_expiry_fields(books),
