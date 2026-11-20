@@ -342,16 +342,9 @@
 
   // ---- Positioning Migration & Volume: today's per-strike net GEX$ (solid) vs yesterday's
   // (ghost outline), plus today's per-strike option volume -- the SAME real fields
-  // the strikes panel already sends to GEX by Strike (today.{all,near,far} rows, each
-  // {strike, value, volume} with their texts, and migration.{all,near,far}). ----
-  var _migScope = "all"; // 'all' | 'near' (<=7 DTE) | 'far' (monthly+) -- a DTE filter, distinct
-  // from EdShell's own auto/wider/all row-DENSITY scope used below.
+  // the strikes panel already sends to GEX by Strike (the `today` rows of the expiry chosen, each
+  // {strike, value, volume} with their texts, and the `migration` of that expiry). ----
   var _migGhost = true;
-  var MIG_SCOPES = [
-    ["all", "ALL"],
-    ["near", "≤7 DTE"],
-    ["far", "MONTHLY+"],
-  ];
 
   // Own badge class, deliberately NOT fl-tag/native|derived -- those hooks are this file's (and
   // ed-gamma-panels.js's) provenance classification colors; a SPOT/wall price marker is a
@@ -378,12 +371,12 @@
     BELOW_PUT_WALL: "BELOW the put wall",
     INSIDE_WALLS: "inside the wall range",
   };
-  // m: the served positioning_migration for this DTE scope; moves: the served level_moves
+  // m: the served positioning_migration of the expiry chosen; moves: the served level_moves
   function migrationCoach(m, moves) {
     var out = "";
-    if (!m || !m.compared) {
-      out +=
-        '<div class="mig-coach"><b>Migration view warming up</b>The first day-over-day comparison lands after the next wide morning capture.</div>';
+    if (!m.compared) {
+      // served: why no strike is compared (no prior day yet, or the prior day lacks this expiry)
+      out += '<div class="mig-coach"><b>Migration view warming up</b>' + esc(m.note) + "</div>";
     } else {
       var grew = m.grew_text,
         shrank = m.shrank_text;
@@ -450,8 +443,8 @@
         esc(why) +
         "</div></div></div>"
       );
-    var todayAll = strikesD.today[_migScope]; // always served: every scope's rows, none when there are no levels
-    if (!todayAll.length) {
+    var today = strikesD.today; // always served: the expiry chosen's rows, none when there are no levels
+    if (!today.length) {
       var stale = strikesD.levels_stale_reason;
       return (
         '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
@@ -461,14 +454,14 @@
       );
     }
     // served: day-over-day rows {strike, value, prior, change, change_text} and the verdicts
-    var mig = strikesD.migration[_migScope];
+    var mig = strikesD.migration;
     var migRow = {};
     mig.rows.forEach(function (r) {
       migRow[r.strike] = r;
     });
-    var view = strikesD.views[_migScope];
+    var view = strikesD.view;
     window.EdShell.panServed(_migPan, view.centre);
-    var win = todayAll.slice().reverse(); // the served window, high strikes on top
+    var win = today.slice().reverse(); // the served window, high strikes on top
     // a pan is never silent: the strikes stop following the price until a double-click
     var note =
       (_migPan.centre != null
@@ -536,24 +529,16 @@
           .join("") +
         "</div>";
     });
-    var scopeChips =
-      '<div class="mig-chips">' +
-      MIG_SCOPES.map(function (s) {
-        return (
-          '<span class="mig-chip' +
-          (s[0] === _migScope ? " on" : "") +
-          '" data-mig-scope="' +
-          s[0] +
-          '">' +
-          s[1] +
-          "</span>"
-        );
-      }).join("") +
+    // the expiry these rows are (the one choice, made in the Options bar), and the ghost's switch
+    var chips =
+      '<div class="mig-chips"><span class="mig-exp">' +
+      esc(strikesD.expiry_text) +
+      "</span>" +
       '<span class="mig-chip' +
       (_migGhost ? " on" : "") +
       '" data-mig-ghost="1">GHOST</span></div>';
-    // what a session volume of 0 means, served (push.strikes._shown_scope)
-    var volZero = mig ? mig.volume_zero_text : null;
+    // what a session volume of 0 means, served (push.strikes._shown_migration)
+    var volZero = mig.volume_zero_text;
     var volNote = volZero
       ? '<div class="mig-vol-note' +
         (strikesD.levels_state === "STALE" ? " stale" : "") +
@@ -566,7 +551,7 @@
       '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+Γ today ' +
       '<i class="sw" style="background:var(--ed-neg)"></i>-Γ today ' +
       '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
-      scopeChips +
+      chips +
       '<div class="mig-top">' +
       note +
       volNote +
@@ -580,16 +565,8 @@
     );
   }
 
-  // a chip picks which of the served rows are drawn: the page draws again, asking nothing
+  // the ghost chip shows or hides the prior day's bars: the page draws again, asking nothing
   function wireMigrationChips(h) {
-    h.querySelectorAll("[data-mig-scope]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var s = b.getAttribute("data-mig-scope");
-        if (s === _migScope) return;
-        _migScope = s;
-        draw();
-      });
-    });
     var gh = h.querySelector("[data-mig-ghost]");
     if (gh)
       gh.addEventListener("click", function () {
@@ -663,7 +640,7 @@
     window.EdShell.showPanel("terrain:desk", on ? {} : null);
     window.EdShell.showPanel(
       "strikes:migration",
-      on ? window.EdShell.windowParams(migPan(ticker())) : null,
+      on ? window.EdShell.windowAtExpiry(migPan(ticker())) : null,
     );
   }
   function load() {
@@ -679,6 +656,7 @@
   document.addEventListener("ed:view", load);
   document.addEventListener("ed:ticker", load);
   document.addEventListener("ed:book_venue", load);
+  document.addEventListener("ed:expiry", askPanels); // a new expiry: the migration asks its rows
   document.addEventListener("ed:scope", askPanels); // a new scope is a new window
   // the first read comes from ed-core.js's ed:ticker/ed:view dispatch at init
 })();

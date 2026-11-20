@@ -441,14 +441,58 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     page,
   }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(STRIKES.today.all.length);
+    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(STRIKES.today.length);
     panels.strikes = (key) => (key === "QQQ" ? undefined : STRIKES); // QQQ's not sent yet
     await page.evaluate(() => window.EdShell.setTicker("QQQ"));
     await expect(page.locator("#gbsBody")).toHaveText("-");
     await expect(page.locator("#gbsSrc")).toBeEmpty();
     const asked = sock.subscribes[sock.subscribes.length - 1];
     expect(asked.ticker).toBe("QQQ");
-    expect(asked.panels["strikes:gbs"]).toEqual({ scope: "auto", centre: null, shift: 0 });
+    expect(asked.panels["strikes:gbs"]).toEqual({
+      scope: "auto",
+      centre: null,
+      shift: 0,
+      expiry: null,
+    });
+  });
+
+  test("GEX by strike and the Chart's profile follow the expiry chosen, and a click keeps it", async ({
+    page,
+  }) => {
+    // the server's own answers on AMZN's chain: All Expirations, and its second expiry chosen
+    const ONE = REAL.strikes_second_expiry;
+    panels.strikes = (key, params) => (params.expiry === ONE.expiry ? ONE : STRIKES);
+    const asked = (name) =>
+      sock.subscribes
+        .map((s) => s.panels && s.panels[name])
+        .filter(Boolean)
+        .pop();
+    const drawn = (rows) =>
+      rows
+        .slice()
+        .reverse()
+        .map((r) => (r.text == null ? "-" : r.text));
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const gbs = page.locator("#gbsBody");
+    await expect(gbs.locator(".gbs-v")).toHaveText(drawn(STRIKES.today));
+    await page.locator("#expSel").selectOption(ONE.expiry);
+    await expect.poll(() => asked("strikes:gbs").expiry).toBe(ONE.expiry);
+    // that expiry's own rows, each its served net GEX, highest strike first
+    await expect(gbs.locator(".gbs-v")).toHaveText(drawn(ONE.today));
+    expect(drawn(ONE.today)).not.toEqual(drawn(STRIKES.today)); // one expiry is not every one
+    await gbs.locator(".gbs-row").first().click();
+    expect(await page.evaluate(() => window.EdShell.getState().selExpiry)).toBe(ONE.expiry);
+    // the Chart's profile asks the same expiry and draws its rows
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect.poll(() => asked("strikes:chart").expiry).toBe(ONE.expiry);
+    await expect
+      .poll(() =>
+        page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows),
+      )
+      .toBe(ONE.today.filter((r) => r.value != null).length);
+    // All Expirations again: every expiry's rows
+    await page.locator("#expSel").selectOption("");
+    await expect.poll(() => asked("strikes:chart").expiry).toBeNull();
   });
 
   test("Key Levels: a panel the program could not produce after a stale one keeps none of its tooltip or colour", async ({
@@ -481,9 +525,9 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   test('Right Now says when the page cannot draw its answers, never "no console serving"', async ({
     page,
   }) => {
-    // Induced condition: the per-strike answer (this file's STRIKES) without its `views`, so
+    // Induced condition: the per-strike answer (this file's STRIKES) without its `view`, so
     // drawing the migration section raises a TypeError after every endpoint has answered.
-    panels.strikes = Object.assign({}, STRIKES, { views: undefined });
+    panels.strikes = Object.assign({}, STRIKES, { view: undefined });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#hPx")).not.toHaveText("CHOOSE A SYMBOL");
     const reported = page.waitForEvent("pageerror", (e) => /TypeError/.test(String(e)));
@@ -1645,7 +1689,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     // the levels (Key Levels), the strikes (GEX by strike) and the surface (the heatmap) are the
     // program's to send on the socket: the push asks for nothing
     expect(sock.subscribes.length).toBe(subscribesBefore);
-    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(STRIKES.today.all.length);
+    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(STRIKES.today.length);
   });
 
   test("one levels push with a strike selected asks for nothing", async ({ page }) => {
@@ -1664,7 +1708,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     expect(sock.subscribes.length - before.subscribes).toBe(0);
     await expect(page.locator(".hcell").first()).toBeVisible();
     await expect(page.locator("#klFlip")).toHaveText("243.91");
-    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(STRIKES.today.all.length);
+    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(STRIKES.today.length);
   });
 
   test("the Gamma Chart spot line moves with each price row (the header's price), not a terrain refetch", async ({

@@ -39,7 +39,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         server._publish_levels(TK, records, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
         cached = _cached()
         strike = round(_CONTRACTS[0]["strikePrice"], 2)
-        row = next(r for r in cached.snap.per_strike["all"] if r[0] == strike)
+        row = next(r for r in cached.snap.per_strike["gex"] if r[0] == strike)
         states = [
             col[side]["state"]
             for cell in cached.gamma_surface["cells"]

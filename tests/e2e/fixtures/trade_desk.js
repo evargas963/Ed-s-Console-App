@@ -34,6 +34,11 @@ const MICRO = REAL.book[VENUE];
 const LIQ = REAL.liquidity;
 const STRIKES = REAL.strikes;
 const BARS = REAL.bars[TF];
+// the Options Book the card's gauge draws: the option_book panel's answer for SPY's front expiry
+// at 2026-11-19 10:01:50 ET, Auto window (option_book_spy.json, held to the producer by
+// tests/test_option_book_v1.py; another day than the panels above: Schwab's option books are kept
+// from 2026-11-13)
+const OPTION_BOOK = require(path.join(__dirname, "option_book_spy.json")).auto;
 const HEAT = require(path.join(__dirname, "book_heatmap_payload.json"));
 
 // the panels the page's socket sends the page intercept last set up (a test changes one before
@@ -51,16 +56,24 @@ async function intercept(page) {
   await routeWatchlist(page, ["SPY"]);
   // the page asks the venue MICRO is the book of, unless the test names another after this
   await page.addInitScript((venue) => localStorage.setItem("ed_book_venue", venue), MICRO.venue);
-  // each reader is answered what the server answers its ask: the strikes window of its scope, the
-  // levels and the bars of its timeframe (the flow card's are its own 60 one-minute bars), the
-  // queue of its timeframe, the book of its venue
+  // each reader is answered what the server answers its ask: the strikes window of its scope at its
+  // expiry (the chain's second expiry, one it does not list, or All Expirations), the levels and
+  // the bars of its timeframe (the flow card's are its own 60 one-minute bars), the queue of its
+  // timeframe, the book of its venue
   panels = {
     terrain: TERRAIN,
     liquidity: LIQ,
-    forces: REAL.forces,
+    option_book: OPTION_BOOK,
     bookmap: HEAT,
     tape: REAL.tape,
-    strikes: (key, params) => (params.scope === "wider" ? REAL.strikes_wider : STRIKES),
+    strikes: (key, params) =>
+      params.expiry === REAL.strikes_second_expiry.expiry
+        ? REAL.strikes_second_expiry
+        : params.expiry
+          ? REAL.strikes_missing_expiry
+          : params.scope === "wider"
+            ? REAL.strikes_wider
+            : STRIKES,
     levels: (key, params) => REAL.levels[params.tf],
     desk: (key, params) => REAL.desk[params.tf],
     book: (key, params) => REAL.book[params.venue],
@@ -123,6 +136,7 @@ module.exports = {
   STRIKES,
   BARS,
   HEAT,
+  OPTION_BOOK,
   intercept,
   openView,
   watchErrors,

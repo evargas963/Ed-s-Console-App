@@ -197,6 +197,20 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   set, taken only while all six arrived in this hold (`option_contract.streamed_greek_set`,
   `capture.Daemon.option_record`). Enforced by: `tests/test_data_path_option_quote_time_v1.py`,
   `tests/test_data_path_rest_one_connection_v1.py`.
+- **Options Book** (each contract's resting book and volume, their summary and the options lean).
+  One expiry of the published chain with each contract's newest values (`push.chain.expiry_asked`,
+  the chain screens' own), each contract's newest OPTIONS_BOOK (`order_flow.state.newest_book`) and
+  the live price → the one producer, `calc.option_book` (a Calculator: each side's levels summed,
+  the summary over the rows whose call and put both have a book, the lean; registered in
+  `docs/derived_register.md`) → the `option_book` panel (`push.option_book.option_book`, every text
+  formatted there), sent again on each quote or book of the ticker or its contracts
+  (`server.FLOW_PANELS`, `server.OPTION_PANELS`) and each publication of its levels
+  (`server.LEVELS_PANELS`). Its lifecycle owner is the order-flow state's books (State) and the
+  levels producer's chain; when the OPTIONS_BOOK feed stops, the last books stand and the panel says
+  NOT LIVE or OFFLINE with why and the oldest book's time; a contract with no book held is "-",
+  never 0. Read by the Options Book subview at the selected expiry and the Trade Desk's Options
+  Positioning card (its gauge) at the front one. Enforced by: `tests/test_option_book_v1.py`,
+  `tests/e2e/console-options-book.spec.js`.
 - **The option contracts streamed (the option rule).** `capture.Daemon.pick_options` orders what is
   asked on LEVELONE_OPTIONS and OPTIONS_BOOK: the Flow panel's contract, then every ticker's kept
   contracts, then every contract of the tickers a page shows, then every other ticker's; each
@@ -211,17 +225,31 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `/pricehistory` for the 10 series of `chain_sweep.PRICE_HISTORY`, each when due
   (`ChainSweep.series_due`), before the chains → the bus (`pricehistory.<ticker>.<series>`) → the
   Recorder (`stream_pricehistory_raw`) and the bar writer. A bar is checked once
-  (`server._schwab_bar`); no bar is built from quotes. → the `bars`, `liquidity` and `desk` panels
-  (`server.BARS_PANELS`). Enforced by: `tests/test_data_path_pricehistory_v1.py`,
+  (`server._schwab_bar`); no bar built from quotes enters the bar store. → the `bars`, `liquidity`
+  and `desk` panels (`server.BARS_PANELS`). Enforced by: `tests/test_data_path_pricehistory_v1.py`,
   `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`.
+- **The forming bar.** Each price row (the equity quote, above) → `calc.forming_bar.next_built`,
+  called as the row is written (`live_market_plane.record_from_level_one_equity`), the plane holding
+  each ticker's built minutes (`live_market_plane.built_minutes`, the newest `forming_bar.KEPT`) →
+  the `forming` panel (`push.bars.forming`): each built minute Schwab has not sent its CHART_EQUITY
+  bar for (a held minute as new or newer drops it), rolled up to the chart's timeframe with the
+  minutes held in its bar (`push.bars.chart_bars`); the daily chart's is today's pushed candle. Its
+  open, high, low and close move with each trade; its volume is not built ("-", no volume bar) until
+  Schwab's CHART_EQUITY bar for the minute brings it (the operator's decision). Sent with each price
+  row and each new bar, after `bars` (`server.PRICED_PANELS`, `server.BARS_PANELS`), for the ticker
+  on screen only; the chart draws it over the newest bars (`ed-tv-chart.js` `forming`, Lightweight
+  Charts `series.update`). Its lifecycle owner is the price row's writer: a feed that stops leaves
+  the bar as it was, with its last trade's time; the program started within a minute builds none for
+  it. Enforced by: `tests/test_forming_bar_v1.py`, `tests/e2e/console-forming-bar.spec.js`.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Producer
   `server._publish_price_levels`, from the bar store's bars after each bar, for the market's session
   (`time_et.market_session_date`) → `state/price_level_store.py` → the `levels` panel
   (`push.levels.levels_payload`) and the liquidity zones (`push.liquidity.liquidity_snapshot`). The
   `levels` panel and the liquidity zones are sent again with each price row
-  (`server.PRICED_PANELS`), since each level's distance and each zone's side are from the live price. What the Trade Desk chart draws from them is served whole: the
-  prior session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the
-  volume profile's POC label (`volume_profile.poc_label`).
+  (`server.PRICED_PANELS`), since each level's distance and each zone's side are from the live
+  price. What the Trade Desk chart draws from them is served whole: the prior session's value area
+  band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume profile's POC label
+  (`volume_profile.poc_label`).
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
   watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`),
   taking those answers again for `chain_sweep.CHAINS_AGAIN_SEC`; `/chains` and `/quotes` requests go
@@ -242,12 +270,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_records_stand_v1.py`, `tests/test_canonical_gex_input_validity_v1.py`,
   `tests/test_capture_store_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_a_403_from_schwabs_edge_reaches_the_console_and_the_next_ticker_is_asked_at_once`).
-- **Levels** (walls, flip, GEX, vanna, charm, max pain, the forces). One producer,
-  `server._publish_levels`, called only on the pricing thread (`server._price_chain`): for each
-  delivered chain, for a reprice at most once a second (`server.REPRICE_EVERY_SEC`) while a page
-  shows the ticker and its quotes or contracts tick, and at startup from the newest stored captures
-  (`state.capture_store`) → `state/level_store.py` → the panels of `server.LEVELS_PANELS`, marked
-  changed by `server._levels_changed`. Streamed values are laid over the chain
+- **Levels** (walls, flip, GEX, vanna, charm, max pain). One producer, `server._publish_levels`,
+  called only on the pricing thread (`server._price_chain`): for each delivered chain, for a reprice
+  at most once a second (`server.REPRICE_EVERY_SEC`) while a page shows the ticker and its quotes or
+  contracts tick, and at startup from the newest stored captures (`state.capture_store`) →
+  `state/level_store.py` → the panels of `server.LEVELS_PANELS`, marked changed by
+  `server._levels_changed`. Streamed values are laid over the chain
   (`calc.math_exposure_core.overlay_streamed_contract_fields`). After the ticker's option close the
   chain is valued at that close (`time_et.valuation_instant`) and the close values stand until the
   next open. The verdict (`push.verdict.terrain_staleness`): LIVE, CLOSE, STALE past two of the
@@ -270,6 +298,24 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   picks: Auto 11 strikes, Wider 23, All every one, centred on the strike nearest the live price or
   the strike the operator panned to; with neither, the middle of the chain, with the note
   `push.strike_rows.WINDOW_NO_PRICE`. The page sends the scope and pan and picks nothing.
+- **One expiry choice.** The strike views follow the expiry the operator picks in the one expiry
+  dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`), shown on the
+  Options and the Trade Desk bars: the heatmap, GEX by Strike, the Chart's GEX, DEX and OI profiles,
+  Vanna and Charm by strike, Right Now's migration, and the Options Book and the Desk map's options
+  lean (an expiry each, so none chosen is the front one, as on the chain screens:
+  `push.chain.expiry_asked`), and the Confluence matrix (one expiry ranked by its days to
+  expiration, so none chosen is the front one still open: `push.confluence.confluence_payload`). A
+  listed expiry's rows are its contracts alone, by Schwab's expirationDate
+  (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the whole book, its
+  charm the expiry's own charm map); All Expirations (null) is the whole book; an expiry the chain
+  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). The
+  migration compares the same expiry on the prior day; where that day did not list it, no strike is
+  compared and the migration says why. No fixed DTE bucket of ours stands in for the choice. The
+  walls, the flip and their moves since the prior close stay the whole book's: they are defined over
+  every contract, and Key Levels says all-exp beside a chosen expiry. Enforced by:
+  `tests/test_strikes_follow_the_expiry_v1.py`, `tests/test_data_path_confluence_v1.py`,
+  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
+  `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
 - **Tape.** Each print is signed by Lee and Ready against the bid and ask its record held
   (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned print is no value, with
   its share served beside each sum. The options tape (`push.tape.tape`) lists the newest trade first
@@ -281,9 +327,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   are stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
   `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
   `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
-  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of
-  the span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`).
-  Enforced by: `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
+  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of the
+  span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`). Enforced by:
+  `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
   chain expiry date within a year (`ChainSweep.fetch_markets`) → the bus (`markets.<date>`) → the
   Recorder (`stream_markets_raw`) and `time_et.record_markets`. At startup the recorded answers are

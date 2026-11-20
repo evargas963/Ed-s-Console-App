@@ -46,14 +46,12 @@ from calc.math_exposure_core import (
     strike_oi_legs,
     strike_volume_legs,
 )
-from calc.math_forces import Forces, forces, forces_absent
 from calc.micro_structure import Candle
 from calc.terrain_engine import (
     OPTION_LEVELS,
     SCOPES,
     Book,
     ExpiryKey,
-    StrikeValue,
     TerrainSnapshot,
     compute_terrain,
 )
@@ -79,9 +77,9 @@ from push import contract as push_contract
 from push import desk as push_desk
 from push import experimental as push_experimental
 from push import expiries as push_expiries
-from push import forces as push_forces
 from push import levels as push_levels
 from push import liquidity as push_liquidity
+from push import option_book as push_option_book
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from push import surface as push_surface
@@ -633,7 +631,7 @@ LEVELS_PANELS = (
     "levels",
     "confluence",
     "contract",
-    "forces",
+    "option_book",
     "desk",
     "liquidity",
 )
@@ -833,19 +831,17 @@ def _price_chain_values(
     )
 
 
-def _forces_and_prior(
+def _prior(
     tk: str,
     previous: PublishedLevels | None,
     kept: PublishedLevels | None,
     captures: list[StoredCapture] | None,
-    snap: TerrainSnapshot,
     fetched_ts: float,
-) -> tuple[tuple[float | None, str], Forces, TerrainSnapshot | None]:
-    """Return the key of the stored captures read, the forces now and the prior day's levels.
+) -> tuple[tuple[float | None, str], TerrainSnapshot | None]:
+    """Return the key of the stored captures read and the prior market day's levels.
 
     The prior market day's close capture (_prior_day) changes only with a new capture or a new
-    chain day: its levels are computed then, once, for all readers. The forces are this chain
-    against it, with every publication (calc.math_forces.forces): live.
+    chain day: its levels are computed then, once, for all readers.
     """
     captures_key = (
         (capture_store.newest_ts(get_db().db_path, tk), et_date_str_from_ts_utc(fetched_ts))
@@ -855,20 +851,8 @@ def _forces_and_prior(
     stored = captures if captures is not None else capture_store.captures(get_db().db_path, tk)
     prior_capture = _prior_capture(stored, fetched_ts)
     if previous is not None and previous.captures_key == captures_key:
-        prior = previous.prior_day
-    else:
-        prior = None if prior_capture is None else _prior_day(tk, prior_capture)
-    if prior is None or prior_capture is None or snap.spot is None:
-        return captures_key, forces_absent(tk), prior
-    now_forces = forces(
-        tk,
-        snap.spot,
-        snap.books.values(),
-        snap.charm_by_strike,
-        prior.books.values(),
-        prior_capture.et_date,
-    )
-    return captures_key, now_forces, prior
+        return captures_key, previous.prior_day
+    return captures_key, None if prior_capture is None else _prior_day(tk, prior_capture)
 
 
 def _published_surface(
@@ -917,11 +901,11 @@ def _publish_levels(
     time; (None, None) with none); a tick passes no chain, and the kept one is repriced at the
     live price with every value received since. `captures` (startup and a closed market, DATA_FLOW
     decision 7): the two newest market days' stored captures; the newest is priced at its own
-    chain spot and time (or its option close, once past), and both feed the forces and prior
-    day. `now`: this publication's instant; a chain that is not a capture is valued then, or at
-    the option close once passed, after which the spot already published stands
-    (_publication_spot). Outside the window the close values (the first chain begun at or after
-    the close, as Schwab sent it, a 0 included) stand until the next open. None: no chain.
+    chain spot and time (or its option close, once past), and the prior market day's is the
+    prior day's levels (_prior). `now`: this publication's instant; a chain that is not a capture
+    is valued then, or at the option close once passed, after which the spot already published
+    stands (_publication_spot). Outside the window the close values (the first chain begun at or
+    after the close, as Schwab sent it, a 0 included) stand until the next open. None: no chain.
     """
     previous = published_levels(tk)
     product = option_close_product(tk)
@@ -952,7 +936,7 @@ def _publish_levels(
     listed = {c.symbol: c for c in chain if c.symbol} if kept is None else kept.contracts
     p = _price_chain_values(chain, listed, fetched_ts, closed is None, now)
     snap = compute_terrain(tk, p.priced, spot, now=valued_at, sessions=sessions())
-    captures_key, forces, prior = _forces_and_prior(tk, previous, kept, captures, snap, fetched_ts)
+    captures_key, prior = _prior(tk, previous, kept, captures, fetched_ts)
     surface, surface_symbols = None, frozenset[str]()
     if spot is not None and snap.books:
         surface, surface_symbols = _published_surface(
@@ -968,13 +952,10 @@ def _publish_levels(
         priced_at=priced_at,
         gamma_surface=surface,
         surface_symbols=surface_symbols,
-        vanna_rows=snap.per_strike["vanna"],
-        charm_rows=_charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once
         chain=chain,
         priced_chain=p.priced,
         contracts=listed,
-        forces=forces,
         prior_day=prior,
         captures_key=captures_key,
     )
@@ -1055,15 +1036,6 @@ def _log_level_crosses(
         return
     cross_store.add(tk, [StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, ids)])
     _levels_changed(tk)
-
-
-def _charm_rows(snap: TerrainSnapshot) -> list[StrikeValue]:
-    """Each strike's net dealer charm from the published charm map (the charm walls' own)."""
-    return sorted(
-        StrikeValue(k, net)
-        for k, b in snap.charm_by_strike.items()
-        if (net := b["net_charm"]) is not None
-    )
 
 
 def _tick_ticker(sym: str) -> str | None:
@@ -1502,7 +1474,7 @@ def stop_terrain_loop() -> None:
 
 # ── Per-strike gamma and volume bars for the histogram panel ─────────────────
 # Today's per-strike dealer gamma and traded volume, plus the previous market day's last chain
-# capture (the day-over-day migration), each in three expiry scopes (all / near<=7DTE / far).
+# capture (the day-over-day migration), of every expiry and of each listed expiry.
 # Read-only, no Schwab call. Bar heights use the same exposure math as the levels.
 def _prior_capture(captures: list[StoredCapture], chain_ts: float) -> StoredCapture | None:
     """Return the previous market day's close capture before the day of the chain's.
@@ -1519,8 +1491,7 @@ def _prior_day(tk: str, prior: StoredCapture) -> TerrainSnapshot | None:
     """Return the levels of the prior day's close capture (_prior_capture).
 
     The one producer (compute_terrain) on that capture, at its own spot and time: its per-strike
-    rows, its walls and flip, and its books, which the forces read. None for a capture stored
-    without its spot: it has no levels.
+    rows, its walls and flip. None for a capture stored without its spot: it has no levels.
     """
     if prior.spot is None:
         return None
@@ -1883,8 +1854,8 @@ def _publish_missing_price_levels(tickers: Iterable[str], now: datetime) -> None
 PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "experimental": lambda a: push_experimental.experimental(a.ticker, a.now),
     "expiries": lambda a: push_expiries.expiries(a.ticker, a.now),
-    "vanna": lambda a: push_strike_bars.strike_bars("vanna_rows", a.ticker, a.now, a.params),
-    "charm": lambda a: push_strike_bars.strike_bars("charm_rows", a.ticker, a.now, a.params),
+    "vanna": lambda a: push_strike_bars.strike_bars("vanna", a.ticker, a.now, a.params),
+    "charm": lambda a: push_strike_bars.strike_bars("charm", a.ticker, a.now, a.params),
     "terrain": lambda a: push_terrain.terrain(a.ticker, a.now),
     "strikes": lambda a: push_strikes.strikes(a.ticker, a.now, a.params),
     "surface": lambda a: push_surface.gamma_surface(
@@ -1893,28 +1864,32 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "chain": lambda a: push_chain.chain(a.ticker, a.now, a.params),
     "levels": lambda a: push_levels.levels_payload(a.ticker, tf_asked(a.params), a.at),
     "bars": lambda a: push_bars.bars(a.ticker, a.now, a.params),
+    "forming": lambda a: push_bars.forming(a.ticker, a.now, a.params),
     "tape": lambda a: push_tape.tape(a.ticker, a.now),
     "book": lambda a: push_book.book(a.ticker, a.now, a.params),
     "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
     "contract": lambda a: push_contract.options_microstructure(
         push_contract.contract_asked(a.params), a.now
     ),
-    "forces": lambda a: push_forces.forces(a.ticker),
+    "option_book": lambda a: push_option_book.option_book(a.ticker, a.now, a.params),
     "desk": lambda a: push_desk.desk_events_payload(
         a.ticker, tf_asked(a.params), a.at, a.params.get("limit")
     ),
-    "confluence": lambda a: push_confluence.confluence_payload(
-        a.ticker, a.params.get("expiry"), a.at
-    ),
+    "confluence": lambda a: push_confluence.confluence(a.ticker, a.at, a.params),
     "liquidity": lambda a: push_liquidity.liquidity_snapshot(a.ticker, a.at),
 }
 CHAIN_PANELS = ("expiries",)
-BARS_PANELS = ("bars", "liquidity", "desk")
-#: the chain screens show each contract's newest streamed values (push.chain), and the live price
-FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain")
-#: the panels an option contract's own quote or book moves: its Flow panel and the chain screens
-OPTION_PANELS = ("contract", "chain")
+#: the panels a new bar moves; `forming` after `bars` (the socket sends them in name order), so the
+#: page draws the bars Schwab has not sent whole over the newest bars it has
+BARS_PANELS = ("bars", "liquidity", "desk", "forming")
+#: the chain screens and the Options Book show each contract's newest streamed values (push.chain,
+#: push.option_book), and the live price
+FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain", "option_book")
+#: the panels an option contract's own quote or book moves: its Flow panel, the chain screens and
+#: the Options Book
+OPTION_PANELS = ("contract", "chain", "option_book")
 #: the panels computed from the ticker's live price (each level's distance and side, the spot
 #: they are measured from; today's gap and open; each zone's side of the price and the zones
-#: nearest it): the socket sends them again with each of its price rows
-PRICED_PANELS = ("levels", "experimental", "liquidity")
+#: nearest it; the bar forming from its trades): the socket sends them again with each of its
+#: price rows
+PRICED_PANELS = ("levels", "experimental", "liquidity", "forming")

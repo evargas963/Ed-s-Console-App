@@ -48,10 +48,10 @@ def test_spys_net_gamma_and_contracts_are_served_by_the_operators_formats():
 
 def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_make_them():
     for name in ("spy", "amzn"):
-        strikes = json.loads((E2E / f"panels_{name}_two_day.json").read_text(encoding="utf-8"))[
-            "strikes"
-        ]
-        rows = [r for sc in ("all", "near", "far") for r in strikes["today"][sc]]
+        panels = json.loads((E2E / f"panels_{name}_two_day.json").read_text(encoding="utf-8"))
+        strikes = panels["strikes"]
+        # every expiry's rows and one expiry's chosen
+        rows = [r for key in ("strikes", "strikes_second_expiry") for r in panels[key]["today"]]
         assert rows, name
         for r in rows:
             gex, volume = r["value"], r["volume"]
@@ -73,11 +73,11 @@ def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_mak
     }
     terrain = json.loads((E2E / "panels_spy_two_day.json").read_text(encoding="utf-8"))["terrain"]
     assert terrain["call_wall"] == spy["max_abs_row"]["strike"]
-    first = spy["today"]["all"][0]
+    first = spy["today"][0]
     assert first["text"] == "-$177.45M"
     # every contract shows: two decimals in thousands showed this as 65.58K
     assert (first["volume"], first["volume_text"]) == (65582.0, "65,582")
-    for r in spy["migration"]["all"]["rows"]:
+    for r in spy["migration"]["rows"]:
         change = r["change"]
         want = (
             None
@@ -231,11 +231,12 @@ def test_the_strikes_and_their_moves_are_served_as_listed():
                 assert (c["bid_text"], c["ask_text"]) == (price(c["bid"]), price(c["ask"]))
     assert p["chain"]["spot_text"] == price(p["chain"]["spot"])
     strikes = p["strikes"]
-    for sc in ("all", "near", "far"):
-        for r in strikes["today"][sc]:
+    # at All Expirations and at the expiry chosen
+    for body in (strikes, p["strikes_second_expiry"]):
+        for r in body["today"]:
             assert r["strike_text"] == listed(r["strike"])
-        assert strikes["views"][sc]["centre_text"] == listed(strikes["views"][sc]["centre"])
-        m = strikes["migration"][sc]
+        assert body["view"]["centre_text"] == listed(body["view"]["centre"])
+        m = body["migration"]
         assert m["grew_text"] == "/".join(map(listed, m["grew"]))
         assert m["busiest_text"] == "–".join(map(listed, m["busiest"]))
     # SPY's walls and flip, 2026-11-11 to 2026-11-12: the call wall moved up 15, the put wall

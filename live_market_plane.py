@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, TypedDict
 
+from calc.forming_bar import Built, BuiltMinute, next_built
 from calc.l1_trade_observation import (
     VENDOR_LAST_PRICE,
     VENDOR_LAST_SIZE,
@@ -71,6 +72,8 @@ NO_QUOTE = QuoteRow()
 _lock = threading.RLock()
 # ticker UPPER -> its row
 _by_ticker: dict[str, QuoteRow] = {}
+# ticker UPPER -> its minutes built from its rows (calc.forming_bar), written with each row
+_built: dict[str, Built] = {}
 
 
 #: Schwab LEVELONE_EQUITIES sends only the fields that CHANGED since the last message for a
@@ -157,6 +160,9 @@ def record_from_level_one_equity(
     out, trade_ts = _plane_row(t, snapshot, rts)
     with _lock:
         _by_ticker[t] = out
+        built = next_built(_built.get(t), out.spot, trade_ts)
+        if built is not None:
+            _built[t] = built
     if trade_ts is not None:
         # the last trade Schwab streamed: the day's first one starts its pre-market (session_label)
         record_trade(datetime.fromtimestamp(trade_ts, ET))
@@ -231,6 +237,13 @@ def get_quote(ticker: str) -> QuoteRow:
     t = ticker_storage_key(ticker)  # the plane's key, the same as the write's
     with _lock:
         return _by_ticker.get(t, NO_QUOTE)
+
+
+def built_minutes(ticker: str) -> tuple[BuiltMinute, ...]:
+    """Return the minutes built from the ticker's rows, oldest first (calc.forming_bar)."""
+    t = ticker_storage_key(ticker)
+    with _lock:
+        return _built[t].minutes if t in _built else ()
 
 
 #: The daemon sends its status every second; the daemon, and everything it streams, is live

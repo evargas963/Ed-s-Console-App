@@ -36,7 +36,7 @@ def test_live_chain_volume_reaches_the_per_strike_rows():
     snap = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW, sessions=sessions())
     assert snap.per_strike, "terrain produced no per-strike rows; the panel would have no source"
     expected = _expected_volume_by_strike()
-    got = {r[0]: r[2] for r in snap.per_strike["all"]}
+    got = {r[0]: r[2] for r in snap.per_strike["gex"]}
     assert got == expected, f"volume altered in transit: {got} != {expected}"
     assert sum(expected.values()) > 1_000_000, "fixture no longer carries real session volume"
 
@@ -47,23 +47,27 @@ def test_rows_are_the_shape_the_panel_renders():
     Never rebuilt from these numbers into contracts and run through the exposure engine again.
     """
     ps = compute_terrain(TICKER, read_chain(CHAIN), SPOT, now=NOW, sessions=sessions()).per_strike
-    # the three GEX scopes, the Chart view's DEX and OI rows, and the Vanna panel's rows
-    assert set(ps) == {"all", "near", "far", "dex", "oi", "vanna"}, (
-        "the ALL / <=7DTE / MONTHLY+ chips each need their own rows; a missing scope is an "
-        f"empty panel on that chip. got {sorted(ps)}"
+    # the whole book's GEX, the Chart view's DEX and OI rows and the Vanna and Charm panels' rows,
+    # and each listed expiry's own, the rows a chosen expiry shows
+    assert set(ps) == {"gex", "dex", "oi", "vanna", "charm", "by_expiry"}, (
+        f"each book needs its rows; a missing one is an empty panel. got {sorted(ps)}"
     )
-    for scope, rows in ps.items():
-        for r in rows:
-            assert len(r) == (2 if scope in ("dex", "oi", "vanna") else 3), (
-                f"{scope}: row {r} has the wrong shape"
-            )
-            assert all(isinstance(x, (int, float)) for x in r), f"{scope}: non-numeric row {r}"
-    assert ps["all"], "the ALL scope is empty on a real 40-contract chain"
-    assert any(r[1] != 0 for r in ps["all"]), "every gamma bar is zero — nothing would render"
+    books = {"all": ps, **ps["by_expiry"]}
+    for book, view in books.items():
+        for scope in ("gex", "dex", "oi", "vanna", "charm"):
+            for r in view[scope]:
+                assert len(r) == (2 if scope in ("dex", "oi", "vanna", "charm") else 3), (
+                    f"{book} {scope}: row {r} has the wrong shape"
+                )
+                assert all(isinstance(x, (int, float)) for x in r), (
+                    f"{book} {scope}: non-numeric row {r}"
+                )
+    assert ps["gex"], "the whole book is empty on a real 40-contract chain"
+    assert any(r[1] != 0 for r in ps["gex"]), "every gamma bar is zero — nothing would render"
 
 
 def test_absence_renders_as_absence_not_as_stale_data():
     """With no chain there must be no fabricated per-strike data."""
     snap = compute_terrain(TICKER, [], SPOT, now=NOW, sessions=sessions())
-    assert not snap.per_strike["all"]
+    assert not snap.per_strike["gex"] and not snap.per_strike["by_expiry"]
     assert snap.error

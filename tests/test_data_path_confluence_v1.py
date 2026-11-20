@@ -31,7 +31,7 @@ from calc.confluence_composite import (
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
 from calc.math_levels import compute_charm_by_strike
 from calc.terrain_engine import TerrainSnapshot
-from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
+from calibration.complete_chain_capture import CAPTURE_BASIS
 from numeric_contract import price_text
 from option_contract import read_chain
 from push import chain as push_chain
@@ -489,7 +489,7 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
     weights = in_score_weights(body["preset"])
     assert weights["FLOWM"] == 0 and weights["DGEXM"] == 0 and "weights_in_score" not in body
-    assert body["expiries"][0]["label"] == "0DTE · 2026-10-22"
+    assert body["expiry"] == "2026-10-22"
     checked = grossed = 0
     for row in body["rows"]:
         bucket = book[row["strike"]]
@@ -836,20 +836,26 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
 def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     """MRVL's full chain captured Wednesday 2026-10-07 still holds Friday's 2026-10-09 expiry.
 
-    On Sunday the matrix opens on the next one, and a request for Friday's opens there too.
+    On Sunday, with no expiry chosen (All Expirations), the matrix ranks the front one still
+    open: the matrix ranks one expiry, its preset set by that expiry's days to expiration. Friday's
+    expiry chosen is said, never answered with the next one's ranking.
     """
     tk = "MRVL"
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
         _publish_mrvl()
-        opened = push_confluence.confluence_payload(tk, None, _SUNDAY)
-        asked = push_confluence.confluence_payload(tk, listed[0], _SUNDAY)
+        opened = push_confluence.confluence(tk, _SUNDAY, {"expiry": None})
+        asked = push_confluence.confluence(tk, _SUNDAY, {"expiry": listed[0]})
+        unread = push_confluence.confluence(tk, _SUNDAY, {})
     finally:
         level_store._levels.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
     assert (opened["available"], opened["expiry"]) == (True, "2026-10-16")
-    assert "2026-10-09" not in [e["expiry"] for e in opened["expiries"]]
-    assert (asked["available"], asked["expiry"]) == (True, "2026-10-16")
+    assert "expiries" not in opened  # the page's one dropdown lists them, not the matrix
+    assert (asked["available"], asked["expiry"]) == (False, "2026-10-09")
+    assert asked["reason"] == "the chain lists no open contracts for 2026-10-09"
+    assert "rows" not in asked
+    assert unread["reason"] == "expiry None is not an expiry date or null"
 
 
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
@@ -1576,73 +1582,6 @@ def test_an_after_hours_print_keeps_the_close_book():
     assert (again["net_gex_text"], again["vanna_text"], again["charm_text"]) == close_texts
     assert second_snap.spot == held.spot and "priced_at_spot" not in second
     assert second["spot"] == print_["native"]["LAST_PRICE"]
-
-
-#: SPY_0DTE banked after the 2026-10-07 index close
-_BANKED_AFTER_CLOSE = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
-
-
-def _two_day_captures(chain: list) -> list[StoredCapture]:
-    """SPY's captured 0DTE `chain`, as the forces read it, banked on two days at its price.
-
-    Once after the 2026-10-07 index close, and once on 2026-10-06 at noon.
-    """
-    prior = datetime(2026, 10, 6, 12, 0, tzinfo=ET)
-    return [
-        StoredCapture(
-            et_date=day,
-            spot=SPY_0DTE.spot,
-            spot_ts=at.timestamp(),
-            basis=CAPTURE_BASIS,
-            contracts=chain,
-            ts_utc=at.timestamp(),
-        )
-        for day, at in (("2026-10-07", _BANKED_AFTER_CLOSE), ("2026-10-06", prior))
-    ]
-
-
-def _published(caps: list[StoredCapture], now: datetime) -> level_store.PublishedLevels:
-    """Return the levels published from stored captures `caps` (newest first) at `now`."""
-    tk = "SPYFORCES"
-    try:
-        server._publish_levels(tk, captures=caps, now=now)
-        levels = level_store.published_levels(tk)
-        assert levels is not None
-        return levels
-    finally:
-        _forget(tk)
-
-
-def test_a_close_capture_keeps_its_charm_in_the_forces():
-    """SPY's captured 0DTE chain, banked after the index close, is valued at that close.
-
-    Its contracts settled at that close with no time left, so they carry no charm: the forces'
-    charm sums are "-", never a charm of a made-up time left (operator 2026-11-15).
-    """
-    caps = _two_day_captures(read_chain(SPY_0DTE.chain))
-    forces = _published(caps, _BANKED_AFTER_CLOSE).forces
-    assert forces["available"] is True
-    assert forces["charm_below"] is None
-    assert forces["charm_above"] is None
-
-
-def test_the_forces_read_the_charm_map_of_the_chain_just_priced():
-    """The forces' charm side sums are the charm map of the chain the levels priced now.
-
-    SPY's captured chain valued at its own capture instant, 12:32 ET, has a charm map; the
-    forces' sums are the published chain's map, each side of its own price.
-    """
-    held = SPY_0DTE
-    caps = _two_day_captures(read_chain(held.chain))
-    caps[0] = replace(  # the newer capture taken at 12:32, in the session
-        caps[0], ts_utc=held.now.timestamp(), spot_ts=held.now.timestamp()
-    )
-    levels = _published(caps, held.now)
-    snap, forces = levels.snap, levels.forces
-    assert snap.spot is not None and snap.charm_by_strike
-    below = sum(v["net_charm"] for k, v in snap.charm_by_strike.items() if k < snap.spot)
-    above = sum(v["net_charm"] for k, v in snap.charm_by_strike.items() if k > snap.spot)
-    assert (forces["charm_below"], forces["charm_above"]) == (below, above)
 
 
 def test_a_chain_whose_every_expiry_has_passed_says_so():

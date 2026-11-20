@@ -56,7 +56,7 @@ PUBLISHED = CRWD.spot  # Schwab's price in the chain answer
 LIVE = _QUOTE["native"]["LAST_PRICE"]  # Schwab's last trade, as the daemon received it
 _AT = CRWD.now
 #: a per-strike panel's window as the page asks it: Auto, following the price
-AUTO = {"scope": "auto", "centre": None, "shift": 0}
+AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 
 
 def _daemon(at: float, held_options=()):
@@ -149,18 +149,6 @@ def test_the_page_reads_no_route_only_its_socket():
     }
 
 
-def test_strike_side_sums_split_at_the_live_spot(held):
-    rows = held.snap.per_strike["all"]
-    below = [r for r in rows if r[0] < LIVE]
-    above = [r for r in rows if r[0] > LIVE]
-    assert below and above, "the real chain has strikes on both sides of the live price"
-    body = push_strikes.strikes(TK, time_et.now(), AUTO)
-    sums = body["today_side_sums"]
-    assert server.resolve_spot(TK, now=time_et.now())[0] == LIVE
-    assert sums["gex_below"] == sum(r[1] for r in below)
-    assert sums["gex_above"] == sum(r[1] for r in above)
-
-
 def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
     """Strike Detail's Net row: this expiry's column of the published surface, verbatim.
 
@@ -241,9 +229,9 @@ PUT_MARK = {"kind": "put", "label": "Put wall"}
 
 
 def _strike_lists(body):
-    """Every row the strikes panel serves: each scope's, each measure's and the labelled rows."""
+    """Every row the strikes panel serves: its GEX rows, each measure's and the labelled rows."""
     return [
-        *(r for sc in ("all", "near", "far") for r in body["today"][sc]),
+        *body["today"],
         *(r for m in body["measures"].values() for r in m["rows"]),
         *(m["max_abs_row"] for m in body["measures"].values()),
         body["max_abs_row"],
@@ -462,7 +450,7 @@ def test_a_field_a_rows_call_and_put_differ_on_is_unknown_not_one_legs():
 
 
 def test_the_largest_gex_strike_is_served(held):
-    rows = held.snap.per_strike["all"]
+    rows = held.snap.per_strike["gex"]
     body = push_strikes.strikes(TK, time_et.now(), AUTO)
     top = max(rows, key=lambda r: abs(r.value))
     # the row by name, with its net GEX and volume as the screen shows them, and its marks
@@ -494,19 +482,19 @@ def test_every_strike_row_serves_its_marks_and_the_page_compares_none(held):
     The Trade Desk compared each row's strike with the terrain panel's walls and the strikes
     panel's spot strike to choose its tags and row classes, and GEX by Strike, Vanna and Charm
     compared theirs with the spot strike (AGENTS.md rule 4). Every strike of CRWD's chain (the
-    All window): today's rows of every scope, the DEX and OI rows and the labelled rows carry the
+    All window): today's GEX rows, the DEX and OI rows and the labelled rows carry the
     published levels' walls and the live price's strike (269.395 -> 270); Vanna's and Charm's
     rows the live price's strike of their own rows.
     """
     snap = held.snap
     assert snap.call_wall is not None and snap.put_wall is not None
-    listed = [r.strike for r in snap.per_strike["all"]]
+    listed = [r.strike for r in snap.per_strike["gex"]]
     at = _QUOTE["ts_recv"]  # the marks are of the levels and the price, at any instant
     body = push_strikes.strikes(TK, at, {**AUTO, "scope": "all"})
     rows = _strike_lists(body)
     for r in rows:
         assert r["marks"] == _marks_at(r["strike"], snap, listed), r["strike"]
-    marked = [m for r in body["today"]["all"] for m in r["marks"]]
+    marked = [m for r in body["today"] for m in r["marks"]]
     assert sorted(m["kind"] for m in marked) == ["call", "put", "spot"]
     assert "spot_strike" not in body  # its one reading is the row's mark
     for key in push_strike_bars.STRIKE_BAR_METHODS:

@@ -38,7 +38,7 @@
   var DRILL = {
     liquidity: ["order-flow", "heatmap"],
     flow: ["order-flow", "book"],
-    options: ["options", "gamma"],
+    options: ["options", "book"],
     vol: ["options", "chain"],
   };
 
@@ -296,25 +296,30 @@
     paintFooter();
   }
   // Everything the desk draws, the program sends on the page's socket while the desk is on, at
-  // once and each time it changes. Per symbol: the option terrain and its per-strike rows
-  // (`terrain:map`, `strikes:desk` in the Gamma scope's window), the zones (`liquidity:deskmap`),
-  // the forces, the book (`book:deskmap`) and the Order Flow card's hour of bars (`bars:flow`).
-  // Per timeframe: the chart's bars (`bars:deskmap`), levels (`levels:map`) and event window (`desk`).
-  var PANELS = { "terrain:map": "terrain", "strikes:desk": "strikes" };
+  // once and each time it changes. Per symbol: the option terrain (`terrain:map`), the Options
+  // Book's lean at the expiry chosen (none chosen: the front one) in the Gamma scope's window
+  // (`option_book:desk`), the zones (`liquidity:deskmap`), the book (`book:deskmap`) and the Order
+  // Flow card's hour of bars (`bars:flow`). Per timeframe: the chart's bars (`bars:deskmap`) and
+  // those forming (`forming:deskmap`), levels (`levels:map`) and event window (`desk`).
+  var PANELS = { "terrain:map": "terrain" };
   // these are kept as null when the program could not produce them
-  var OR_NULL = { "liquidity:deskmap": "liq", forces: "forces", "bars:flow": "flowBars" };
+  var OR_NULL = {
+    "liquidity:deskmap": "liq",
+    "option_book:desk": "optBook",
+    "bars:flow": "flowBars",
+  };
   var PER_TF = { "levels:map": "levels", desk: "events" };
   function askPanels() {
     var on = onDesk(),
       venue = window.EdShell.getState().bookVenue;
     window.EdShell.showPanel("levels:map", on ? { tf: S.tf } : null);
     window.EdShell.showPanel("terrain:map", on ? {} : null);
-    window.EdShell.showPanel("strikes:desk", on ? window.EdShell.windowParams(null) : null);
+    window.EdShell.showPanel("option_book:desk", on ? window.EdShell.windowAtExpiry(null) : null);
     window.EdShell.showPanel("bars:deskmap", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
+    window.EdShell.showPanel("forming:deskmap", on ? { tf: S.tf } : null);
     window.EdShell.showPanel("bars:flow", on ? { tf: "1", limit: FLOW_BARS } : null);
     window.EdShell.showPanel("desk", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
     window.EdShell.showPanel("liquidity:deskmap", on ? {} : null);
-    window.EdShell.showPanel("forces", on ? {} : null);
     window.EdShell.showPanel("book:deskmap", on ? { venue: venue } : null);
   }
   function takePanel(d) {
@@ -322,6 +327,12 @@
     // an answer for a timeframe no longer on the chart is not drawn; one not produced is none
     if (PER_TF[d.type] && (!ok || d.tf === S.tf)) takePerTf(PER_TF[d.type], ok ? d : null);
     if (d.type === "bars:deskmap" && S.chart && (!ok || d.tf === S.tf)) takeBars(d);
+    // the bars forming from the trades, drawn over the bars as they come (push.bars.forming)
+    if (d.type === "forming:deskmap" && S.chart && S.bars.length) {
+      if (ok) S.chart.forming(d);
+      else $("tdmChartEmpty").textContent = d.failed;
+      $("tdmChartEmpty").hidden = ok;
+    }
     if (d.type === "book:deskmap") {
       S.micro = ok ? d : null;
       paintCards();
@@ -525,23 +536,26 @@
   }
 
   // ------------------------------------------------------------------ cards
-  // the FORCES split, served: GEX below/above spot (the strikes panel's today_side_sums), and
-  // OI change, DEX and charm below/above from the last two market days' captures (the forces panel)
-  function forcesRows() {
-    var ss = S.strikes && S.strikes.today_side_sums,
-      f = S.forces || {};
-    return (
-      row(
-        "GEX below / above",
-        ss ? orDash(ss.gex_below_text) + " / " + orDash(ss.gex_above_text) : "-",
-      ) +
-      row(
-        "ΔOI" + (f.older_et_date ? " since " + f.older_et_date : "") + " below / above",
-        orDash(f.doi_below_text) + " / " + orDash(f.doi_above_text),
-      ) +
-      row("DEX below / above", orDash(f.dex_below_text) + " / " + orDash(f.dex_above_text)) +
-      row("Charm below / above", orDash(f.charm_below_text) + " / " + orDash(f.charm_above_text))
-    );
+  // the options lean of the Options Book at the expiry chosen, else the front one (the
+  // `option_book:desk` panel, its expiry served), its gauge drawn as the Book view draws it
+  // (EdOptionLean); with nothing to draw, why
+  function paintLean(card) {
+    var host = card.querySelector(".tdm-lean"),
+      b = S.optBook;
+    if (!b || b.available === false) {
+      host.innerHTML =
+        '<div class="tdm-plot-none">Options lean: ' +
+        esc(b ? b.reason : noneText(b, "options book", "")) +
+        "</div>";
+      return;
+    }
+    host.innerHTML =
+      '<div class="tdm-lean-h"><span>Options lean</span><span>' +
+      esc(b.expiry) +
+      " · " +
+      (b.book_state == null ? "no book" : "books " + esc(b.book_state)) +
+      "</span></div>" +
+      window.EdOptionLean.html(b, true);
   }
   // a card's facts: one compact line of served values
   function row(k, v, cls) {
@@ -649,9 +663,9 @@
           (t.flip_note != null ? row("Γ flip note", esc(t.flip_note)) : "") +
           row("P/C OI", orDash(t.pcr_all_text)) +
           row("Max pain", orDash(t.max_pain_text)) +
-          row("Contracts", orDash(t.contracts_used_text)) +
-          forcesRows();
+          row("Contracts", orDash(t.contracts_used_text));
       }
+      paintLean(c);
     }
     // VOLATILITY
     c = $("tdmCardVol");
@@ -1214,15 +1228,7 @@
     if (tk !== S.ticker) {
       S.ticker = tk;
       S.bars = []; // undefined = not sent YET (loading); null = not produced
-      S.levels =
-        S.terrain =
-        S.micro =
-        S.events =
-        S.liq =
-        S.strikes =
-        S.forces =
-        S.flowBars =
-          undefined;
+      S.levels = S.terrain = S.micro = S.events = S.liq = S.optBook = S.flowBars = undefined;
       S.sel = null;
       clearChart();
       paintHeader();
@@ -1238,7 +1244,8 @@
     document.addEventListener("ed:view", start);
     document.addEventListener("ed:ticker", start);
     document.addEventListener("ed:book_venue", askPanels); // the book is the venue's
-    document.addEventListener("ed:scope", askPanels); // the strikes' window is the Gamma scope's
+    document.addEventListener("ed:scope", askPanels); // the Options Book's window is the scope's
+    document.addEventListener("ed:expiry", askPanels); // its expiry is the one chosen
     document.addEventListener("ed:panel", function (e) {
       if (onDesk()) takePanel(e.detail);
     });

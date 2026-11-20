@@ -10,7 +10,6 @@ import time_et
 from calc.liquidity_value_engine import DAILY_CANDLE_BASIS
 from calc.math_exposure_core import (
     compute_exposures_by_strike,
-    net_gex_dollars_at_strike,
     strike_total_volume,
 )
 from calc.micro_structure import Candle
@@ -158,13 +157,11 @@ def test_api_levels_b1_contract_single_session_prior_day():
 # ── RC-227: one-faucet closeout locks (mission one-faucet-closeout-v1) ────────────────
 
 
-def test_strikes_payload_carries_server_side_sums():
-    """STRIP server half: the strikes panel serves today_side_sums against its own spot.
+def test_strikes_payload_serves_each_strikes_volume_at_the_live_spot():
+    """The strikes panel serves each strike's volume from the chain's own book, at the live spot.
 
-    Computed against the payload's own spot — the one aggregator. SPY's same-day chain
-    (tests/real_chains.SPY_0DTE) published by the levels producer at its captured price, the
-    price row there with the feed live; each side's sum is its strikes' GEX and volume from the
-    same chain's book.
+    SPY's same-day chain (tests/real_chains.SPY_0DTE) published by the levels producer at its
+    captured price, the price row there with the feed live.
     """
     srv._publish_levels(
         C.ticker, read_chain(C.chain), C.now.timestamp(), chain_spot=(C.spot, 1.0), now=C.now
@@ -179,7 +176,7 @@ def test_strikes_payload_carries_server_side_sums():
     )
     try:
         body = push_strikes.strikes(
-            C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0}
+            C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
         )
         live = srv.resolve_spot(C.ticker, now=time_et.now())[0]
     finally:
@@ -191,15 +188,10 @@ def test_strikes_payload_carries_server_side_sums():
     book = compute_exposures_by_strike(
         read_chain(C.chain), spot=C.spot, now=C.now, sessions=time_et.sessions()
     )[0]
-    below = [b for k, b in book.items() if k < C.spot]
-    above = [b for k, b in book.items() if k > C.spot]
-    ss = body["today_side_sums"]
-    assert ss["gex_below"] == sum(net_gex_dollars_at_strike(b) for b in below)
-    assert ss["gex_above"] == sum(net_gex_dollars_at_strike(b) for b in above)
-    drawn = body["today"]["all"]
+    drawn = body["today"]
     assert drawn, "the panel draws strikes of the real chain"
     assert all(r["volume"] == strike_total_volume(book[r["strike"]]) for r in drawn)
-    assert live == C.spot, "sums must be computed against the one live spot"
+    assert live == C.spot, "the rows are drawn at the one live spot"
 
 
 def test_api_levels_prior_day_is_the_whole_recorded_prior_session():

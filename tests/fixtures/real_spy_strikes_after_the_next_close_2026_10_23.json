@@ -1,4 +1,6 @@
 {
+ "expiry": null,
+ "expiry_text": "All Expirations",
  "level_moves": [
   {
    "change": null,
@@ -247,2341 +249,1157 @@
   }
  },
  "migration": {
-  "all": {
-   "busiest": [
-    762.0,
-    763.0
-   ],
-   "busiest_text": "762\u2013763",
-   "busiest_vs_walls": "BELOW_PUT_WALL",
-   "compared": false,
-   "grew": [],
-   "grew_text": "",
-   "rows": [
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 550.0,
-     "value": -4643.875465896241
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 555.0,
-     "value": -3767.299934530464
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 560.0,
-     "value": -3539.84480967024
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 565.0,
-     "value": -290.8511482659839
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 570.0,
-     "value": -1494.3948810111358
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 575.0,
-     "value": -1354.8302283790078
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 580.0,
-     "value": -309.79990443312
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 585.0,
-     "value": -3309.6401887672796
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 590.0,
-     "value": -4162.491830711231
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 595.0,
-     "value": -710.3623661326079
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 600.0,
-     "value": -2761.98844513824
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 605.0,
-     "value": -3023.89107774408
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 610.0,
-     "value": -137.38723856855998
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 615.0,
-     "value": -16.292661263855997
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 620.0,
-     "value": -156.77381257689598
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 625.0,
-     "value": -391.9170187285919
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 630.0,
-     "value": -9175.821341296894
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 635.0,
-     "value": -1530.6286855488481
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 640.0,
-     "value": -31451.199191867516
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 645.0,
-     "value": -42017.08634140319
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 650.0,
-     "value": -22028.261785854913
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 655.0,
-     "value": -69736.96838771568
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 660.0,
-     "value": -3245.6895960959996
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 665.0,
-     "value": -97896.62969915674
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 670.0,
-     "value": -3135.0092458406393
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 675.0,
-     "value": -9105.91058841408
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 680.0,
-     "value": -51991.95443074618
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 685.0,
-     "value": -20074.05309530189
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 690.0,
-     "value": -30879.607568681666
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 695.0,
-     "value": -31458.717983593728
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 700.0,
-     "value": -40055.8842405334
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 705.0,
-     "value": -35551.88281854374
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 710.0,
-     "value": -146486.6694529243
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 715.0,
-     "value": -126818.10572942822
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 720.0,
-     "value": -287152.1712649656
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 725.0,
-     "value": -246250.50468123078
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 729.0,
-     "value": -237684.48770429968
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 730.0,
-     "value": -555854.3075844918
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 731.0,
-     "value": -276556.85108135885
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 732.0,
-     "value": -48605.47429206269
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 733.0,
-     "value": -354845.872975657
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 734.0,
-     "value": -709079.5481827494
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 735.0,
-     "value": -1013472.0870482037
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 736.0,
-     "value": -357758.0329403268
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 737.0,
-     "value": -983105.36848656
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 738.0,
-     "value": -843419.3177234238
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 739.0,
-     "value": -1595177.2906906372
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 740.0,
-     "value": -3311938.919235859
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 741.0,
-     "value": -1842735.1194456911
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 742.0,
-     "value": -2370378.0156499124
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 743.0,
-     "value": -2164492.599681384
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 744.0,
-     "value": -1514335.1486493093
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 745.0,
-     "value": -1684765.1243133533
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 746.0,
-     "value": -1099785.527737155
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 747.0,
-     "value": -3432805.1774551626
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 748.0,
-     "value": -1137146.4505252521
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 749.0,
-     "value": -5146601.261446944
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 750.0,
-     "value": -3344600.387042512
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 751.0,
-     "value": -3449544.331191045
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 752.0,
-     "value": -5037103.836622793
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 753.0,
-     "value": -3444581.233980774
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 754.0,
-     "value": -2466747.910323521
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 755.0,
-     "value": -4889838.207504378
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 756.0,
-     "value": -4476637.059705549
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 757.0,
-     "value": -8252026.776315569
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 758.0,
-     "value": -10434533.618738405
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 759.0,
-     "value": -31943123.320767276
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 760.0,
-     "value": -60729170.27903403
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 761.0,
-     "value": -88440750.57521853
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 762.0,
-     "value": -179655618.00206193
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 763.0,
-     "value": -279566862.5746526
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 764.0,
-     "value": -1316801139.68217
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 765.0,
-     "value": -430387634.2433901
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 766.0,
-     "value": -235924646.15449694
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 767.0,
-     "value": -59174433.31751149
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 768.0,
-     "value": -39931287.640042946
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 769.0,
-     "value": -16523703.255162042
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 770.0,
-     "value": -5379257.901601046
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 771.0,
-     "value": 4846865.9310600385
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 772.0,
-     "value": -10893452.32429789
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 773.0,
-     "value": 938375.7204155028
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 774.0,
-     "value": 5197339.936038183
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 775.0,
-     "value": 12158454.964166764
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 776.0,
-     "value": 23173260.295047093
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 777.0,
-     "value": 5275141.800939364
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 778.0,
-     "value": 5617988.353640684
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 779.0,
-     "value": 7009462.72695089
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 780.0,
-     "value": 11486891.022734197
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 781.0,
-     "value": 4128564.6081753843
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 782.0,
-     "value": 9990312.849225275
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 783.0,
-     "value": 4511990.803681879
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 784.0,
-     "value": 4985124.835762575
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 785.0,
-     "value": 3594090.4868954895
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 786.0,
-     "value": 1866685.4599301263
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 787.0,
-     "value": 1191402.4135509848
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 788.0,
-     "value": 1445119.8489757404
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 789.0,
-     "value": 818880.4508217056
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 790.0,
-     "value": 1028075.4077402902
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 791.0,
-     "value": 566442.1556769421
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 792.0,
-     "value": 141653.6333293448
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 793.0,
-     "value": 270535.8108396112
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 794.0,
-     "value": 211257.3825043402
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 795.0,
-     "value": 183310.01030774013
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 796.0,
-     "value": 123678.7241427468
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 797.0,
-     "value": 120815.63480171864
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 798.0,
-     "value": 231851.0494887206
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 799.0,
-     "value": 57532.02550486516
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 800.0,
-     "value": 73885.92872834821
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 801.0,
-     "value": 330038.01079230505
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 802.0,
-     "value": 384632.9907664066
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 803.0,
-     "value": 257933.31768180864
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 804.0,
-     "value": 490254.84622268274
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 805.0,
-     "value": 28105.45362512928
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 806.0,
-     "value": 227687.4368443359
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 807.0,
-     "value": 165293.99294463906
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 808.0,
-     "value": 552659.0721164155
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 809.0,
-     "value": 53420.01115245868
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 810.0,
-     "value": 156686.1089069468
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 815.0,
-     "value": 79326.55093923144
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 820.0,
-     "value": 11290.91349456288
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 825.0,
-     "value": 27439.47431295192
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 830.0,
-     "value": 49968.080165301406
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 835.0,
-     "value": 55456.646348581635
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 840.0,
-     "value": 4037.818822251119
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 845.0,
-     "value": 51196.36936243118
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 850.0,
-     "value": 406.21906820779196
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 855.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 860.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 865.0,
-     "value": 1299.9745716622558
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 870.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 875.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 880.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 885.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 890.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 895.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 900.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 905.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 910.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 915.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 920.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 925.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 930.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 935.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 940.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 945.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 950.0,
-     "value": 0.0
-    }
-   ],
-   "shrank": [],
-   "shrank_text": "",
-   "volume_total": 9570957.0,
-   "volume_zero_text": null
-  },
-  "far": {
-   "busiest": [],
-   "busiest_text": "",
-   "busiest_vs_walls": null,
-   "compared": false,
-   "grew": [],
-   "grew_text": "",
-   "rows": [],
-   "shrank": [],
-   "shrank_text": "",
-   "volume_total": null,
-   "volume_zero_text": null
-  },
-  "near": {
-   "busiest": [
-    762.0,
-    763.0
-   ],
-   "busiest_text": "762\u2013763",
-   "busiest_vs_walls": "BELOW_PUT_WALL",
-   "compared": false,
-   "grew": [],
-   "grew_text": "",
-   "rows": [
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 550.0,
-     "value": -4643.875465896241
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 555.0,
-     "value": -3767.299934530464
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 560.0,
-     "value": -3539.84480967024
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 565.0,
-     "value": -290.8511482659839
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 570.0,
-     "value": -1494.3948810111358
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 575.0,
-     "value": -1354.8302283790078
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 580.0,
-     "value": -309.79990443312
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 585.0,
-     "value": -3309.6401887672796
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 590.0,
-     "value": -4162.491830711231
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 595.0,
-     "value": -710.3623661326079
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 600.0,
-     "value": -2761.98844513824
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 605.0,
-     "value": -3023.89107774408
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 610.0,
-     "value": -137.38723856855998
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 615.0,
-     "value": -16.292661263855997
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 620.0,
-     "value": -156.77381257689598
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 625.0,
-     "value": -391.9170187285919
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 630.0,
-     "value": -9175.821341296894
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 635.0,
-     "value": -1530.6286855488481
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 640.0,
-     "value": -31451.199191867516
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 645.0,
-     "value": -42017.08634140319
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 650.0,
-     "value": -22028.261785854913
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 655.0,
-     "value": -69736.96838771568
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 660.0,
-     "value": -3245.6895960959996
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 665.0,
-     "value": -97896.62969915674
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 670.0,
-     "value": -3135.0092458406393
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 675.0,
-     "value": -9105.91058841408
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 680.0,
-     "value": -51991.95443074618
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 685.0,
-     "value": -20074.05309530189
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 690.0,
-     "value": -30879.607568681666
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 695.0,
-     "value": -31458.717983593728
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 700.0,
-     "value": -40055.8842405334
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 705.0,
-     "value": -35551.88281854374
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 710.0,
-     "value": -146486.6694529243
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 715.0,
-     "value": -126818.10572942822
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 720.0,
-     "value": -287152.1712649656
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 725.0,
-     "value": -246250.50468123078
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 729.0,
-     "value": -237684.48770429968
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 730.0,
-     "value": -555854.3075844918
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 731.0,
-     "value": -276556.85108135885
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 732.0,
-     "value": -48605.47429206269
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 733.0,
-     "value": -354845.872975657
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 734.0,
-     "value": -709079.5481827494
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 735.0,
-     "value": -1013472.0870482037
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 736.0,
-     "value": -357758.0329403268
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 737.0,
-     "value": -983105.36848656
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 738.0,
-     "value": -843419.3177234238
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 739.0,
-     "value": -1595177.2906906372
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 740.0,
-     "value": -3311938.919235859
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 741.0,
-     "value": -1842735.1194456911
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 742.0,
-     "value": -2370378.0156499124
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 743.0,
-     "value": -2164492.599681384
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 744.0,
-     "value": -1514335.1486493093
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 745.0,
-     "value": -1684765.1243133533
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 746.0,
-     "value": -1099785.527737155
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 747.0,
-     "value": -3432805.1774551626
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 748.0,
-     "value": -1137146.4505252521
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 749.0,
-     "value": -5146601.261446944
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 750.0,
-     "value": -3344600.387042512
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 751.0,
-     "value": -3449544.331191045
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 752.0,
-     "value": -5037103.836622793
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 753.0,
-     "value": -3444581.233980774
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 754.0,
-     "value": -2466747.910323521
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 755.0,
-     "value": -4889838.207504378
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 756.0,
-     "value": -4476637.059705549
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 757.0,
-     "value": -8252026.776315569
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 758.0,
-     "value": -10434533.618738405
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 759.0,
-     "value": -31943123.320767276
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 760.0,
-     "value": -60729170.27903403
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 761.0,
-     "value": -88440750.57521853
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 762.0,
-     "value": -179655618.00206193
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 763.0,
-     "value": -279566862.5746526
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 764.0,
-     "value": -1316801139.68217
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 765.0,
-     "value": -430387634.2433901
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 766.0,
-     "value": -235924646.15449694
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 767.0,
-     "value": -59174433.31751149
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 768.0,
-     "value": -39931287.640042946
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 769.0,
-     "value": -16523703.255162042
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 770.0,
-     "value": -5379257.901601046
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 771.0,
-     "value": 4846865.9310600385
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 772.0,
-     "value": -10893452.32429789
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 773.0,
-     "value": 938375.7204155028
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 774.0,
-     "value": 5197339.936038183
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 775.0,
-     "value": 12158454.964166764
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 776.0,
-     "value": 23173260.295047093
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 777.0,
-     "value": 5275141.800939364
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 778.0,
-     "value": 5617988.353640684
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 779.0,
-     "value": 7009462.72695089
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 780.0,
-     "value": 11486891.022734197
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 781.0,
-     "value": 4128564.6081753843
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 782.0,
-     "value": 9990312.849225275
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 783.0,
-     "value": 4511990.803681879
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 784.0,
-     "value": 4985124.835762575
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 785.0,
-     "value": 3594090.4868954895
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 786.0,
-     "value": 1866685.4599301263
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 787.0,
-     "value": 1191402.4135509848
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 788.0,
-     "value": 1445119.8489757404
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 789.0,
-     "value": 818880.4508217056
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 790.0,
-     "value": 1028075.4077402902
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 791.0,
-     "value": 566442.1556769421
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 792.0,
-     "value": 141653.6333293448
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 793.0,
-     "value": 270535.8108396112
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 794.0,
-     "value": 211257.3825043402
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 795.0,
-     "value": 183310.01030774013
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 796.0,
-     "value": 123678.7241427468
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 797.0,
-     "value": 120815.63480171864
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 798.0,
-     "value": 231851.0494887206
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 799.0,
-     "value": 57532.02550486516
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 800.0,
-     "value": 73885.92872834821
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 801.0,
-     "value": 330038.01079230505
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 802.0,
-     "value": 384632.9907664066
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 803.0,
-     "value": 257933.31768180864
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 804.0,
-     "value": 490254.84622268274
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 805.0,
-     "value": 28105.45362512928
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 806.0,
-     "value": 227687.4368443359
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 807.0,
-     "value": 165293.99294463906
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 808.0,
-     "value": 552659.0721164155
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 809.0,
-     "value": 53420.01115245868
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 810.0,
-     "value": 156686.1089069468
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 815.0,
-     "value": 79326.55093923144
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 820.0,
-     "value": 11290.91349456288
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 825.0,
-     "value": 27439.47431295192
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 830.0,
-     "value": 49968.080165301406
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 835.0,
-     "value": 55456.646348581635
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 840.0,
-     "value": 4037.818822251119
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 845.0,
-     "value": 51196.36936243118
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 850.0,
-     "value": 406.21906820779196
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 855.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 860.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 865.0,
-     "value": 1299.9745716622558
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 870.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 875.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 880.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 885.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 890.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 895.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 900.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 905.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 910.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 915.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 920.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 925.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 930.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 935.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 940.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 945.0,
-     "value": 0.0
-    },
-    {
-     "change": null,
-     "change_text": null,
-     "prior": null,
-     "strike": 950.0,
-     "value": 0.0
-    }
-   ],
-   "shrank": [],
-   "shrank_text": "",
-   "volume_total": 9570957.0,
-   "volume_zero_text": null
-  }
- },
- "ticker": "SPY",
- "today": {
-  "all": [
+  "busiest": [
+   762.0,
+   763.0
+  ],
+  "busiest_text": "762\u2013763",
+  "busiest_vs_walls": "BELOW_PUT_WALL",
+  "compared": false,
+  "grew": [],
+  "grew_text": "",
+  "note": "The first day-over-day comparison lands after the next wide morning capture.",
+  "rows": [
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 550.0,
+    "value": -4643.875465896241
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 555.0,
+    "value": -3767.299934530464
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 560.0,
+    "value": -3539.84480967024
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 565.0,
+    "value": -290.8511482659839
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 570.0,
+    "value": -1494.3948810111358
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 575.0,
+    "value": -1354.8302283790078
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 580.0,
+    "value": -309.79990443312
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 585.0,
+    "value": -3309.6401887672796
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 590.0,
+    "value": -4162.491830711231
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 595.0,
+    "value": -710.3623661326079
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 600.0,
+    "value": -2761.98844513824
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 605.0,
+    "value": -3023.89107774408
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 610.0,
+    "value": -137.38723856855998
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 615.0,
+    "value": -16.292661263855997
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 620.0,
+    "value": -156.77381257689598
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 625.0,
+    "value": -391.9170187285919
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 630.0,
+    "value": -9175.821341296894
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 635.0,
+    "value": -1530.6286855488481
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 640.0,
+    "value": -31451.199191867516
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 645.0,
+    "value": -42017.08634140319
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 650.0,
+    "value": -22028.261785854913
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 655.0,
+    "value": -69736.96838771568
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 660.0,
+    "value": -3245.6895960959996
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 665.0,
+    "value": -97896.62969915674
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 670.0,
+    "value": -3135.0092458406393
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 675.0,
+    "value": -9105.91058841408
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 680.0,
+    "value": -51991.95443074618
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 685.0,
+    "value": -20074.05309530189
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 690.0,
+    "value": -30879.607568681666
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 695.0,
+    "value": -31458.717983593728
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 700.0,
+    "value": -40055.8842405334
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 705.0,
+    "value": -35551.88281854374
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 710.0,
+    "value": -146486.6694529243
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 715.0,
+    "value": -126818.10572942822
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 720.0,
+    "value": -287152.1712649656
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 725.0,
+    "value": -246250.50468123078
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 729.0,
+    "value": -237684.48770429968
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 730.0,
+    "value": -555854.3075844918
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 731.0,
+    "value": -276556.85108135885
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 732.0,
+    "value": -48605.47429206269
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 733.0,
+    "value": -354845.872975657
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 734.0,
+    "value": -709079.5481827494
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 735.0,
+    "value": -1013472.0870482037
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 736.0,
+    "value": -357758.0329403268
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 737.0,
+    "value": -983105.36848656
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 738.0,
+    "value": -843419.3177234238
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 739.0,
+    "value": -1595177.2906906372
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 740.0,
+    "value": -3311938.919235859
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 741.0,
+    "value": -1842735.1194456911
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 742.0,
+    "value": -2370378.0156499124
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 743.0,
+    "value": -2164492.599681384
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 744.0,
+    "value": -1514335.1486493093
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 745.0,
+    "value": -1684765.1243133533
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 746.0,
+    "value": -1099785.527737155
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 747.0,
+    "value": -3432805.1774551626
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 748.0,
+    "value": -1137146.4505252521
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 749.0,
+    "value": -5146601.261446944
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 750.0,
+    "value": -3344600.387042512
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 751.0,
+    "value": -3449544.331191045
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 752.0,
+    "value": -5037103.836622793
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 753.0,
+    "value": -3444581.233980774
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 754.0,
+    "value": -2466747.910323521
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 755.0,
+    "value": -4889838.207504378
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 756.0,
+    "value": -4476637.059705549
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 757.0,
+    "value": -8252026.776315569
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 758.0,
+    "value": -10434533.618738405
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 759.0,
+    "value": -31943123.320767276
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 760.0,
+    "value": -60729170.27903403
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 761.0,
+    "value": -88440750.57521853
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 762.0,
+    "value": -179655618.00206193
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 763.0,
+    "value": -279566862.5746526
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 764.0,
+    "value": -1316801139.68217
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 765.0,
+    "value": -430387634.2433901
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 766.0,
+    "value": -235924646.15449694
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 767.0,
+    "value": -59174433.31751149
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 768.0,
-    "strike_text": "768",
-    "text": "-$39.93M",
-    "value": -39931287.640042946,
-    "volume": 422376.0,
-    "volume_text": "422,376"
+    "value": -39931287.640042946
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 769.0,
-    "strike_text": "769",
-    "text": "-$16.52M",
-    "value": -16523703.255162042,
-    "volume": 288663.0,
-    "volume_text": "288,663"
+    "value": -16523703.255162042
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 770.0,
-    "strike_text": "770",
-    "text": "-$5.38M",
-    "value": -5379257.901601046,
-    "volume": 291441.0,
-    "volume_text": "291,441"
+    "value": -5379257.901601046
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 771.0,
-    "strike_text": "771",
-    "text": "$4.85M",
-    "value": 4846865.9310600385,
-    "volume": 230826.0,
-    "volume_text": "230,826"
+    "value": 4846865.9310600385
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 772.0,
-    "strike_text": "772",
-    "text": "-$10.89M",
-    "value": -10893452.32429789,
-    "volume": 156732.0,
-    "volume_text": "156,732"
+    "value": -10893452.32429789
    },
    {
-    "marks": [
-     {
-      "kind": "spot",
-      "label": "SPOT"
-     }
-    ],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 773.0,
-    "strike_text": "773",
-    "text": "$938.38K",
-    "value": 938375.7204155028,
-    "volume": 95213.0,
-    "volume_text": "95,213"
+    "value": 938375.7204155028
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 774.0,
-    "strike_text": "774",
-    "text": "$5.20M",
-    "value": 5197339.936038183,
-    "volume": 99846.0,
-    "volume_text": "99,846"
+    "value": 5197339.936038183
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 775.0,
-    "strike_text": "775",
-    "text": "$12.16M",
-    "value": 12158454.964166764,
-    "volume": 54431.0,
-    "volume_text": "54,431"
+    "value": 12158454.964166764
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 776.0,
-    "strike_text": "776",
-    "text": "$23.17M",
-    "value": 23173260.295047093,
-    "volume": 35540.0,
-    "volume_text": "35,540"
+    "value": 23173260.295047093
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 777.0,
-    "strike_text": "777",
-    "text": "$5.28M",
-    "value": 5275141.800939364,
-    "volume": 20667.0,
-    "volume_text": "20,667"
+    "value": 5275141.800939364
    },
    {
-    "marks": [],
+    "change": null,
+    "change_text": null,
+    "prior": null,
     "strike": 778.0,
-    "strike_text": "778",
-    "text": "$5.62M",
-    "value": 5617988.353640684,
-    "volume": 17001.0,
-    "volume_text": "17,001"
+    "value": 5617988.353640684
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 779.0,
+    "value": 7009462.72695089
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 780.0,
+    "value": 11486891.022734197
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 781.0,
+    "value": 4128564.6081753843
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 782.0,
+    "value": 9990312.849225275
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 783.0,
+    "value": 4511990.803681879
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 784.0,
+    "value": 4985124.835762575
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 785.0,
+    "value": 3594090.4868954895
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 786.0,
+    "value": 1866685.4599301263
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 787.0,
+    "value": 1191402.4135509848
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 788.0,
+    "value": 1445119.8489757404
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 789.0,
+    "value": 818880.4508217056
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 790.0,
+    "value": 1028075.4077402902
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 791.0,
+    "value": 566442.1556769421
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 792.0,
+    "value": 141653.6333293448
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 793.0,
+    "value": 270535.8108396112
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 794.0,
+    "value": 211257.3825043402
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 795.0,
+    "value": 183310.01030774013
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 796.0,
+    "value": 123678.7241427468
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 797.0,
+    "value": 120815.63480171864
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 798.0,
+    "value": 231851.0494887206
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 799.0,
+    "value": 57532.02550486516
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 800.0,
+    "value": 73885.92872834821
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 801.0,
+    "value": 330038.01079230505
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 802.0,
+    "value": 384632.9907664066
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 803.0,
+    "value": 257933.31768180864
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 804.0,
+    "value": 490254.84622268274
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 805.0,
+    "value": 28105.45362512928
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 806.0,
+    "value": 227687.4368443359
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 807.0,
+    "value": 165293.99294463906
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 808.0,
+    "value": 552659.0721164155
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 809.0,
+    "value": 53420.01115245868
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 810.0,
+    "value": 156686.1089069468
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 815.0,
+    "value": 79326.55093923144
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 820.0,
+    "value": 11290.91349456288
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 825.0,
+    "value": 27439.47431295192
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 830.0,
+    "value": 49968.080165301406
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 835.0,
+    "value": 55456.646348581635
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 840.0,
+    "value": 4037.818822251119
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 845.0,
+    "value": 51196.36936243118
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 850.0,
+    "value": 406.21906820779196
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 855.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 860.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 865.0,
+    "value": 1299.9745716622558
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 870.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 875.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 880.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 885.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 890.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 895.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 900.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 905.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 910.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 915.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 920.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 925.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 930.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 935.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 940.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 945.0,
+    "value": 0.0
+   },
+   {
+    "change": null,
+    "change_text": null,
+    "prior": null,
+    "strike": 950.0,
+    "value": 0.0
    }
   ],
-  "far": [],
-  "near": [
-   {
-    "marks": [],
-    "strike": 768.0,
-    "strike_text": "768",
-    "text": "-$39.93M",
-    "value": -39931287.640042946,
-    "volume": 422376.0,
-    "volume_text": "422,376"
-   },
-   {
-    "marks": [],
-    "strike": 769.0,
-    "strike_text": "769",
-    "text": "-$16.52M",
-    "value": -16523703.255162042,
-    "volume": 288663.0,
-    "volume_text": "288,663"
-   },
-   {
-    "marks": [],
-    "strike": 770.0,
-    "strike_text": "770",
-    "text": "-$5.38M",
-    "value": -5379257.901601046,
-    "volume": 291441.0,
-    "volume_text": "291,441"
-   },
-   {
-    "marks": [],
-    "strike": 771.0,
-    "strike_text": "771",
-    "text": "$4.85M",
-    "value": 4846865.9310600385,
-    "volume": 230826.0,
-    "volume_text": "230,826"
-   },
-   {
-    "marks": [],
-    "strike": 772.0,
-    "strike_text": "772",
-    "text": "-$10.89M",
-    "value": -10893452.32429789,
-    "volume": 156732.0,
-    "volume_text": "156,732"
-   },
-   {
-    "marks": [
-     {
-      "kind": "spot",
-      "label": "SPOT"
-     }
-    ],
-    "strike": 773.0,
-    "strike_text": "773",
-    "text": "$938.38K",
-    "value": 938375.7204155028,
-    "volume": 95213.0,
-    "volume_text": "95,213"
-   },
-   {
-    "marks": [],
-    "strike": 774.0,
-    "strike_text": "774",
-    "text": "$5.20M",
-    "value": 5197339.936038183,
-    "volume": 99846.0,
-    "volume_text": "99,846"
-   },
-   {
-    "marks": [],
-    "strike": 775.0,
-    "strike_text": "775",
-    "text": "$12.16M",
-    "value": 12158454.964166764,
-    "volume": 54431.0,
-    "volume_text": "54,431"
-   },
-   {
-    "marks": [],
-    "strike": 776.0,
-    "strike_text": "776",
-    "text": "$23.17M",
-    "value": 23173260.295047093,
-    "volume": 35540.0,
-    "volume_text": "35,540"
-   },
-   {
-    "marks": [],
-    "strike": 777.0,
-    "strike_text": "777",
-    "text": "$5.28M",
-    "value": 5275141.800939364,
-    "volume": 20667.0,
-    "volume_text": "20,667"
-   },
-   {
-    "marks": [],
-    "strike": 778.0,
-    "strike_text": "778",
-    "text": "$5.62M",
-    "value": 5617988.353640684,
-    "volume": 17001.0,
-    "volume_text": "17,001"
-   }
-  ]
+  "shrank": [],
+  "shrank_text": "",
+  "volume_total": 9570957.0,
+  "volume_zero_text": null
  },
- "today_side_sums": {
-  "gex_above": 108386881.90773931,
-  "gex_above_text": "$108.39M",
-  "gex_below": -2827378107.3603463,
-  "gex_below_text": "-$2.83B"
- },
- "views": {
-  "all": {
-   "centre": 773.0,
-   "centre_text": "773",
-   "max_abs": 39931287.640042946,
-   "max_abs_with_prior": 39931287.640042946,
-   "note": null
+ "ticker": "SPY",
+ "today": [
+  {
+   "marks": [],
+   "strike": 768.0,
+   "strike_text": "768",
+   "text": "-$39.93M",
+   "value": -39931287.640042946,
+   "volume": 422376.0,
+   "volume_text": "422,376"
   },
-  "far": {
-   "centre": null,
-   "centre_text": null,
-   "max_abs": null,
-   "max_abs_with_prior": null,
-   "note": null
+  {
+   "marks": [],
+   "strike": 769.0,
+   "strike_text": "769",
+   "text": "-$16.52M",
+   "value": -16523703.255162042,
+   "volume": 288663.0,
+   "volume_text": "288,663"
   },
-  "near": {
-   "centre": 773.0,
-   "centre_text": "773",
-   "max_abs": 39931287.640042946,
-   "max_abs_with_prior": 39931287.640042946,
-   "note": null
+  {
+   "marks": [],
+   "strike": 770.0,
+   "strike_text": "770",
+   "text": "-$5.38M",
+   "value": -5379257.901601046,
+   "volume": 291441.0,
+   "volume_text": "291,441"
+  },
+  {
+   "marks": [],
+   "strike": 771.0,
+   "strike_text": "771",
+   "text": "$4.85M",
+   "value": 4846865.9310600385,
+   "volume": 230826.0,
+   "volume_text": "230,826"
+  },
+  {
+   "marks": [],
+   "strike": 772.0,
+   "strike_text": "772",
+   "text": "-$10.89M",
+   "value": -10893452.32429789,
+   "volume": 156732.0,
+   "volume_text": "156,732"
+  },
+  {
+   "marks": [
+    {
+     "kind": "spot",
+     "label": "SPOT"
+    }
+   ],
+   "strike": 773.0,
+   "strike_text": "773",
+   "text": "$938.38K",
+   "value": 938375.7204155028,
+   "volume": 95213.0,
+   "volume_text": "95,213"
+  },
+  {
+   "marks": [],
+   "strike": 774.0,
+   "strike_text": "774",
+   "text": "$5.20M",
+   "value": 5197339.936038183,
+   "volume": 99846.0,
+   "volume_text": "99,846"
+  },
+  {
+   "marks": [],
+   "strike": 775.0,
+   "strike_text": "775",
+   "text": "$12.16M",
+   "value": 12158454.964166764,
+   "volume": 54431.0,
+   "volume_text": "54,431"
+  },
+  {
+   "marks": [],
+   "strike": 776.0,
+   "strike_text": "776",
+   "text": "$23.17M",
+   "value": 23173260.295047093,
+   "volume": 35540.0,
+   "volume_text": "35,540"
+  },
+  {
+   "marks": [],
+   "strike": 777.0,
+   "strike_text": "777",
+   "text": "$5.28M",
+   "value": 5275141.800939364,
+   "volume": 20667.0,
+   "volume_text": "20,667"
+  },
+  {
+   "marks": [],
+   "strike": 778.0,
+   "strike_text": "778",
+   "text": "$5.62M",
+   "value": 5617988.353640684,
+   "volume": 17001.0,
+   "volume_text": "17,001"
   }
+ ],
+ "view": {
+  "centre": 773.0,
+  "centre_text": "773",
+  "max_abs": 39931287.640042946,
+  "max_abs_with_prior": 39931287.640042946,
+  "note": null
  }
 }

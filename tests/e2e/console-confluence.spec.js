@@ -1,7 +1,7 @@
 /*
  * Confluence Matrix. The page draws the `confluence` panel on its socket and computes nothing.
- * The panel sent again (the chain or the levels changed) redraws the table and keeps the expiry
- * the operator picked.
+ * The panel sent again (the chain or the levels changed) redraws the table at the page's one
+ * expiry choice (the shared expiry dropdown; none chosen: the program ranks the front one).
  *
  * Real data: the confluence body as the real code served it on MRVL's full chain captured
  * 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_confluence_payloads_2026_10_07.json).
@@ -105,7 +105,8 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
   await expect(page.locator("#cmBody td", { hasText: /^-$/ }).first()).toBeVisible();
   await expect(page.locator("#cmBody h1")).toHaveCount(0);
   await expect(page.locator("#cmBody")).not.toContainText("Hover a level to trace its price");
-  await expect(page.locator("#cmExp")).toHaveValue(FRONT);
+  await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + FRONT); // served
+  await expect(page.locator("#cmBody select")).toHaveCount(0); // no dropdown of its own
   // the served rail (push.confluence._rail): each lane's levels inside the rows, those past them
   const inside = [...body.rail_lanes.session, ...body.rail_lanes.options];
   expect(inside.length).toBeGreaterThan(0);
@@ -139,21 +140,23 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
   await expect(page.locator("#cmDetail")).toContainText("$ per 1% move");
   await expect(page.locator("#cmDetail")).toContainText("delta-shares / day");
 
-  // the panel sent again: the front expiry stays (the page asked none, the program's front one)
+  // the panel sent again: the front expiry stays (the page asked All Expirations, null: the
+  // program's front one)
   sock.changed("confluence");
   await expect.poll(() => expiries.length).toBe(opened + 1);
-  expect(expiries[expiries.length - 1]).toBeUndefined();
-  await expect(page.locator("#cmExp")).toHaveValue(FRONT);
+  expect(expiries[expiries.length - 1]).toBeNull();
+  await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + FRONT);
   await expect(page.locator("#cmDetail")).toContainText(first.label + " " + first.text);
 
-  await page.locator("#cmExp").selectOption(NEXT);
+  // the one expiry dropdown's choice is the matrix's
+  await page.evaluate((e) => window.EdShell.setExpiry(e), NEXT);
   await expect.poll(() => expiries[expiries.length - 1]).toBe(NEXT);
   const picked = expiries.length;
 
   sock.changed("confluence");
   await expect.poll(() => expiries.length).toBe(picked + 1);
   expect(expiries[expiries.length - 1]).toBe(NEXT);
-  await expect(page.locator("#cmExp")).toHaveValue(NEXT);
+  await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + NEXT);
 
   // the view opened again asks for the same panel of the same expiry: nothing new is asked or sent
   const asks = confluenceAsks();
@@ -162,11 +165,13 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
   expect(confluenceAsks()).toEqual(asks);
   expect(expiries.length).toBe(picked + 1);
-  await expect(page.locator("#cmExp")).toHaveValue(NEXT);
+  await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + NEXT);
   expect(errs).toEqual([]);
 });
 
-test("a passed expiry is replaced by the one the server returns", async ({ page }) => {
+test("a chosen expiry that has passed is said, never another expiry's ranking", async ({
+  page,
+}) => {
   const asked = [];
   let afterItPassed = false;
   const sock = await mockPriceSocket(page, [], [], undefined, {
@@ -176,18 +181,16 @@ test("a passed expiry is replaced by the one the server returns", async ({ page 
     },
   });
   await openMatrix(page);
-  await expect(page.locator("#cmBody")).toContainText(served(FRONT).rows[0].score_text);
-  // the operator's own pick of the front expiry, so the page asks for it by name
-  await page.locator("#cmExp").selectOption(NEXT);
-  await expect.poll(() => asked[asked.length - 1]).toBe(NEXT);
-  await page.locator("#cmExp").selectOption(FRONT);
+  await page.evaluate((e) => window.EdShell.setExpiry(e), FRONT);
   await expect.poll(() => asked[asked.length - 1]).toBe(FRONT);
-  await expect(page.locator("#cmExp")).toHaveValue(FRONT);
+  await expect(page.locator("#cmBody")).toContainText(served(FRONT).rows[0].score_text);
   afterItPassed = true;
   const before = asked.length;
   sock.changed("confluence");
   await expect.poll(() => asked.length).toBe(before + 1);
   expect(asked[asked.length - 1]).toBe(FRONT);
-  await expect(page.locator("#cmExp")).toHaveValue(FX.front_passed.expiry);
-  await expect(page.locator('#cmExp option[value="' + FRONT + '"]')).toHaveCount(0);
+  // the program's answer on Sunday for Friday's expiry: why, and no rows of the next one
+  expect(FX.front_passed.available).toBe(false);
+  await expect(page.locator("#cmBody")).toContainText(FX.front_passed.reason);
+  await expect(page.locator("#cmRows tr")).toHaveCount(0);
 });

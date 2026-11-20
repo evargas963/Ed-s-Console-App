@@ -88,10 +88,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   use httpx2"); schwab-py 1.5.1 is built on httpx. Left as is (operator 2026-11-19): authlib, httpx
   and schwab-py stay pinned in `requirements.txt`, and are upgraded together, with the sign-in
   refresh tested before a deploy, when schwab-py moves to httpx2 or authlib drops the fallback.
-- P1-6 (QUEUED): found defects, each checked against the code on 2026-11-19 and fixed at its source
-  with a test that fails before:
-  - S-23 `push/strikes.py` `_side_sums` splits the per-strike GEX (priced at the snapshot's spot) by
-    the live spot from `resolve_spot`.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command
@@ -117,9 +113,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   (a served value `docs/derived_register.md` does not name). Known second producers, each deleted to
   one with a test: the strike at the price (`calc.terrain_engine.nearest_strike`,
   `calc.confluence_composite.under_strike`, the daemon's `saved_window`); the front expiry's five
-  definitions (max pain, same-day levels, heatmap front, confluence default); equity
-  prints kept again in the order-flow tape (`app/options/order_flow/state.py`); and the second
-  computations the 2026-10-02 review listed, each re-checked against the code before it is fixed.
+  definitions (max pain, same-day levels, heatmap front, confluence default); equity prints kept
+  again in the order-flow tape (`app/options/order_flow/state.py`); and the second computations the
+  2026-10-02 review listed, each re-checked against the code before it is fixed.
 - ENF-11 (QUEUED; also P1-9): one formatter per format, on the server, and a machine check of it
   (`tests/test_served_numbers_v1.py` holds the number formatters; ruff `PLC0415` is already at 0).
 - SIMPLIFY (ACTIVE; also ENF-04, TEST-CLEANUP, TEST-REVIEW, P2-6, P2-7): every line earns its place,
@@ -224,18 +220,17 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   read the price rows. Changing the bind is his setting.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
-  tolerance; depth to 5 levels); a book side with no
-  levels has no depth total.
+  tolerance; depth to 5 levels); a book side with no levels has no depth total.
 - INTERPRET (NEXT; operator 2026-11-20): every reading of ours laid over Schwab's data, found and
   listed with what it adds over the field as sent: a buyer/seller label (Lee-Ready against the bid
-  and ask, `calc/l1_trade_observation.py`), a sum or split of ours (the GEX, ΔOI, DEX and charm
-  below/above the price), a threshold, a rule that blanks or merges a value. Each one shown to be
-  needed and sourced, or deleted; one Schwab sends only changed fields (Streamer API), so a field
-  missing from a message is unchanged, its held value current. The option book's resting size
-  (OPTIONS_BOOK, up to 300 contracts) is the confluence matrix revamp's input. Decided: the tape's
-  buyer/seller signing (Lee-Ready) stays, marked estimated on screen ("Flow observations
-  (estimated)", `tests/e2e/console-gamma-flow.spec.js`); the page writes no reading of its own
-  (a session volume of 0 is served with what it means, `push.strikes._shown_scope`).
+  and ask, `calc/l1_trade_observation.py`), a sum or split of ours (the Options Book's lean, marked
+  INTERPRET in `docs/derived_register.md`), a threshold, a rule that blanks or merges a value. Each
+  one shown to be needed and sourced, or deleted; one Schwab sends only changed fields (Streamer
+  API), so a field missing from a message is unchanged, its held value current. The option book's
+  resting size (OPTIONS_BOOK, up to 300 contracts) is the confluence matrix revamp's input. Decided:
+  the tape's buyer/seller signing (Lee-Ready) stays, marked estimated on screen ("Flow observations
+  (estimated)", `tests/e2e/console-gamma-flow.spec.js`); the page writes no reading of its own (a
+  session volume of 0 is served with what it means, `push.strikes._shown_migration`).
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).
@@ -246,11 +241,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   chain history; where it lives is undecided.
 - PLAN (DESIGNING): Trade Desk → Plan.
 - QUANT (DESIGNING): studies on the recorded data, after the census, each making a screen message
-  rest on measured evidence: event studies at levels, look-forward returns by served value,
-  implied against realized volatility, regime detection, order-flow
-  decay, the same study over every ticker, and the data's own gaps. Each with a fixed design,
-  walk-forward testing and a multiple-testing correction; a study that finds nothing changes or
-  removes the message it tested.
+  rest on measured evidence: event studies at levels, look-forward returns by served value, implied
+  against realized volatility, regime detection, order-flow decay, the same study over every ticker,
+  and the data's own gaps. Each with a fixed design, walk-forward testing and a multiple-testing
+  correction; a study that finds nothing changes or removes the message it tested.
 - OI-STREAM (DESIGNING): the stream's OPEN_INTEREST misses some contracts' daily update; left: the
   other recorded days, why, and what a change in open interest says for trading.
 - PORTFOLIO (DESIGNING): Portfolio / Risk, from Schwab's account API, fetched by Feed.

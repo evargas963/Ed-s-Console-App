@@ -33,7 +33,7 @@ const {
 // the composite of Schwab's two books, as the book panel's readout answers it
 const COMP = MICRO.readout.venues.COMPOSITE;
 // a strikes window as GEX by Strike lists it: highest strike first
-const listed = (strikes) => strikes.today.all.map((r) => String(r.strike)).reverse();
+const listed = (strikes) => strikes.today.map((r) => String(r.strike)).reverse();
 // the zone the price is inside (the liquidity panel's own spot_location)
 const INSIDE = LIQ.zones[LIQ.spot_location.inside];
 // a level far above the candles' range: the GRC as the levels panel serves one
@@ -89,7 +89,7 @@ test("every chart is the one TradingView-style chart, with its controls", async 
 
 // 2026-09-29 RTH, measured in the operator's browser: a fresh desk load asked for every value twice
 // (start() ran on ed:view and ed:ticker; the second saw no bars yet and loaded again), and a
-// timeframe switch re-asked for the zones, strikes, forces and flow bars (and the terrain, now the
+// timeframe switch re-asked for the zones, strikes, options lean and flow bars (and the terrain, now the
 // socket's panel), none of which
 // depend on the timeframe -- 6.8 s to redraw.
 test("a desk load asks for each value once; a timeframe switch asks only for that timeframe and says it is loading", async ({
@@ -121,7 +121,14 @@ test("a desk load asks for each value once; a timeframe switch asks only for tha
   await expect
     .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().bars))
     .toBeGreaterThan(0);
-  const DESK = ["desk", "liquidity:deskmap", "forces", "book:deskmap", "bars:deskmap", "bars:flow"];
+  const DESK = [
+    "desk",
+    "liquidity:deskmap",
+    "option_book:desk",
+    "book:deskmap",
+    "bars:deskmap",
+    "bars:flow",
+  ];
   for (const name of DESK) expect(asks(name).length, name).toBe(1);
   expect(asks("bars:deskmap")[0].tf).toBe("5");
   expect(asks("bars:flow")[0].tf).toBe("1");
@@ -1445,8 +1452,8 @@ test.describe("Trade Desk renders served values", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     await intercept(page);
     // induced: SPY's real rows with today's GEX and volume of the strike at the price (757) not known
-    const K = STRIKES.today.all.find((r) => r.marks.some((m) => m.kind === "spot")).strike;
-    const today = STRIKES.today.all.map((r) =>
+    const K = STRIKES.today.find((r) => r.marks.some((m) => m.kind === "spot")).strike;
+    const today = STRIKES.today.map((r) =>
       r.strike === K
         ? {
             strike: K,
@@ -1460,15 +1467,13 @@ test.describe("Trade Desk renders served values", () => {
         : r,
     );
     deskPanels().strikes = Object.assign({}, STRIKES, {
-      today: Object.assign({}, STRIKES.today, { all: today }),
+      today: today,
       migration: Object.assign({}, STRIKES.migration, {
-        all: Object.assign({}, STRIKES.migration.all, {
-          rows: STRIKES.migration.all.rows.map((r) =>
-            r.strike === K
-              ? { strike: K, value: null, prior: r.prior, change: null, change_text: null }
-              : r,
-          ),
-        }),
+        rows: STRIKES.migration.rows.map((r) =>
+          r.strike === K
+            ? { strike: K, value: null, prior: r.prior, change: null, change_text: null }
+            : r,
+        ),
       }),
     });
     await page.addInitScript(() => {
@@ -1501,7 +1506,7 @@ test.describe("Trade Desk renders served values", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#tdMigration .gbs-k")).toHaveText(listed(STRIKES));
     // SPY's real rows, high strikes on top: 757 the price's strike, 760 the put wall
-    const served = STRIKES.today.all.slice().reverse();
+    const served = STRIKES.today.slice().reverse();
     expect(served.filter((r) => r.marks.length).map((r) => r.strike)).toEqual([760, 757]);
     const rows = page.locator("#tdMigration .mig-row");
     for (let i = 0; i < served.length; i++) {
@@ -1511,6 +1516,60 @@ test.describe("Trade Desk renders served values", () => {
         ["gbs-row", "mig-row"].concat(marks.map((m) => "mark-" + m.kind)).join(" "),
       );
     }
+  });
+
+  test("Right Now: the migration follows the expiry chosen, and says one the chain does not list", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    // the server's own answers on SPY's chain: its second expiry chosen, and a date it lists none on
+    const ONE = REAL.strikes_second_expiry;
+    const MISSING = REAL.strikes_missing_expiry;
+    const MISSING_DATE = "2026-11-14"; // tests/test_e2e_panels_two_day_v1.py MISSING_EXPIRY
+    const asked = () =>
+      sock.subscribes
+        .map((s) => s.panels && s.panels["strikes:migration"])
+        .filter(Boolean)
+        .pop();
+    const drawn = (rows, key) =>
+      rows
+        .slice()
+        .reverse()
+        .map((r) => (r[key] == null ? "-" : r[key]));
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "right-now");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const panel = page.locator("#tdMigration");
+    await expect(panel.locator(".mig-exp")).toHaveText("All Expirations");
+    // the one expiry dropdown stands on the Trade Desk too; the Options grid's measure does not
+    await expect(page.locator("#expSel")).toBeVisible();
+    await expect(page.locator("#measureSel")).toBeHidden();
+    await expect(panel.locator(".gbs-v")).toHaveText(drawn(STRIKES.today, "text"));
+    await expect(panel.locator("[data-mig-scope]")).toHaveCount(0); // no fixed DTE chips
+    await page.evaluate((e) => window.EdShell.setExpiry(e), ONE.expiry);
+    await expect.poll(() => asked().expiry).toBe(ONE.expiry);
+    await expect(panel.locator(".mig-exp")).toHaveText(ONE.expiry_text);
+    // that expiry's own rows, and each one's change against the same expiry on the prior day
+    await expect(panel.locator(".gbs-v")).toHaveText(drawn(ONE.today, "text"));
+    const change = Object.fromEntries(ONE.migration.rows.map((r) => [r.strike, r.change_text]));
+    await expect(panel.locator(".mig-delta")).toHaveText(
+      ONE.today
+        .slice()
+        .reverse()
+        .map((r) => (change[r.strike] == null ? "-" : change[r.strike])),
+    );
+    // an expiry the chain does not list: the program's words, never another expiry's rows
+    await page.evaluate((e) => window.EdShell.setExpiry(e), MISSING_DATE);
+    await expect(panel).toContainText(MISSING.reason);
+    await expect(panel.locator(".mig-row")).toHaveCount(0);
+    await page.evaluate(() => window.EdShell.setExpiry(""));
+    await expect(panel.locator(".mig-exp")).toHaveText("All Expirations");
+    await expect(panel.locator(".gbs-v")).toHaveText(drawn(STRIKES.today, "text"));
+    expect(errs).toEqual([]);
   });
 
   test("Right Now: a panel landing after a scope change draws only the new window", async ({
@@ -1563,7 +1622,7 @@ test.describe("Trade Desk renders served values", () => {
     expect(draws.slice(first).filter((d) => d !== wide)).toEqual([]);
   });
 
-  test("Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the FORCES split", async ({
+  test("Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the flip note", async ({
     page,
   }) => {
     const errs = watchErrors(page);
@@ -1584,36 +1643,11 @@ test.describe("Trade Desk renders served values", () => {
       book: MICRO,
       liquidity: LIQ,
       bars: tfAt(BARS),
-      forces: {
-        ticker: "SPY",
-        available: true,
-        doi_below: 1200,
-        doi_above: null,
-        doi_below_text: "1,200",
-        doi_above_text: null,
-        dex_below_dollars: 5e8,
-        dex_above_dollars: null,
-        dex_below_text: "$500.00M",
-        dex_above_text: null,
-        charm_below: -1234567,
-        charm_above: null,
-        charm_below_text: "-1.23M",
-        charm_above_text: null,
-        older_et_date: "2026-10-07",
-      },
       terrain: Object.assign({}, TERRAIN, {
         call_wall: 772,
         call_wall_text: "772.00",
         call_wall_lean: null,
         flip_note: "the flip's note, as served",
-      }),
-      strikes: Object.assign({}, STRIKES, {
-        today_side_sums: {
-          gex_below: -1.2e9,
-          gex_above: null,
-          gex_below_text: "-$1.20B",
-          gex_above_text: null,
-        },
       }),
       levels: levelsAt(
         Object.assign({}, LEVELS, {
@@ -1630,16 +1664,9 @@ test.describe("Trade Desk renders served values", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText("3m");
     await expect(page.locator("#tdmChart .tvc-edge-top")).toContainText("GRC 837.58");
-    await expect(page.locator("#tdmCardOpt")).toContainText("GEX below / above");
     await expect(page.locator("#tdmCardOpt")).toContainText(
       "Γ flip note the flip's note, as served",
     ); // induced
-    await expect(page.locator("#tdmCardOpt")).toContainText("-$1.20B / -"); // GEX, one side not known, as served
-    await expect(page.locator("#tdmCardOpt")).toContainText(
-      "ΔOI since 2026-10-07 below / above 1,200 / -",
-    ); // from its served day
-    await expect(page.locator("#tdmCardOpt")).toContainText("-1.23M / -"); // charm, one side not known, as served
-    await expect(page.locator("#tdmCardOpt")).toContainText("$500.00M / -"); // DEX, one side not known, as served
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);
     expect(errs).toEqual([]);
@@ -1654,13 +1681,11 @@ test.describe("Trade Desk renders served values", () => {
       await routeWatchlist(page, ["SPY"]);
       await mockPriceSocket(page, [], [], undefined, {
         terrain: terrain,
-        strikes: STRIKES,
         levels: levelsAt(LEVELS),
         desk: tfAt(EVENTS),
         book: MICRO,
         liquidity: LIQ,
         bars: tfAt(BARS),
-        forces: { available: false },
       });
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await expect(page.locator("#tdmCardOpt")).toContainText("775.00"); // the terrain panel has landed

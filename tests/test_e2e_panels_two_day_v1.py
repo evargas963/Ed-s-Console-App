@@ -12,7 +12,7 @@ day-over-day migration and the level moves against the prior day's close.
 The Trade Desk's panels of the same instant come from the ticker's book messages of the 60 s
 before it, its CHART_EQUITY bars of the day and Schwab's newest /pricehistory answers
 (tests/fixtures/real_<ticker>_desk_rows_2026_11_12.json.gz), each through the console's own
-intake: the book, the liquidity zones, the session's price levels and the forces.
+intake: the book, the liquidity zones and the session's price levels.
 """
 
 from __future__ import annotations
@@ -38,7 +38,6 @@ from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
 from push import desk as push_desk
-from push import forces as push_forces
 from push import levels as push_levels
 from push import liquidity as push_liquidity
 from push import strikes as push_strikes
@@ -58,8 +57,8 @@ _MARKETS = [
     json.loads((_FX / f"real_schwab_markets_{day}.json").read_text(encoding="utf-8"))["body"]
     for day in ("2026_11_11", "2026_11_12")
 ]
-#: the window a page asks: Auto, following the price
-AUTO = {"scope": "auto", "centre": None, "shift": 0}
+#: the window a page asks: Auto, following the price, at All Expirations
+AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 #: a date Schwab lists no expiry on in those chains (a Saturday)
 MISSING_EXPIRY = "2026-11-14"
 #: the timeframes the browser tests' charts draw (the Gamma chart opens at 1 minute, the desk and
@@ -136,8 +135,8 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
     `folder` holds the database the two captures are stored in. At the newer capture's instant:
     the strikes in the Auto and Wider windows, the levels (terrain), the heatmap (surface, Auto,
     every column and expiry; and asked for an expiry the chain does not list), the front and
-    the second expiry's chains, and the Trade Desk's book of each venue, liquidity zones and
-    forces, and at each of its timeframes the bars, the price levels and the attention queue
+    the second expiry's chains, and the Trade Desk's book of each venue and liquidity zones,
+    and at each of its timeframes the bars, the price levels and the attention queue
     (the day's level crosses held as a start loads them). Regenerate the browser tests' files with
     write_e2e_panels.
     """
@@ -217,6 +216,13 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 {
                     "strikes": push_strikes.strikes(tk, at, AUTO),
                     "strikes_wider": push_strikes.strikes(tk, at, {**AUTO, "scope": "wider"}),
+                    # the strikes at the chain's second expiry chosen, and at one it does not list
+                    "strikes_second_expiry": push_strikes.strikes(
+                        tk, at, {**AUTO, "expiry": real.captures[1]["rows"][1]["expiry"]}
+                    ),
+                    "strikes_missing_expiry": push_strikes.strikes(
+                        tk, at, {**AUTO, "expiry": MISSING_EXPIRY}
+                    ),
                     "terrain": push_terrain.terrain(tk, at),
                     "surface": push_surface.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
@@ -254,7 +260,6 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
                     },
                     "liquidity": push_liquidity.liquidity_snapshot(tk, now),
-                    "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
                     "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
                     "desk": {
@@ -310,7 +315,17 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     assert second["ladder"][0]["call"]["symbol"] != panels["chain"]["ladder"][0]["call"]["symbol"]
     assert panels["surface_missing_expiry"]["view"]["missing_expiry"] == MISSING_EXPIRY
     assert len(panels["surface"]["expirations"]) == len(real.captures[1]["rows"])
-    assert panels["strikes"]["migration"]["all"]["compared"] is True
+    assert panels["strikes"]["migration"]["compared"] is True
+    # the strikes follow the expiry chosen; one not listed is said, never another's rows
+    chosen = real.captures[1]["rows"][1]["expiry"]
+    assert panels["strikes_second_expiry"]["expiry"] == chosen
+    assert panels["strikes_second_expiry"]["migration"]["compared"] is True
+    assert panels["strikes_missing_expiry"] == {
+        **panels["strikes_missing_expiry"],
+        "available": False,
+        "reason": f"the chain lists no contracts for {MISSING_EXPIRY}",
+    }
+    assert "today" not in panels["strikes_missing_expiry"]
     assert panels["terrain"]["spot"] == real.quote["native"]["LAST_PRICE"]
     # the desk: Schwab's books at the price, zones and session levels built from its bars
     assert {book["status"] for book in panels["book"].values()} == {"ok"}
@@ -328,4 +343,3 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     marked = [it for it in panels["desk_newest_hour"]["items"] if it.get("marker")]
     off = [it for it in marked if it["ts"] < first]
     assert panels["desk_newest_hour"]["markers_off_chart"] == len(off) > 0
-    assert panels["forces"]["older_et_date"] == "2026-11-11"

@@ -76,7 +76,7 @@
       levels = served(_panels.levels),
       barsD = served(_panels.bars);
     // the program's words for each panel it could not produce, never drawn as empty
-    var words = [_panels.liquidity, _panels.bars, _panels.levels]
+    var words = [_panels.liquidity, _panels.bars, _panels.forming, _panels.levels]
       .filter(function (p) {
         return p && p.failed != null;
       })
@@ -158,10 +158,16 @@
   }
 
   // The zones, the levels and the bars at the toolbar's timeframe: the `liquidity:map`,
-  // `levels:liquidity` and `bars:liq` panels (server.liquidity, server.levels, push.bars) the
+  // `levels:liquidity`, `bars:liq` and `forming:liq` panels (server.liquidity, server.levels,
+  // push.bars) the
   // program sends on the page's socket while the map is on, at once and each time one changes;
   // each for the ticker on screen.
-  var PANELS = { "liquidity:map": "liquidity", "levels:liquidity": "levels", "bars:liq": "bars" };
+  var PANELS = {
+    "liquidity:map": "liquidity",
+    "levels:liquidity": "levels",
+    "bars:liq": "bars",
+    "forming:liq": "forming",
+  };
   var _panels = {},
     _panelsTicker = null;
   function load() {
@@ -176,6 +182,7 @@
       "bars:liq",
       on ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null,
     );
+    window.EdShell.showPanel("forming:liq", on ? { tf: _tf } : null);
   }
 
   document.addEventListener("ed:view", load);
@@ -185,7 +192,10 @@
       h = host();
     if (!key) return;
     _panels[key] = e.detail;
-    if (h && isMap()) render(h, ticker());
+    if (!h || !isMap()) return;
+    // the bars forming from the trades, drawn over the bars as they come (push.bars.forming)
+    if (key === "forming" && _chart && e.detail.failed == null) _chart.forming(e.detail);
+    else render(h, ticker());
   });
   // read-only view for tests (e2e) -- never a control surface
   window.EdLiquidityMap = {

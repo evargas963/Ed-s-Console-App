@@ -17,6 +17,11 @@ class Expiries(TypedDict):
     reason: str | None
 
 
+def expiry_label(expiry: str) -> str:
+    """Return an expiry date (YYYY-MM-DD) as the screen names it: MM/DD/YYYY."""
+    return f"{expiry[5:7]}/{expiry[8:10]}/{expiry[:4]}"
+
+
 def expiries(ticker: str, now: float) -> Expiries:
     """Return the ticker's listed expiries at `now`, each with its dropdown texts.
 
@@ -31,7 +36,7 @@ def expiries(ticker: str, now: float) -> Expiries:
     reason = verdict["levels_stale_reason"]
     if levels is not None:
         exps, dte = levels.snap.expiries, levels.snap.expiry_dte
-        labels = {e: f"{e[5:7]}/{e[8:10]}/{e[:4]}" for e in exps}
+        labels = {e: expiry_label(e) for e in exps}
         dte_text = {e: None if dte[e] is None else f"{dte[e]:g}DTE" for e in exps}
         reason = None if exps else "no expiry listed in the published chain"
     return {
