@@ -667,7 +667,7 @@ def _surface_symbols(surface: dict[str, Any]) -> list[str]:
 
 
 def _feed_stamp_key(
-    feed: lmp.FeedNow, symbols: list[str], now: float
+    feed: lmp.FeedNow, symbols: frozenset[str], now: float
 ) -> tuple[bool, frozenset[str], bool | None]:
     """Return what a heatmap's stamp takes from one beat (`feed`) at `now`.
 
@@ -699,7 +699,7 @@ def restamp_open_surfaces(now: float) -> None:
         surface = levels.gamma_surface
         if surface is None:  # this ticker's levels hold no surface (no price or no book)
             continue
-        symbols = _surface_symbols(surface)
+        symbols = levels.surface_symbols
         key = _feed_stamp_key(feed, symbols, now)
         if _last_feed_stamp.get(tk) == key:
             continue
@@ -877,8 +877,11 @@ def _published_surface(
     snap: TerrainSnapshot,
     at: tuple[float, str, float | None],
     now: datetime,
-) -> dict[str, Any]:
-    """Return the gamma surface of the priced chain at the spot `at`, its cells stamped."""
+) -> tuple[dict[str, Any], frozenset[str]]:
+    """Return the gamma surface of the priced chain at the spot `at`, its cells stamped.
+
+    With it, every contract its cells name (_surface_symbols), read once here.
+    """
     spot, spot_source, spot_ts = at
     projected = project_gamma_surface(p.priced, snap.books)
     projected.update(
@@ -891,9 +894,10 @@ def _published_surface(
     )
     surface = _stamp_gamma_surface_cell_stream_state(projected, p.streamed, p.feed_live, p.held)
     surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
+    symbols = frozenset(_surface_symbols(surface))
     # a later beat that differs from this one restamps it (restamp_open_surfaces)
-    _last_feed_stamp[tk] = _feed_stamp_key(p.feed, _surface_symbols(surface), now.timestamp())
-    return surface
+    _last_feed_stamp[tk] = _feed_stamp_key(p.feed, symbols, now.timestamp())
+    return surface, symbols
 
 
 def _publish_levels(
@@ -949,9 +953,11 @@ def _publish_levels(
     p = _price_chain_values(chain, listed, fetched_ts, closed is None, now)
     snap = compute_terrain(tk, p.priced, spot, now=valued_at, sessions=sessions())
     captures_key, forces, prior = _forces_and_prior(tk, previous, kept, captures, snap, fetched_ts)
-    surface = None
+    surface, surface_symbols = None, frozenset[str]()
     if spot is not None and snap.books:
-        surface = _published_surface(tk, p, snap, (float(spot), spot_source, spot_ts), now)
+        surface, surface_symbols = _published_surface(
+            tk, p, snap, (float(spot), spot_source, spot_ts), now
+        )
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
@@ -961,6 +967,7 @@ def _publish_levels(
         spot_as_of_ts_utc=spot_ts,
         priced_at=priced_at,
         gamma_surface=surface,
+        surface_symbols=surface_symbols,
         vanna_rows=snap.per_strike["vanna"],
         charm_rows=_charm_rows(snap),
         # every ticker keeps its chain and its heatmap, so a ticker put on screen shows at once

@@ -185,6 +185,25 @@ def test_a_status_sent_past_the_live_limit_is_not_current():
     assert lmp.feed_live_for(SYM, "LEVELONE_OPTIONS", _AT)
 
 
+def test_the_levels_keep_every_contract_their_heatmap_names_read_once_as_published():
+    """The beat's restamp reads the heatmap's contracts from the levels, never its cells again.
+
+    CRWD's real chain, priced: the symbols kept with the published levels are exactly the
+    contracts the heatmap's cells name (worked out here from the cells), so the restamp every
+    second for every ticker walks no grid.
+    """
+    _priced_when_the_status_was_sent(-0.5)
+    levels = level_store.published_levels(TK)
+    named = {
+        s
+        for cell in levels.gamma_surface["cells"]
+        for pair in cell["contracts"]
+        for s in (pair["call"], pair["put"])
+        if s
+    }
+    assert named and levels.surface_symbols == named
+
+
 def test_a_closed_socket_keeps_the_last_option_value_and_names_its_time():
     """Schwab's socket drops and the daemon's held set empties: the last streamed gamma stays.
 
