@@ -17,13 +17,14 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from dataclasses import asdict
 from pathlib import Path
 
 import db_authority
 from app.market_data.schwab.streaming import capture
 from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
 from db import EdDB, LevelCrossEvent
-from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import CAPTURE_STORED, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.test_data_path_rules_v1 import _EVENTS
 from tests.test_data_path_writer_failures_v1 import _count, _publish_options, _until
@@ -58,17 +59,18 @@ def test_the_one_database_is_ed_db_in_the_runtime_data_folder():
 
 
 def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(tmp_path):
-    """The three writers take turns; the stream writer is never blocked and every row lands.
+    """The writers take turns; the stream writer is never blocked and every row lands.
 
-    The chain's capture transaction and the level crosses write from a thread of their own while
-    the stream writer records the captured option quotes on its own thread, as in the daemon.
-    The stream writer's lock wait (timeout_sec) is its production 30 s; it must never read
-    blocked.
+    The chain's capture transaction writes from a thread of its own, and that thread hands a
+    level cross to the Recorder (store_crosses, as the console's pricing thread does), while the
+    stream writer records the captured option quotes on its own thread, as in the daemon. The
+    stream writer's lock wait (timeout_sec) is its production 30 s; it must never read blocked.
     """
     db = tmp_path / "ed.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
     edb = EdDB(db, allow_noncanonical=True)
     states: list[str] = []
+    stored: list[str] = []
 
     def write_history():
         store_capture(
@@ -80,7 +82,9 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
             completeness_basis=CAPTURE_BASIS,
             ts_utc=SPY["capture_ts_utc"],
         )
-        edb.record_level_crosses([_cross()])
+        c = _cross()
+        msg = {"ticker": c.ticker, "ts_utc": c.ts_utc, "crosses": [asdict(c)]}
+        stored.append(writer.store_crosses(msg, 10.0)[0])
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
@@ -93,7 +97,8 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
             _publish_options(bus, health, _EVENTS)
             states.append(writer.status()["state"])
             await asyncio.sleep(0.01)
-        await _until(lambda: writer.status()["rows_written"] == 20 * len(_EVENTS))
+        # every option quote's row, and the cross's
+        await _until(lambda: writer.status()["rows_written"] == 20 * len(_EVENTS) + 1)
         other.join()
         stop.set()
         await task
@@ -101,6 +106,7 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
     asyncio.run(go())
 
     assert "blocked" not in states
+    assert stored == [CAPTURE_STORED]
     counts = {
         t: _count(db, t)
         for t in ("stream_options_quotes_raw", "complete_chain_captures", "level_crosses")

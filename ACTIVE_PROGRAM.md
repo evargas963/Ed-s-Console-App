@@ -330,12 +330,11 @@ skip-listed file are refused.
 
 ## Phase 2 — the rest of the design, then decomposition
 
-| ID     | Status | Work item                                                                                                                                                                                                                                  |
-| ------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| P2-5   | QUEUED | **db.py**: move what remains (level crosses, the connection) to `recorder/` (`docs/ARCHITECTURE.md` §1).                                                                                                                                   |
-| P2-6   | QUEUED | **server.py**: the levels and gamma-surface calculations to `calc/`, the routes and startup to `push/` (`docs/ARCHITECTURE.md` §1).                                                                                                        |
-| P2-7   | QUEUED | **The other large files**: calc/liquidity_value_engine.py, app/options/order_flow/streaming.py, calc/order_flow.py, calc/math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, move each part to the process that runs it. |
-| P2-DB5 | QUEUED | **The console reads read-only.** Ships with its check: a database write outside the one writer fails.                                                                                                                                      |
+| ID   | Status | Work item                                                                                                                                                                                                                                  |
+| ---- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P2-5 | QUEUED | **db.py**: move what remains (level crosses, the connection) to `recorder/` (`docs/ARCHITECTURE.md` §1).                                                                                                                                   |
+| P2-6 | QUEUED | **server.py**: the levels and gamma-surface calculations to `calc/`, the routes and startup to `push/` (`docs/ARCHITECTURE.md` §1).                                                                                                        |
+| P2-7 | QUEUED | **The other large files**: calc/liquidity_value_engine.py, app/options/order_flow/streaming.py, calc/order_flow.py, calc/math_exposure_core.py, ed-core.js, ed-gamma.js — cut what has no job, move each part to the process that runs it. |
 
 ## Phase 3 — the placeholders on screen (after Phase 1 and 2)
 

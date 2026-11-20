@@ -1,4 +1,6 @@
-"""DATA_FLOW decision 6: starting the console's database (EdDB) leaves everything as it was.
+"""DATA_FLOW decision 6: starting the database's one writer leaves everything as it was.
+
+The Recorder (stream_spine.CaptureWriter) creates the tables it writes at its start.
 
 It leaves every schema object it finds as it was, and every row of every table.
 
@@ -15,7 +17,7 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from db import EdDB
+from stream_spine import CaptureWriter
 
 _NEWS = json.loads(
     (
@@ -102,7 +104,7 @@ def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path
     rows = _rows(db, before)
     assert {"session_log", "confluence_log", "news_events"} <= set(rows) and rows["news_events"]
 
-    EdDB(db, allow_noncanonical=True)
+    CaptureWriter(db)
 
     after = _schema(db)
     assert {name: after.get(name) for name in before} == before, (
