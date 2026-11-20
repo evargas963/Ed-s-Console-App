@@ -149,8 +149,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   list failure modes): a PR template whose sections a check requires.
 - ENF-09 (QUEUED): no function below an entry point takes the time; a check for a chain through
   another root module and a global.
-- ENF-10 (QUEUED): typed records across module boundaries, and pyright strict over Feed once
-  schwab-py has a typed edge.
+- ENF-10 (QUEUED): typed records across module boundaries (pyright strict already covers every
+  product module, Feed through `typings/`): a check that a value crossing a boundary is a dataclass.
 - ENF-12 (QUEUED): the practices no machine can see (claims cite output, proof reproducible, another
   agent's work read in full, deploy means restarted and checked, `&&` chains, every requirement
   naming its enforcement), each held by the builder's audit until a check exists.
