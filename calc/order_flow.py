@@ -61,7 +61,7 @@ Level = tuple[float, float, Exchanges | None]
 class Book:
     """One Schwab book message (NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK).
 
-    Read once by State (app.options.order_flow.state.read_book). Holds its service, BOOK_TIME,
+    Read once where it arrives (stream_spine.read_book). Holds its service, BOOK_TIME,
     and each side's levels in the order Schwab sent them.
     """
 
