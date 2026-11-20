@@ -69,6 +69,8 @@ CHART_TFS = {"1": 1200, "5": 3000, "15": 6000}
 #: the desk's own two: its queue is asked at the chart's timeframe
 DESK_TFS = ("5", "15")
 FLOW_BARS = {"tf": "1", "limit": 60}
+#: a chart span shorter than the desk's 15-minute window: the newest hour of 1-minute bars
+NEWEST_HOUR = 60
 
 
 @dataclass(frozen=True)
@@ -251,11 +253,18 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "forces": push_forces.forces(tk),
                     # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
                     "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
-                    "desk": {tf: push_desk.desk_events_payload(tk, tf, now) for tf in DESK_TFS},
+                    "desk": {
+                        tf: push_desk.desk_events_payload(tk, tf, now, CHART_TFS[tf])
+                        for tf in DESK_TFS
+                    },
                     "bars": {
                         tf: push_bars.bars(tk, at, {"tf": tf, "limit": limit})
                         for tf, limit in CHART_TFS.items()
                     },
+                    # the 15-minute desk with its chart spanning the newest hour of minutes: the
+                    # queue's older markers have no bar
+                    "desk_newest_hour": push_desk.desk_events_payload(tk, "15", now, NEWEST_HOUR),
+                    "bars_newest_hour": push_bars.bars(tk, at, {"tf": "15", "limit": NEWEST_HOUR}),
                     "bars_flow": push_bars.bars(tk, at, FLOW_BARS),
                     # the option tape: the daemon streams none of these contracts, and says so
                     "tape": push_tape.tape(tk, at),
@@ -305,4 +314,10 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     for queue in panels["desk"].values():
         crossed = {item["key"] for item in queue["items"] if item["src"] == "level_crosses"}
         assert crossed and crossed <= recorded
+    # every marker of the full charts has a bar; the newest hour's chart leaves the older out
+    assert {queue["markers_off_chart"] for queue in panels["desk"].values()} == {0}
+    first = panels["bars_newest_hour"]["bars"][0]["t"]
+    marked = [it for it in panels["desk_newest_hour"]["items"] if it.get("marker")]
+    off = [it for it in marked if it["ts"] < first]
+    assert panels["desk_newest_hour"]["markers_off_chart"] == len(off) > 0
     assert panels["forces"]["older_et_date"] == "2026-11-11"

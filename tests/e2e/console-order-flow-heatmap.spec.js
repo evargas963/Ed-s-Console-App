@@ -118,6 +118,20 @@ async function openBook(page, book) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
 }
 
+// the program's answer for SPY in regular hours, its NYSE_BOOK held, no book sent
+// (tests/test_order_flow_book_payload_v1.py)
+const NO_BOOK = require(path.join(__dirname, "fixtures", "order_flow_book_none_payload.json"));
+
+test("with no book held the panel says the program's served reason, not one of its own", async ({
+  page,
+}) => {
+  await openBook(page, NO_BOOK);
+  await expect(page.locator("#obBody .fl-badge")).toHaveText("NO BOOK YET");
+  await expect(page.locator("#obBody .placeholder")).toHaveText(NO_BOOK.no_book_text);
+  await openBook(page, Object.assign({}, NO_BOOK, { no_book_text: OFFLINE_BOOK.top_outage }));
+  await expect(page.locator("#obBody .placeholder")).toHaveText(OFFLINE_BOOK.top_outage);
+});
+
 test("a feed down keeps the last bid and the panel says OFFLINE", async ({ page }) => {
   await openBook(page, OFFLINE_BOOK);
   await expect(page.locator("#obBody")).toContainText(OFFLINE_BOOK.top_of_book.bid.toFixed(2));
