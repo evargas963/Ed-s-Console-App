@@ -38,7 +38,7 @@ jobs:
           - math_forces
           - math_levels
           - math_volatility
-          - micro_structure
+          # (micro_structure holds the Candle record only: nothing for mutmut to change)
           - order_flow
           - terrain_atr
           - terrain_engine
