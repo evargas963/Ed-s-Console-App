@@ -202,6 +202,9 @@ def test_a_value_state_missing_an_input_is_unknown_never_unchanged_or_at_value()
     assert (
         relation(price, price, price, None) is None and relation(None, price, price, price) is None
     )
+    assert (
+        relation(price, price, None, price) is None and relation(price, None, price, price) is None
+    )
     assert vwap(None, price, price) is None and vwap(price, price, None) is None
     assert (relation(price, price, price, price), vwap(price, price, price)) == (
         "unchanged",
@@ -227,6 +230,16 @@ def test_each_value_area_relation_is_the_two_areas_own_edges_with_no_tolerance()
     assert relation(lo, hi, lo - width, hi - width / 2) == "overlapping_higher"
     assert relation(lo, hi, lo + width / 2, hi + width) == "overlapping_lower"
     assert relation(lo, hi, lo, hi + width) == "inside" and relation(lo, hi, lo, hi) == "unchanged"
+    # an edge shared is overlap, never apart: touching areas overlap, and a shared high or low
+    # with the other edge inside is inside, with it outside is outside
+    assert relation(lo, hi, lo - width, lo) == "overlapping_higher"
+    assert relation(lo, hi, hi, hi + width) == "overlapping_lower"
+    assert relation(lo, hi, lo - width, hi) == "inside"
+    assert relation(lo, hi + width, lo, hi) == "outside"
+    assert relation(lo - width, hi, lo, hi) == "outside"
+    vwap = liquidity_value_engine.vwap_against_value
+    assert (vwap(lo - width, lo, hi), vwap(hi + width, lo, hi)) == ("below_value", "above_value")
+    assert (vwap(lo, lo, hi), vwap(hi, lo, hi)) == ("inside_value", "inside_value")
 
 
 @pytest.mark.usefixtures("published")

@@ -23,6 +23,7 @@ from calc.confluence_composite import (
     in_score_weights,
     iv_by_strike,
     magnitudes,
+    preset_name,
     score_magnitudes,
     under_strike,
     window_rows,
@@ -50,6 +51,7 @@ from tests.real_chains import (
     SPY_0DTE,
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
+    SPY_FULL,
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
 )
@@ -61,6 +63,7 @@ from time_et import (
     INDEX_OPTIONS,
     age_text,
     ct_label,
+    option_close_product,
     record_markets,
     sessions,
     valuation_instant,
@@ -299,6 +302,166 @@ def test_a_missing_factor_is_not_called_flat():
         for s in traded
         if s not in present
     )
+
+
+def _matrix_of(tk: str, contracts: list, spot: float, at: datetime, dte: float):
+    """Return the matrix of one expiry's contracts as the levels producer prices them.
+
+    Its book, charm map and volatility blend at Schwab's `spot`, valued at `at` for `tk`'s
+    option close.
+    """
+    chain, product = read_chain(contracts), option_close_product(tk)
+    book, _diag = compute_exposures_by_strike(
+        chain, spot=spot, now=at, sessions=sessions(), product=product
+    )
+    charm = compute_charm_by_strike(chain, spot, now=at, sessions=sessions(), product=product)
+    return build_matrix(book, charm, iv_by_strike(chain), spot, dte)
+
+
+def _expiry(held, expiry: str) -> list:
+    return [c for c in held.chain if str(c["expirationDate"])[:10] == expiry]
+
+
+#: each column the matrix shows: its text, and the reason served beside it when it is missing
+_REASONS = {
+    "net_gex_text": ("net_reason", "net gamma is missing"),
+    "oi_text": ("oi_reason", "open interest is missing"),
+    "pc_gex_text": ("pc_gex_reason", "put/call gamma is missing"),
+    "gross_text": ("gross_reason", "gross gamma is missing"),
+    "volume_text": ("volume_reason", "volume is missing"),
+    "pc_vol_text": ("pc_vol_reason", "put/call volume is missing"),
+    "vol_oi_text": ("vol_oi_reason", "volume/open interest is missing"),
+    "dex_text": ("dex_reason", "delta exposure is missing"),
+    "vanna_text": ("vanna_reason", "vanna is missing"),
+    "iv_text": ("iv_reason", "implied volatility is missing"),
+    "charm_text": ("charm_reason", "charm is missing"),
+}
+
+
+def test_each_missing_column_says_why_and_an_unreported_count_is_not_called_zero():
+    """Every row of two books: a column with no value serves its reason, one with a value none.
+
+    NFLX's 2027-12-17 expiry (tests/real_chains.py NFLX), where Schwab sent -999 for some
+    contracts' Greeks; and SPY's 2026-10-22 close capture (SPY_CLOSE) with, INDUCED until a
+    capture holds it, the totalVolume of the call at the lowest strike with no open interest and
+    no volume left out, and the openInterest of the call at the next such strike. Those two are
+    unscored because a count was not reported; the other untraded strikes because they have no
+    open interest and no volume.
+    """
+    untraded = sorted(
+        {
+            c["strikePrice"]
+            for c in SPY_CLOSE.chain
+            if all(
+                d["openInterest"] == 0 and d["totalVolume"] == 0
+                for d in SPY_CLOSE.chain
+                if d["strikePrice"] == c["strikePrice"]
+            )
+        }
+    )
+    no_volume, no_oi = untraded[0], untraded[1]
+    spy = []
+    for c in _expiry(SPY_CLOSE, "2026-10-22"):
+        row = dict(c)
+        if row["putCall"] == "CALL" and row["strikePrice"] == no_volume:
+            row.pop("totalVolume")
+        if row["putCall"] == "CALL" and row["strikePrice"] == no_oi:
+            row.pop("openInterest")
+        spy.append(row)
+    nflx = _matrix_of("NFLX", _expiry(NFLX, "2027-12-17"), NFLX.spot, NFLX.now, 436.0)
+    close = _matrix_of("SPY", spy, SPY_CLOSE.spot, SPY_CLOSE.now, 0.0)
+    rows = [*window_rows(nflx, list(nflx.ranked)), *window_rows(close, list(close.ranked))]
+    for row in rows:
+        for text, (reason, words) in _REASONS.items():
+            assert row[reason] == (words if row[text] is None else None), (row["strike"], text)
+    for text in _REASONS:
+        assert any(r[text] is None for r in rows) and any(r[text] is not None for r in rows), text
+    unscored = {s: r.result["missing"] for s, r in close.ranked.items() if s in untraded}
+    assert unscored == {
+        s: ["open interest or volume was not reported"]
+        if s in (no_volume, no_oi)
+        else ["no open interest and no volume"]
+        for s in untraded
+    }
+
+
+def test_a_negative_gamma_is_taken_as_sent_in_both_legs():
+    """SPY's captured 0DTE chain (SPY_0DTE), the call at the strike nearest the price INDUCED.
+
+    Its gamma made negative (no capture holds a negative gamma; Schwab's -999 stays not sent
+    in the reader). AGENTS rule 2: a gamma is taken as sent whatever its size, so that strike's
+    net gamma, its size in the score and its put/call gamma come from both legs as sent: each
+    leg gamma x open interest x multiplier x price^2 x 1%, worked out here from the raw chain.
+    """
+    held = SPY_0DTE
+    strike = min({c["strikePrice"] for c in held.chain}, key=lambda k: abs(k - held.spot))
+    chain = []
+    for c in held.chain:
+        row = dict(c)
+        if row["strikePrice"] == strike and row["putCall"] == "CALL":
+            row["gamma"] = -abs(row["gamma"])
+        chain.append(row)
+    legs = {
+        side: sum(
+            c["gamma"] * c["openInterest"] * c["multiplier"] * held.spot * held.spot * 0.01
+            for c in chain
+            if c["strikePrice"] == strike and c["putCall"] == side
+        )
+        for side in ("CALL", "PUT")
+    }
+    call, put = legs["CALL"], legs["PUT"]
+    assert call < 0 < put
+    matrix = _matrix_of("SPY", chain, held.spot, held.now, 0.0)
+    ranked = matrix.ranked[strike]
+    assert ranked.factors["GEXM"] == pytest.approx(abs(call - put), rel=1e-12)
+    assert "net gamma" not in ranked.result["missing"] and ranked.result["score"] is not None
+    row = window_rows(matrix, [strike])[0]
+    assert row["net_gex"] == pytest.approx(call - put, rel=1e-12)
+    assert row["net_gex_text"] == screen_text(call - put, "dollars")
+    assert row["pc_gex_text"] == f"{put / call:.2f}"
+    assert row["gross"] == pytest.approx(abs(call) + abs(put), rel=1e-12)
+    assert row["net_reason"] is None and row["pc_gex_reason"] is None
+
+
+def test_a_thin_or_flat_book_says_so():
+    """SPY's 2026-11-23 expiry in its 2026-11-09 11:06 ET whole-chain capture (SPY_FULL).
+
+    Listed with open interest 0 at every strike, so net gamma, open interest, vanna, delta and
+    charm do not vary across its traded strikes, which the note says. Cut to the strikes up to
+    its tenth traded one it is not thin; up to its ninth it is, fewer than ten.
+    """
+    contracts = _expiry(SPY_FULL, "2026-11-23")
+    full = _matrix_of("SPY", contracts, SPY_FULL.spot, SPY_FULL.now, 14.0)
+    traded = sorted(s for s, r in full.ranked.items() if _traded(r.factors))
+    constant = sorted(
+        k
+        for k, w in in_score_weights("MONTHLY").items()
+        if w > 0 and len({full.ranked[s].factors[k] for s in traded}) == 1
+    )
+    assert len(traded) > 10
+    assert constant == sorted(["GEXM", "OI", "VANNAM", "DEXM", "CHARMM"])
+    flat = "net gamma, open interest, vanna, delta, charm does not vary, so it adds nothing."
+    assert full.notes == [flat]
+
+    def cut(n: int) -> list[str]:
+        kept = [c for c in contracts if c["strikePrice"] <= traded[n - 1]]
+        return _matrix_of("SPY", kept, SPY_FULL.spot, SPY_FULL.now, 14.0).notes
+
+    assert cut(10) == [flat]
+    assert cut(9) == ["Thin book: fewer than 10 strikes.", flat]
+
+
+def test_the_weight_row_is_the_expirys_days_to_expiration():
+    """SPY's whole chain of 2026-11-09 (SPY_FULL), 35 expiries, with Schwab's daysToExpiration.
+
+    docs/derived_register.md "Preset and ceiling": 0 days is the same-day row, 1 to 7 the weekly
+    one (2026-11-16, 7 days, among them), 8 and beyond the monthly one.
+    """
+    days = sorted({c["daysToExpiration"] for c in SPY_FULL.chain})
+    assert {0, 7, 8} <= set(days)
+    for d in days:
+        expected = "0DTE" if d == 0 else "WEEKLY" if 1 <= d <= 7 else "MONTHLY"
+        assert preset_name(float(d)) == expected, d
 
 
 def _publish_close(tk: str = "SPY") -> level_store.PublishedLevels:
@@ -545,7 +708,9 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
 
     The print (LAST_PRICE 764.00, received 16:33:27 ET) is taken in by the plane and made the
     price row by the daemon's own function: the window is that strike and the five listed
-    strikes each side of it, and the spot line is that strike's row, not the one above it.
+    strikes each side of it, and the spot line is that strike's row, not the one above it. Each
+    row's distance is its strike less the price, signed, and that strike's 0.00 unsigned, also
+    for a price a rounding above it (INDUCED), whose spot line is the strike above.
     """
     quote = _SPY_PRINT_ON_A_STRIKE
     on = quote["native"]["LAST_PRICE"]
@@ -555,6 +720,15 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     assert body["spot"] == on and k >= 5
     assert sorted(r["strike"] for r in body["rows"]) == listed[k - 5 : k + 6]
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [on]
+    assert [r["distance_text"] for r in body["rows"]] == [
+        "0.00" if r["strike"] == on else f"{r['strike'] - on:+.2f}" for r in body["rows"]
+    ]
+    above = on + 0.004  # INDUCED: a LAST_PRICE a rounding above the strike (four decimals sent)
+    nudged = at_price(body["rows"], listed, above)["rows"]
+    assert [r["distance_text"] for r in nudged] == [
+        "0.00" if r["strike"] == on else f"{r['strike'] - above:+.2f}" for r in nudged
+    ]
+    assert [r["strike"] for r in nudged if r["spot_line"]] == [listed[k + 1]]
 
 
 def test_a_price_above_every_listed_strike_has_no_spot_line():

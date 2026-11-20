@@ -16,8 +16,9 @@ are not native trade identity.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, overload
 
 from numeric_contract import schwab_count, schwab_number
 
@@ -133,24 +134,39 @@ def trade_sign(price: float | None, bid: float | None, ask: float | None, tick: 
     return tick
 
 
-def _signed_walk(prints: list[dict[str, Any]], cutoff_ms: float | None):
+#: a print of the walk: (its trade time in ms, its size, its signed size or None)
+type _Walked[T] = tuple[T, float, float | None]
+
+
+@overload
+def _signed_walk(
+    prints: list[dict[str, Any]], cutoff_ms: float
+) -> Iterator[_Walked[float]]: ...  # a window start: every print in it has a trade time
+@overload
+def _signed_walk(
+    prints: list[dict[str, Any]], cutoff_ms: None
+) -> Iterator[_Walked[float | None]]: ...
+def _signed_walk(
+    prints: list[dict[str, Any]], cutoff_ms: float | None
+) -> Iterator[_Walked[float | None]]:
     """Walk the prints by Lee and Ready (trade_sign); THE one signed-size walk.
 
     Each print with a size, traded at or after `cutoff_ms` (every one when None; a print with
-    no trade time cannot be placed after it), as (x, size, signed size or None). x is the
-    trade time in seconds, else the receive index (not a trade id). A print before the window
-    still sets the price and the last change the tick test of the first one in it reads.
+    no trade time cannot be placed after it), as (trade time in ms or None, size, signed size or
+    None). A print before the window still sets the price and the last change the tick test of
+    the first one in it reads.
     """
     prev_price: float | None = None
     last: int | None = None
-    for i, p in enumerate(prints):
-        t, price, size = p.get("time_millis"), p.get("price"), p.get("size")
+    for p in prints:
+        t: float | None = p.get("time_millis")
+        price: float | None = p.get("price")
+        size: float | None = p.get("size")
         tick = tick_rule_sign(prev_price, price, last)
         sign = trade_sign(price, p.get("bid"), p.get("ask"), tick)
         in_window = cutoff_ms is None or (t is not None and t >= cutoff_ms)
         if in_window and size is not None:
-            x = float(i) if t is None else t / 1000.0
-            yield x, size, None if sign is None else sign * float(size)
+            yield t, size, None if sign is None else sign * float(size)
         if tick is not None:
             last = tick
         if price is not None:
@@ -170,19 +186,19 @@ def unsigned_share(prints: list[dict[str, Any]], cutoff_ms: float | None = None)
 
 
 def iter_signed_cum_points(
-    prints: list[dict[str, Any]],
-    cutoff_ms: float | None = None,
+    prints: list[dict[str, Any]], cutoff_ms: float
 ) -> list[tuple[float, float]]:
-    """Return the cumulative signed size at each print of the walk (_signed_walk).
+    """Return (trade time in seconds, cumulative signed size) at each print of the walk.
 
-    It is for CVD and its slope; with `cutoff_ms`, the prints traded at or after it.
+    It is for the slope of the cumulative delta: the prints traded at or after `cutoff_ms`
+    (_signed_walk), each of which has a trade time.
     """
     points: list[tuple[float, float]] = []
     cum = 0.0
-    for x, _size, signed in _signed_walk(prints, cutoff_ms):
+    for t, _size, signed in _signed_walk(prints, cutoff_ms):
         if signed is not None:
             cum += signed
-        points.append((x, cum))
+        points.append((t / 1000.0, cum))
     return points
 
 

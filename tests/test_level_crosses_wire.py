@@ -586,3 +586,21 @@ def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
             cross_store._crosses.pop(tk, None)
     assert len(events) == 243
     assert max(len(e.level_names) for e in events) == 6
+
+
+def test_a_test_publishes_spys_close_levels_and_leaves_them():
+    """SPY's 2026-10-22 close, published by the levels producer, and a cross stored for it."""
+    _publish_close()
+    _print(SPY_PRINT_A_STRIKE_AWAY)
+    assert level_store.published_levels("SPY") is not None
+
+
+def test_levels_and_crosses_an_earlier_test_published_are_not_held_for_the_next():
+    """Every test starts with no levels, crosses or price levels held, as the program does.
+
+    The test above, run before this one in the same process, published SPY's levels and left
+    them: none of it is held here. MRVL's levels another test left made a read-once test read
+    them as its own in mutmut's order (run 44716212849).
+    """
+    assert level_store.published_levels("SPY") is None
+    assert cross_store.merged_recent("SPY", 200) == []

@@ -86,7 +86,6 @@ def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
         bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT)),
         daily=bar_store.series(tk, "1d"),
         now=now,
-        config=PlaybookConfig(),
     )
     return [
         {

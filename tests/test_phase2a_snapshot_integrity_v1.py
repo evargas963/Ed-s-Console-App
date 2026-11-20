@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from calc import liquidity_value_engine as LVE
-from calc.liquidity_value_engine import PlaybookConfig
 from calc.micro_structure import Candle
 from state import price_level_store
 from state.price_level_store import materialize_price_level_snapshot
@@ -99,7 +98,6 @@ def _mat(session, bars):
         ),
         daily=_daily(session, bars),
         bar_source="test_fixture",
-        config=PlaybookConfig(),
     )
 
 
@@ -188,6 +186,15 @@ def test_the_fingerprint_covers_every_bar_field():
     shifted = [dict(b) for b in base]
     shifted[30]["timestamp"] = shifted[30]["timestamp"] + 60_000
     assert key(shifted, prior) != fp
+
+    # INDUCED: a volume absent (not a number as sent) is not a reported 0, and a bar before it
+    # still moves the key
+    absent, zero = [dict(b) for b in base], [dict(b) for b in base]
+    absent[30]["volume"], zero[30]["volume"] = None, 0.0
+    assert key(absent, prior) not in (fp, key(zero, prior))
+    earlier = [dict(b) for b in absent]
+    earlier[10]["high"] = earlier[10]["high"] + 7.0
+    assert key(earlier, prior) != key(absent, prior)
 
     # So must each field of the prior session's daily candle, and its absence.
     for field in ("high", "low", "close"):

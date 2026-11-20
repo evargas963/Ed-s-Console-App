@@ -36,5 +36,5 @@ def test_a_print_keeps_the_size_schwab_sent():
     state.current = bus.current
     for m in _MSGS[:3]:
         apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
-    points = l1.iter_signed_cum_points(state.prints("SPY"))
+    points = l1.iter_signed_cum_points(state.prints("SPY"), _MSGS[2]["item"]["TRADE_TIME_MILLIS"])
     assert points[-1][1] == -92

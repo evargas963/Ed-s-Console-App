@@ -27,7 +27,7 @@ import app.options.order_flow.streaming as ofs
 import live_market_plane
 import time_et
 from db_authority import canonical_db_path
-from state import bar_store, capture_store
+from state import bar_store, capture_store, cross_store, level_store, price_level_store
 from stream_spine import MessageBus
 from tests import feed_live_helper
 from time_et import ET, now, record_markets, session
@@ -126,20 +126,28 @@ def _live_feed_starts_down(_markets_answers_held):
     (state.capture_store): every test's first ask reads its own database. And so are the
     /markets answers held (time_et.record_markets): every test starts with the 2026-10-07 set,
     whatever answers an earlier test recorded. And so is every ticker's quote
-    (live_market_plane), and every bar and Schwab /pricehistory series the bar writer holds
-    (state.bar_store): every test starts with none held, as the program does.
+    (live_market_plane), and everything every State store holds (state/: the bars and series, the
+    published levels and their failures, the level crosses, the price-level snapshots and hold
+    counts): every test starts with none held, as the program does.
     """
     time_et.HELD.sessions = _markets_answers_held
     time_et.HELD.first_trade = {}
     capture_store.clear()
-    with bar_store._lock:
-        for held in (
-            bar_store._bars,
-            bar_store._series,
-            bar_store._open_gap_answers,
-            bar_store._open_gap,
-        ):
-            held.clear()
+    # every State store, each under its own lock: one test's published levels, crosses, price
+    # levels or bars are never another's
+    for lock, kept in (
+        (
+            bar_store._lock,
+            (bar_store._bars, bar_store._series, bar_store._open_gap_answers, bar_store._open_gap),
+        ),
+        (level_store._lock, (level_store._levels, level_store._failures)),
+        (cross_store._lock, (cross_store._crosses,)),
+        (price_level_store._MATERIALIZE_LOCK, (price_level_store._MATERIALIZED_SNAPSHOTS,)),
+        (price_level_store._HOLD_LOCK, (price_level_store._HOLD_COUNTS,)),
+    ):
+        with lock:
+            for held in kept:
+                held.clear()
     server = sys.modules.get("server")
     if server is not None:
         with server._reprice_lock:
