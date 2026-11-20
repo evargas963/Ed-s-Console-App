@@ -14,8 +14,9 @@ Git holds the source, tests and docs (the market's sessions are Schwab's /market
 
 ## After clone on a new machine
 
-1. `git clone`, then the `.venv` from `requirements.txt`.
-2. `copy .env.example .env` and fill values.
-3. `python reauth_schwab.py` creates `schwab_token.json`.
+1. `git clone`, then the `.venv` from `requirements.txt` (a worktree's own:
+   `python tools/bootstrap_worktree_venv.py`).
+2. `copy .env.example .env` (every setting the code reads) and fill values.
+3. `python reauth_schwab.py` creates `schwab_token.json` (its shape: `schwab_token.json.example`).
 4. The database starts empty: the program creates it, and the history builds from the first session
    on (the stream's tables keep five sessions).
