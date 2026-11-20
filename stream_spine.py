@@ -1433,11 +1433,10 @@ class CaptureWriter:
     ) -> None:
         """Keep `msg`, a statement of the writer's own that failed for its own reason, as sent.
 
-        Committed with what the open transaction holds and counted, so the writer goes on. A
-        refusal of every write is raised: the writer holds what it has and tries again.
+        Committed with what the open transaction holds and counted, so the writer goes on (a
+        refusal of every write is the caller's to raise: the writer holds what it has and tries
+        again).
         """
-        if not _its_own(error):
-            raise error
         kept = self._kept_row(conn, topic, msg, error)
         conn.commit()
         with self._lock:
@@ -2001,6 +2000,8 @@ class CaptureWriter:
                 part = PRUNE_ROWS
         except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
             conn.rollback()
+            if not _its_own(e):
+                raise
             sent = {"table": table, "column": column, "before": keep.before}
             self._own_failure(conn, e, f"keep.{table}", sent)
             removed, part = 0, 1  # fewer than a part: the table is done
@@ -2068,6 +2069,8 @@ class CaptureWriter:
                     tuple(progress.values()),
                 )
             except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+                if not _its_own(e):
+                    raise
                 self._own_failure(conn, e, "stream_spill_progress", progress)
             conn.commit()
             with self._lock:
@@ -2102,6 +2105,8 @@ class CaptureWriter:
         try:
             conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
         except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+            if not _its_own(e):
+                raise
             self._own_failure(conn, e, "stream_spill_progress", {"spill": spill.path.name})
         conn.commit()
         log.info(
