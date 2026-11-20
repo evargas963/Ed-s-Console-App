@@ -25,8 +25,7 @@
     "top_of_book.ask": "NATIVE",
     "top_of_book.ask_size": "NATIVE",
     "top_of_book.bid": "NATIVE",
-    "top_of_book.bid_size": "NATIVE",
-    "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)"
+    "top_of_book.bid_size": "NATIVE"
   },
   "contract": "TSLA  260831C00367500",
   "crossed": false,
@@ -181,6 +180,5 @@
     "bid_size_text": "55",
     "bid_text": "0.58"
   },
-  "top_outage": "the market session is unknown",
-  "wall_candidates": []
+  "top_outage": "the market session is unknown"
 }

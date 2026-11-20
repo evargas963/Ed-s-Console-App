@@ -144,30 +144,6 @@ def test_the_depth_pressure_curve_is_cumulative_best_first():
     assert [round(x["cum"], 1) for x in bid_curve] == [1000.0, 1040.0, 1080.0, 1160.0, 1360.0]
 
 
-def test_wall_candidates_are_flagged_heuristic():
-    m = _micro(_data(), now_ts=1787233772.0)
-    # median top-5 bid size = 80; the 1000-share touch is 12.5x median -> a candidate. None on ask.
-    bid_walls = [w for w in m["wall_candidates"] if w["side"] == "bid"]
-    # its price, size and multiple served as the screen shows them
-    assert bid_walls == [
-        {
-            "side": "bid",
-            "price": 712.47,
-            "price_text": "712.47",
-            "volume": 1000.0,
-            "volume_text": "1,000",
-            "median_mult": 12.5,
-            "median_mult_text": "12.5",
-        }
-    ]
-    # The API must NOT imply an objective wall: the field is 'wall_candidates', each candidate
-    # carries how many times the median it is, and it is classified as a heuristic.
-    assert "walls" not in m
-    assert bid_walls[0]["median_mult"] >= ofe.OF_BOOK_WALL_MEDIAN_MULT
-    assert [w for w in m["wall_candidates"] if w["side"] == "ask"] == []
-    assert "HEURISTIC" in m["classification"]["wall_candidates"].upper()
-
-
 def test_microprice_is_computed_from_every_quote_schwab_sent():
     """A crossed book's quotes are Schwab's and compute (the book says it is crossed).
 
@@ -197,7 +173,6 @@ def test_fail_closed_no_book():
     m = _micro({"content": []}, now_ts=1787233772.0)
     assert m["status"] == "no_book"
     assert m["depth"]["5"]["imbalance"] is None
-    assert m["wall_candidates"] == []
     assert m["provenance"]["book_source"] == "unavailable"
 
 
@@ -384,7 +359,6 @@ def test_route_serializes_carried_state_without_recomputing():
     second = _micro(data, now_ts=200.0)
     assert second["depth"] == first["depth"]
     assert second["top_of_book"] == first["top_of_book"]
-    assert second["wall_candidates"] == first["wall_candidates"]
     assert second["ages"]["book_age_sec"] != first["ages"]["book_age_sec"]
     assert second["provenance"]["server_received_ts"] == 200.0
 
@@ -393,8 +367,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     """CACHE INVALIDATION: the carry cache must key on canonical book CONTENT.
 
     Not BOOK_TIME alone. With the SAME ticker and the SAME BOOK_TIME but a MUTATED ladder, depth
-    totals, imbalance, and wall_candidates must reflect the new book — never the prior cached
-    state.
+    totals and imbalance must reflect the new book — never the prior cached state.
     """
     BT = 424242  # identical BOOK_TIME across both snapshots
 
@@ -410,12 +383,12 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
             "top": StreamedTop(bid=bids[0][0], ask=asks[0][0], bid_size=100, ask_size=100),
         }
 
-    # v1: heavy bid book with a bid-side size wall at the touch.
+    # v1: heavy bid book, its largest size at the bid touch.
     v1 = _book(
         bids=[(712.47, 1000), (712.46, 40), (712.45, 40), (712.44, 80), (712.43, 200)],
         asks=[(712.49, 60), (712.51, 40), (712.53, 40), (712.75, 40), (713.00, 40)],
     )
-    # v2: SAME BOOK_TIME, but the book has flipped — heavy ask book with an ask-side wall.
+    # v2: SAME BOOK_TIME, but the book has flipped — heavy ask book.
     v2 = _book(
         bids=[(712.47, 60), (712.46, 40), (712.45, 40), (712.44, 40), (712.43, 40)],
         asks=[(712.49, 1000), (712.51, 40), (712.53, 40), (712.75, 80), (713.00, 200)],
@@ -431,9 +404,6 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert m2["depth"]["5"]["bid_total"] == 220.0  # not the stale 1360
     assert m1["depth"]["1"]["imbalance"] != m2["depth"]["1"]["imbalance"]
     assert m2["depth"]["1"]["imbalance"] < 0  # ask-heavy now
-    # walls flip from the bid side to the ask side — proving walls are not served stale.
-    assert [w["side"] for w in m1["wall_candidates"]] == ["bid"]
-    assert [w["side"] for w in m2["wall_candidates"]] == ["ask"]
 
     # and an unchanged re-read of v2 gives v2's values again
     m2b = _micro(v2, now_ts=3.0)

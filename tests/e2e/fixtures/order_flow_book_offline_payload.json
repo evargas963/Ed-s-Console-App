@@ -26,8 +26,7 @@
     "top_of_book.ask": "NATIVE",
     "top_of_book.ask_size": "NATIVE",
     "top_of_book.bid": "NATIVE",
-    "top_of_book.bid_size": "NATIVE",
-    "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)"
+    "top_of_book.bid_size": "NATIVE"
   },
   "crossed": false,
   "deferred": [
@@ -2894,25 +2893,5 @@
     "bid_text": "760.18"
   },
   "top_outage": "Schwab LEVELONE_EQUITIES feed down during Closed",
-  "venue": "NYSE_BOOK",
-  "wall_candidates": [
-    {
-      "median_mult": 3.0,
-      "median_mult_text": "3.0",
-      "price": 767.36,
-      "price_text": "767.36",
-      "side": "bid",
-      "volume": 360.0,
-      "volume_text": "360"
-    },
-    {
-      "median_mult": 7.8,
-      "median_mult_text": "7.8",
-      "price": 767.43,
-      "price_text": "767.43",
-      "side": "ask",
-      "volume": 1560.0,
-      "volume_text": "1,560"
-    }
-  ]
+  "venue": "NYSE_BOOK"
 }

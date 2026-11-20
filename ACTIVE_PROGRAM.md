@@ -104,8 +104,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     shown on the page.
   - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
   - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
-  - P-24 `static/js/ed-order-flow.js` matches walls to ladder levels on the page and shows one fixed
-    reason for every no-book cause.
+  - P-24 `static/js/ed-order-flow.js` shows one fixed reason for every no-book cause.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a
   standard tool refuses what it refuses: `tools/check_end_to_end.py` first, then
   `tools/check_integrity.py`, `tools/check_locks.py`, `tools/check_one_reader.py` and the command
@@ -248,8 +247,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (the regime withheld under the flip's ±5% strike-span floor in
   `calc.terrain_read`; GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta tolerance;
-  same-day expiries out of the 1-day move; wall candidates at 3× the median level; depth to 5
-  levels); a book side with no levels has no depth total.
+  same-day expiries out of the 1-day move; depth to 5 levels); a book side with no levels has no
+  depth total.
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).

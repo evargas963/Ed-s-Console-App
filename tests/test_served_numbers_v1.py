@@ -118,7 +118,7 @@ def test_vanna_and_charm_are_compact_with_no_dollar_sign():
 
 
 def test_the_books_sizes_are_served_whole():
-    """SPY's real books (2026-10-22, offline): its top-5 totals, each level's and each wall's size.
+    """SPY's real books (2026-10-22, offline): its top-5 totals and each level's size.
 
     Every size the order-flow screens draw is served (the page rounds none).
     """
@@ -127,9 +127,8 @@ def test_the_books_sizes_are_served_whole():
     assert (five["bid_total"], five["bid_total_text"]) == (800.0, "800")
     assert (five["ask_total"], five["ask_total_text"]) == (2160.0, "2,160")
     levels = book["depth_pressure"]["bid"] + book["depth_pressure"]["ask"]
-    walls = book["wall_candidates"]
-    assert levels and walls
-    for row in levels + walls:
+    assert levels
+    for row in levels:
         assert row["volume_text"] == screen_text(row["volume"], "count")
 
 
@@ -205,8 +204,8 @@ def test_every_option_level_and_ratio_of_the_terrain_is_served():
 def test_the_charts_bars_and_the_books_prices_are_served_with_two_decimals():
     """SPY's and AMZN's bars and book prices are served with two decimals.
 
-    The bars at each timeframe, and each venue's top of book, mark, spread, levels and walls;
-    each depth's imbalance three decimals.
+    The bars at each timeframe, and each venue's top of book, mark, spread and levels; each
+    depth's imbalance three decimals.
     """
     for name in ("spy", "amzn"):
         p = _panels(name)
@@ -224,9 +223,6 @@ def test_the_charts_bars_and_the_books_prices_are_served_with_two_decimals():
                 assert d["imbalance_text"] == (None if im is None else f"{im:.3f}")
             for r in book["depth_pressure"]["bid"] + book["depth_pressure"]["ask"]:
                 assert r["price_text"] == price(r["price"])
-            for w in book["wall_candidates"]:
-                assert w["price_text"] == price(w["price"])
-                assert w["median_mult_text"] == f"{w['median_mult']:.1f}"
 
 
 def test_the_strikes_and_their_moves_are_served_as_listed():

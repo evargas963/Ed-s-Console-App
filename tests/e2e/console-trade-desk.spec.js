@@ -660,7 +660,7 @@ test.describe("Trade Desk renders served values", () => {
       localStorage.setItem("ed_sub", "desk");
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    // the queue as served: the day's recorded crosses in the window, the book's size wall, the put wall
+    // the queue as served: the day's recorded crosses in the window, the put wall
     await expect(page.locator("#tdmQueue .tdm-q")).toHaveCount(EVENTS.items.length);
     await expect(page.locator("#tdmQueueCount")).toHaveText(String(EVENTS.items.length));
     // each entry's time is the one the server labels it with (time_et.ct_label), drawn as sent
@@ -718,7 +718,7 @@ test.describe("Trade Desk renders served values", () => {
       localStorage.setItem("ed.desk.tf", "15");
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const marked = REAL.desk[MICRO.venue]["15"].items.filter((it) => it.marker).map((it) => it.key);
+    const marked = REAL.desk["15"].items.filter((it) => it.marker).map((it) => it.key);
     expect(marked).toHaveLength(3);
     await expect
       .poll(async () =>
@@ -972,13 +972,13 @@ test.describe("Trade Desk renders served values", () => {
   test("Desk: the venue switch asks for one Schwab book at a time", async ({ page }) => {
     const errs = watchErrors(page);
     const sock = await intercept(page);
-    // the venue of each ask the desk made of the book and of the event queue, in order
+    // the venue of each ask the desk made of the book, in order; the event queue is no venue's
     const venues = (name) =>
       sock.subscribes
         .map((s) => s.panels[name])
-        .filter((p) => p !== undefined)
+        .filter((p) => p !== undefined && p !== null)
         .map((p) => p.venue);
-    const asked = () => [venues("book:deskmap"), venues("desk")].map((v) => v[v.length - 1]);
+    const asked = () => venues("book:deskmap").slice(-1);
     await page.addInitScript(() => {
       localStorage.setItem("ed_ticker", "SPY");
       localStorage.setItem("ed_ws", "trade-desk");
@@ -989,15 +989,13 @@ test.describe("Trade Desk renders served values", () => {
     const nyse = page.locator('#tdmCardLiq .bookvenue [data-venue="NYSE_BOOK"]');
     const nasdaq = page.locator('#tdmCardLiq .bookvenue [data-venue="NASDAQ_BOOK"]');
     await expect(nyse).toHaveClass(/on/);
-    await expect.poll(asked).toEqual(["NYSE_BOOK", "NYSE_BOOK"]);
+    await expect.poll(asked).toEqual(["NYSE_BOOK"]);
     await nasdaq.click();
     await expect(nasdaq).toHaveClass(/on/);
-    await expect.poll(asked).toEqual(["NASDAQ_BOOK", "NASDAQ_BOOK"]);
-    expect(
-      venues("book:deskmap")
-        .concat(venues("desk"))
-        .every((v) => /^(NYSE|NASDAQ)_BOOK$/.test(v)),
-    ).toBe(true);
+    await expect.poll(asked).toEqual(["NASDAQ_BOOK"]);
+    expect(venues("book:deskmap").every((v) => /^(NYSE|NASDAQ)_BOOK$/.test(v))).toBe(true);
+    expect(venues("desk").length).toBeGreaterThan(0);
+    expect(venues("desk").every((v) => v === undefined)).toBe(true);
     expect(errs).toEqual([]);
   });
 

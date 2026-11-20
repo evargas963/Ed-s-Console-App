@@ -317,7 +317,7 @@
     window.EdShell.showPanel("strikes:desk", on ? window.EdShell.windowParams(null) : null);
     window.EdShell.showPanel("bars:deskmap", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
     window.EdShell.showPanel("bars:flow", on ? { tf: "1", limit: FLOW_BARS } : null);
-    window.EdShell.showPanel("desk", on ? { venue: venue, tf: S.tf } : null);
+    window.EdShell.showPanel("desk", on ? { tf: S.tf } : null);
     window.EdShell.showPanel("liquidity:deskmap", on ? {} : null);
     window.EdShell.showPanel("forces", on ? {} : null);
     window.EdShell.showPanel("book:deskmap", on ? { venue: venue } : null);
@@ -1265,7 +1265,7 @@
     if (!$("tdmMap")) return;
     document.addEventListener("ed:view", start);
     document.addEventListener("ed:ticker", start);
-    document.addEventListener("ed:book_venue", askPanels); // the book and its events are the venue's
+    document.addEventListener("ed:book_venue", askPanels); // the book is the venue's
     document.addEventListener("ed:scope", askPanels); // the strikes' window is the Gamma scope's
     document.addEventListener("ed:panel", function (e) {
       if (onDesk()) takePanel(e.detail);
