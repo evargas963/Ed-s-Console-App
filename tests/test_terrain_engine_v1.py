@@ -13,7 +13,6 @@ import json
 
 import pytest
 
-from calc.math_levels import GAMMA_FLIP_TRUSTED
 from calc.terrain_engine import (
     TERRAIN_SCHEMA_VERSION,
     WALL_BREACHED,
@@ -27,7 +26,7 @@ from calc.terrain_engine import (
     wall_geometry_state,
 )
 from option_contract import read_chain, read_contract
-from tests.real_chains import CRWD, MRVL, SPY_0DTE, spy_0dte_book
+from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, spy_0dte_book
 from time_et import sessions
 
 NOW = SPY_0DTE.now
@@ -90,20 +89,39 @@ def test_levels_are_real_strikes_or_absent() -> None:
     )
 
 
-def test_narrow_0dte_slice_fails_closed_gate_retained() -> None:
-    """RC-33: locking terrain to the full/wide chain must NOT weaken the narrow-chain protection.
+def test_the_regime_is_the_sign_of_gamma_at_the_price_whatever_strikes_the_chain_lists() -> None:
+    """The regime is issued from dealer gamma at the price, with no chain-coverage gate.
 
-    This real 40-contract 0DTE fixture spans only ~±1.3% (< the ±5% trust floor), so
-    compute_terrain must fail closed to STAND_ASIDE — exactly the state the removed
-    /api/analytics/state duplicate produced. One terrain source of truth keeps this fail-closed
-    backstop.
+    Operator 2026-11-19: every chain is asked with every strike, and the 5% and 10%
+    coverage spans had no source. Failure this catches: SPY's real 0DTE chain of 2026-10-07 lists
+    strikes only 767 to 786 around 776.61, so the old gate called it a narrow chain and withheld
+    the regime ("UNAVAILABLE") although Schwab's gamma summed over the book is known and negative.
     """
     chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions())
-    assert snap.profile, "the chain must price, so the NARROW gate (not an expiry) is tested"
-    assert snap.confidence != GAMMA_FLIP_TRUSTED
-    assert snap.regime == "UNAVAILABLE"
-    assert snap.headline.startswith("No estimate"), snap.headline
+    assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
+    assert snap.regime == "SHORT_GAMMA_TREND"
+    assert snap.headline.startswith("Dealer gamma is negative"), snap.headline
+
+
+def test_a_wall_that_holds_the_price_carries_no_dealer_word() -> None:
+    """A containing wall's label is None; only a breached wall says where the price is.
+
+    Operator 2026-11-19: "DEALERS SELL" / "DEALERS BUY" and the two-sided "magnet"
+    words go; a wall's side of the price is already served (call_wall_state, put_wall_state).
+    Failures this catches, on real chains of 2026-10-07 (tests/real_chains.py): MRVL at 283.73,
+    a known regime between its put wall 270 and call wall 300, served the dealer words; NFLX at
+    68.76, both walls on strike 70, served "TWO-SIDED — magnet, not a barrier" on each.
+    """
+    for real, put_lean in ((MRVL, None), (NFLX, "BREACHED — spot below")):
+        snap = compute_terrain(
+            real.ticker, read_chain(real.chain), real.spot, now=real.now, sessions=sessions()
+        )
+        rel = price_relations(snap.to_dict(), real.spot)
+        assert snap.regime != "UNAVAILABLE", real.ticker
+        assert rel.call_wall_state == WALL_CONTAINS and rel.call_wall_lean is None, real.ticker
+        assert rel.put_wall_lean == put_lean, real.ticker
+    assert (snap.put_wall, snap.call_wall) == (70.0, 70.0)  # NFLX: one strike holds both
 
 
 def test_payload_is_json_serialisable() -> None:
@@ -112,7 +130,7 @@ def test_payload_is_json_serialisable() -> None:
     payload = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions()).to_dict()
     round_tripped = json.loads(json.dumps(payload))
     assert round_tripped["ticker"] == "SPY"
-    assert "spot" in round_tripped and "confidence" in round_tripped
+    assert "spot" in round_tripped and "confidence" not in round_tripped
     assert "flip_note" in round_tripped
 
 

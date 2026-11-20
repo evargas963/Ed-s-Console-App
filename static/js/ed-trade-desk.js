@@ -221,7 +221,6 @@
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ["Confidence", orDash(d.confidence)],
       ["Call wall", orDash(d.call_wall_text)],
       ["Put wall", orDash(d.put_wall_text)],
       ["Γ flip", orDash(d.gamma_flip_text)],
@@ -241,8 +240,6 @@
       "",
       null,
       rows,
-      d.confidence,
-      d.confidence === "TRUSTED" ? "live" : "warn",
     );
   }
 
