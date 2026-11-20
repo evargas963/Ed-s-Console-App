@@ -194,6 +194,10 @@
         flex-direction: column;
         line-height: 1.12;
       }
+      .hkv[hidden],
+      .hsep[hidden] {
+        display: none;
+      }
       .hkv .k {
         font-size: 9px;
         letter-spacing: 0.11em;
@@ -2808,6 +2812,10 @@
           >
         </div>
         <div class="hsep"></div>
+        <div class="hkv" id="hLeftOutKv" hidden>
+          <span class="k">Left out</span><span class="v" id="hLeftOut">-</span>
+        </div>
+        <div class="hsep" id="hLeftOutSep" hidden></div>
         <div class="hkv">
           <span class="k">Session</span><span class="sess" id="hSession">-</span>
         </div>

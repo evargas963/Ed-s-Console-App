@@ -67,15 +67,15 @@ The rules for the data itself, at every hop from Schwab to the screen.
   `stream_spine.archived_rows`); the tables of `stream_spine.KEPT_BY_TIME` (price history, chain and
   quote answers, operational tables) drop rows older than five sessions. A row the database refuses,
   or a statement of the writer's own (a keep part, a spill's progress row) that fails for its own
-  reason, is kept as sent with its error in `stream_write_failures` and the writer goes on: an
-  error is every write's when its SQLite code is in `stream_spine.REFUSAL_CODES` (busy, locked,
-  full, I/O, read-only and the like), else that row's or statement's alone
-  (`stream_spine._its_own`). While the database refuses every write,
-  the writer holds messages in memory up to `stream_spine.HOLD_CAP_BYTES`, then in spill files
-  beside the database (`<stem>.<ms>.<n>.spill`), and writes them back in order, recording progress
-  in `stream_spill_progress`; files a stop or crash left are written back at the next start. Its
-  state (`stream_spine.WriterStatus`) rides the daemon's heartbeat to the header's Record line.
-  Enforced by: `tests/test_data_path_stream_kept_v1.py`, `tests/test_data_path_rules_v1.py`,
+  reason, is kept as sent with its error in `stream_write_failures` and the writer goes on: an error
+  is every write's when its SQLite code is in `stream_spine.REFUSAL_CODES` (busy, locked, full, I/O,
+  read-only and the like), else that row's or statement's alone (`stream_spine._its_own`). While the
+  database refuses every write, the writer holds messages in memory up to
+  `stream_spine.HOLD_CAP_BYTES`, then in spill files beside the database (`<stem>.<ms>.<n>.spill`),
+  and writes them back in order, recording progress in `stream_spill_progress`; files a stop or
+  crash left are written back at the next start. Its state (`stream_spine.WriterStatus`) rides the
+  daemon's heartbeat to the header's Record line. Enforced by:
+  `tests/test_data_path_stream_kept_v1.py`, `tests/test_data_path_rules_v1.py`,
   `tests/test_data_path_writer_failures_v1.py`.
 - **D5. The last value stands, marked** (`AGENTS.md` rule 5). A value is LIVE while its feed
   delivers it and its market trades (`live_market_plane.live_state`): the daemon's heartbeat is no
@@ -134,8 +134,8 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Schwab → daemon, REST:** option chains, option quotes, price history and market hours, by the
   chain sweep (`feed/chain_sweep.py`); every request logged once (`schwab_client.log_request`).
 - **Daemon part → console part:** the bus in memory, a LATEST subscription
-  (`order_flow.streaming._bus_loop`): each topic's current record as it changes, a chain in parts.
-  A record that fails to apply is counted (`apply_failures` on the daemon's status beat, beside
+  (`order_flow.streaming._bus_loop`): each topic's current record as it changes, a chain in parts. A
+  record that fails to apply is counted (`apply_failures` on the daemon's status beat, beside
   `tick_failures`) and logged with its traceback, and the next is applied. Enforced by:
   `tests/test_live_push_channel_v1.py`.
 - **Console part → daemon part:** a call (`capture.Daemon.console_frame`): the Flow panel's contract
@@ -145,8 +145,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   when its producer marks it changed (`live_ui.changed`), and the daemon's status every second
   (`live_ui.HEARTBEAT_SEC`). A client that stops reading is dropped (`live_ui.PageSocket`); the page
   reconnects. A frame, symbol or panel a page sends that the server cannot take is logged and
-  counted (`page_refused`), and the beat carries the socket's counts (`page_socket`). Enforced by:
-  `tests/test_live_ui_daemon_to_browser_v1.py`, `tests/test_data_path_silent_price_v1.py`.
+  counted (`page_refused`), and the beat carries the socket's counts (`page_socket`). The header
+  shows these with the records not applied and the reprices failed, while any is above 0
+  (`live_ui.left_out_line`, the beat's `left_out`). Enforced by:
+  `tests/test_live_ui_daemon_to_browser_v1.py`, `tests/test_data_path_silent_price_v1.py`,
+  `tests/e2e/console-sign-in.spec.js`.
 - **Page → program:** HTTP for the page itself, `/api/health`, `/api/build`, `/api/watchlist` (POST,
   DELETE) and `/api/flow-contract`.
 
