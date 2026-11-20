@@ -7,7 +7,8 @@ the restatement rule) in receive order; the engine reads what the state recorded
 Real data: SPY's LEVELONE_EQUITIES message of 2026-11-11 as Schwab sent it
 (tests/fixtures/real_premarket_first_prints_2026_11_11.json). INDUCED CONDITIONS: each case's
 prints are that message with its LAST_PRICE (`P`, its own last price, and a tick or two from it),
-LAST_SIZE and TRADE_TIME_MILLIS set to the case's.
+LAST_SIZE and TRADE_TIME_MILLIS set to the case's. The window's boundary is that file's messages
+of SPY, TSLA and IWM as sent, unchanged.
 """
 
 from __future__ import annotations
@@ -26,15 +27,13 @@ from tests.feed_live_helper import apply_record, on_the_bus
 
 EQ = "LEVELONE_EQUITIES"
 
-_SENT = next(
-    m["item"]
-    for m in json.loads(
-        (
-            Path(__file__).parent / "fixtures" / "real_premarket_first_prints_2026_11_11.json"
-        ).read_text(encoding="utf-8")
-    )["messages"]
-    if m["ticker"] == "SPY"
-)
+#: each ticker's last print of 2026-11-10's evening, then its first of 2026-11-11, as sent
+_MESSAGES = json.loads(
+    (Path(__file__).parent / "fixtures" / "real_premarket_first_prints_2026_11_11.json").read_text(
+        encoding="utf-8"
+    )
+)["messages"]
+_SENT = next(m["item"] for m in _MESSAGES if m["ticker"] == "SPY")
 #: SPY's last price in that message: every case's prices are it and a tick or two from it
 P = _SENT["LAST_PRICE"]
 
@@ -131,11 +130,50 @@ def test_a_zero_tick_is_signed_by_the_last_price_change():
         (P, 3, 5000),
     )
     prints = content
-    assert [c for _t, c in l1.iter_signed_cum_points(prints)] == [0.0, 4.0, 10.0, 8.0, 5.0]
+    assert [c for _t, c in l1.iter_signed_cum_points(prints, 1000.0)] == [0, 4, 10, 8, 5]
     # the first print is unsigned (no change seen): pressure is over the signed size, and the
     # unsigned share is served beside it
     assert l1.compute_tape_pressure(prints, window_sec=60.0, now_ms=5000.0) == 5 / 15
     assert l1.unsigned_share(prints, 5000.0 - 60000) == 10 / 25
+
+
+def test_a_zero_tick_before_any_price_change_is_unsigned():
+    """Two prints at one price, each at its quote's midpoint, before any price change: unsigned.
+
+    INDUCED (the module's cases): at the midpoint the tick test signs, and a zero tick with no
+    change seen has no sign (Lee and Ready 1991), so nothing is signed: no cumulative delta.
+    """
+    content = _tape("L1U", (P, 10, 1000), (P, 5, 2000))
+    assert [signed for _t, _size, signed in l1._signed_walk(content, None)] == [None, None]
+    assert _cvd(content) is None
+    assert l1.unsigned_share(content) == 1.0
+
+
+def test_the_days_first_print_is_its_windows_whole_pressure():
+    """Each ticker's first print of 2026-11-11 alone in a 30 s window that begins at its trade.
+
+    The evening's print traded hours before it. Pressure is the first print's Lee and Ready sign
+    (worked out here from its bid and ask) whatever its size (SPY's and TSLA's were one share),
+    and none of its size is unsigned. A window that begins one millisecond after it holds no
+    print: no value.
+    """
+    for ticker in ("SPY", "TSLA", "IWM"):
+        msgs = [m for m in _MESSAGES if m["ticker"] == ticker]
+        bus, state = MessageBus(), OrderFlowState()
+        state.current = bus.current
+        for m in msgs:
+            apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
+        tape = state.prints(ticker)
+        first = msgs[-1]["item"]
+        t = first["TRADE_TIME_MILLIS"]
+        assert msgs[0]["item"]["TRADE_TIME_MILLIS"] < t - 30_000
+        mid = (first["BID_PRICE"] + first["ASK_PRICE"]) / 2
+        assert first["LAST_PRICE"] != mid
+        sign = 1 if first["LAST_PRICE"] > mid else -1
+        assert l1.compute_tape_pressure(tape, 30.0, t + 30_000) == sign
+        assert l1.unsigned_share(tape, t) == 0.0
+        assert l1.compute_tape_pressure(tape, 30.0, t + 30_001) is None
+        assert l1.unsigned_share(tape, t + 1) is None
 
 
 def test_missing_size_remains_unavailable():
@@ -196,7 +234,7 @@ def test_mutation_vendor_time_sort_fails_receive_order():
 def test_slope_uses_same_signed_size_walk():
     content = _tape("L1I", (P, 10, 1000), (P + 0.1, 4, 2000), (P - 0.1, 6, 3000))
     prints = content
-    points = l1.iter_signed_cum_points(prints)
+    points = l1.iter_signed_cum_points(prints, 1000.0)  # from the first print
     assert points[-1][1] == l1.compute_cum_delta_proxy(prints) == 4 - 6
     assert [(round(t, 6), c) for t, c in points] == [(1.0, 0.0), (2.0, 4.0), (3.0, -2.0)]
     slope = ofe._compute_cum_delta_slope(prints, now=3.0, window_sec=60.0)

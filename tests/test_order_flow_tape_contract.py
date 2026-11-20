@@ -77,6 +77,9 @@ def test_cum_delta_proxy_skips_missing_print_size():
     assert [size for _p, size, _t in prints] == [None, None, None, 138]
     assert prints[3][0] < prints[2][0]  # a downtick: the sized print signs negative
     assert l1.compute_cum_delta_proxy(_tape(sent(_MIX, "RKLB"))) == -138
+    # the window it covers is that one print's trade time: the unsized prints traded before it
+    sized_s = prints[3][2] / 1000
+    assert l1.cum_delta_window(_tape(sent(_MIX, "RKLB"))) == (sized_s, sized_s)
 
 
 def test_cum_delta_proxy_returns_none_when_all_print_sizes_missing():
