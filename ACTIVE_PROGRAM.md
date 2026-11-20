@@ -83,10 +83,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     the live spot from `resolve_spot`.
   - S-35 `push/levels.py` `expected_move`: live spot ± the levels' `implied_1d_move`, stamped with
     `levels_ts_utc`, computed in push, not a calculator.
-  - M-02 `calc/liquidity_models.py` `volume_profile` drops bars with a missing high or low or
-    `hi < lo` uncounted; only missing volume is counted.
-  - M-05 `calc/liquidity_value_engine.py` `compute_session_vwap_series` skips bars with no volume
-    and counts none.
   - M-11 `build_price_level_snapshot`: a prior day whose `pd_poc`/`pd_vah`/`pd_val` are None loses
     those levels silently (`_level_values`); `families_absent` does not list them.
   - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
