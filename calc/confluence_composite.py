@@ -133,7 +133,7 @@ def ceiling(weights: dict[str, float]) -> float:
 
 
 def percentile(values: list[float], p: float) -> float:
-    """Hyndman-Fan type 7. `values` is non-empty."""
+    """Hyndman-Fan type 7. `values` is non-empty and 0 <= p <= 1, so 1 <= h <= n."""
     xs = sorted(values)
     n = len(xs)
     if n == 1:
@@ -141,10 +141,6 @@ def percentile(values: list[float], p: float) -> float:
     h = 1.0 + (n - 1) * p
     lo = int(math.floor(h))
     hi = int(math.ceil(h))
-    if lo < 1:
-        lo = 1
-    if hi > n:
-        hi = n
     if lo == hi:
         return xs[lo - 1]
     frac = h - lo
@@ -266,8 +262,6 @@ def magnitudes(
         "VANNAM": None if vanna is None else abs(vanna * spot),
         "IV": iv,
         "CHARMM": None if charm_net is None else abs(charm_net),
-        "DGEXM": None,
-        "FLOWM": None,
     }
     out["_net_gex"] = None if gex is None else net_gex
     out["_gross"] = total_gex_dollars_at_strike(bucket)  # the Abs Γ level's one producer
@@ -477,22 +471,12 @@ def build_matrix(
     name = preset_name(dte)
     weights = in_score_weights(name)
     strikes = sorted(float(s) for s in exposures)
-    mags: dict[float, dict[str, float | None]] = {}
-    for strike in strikes:
-        bucket = exposures.get(strike)
-        if not isinstance(bucket, dict):
-            continue
-        mags[strike] = magnitudes(bucket, charm_by_strike.get(strike), ivs.get(strike), spot)
-    scored, flat, _spans = score_magnitudes(
-        {s: {k: v for k, v in f.items() if not str(k).startswith("_")} for s, f in mags.items()},
-        weights,
-    )
+    mags = {s: magnitudes(exposures[s], charm_by_strike.get(s), ivs.get(s), spot) for s in strikes}
+    scored, flat, _spans = score_magnitudes(mags, weights)
     cap = ceiling(weights)
     shades = [_shades(f) for f in mags.values()]
     peaks = {key: _peak(s[key] for s in shades) for key in (*SHADED, *LEANS)}
-    universe_n = sum(
-        1 for s in mags if _in_universe({k: v for k, v in mags[s].items() if not k.startswith("_")})
-    )
+    universe_n = sum(1 for f in mags.values() if _in_universe(f))
     flat_labels = [_LABEL[k] for k in flat]
     notes: list[str] = []
     if universe_n < THIN_BOOK:
