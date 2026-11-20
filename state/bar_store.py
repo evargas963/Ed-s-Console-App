@@ -10,6 +10,7 @@ them here, never a database (docs/DATA_FLOW.md §2 D6).
 from __future__ import annotations
 
 import threading
+from bisect import bisect_left
 from typing import Any
 
 from calc.micro_structure import Candle
@@ -124,6 +125,17 @@ def bars_1m(tk: str, limit: int = CANDLE_1M_MAX_BARS) -> list[Candle]:
     key = ticker_storage_key(tk)
     with _lock:
         return list(_bars[key][-int(limit) :]) if key in _bars else []
+
+
+def bars_from(tk: str, start: float) -> list[Candle]:
+    """`tk`'s completed 1-minute bars that begin at `start` (epoch seconds) or later, oldest first.
+
+    A minute Schwab did not deliver is absent, never filled in.
+    """
+    key = ticker_storage_key(tk)
+    with _lock:
+        held = _bars[key] if key in _bars else []
+        return held[bisect_left(held, start, key=lambda b: b.ts) :]
 
 
 def series(tk: str, name: str) -> list[Candle]:

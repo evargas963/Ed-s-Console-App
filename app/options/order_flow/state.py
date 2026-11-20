@@ -214,7 +214,8 @@ class OrderFlowState:
         key = vendor_triple(trade.time_millis, trade.price, trade.size)
         sent = self.streamed(service, sym)
         with self._lock:
-            # an adjacent repeat of the same trade is a restatement: never a second print
+            # an adjacent repeat of the same trade is a restatement (l1_trade_observation): a
+            # whole record, or the merged record on a quote change; never a second print
             if is_adjacent_restatement(self._prev_trade.get(sym), key):
                 return
             self._prev_trade[sym] = key

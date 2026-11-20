@@ -24,7 +24,7 @@ from calc.liquidity_value_engine import (
     get_previous_day_levels,
     prior_session,
 )
-from state import bar_store
+from state import bar_store, price_level_store
 from time_et import ET, session, sessions
 
 _FX = json.loads(
@@ -190,11 +190,12 @@ def test_each_family_with_no_bar_in_its_window_is_declared_absent_by_name_with_w
     assert (snap.degraded, snap.vwap_series, snap.volume_profile) == ([], [], None)
 
 
-@pytest.mark.parametrize("kept", [0, 299, 300])
-def test_a_prior_session_with_fewer_than_300_regular_bars_is_disclosed_as_a_partial_tape(kept):
+@pytest.mark.parametrize("kept", [0, 299, 300, 389, 390])
+def test_a_prior_session_whose_bars_do_not_cover_its_regular_window_is_a_partial_tape(kept):
     """INDUCED: Monday's tape cut to its first `kept` regular bars, as a capture begun late cuts it.
 
-    Below LEVELS_PRIOR_SESSION_MIN_BARS the prior day is served and disclosed as partial; with
+    Monday's regular window, as Schwab's /markets sent it, is 9:30 to 16:00 ET: 390 minutes, each
+    with a bar in the capture. Below that the prior day is served and disclosed as partial; with
     none of its bars its value area is absent, with why. Tuesday's own bars are all kept.
     """
     daily, minutes = _held("SPY")
@@ -206,11 +207,15 @@ def test_a_prior_session_with_fewer_than_300_regular_bars_is_disclosed_as_a_part
         bar_source="real_pricehistory_spy_tsla_2026_10_07.json",
         sessions=sessions(),
     )
+    hours = session(MONDAY.isoformat()).regular
+    assert (hours[0][0].strftime("%H:%M"), hours[-1][1].strftime("%H:%M")) == ("09:30", "16:00")
+    assert len(_regular_bars(minutes, MONDAY)) == 390
     partial = (
-        f"prior_day: prior session 2026-10-05 holds only {kept} of >= 300 RTH bars; its POC and "
-        "value area are estimated from a partial tape"
+        f"prior_day: prior session 2026-10-05 holds only {kept} RTH bars of its 390 "
+        "regular-session minutes (Schwab's /markets); its POC and value area are estimated from "
+        "a partial tape"
     )
-    assert snap.degraded == ([] if kept >= 300 else [partial])
+    assert snap.degraded == ([] if kept == 390 else [partial])
     assert snap.families_absent == (
         [
             {
@@ -221,3 +226,33 @@ def test_a_prior_session_with_fewer_than_300_regular_bars_is_disclosed_as_a_part
         if kept == 0
         else []
     )
+
+
+def test_the_levels_read_every_held_bar_from_the_prior_sessions_regular_open():
+    """Tuesday 19:59 ET: the published levels read the bars from Monday's 9:30 ET open on.
+
+    The console holds SPY's ten days of 1-minute bars and its daily candles as the daemon pushes
+    them. The levels read the bars from the prior session's regular open (Schwab's /markets) to
+    the newest: each one, and none older, whatever their count.
+    """
+    for a in _FX["answers"]:
+        if a["symbol"] == "SPY" and a["series"] in ("1m", "1d"):
+            server._write_price_history(
+                {"symbol": "SPY", "series": a["series"], "answer": a["body"]}
+            )
+    now = datetime(2026, 10, 6, 19, 59, tzinfo=ET)
+    try:
+        server._publish_price_levels("SPY", now)
+        snap = price_level_store.canonical_price_level_snapshot("SPY", now)
+        held = bar_store._bars["SPY"]
+    finally:
+        bar_store._series.pop(("SPY", "1d"), None)
+        bar_store._bars.pop("SPY", None)
+        for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == "SPY"]:
+            del price_level_store._MATERIALIZED_SNAPSHOTS[key]
+    monday_open = session(MONDAY.isoformat()).regular[0][0].timestamp()
+    read = [b for b in held if b.ts >= monday_open]
+    assert len(held) > len(read) > 0
+    assert snap is not None and snap.session_date == TUESDAY
+    assert snap.bars_used == len(read)
+    assert snap.degraded == []
