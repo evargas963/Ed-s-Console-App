@@ -226,6 +226,13 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
   tolerance; depth to 5 levels); a book side with no
   levels has no depth total.
+- INTERPRET (NEXT; operator 2026-11-20): every reading of ours laid over Schwab's data, found and
+  listed with what it adds over the field as sent: a buyer/seller label (Lee-Ready against the bid
+  and ask, `calc/l1_trade_observation.py`), a sum or split of ours (the GEX, ΔOI, DEX and charm
+  below/above the price), a threshold, a rule that blanks or merges a value. Each one shown to be
+  needed and sourced, or deleted; one Schwab sends only changed fields (Streamer API), so a field
+  missing from a message is unchanged, its held value current. The option book's resting size
+  (OPTIONS_BOOK, up to 300 contracts) is the confluence matrix revamp's input.
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).
