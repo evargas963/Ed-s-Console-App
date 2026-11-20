@@ -317,8 +317,9 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     test goes with the code it tested, and so does an assertion with the function it calls or the
     value it reads: what is deleted is no longer tested, in the same change. Enforced by:
     `tools/check_integrity.py` in `locks`, a net loss per test by its name, an assertion that names
-    a function or a record's key the change deleted from the product not counted
-    (`tests/test_check_integrity_v1.py`, locks); the rest — the builder's audit, no machine check
+    a function, a record's key or a module's constant the change deleted from the product not
+    counted (`tests/test_check_integrity_v1.py`, locks); the rest — the builder's audit, no machine
+    check
 16. **An agent never changes repository settings** (serves 11): branch protection, rulesets and
     required checks are the operator's, applied in GitHub. Enforced by:
     `tools/operator_law_guard.py`: `gh` by a list, `gh api` only reads
