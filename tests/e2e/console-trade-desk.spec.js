@@ -1238,7 +1238,9 @@ test.describe("Trade Desk renders served values", () => {
       "Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Γ flip 760.77 → 761.22 (+0.45)",
     );
     await expect(body).toContainText("Gamma grew most at 775/770");
-    await expect(body).toContainText("inside the wall range");
+    // the busiest strikes 757 and 760 against the put wall at 760: one below it, one at it, so
+    // where they sit is not one place and is not known ("-"), never "inside" by default
+    await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
     expect(errs).toEqual([]);
   });
 
