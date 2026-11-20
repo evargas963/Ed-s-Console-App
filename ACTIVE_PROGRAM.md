@@ -245,7 +245,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   every chain is asked with every strike (`strike_range="ALL"`), and neither threshold has a source.
   The flip is where dealer gamma crosses zero over the strikes Schwab lists, else "-"; the regime
   shows whenever dealer gamma at the price is known; the Trade Desk's Confidence row goes (operator
-  2026-11-19). Built with the Key Levels wall words (item 5).
+  2026-11-19). With it, the Key Levels wall words with no source go
+  (`calc.terrain_engine.wall_lean`: "DEALERS SELL", "DEALERS BUY", "TWO-SIDED — magnet, not a
+  barrier"); each wall keeps its position against the price, above, below or BREACHED (operator
+  2026-11-19).
 - ONE-30 (OPERATOR): an option contract's own SECURITY_STATUS is not read; inside its option window
   a Halted contract reads LIVE (`live_market_plane.not_trading`). Re-subscription snapshots resend
   old statuses, so taking the field needs a rule for which message is current.
