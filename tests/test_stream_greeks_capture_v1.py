@@ -2,11 +2,10 @@
 
 Schwab's LEVELONE_OPTIONS sends only the fields that changed (Change delivery), so the bus merges
 each message into the contract's record field by field, each field with its own receive time
-(stream_spine.MessageBus), reads them once as each message changes it
-(stream_spine.read_streamed), and every reader takes them from that record
-(stream_spine.streamed_record). GAMMA, DELTA and OPEN_INTEREST are in schwab-py's LEVELONE_OPTIONS
-field enum (LevelOneOptionFields: DELTA=28, GAMMA=29, OPEN_INTEREST=9); open
-interest is the chain's, never the stream's.
+(stream_spine.MessageBus), and they are read on the first read after a message changes it and
+held in that record (stream_spine.streamed_record, stream_spine.read_streamed). GAMMA, DELTA and
+OPEN_INTEREST are in schwab-py's LEVELONE_OPTIONS field enum (LevelOneOptionFields: DELTA=28,
+GAMMA=29, OPEN_INTEREST=9); open interest is the chain's, never the stream's.
 """
 
 from __future__ import annotations
@@ -70,19 +69,28 @@ def _read_as_sent(topic: str, rec: dict) -> Streamed:
 def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it():
     """Each LEVELONE message of 3 s of the real stream, put on the bus in receive order.
 
-    After each, the record's reading (read once by the bus as the message changed it) is its
-    merged fields as sent, every Greek and the volume at its own receive time: the 7,420 option
-    and 152 equity messages carry only the fields that changed, a few of them Greeks or volume
-    over a held record, and the rest stand.
+    After each, the record's reading is its merged fields as sent, every Greek and the volume at
+    its own receive time: the 7,420 option and 152 equity messages carry only the fields that
+    changed, a few of them Greeks or volume over a held record, and the rest stand. A message
+    reads nothing: it makes a new version of the record, read on its first read and held, so a
+    second read with no message between is the same reading, and the version before stands as it
+    was read.
     """
     bus = MessageBus()
     over_held = greeks_over_held = 0
     for m in _MIX:
         if m["service"] not in (OPT, EQ):
             continue
-        was_held = held_key(m["service"], m["item"]["key"].upper()) in bus.current
+        before = bus.current.get(held_key(m["service"], m["item"]["key"].upper()))
+        was_held = before is not None
+        held_before = streamed_record(before)
         topic, rec = on_the_bus(bus, m["service"], m["item"], m["ts_recv"], m["schwab_ts"])
-        assert streamed_record((topic, rec)) == _read_as_sent(topic, rec), m
+        assert rec["streamed"] is None  # nothing read on the message
+        first = streamed_record((topic, rec))
+        assert first == _read_as_sent(topic, rec), m
+        assert streamed_record((topic, rec)) is first  # read once per version
+        if before is not None:
+            assert before[1] is not rec and before[1]["streamed"] is held_before
         over_held += was_held
         greeks_over_held += was_held and any(f in m["item"] for f in (*_GREEKS, "TOTAL_VOLUME"))
     assert over_held == 4777  # each merged into a record it changes only in part

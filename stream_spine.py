@@ -42,7 +42,6 @@ from db_authority import canonical_db_path
 from json_blob_codec import decode_text_blob, encode_text_blob
 from numeric_contract import schwab_count, schwab_number
 from option_contract import (
-    GREEK_FIELDS,
     NO_GREEKS,
     NO_TOP,
     Received,
@@ -382,40 +381,41 @@ LOG_END: tuple[str, Any] = ("", None)
 FIELD_DELTA = {"quote": "native", "optquote": "content"}
 #: what the stream holds of a symbol it has sent nothing of
 NOT_STREAMED = Streamed(NO_TOP, NO_GREEKS)
-#: the stream fields a record's StreamedGreeks is read from (read_streamed)
-_GREEKS_SENT = frozenset({*(name.upper() for name in GREEK_FIELDS), "TOTAL_VOLUME"})
 
 
-def read_streamed(
-    content: dict[str, Any], stamps: dict[str, tuple[Any, Any]], held: Streamed, took: list[str]
-) -> Streamed:
-    """Read a LEVELONE record's fields (`content`, each received at its `stamps` time) once.
+def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -> Streamed:
+    """Read a LEVELONE record's fields (`content`, each received at its `stamps` time).
 
     Its top of book, and its Greeks, volatility and volume, each with the time its own field was
     received (a message carries only the fields that changed); a Greek Schwab sends as -999 is no
-    value, and TOTAL_VOLUME is a count as sent (a reported 0 is 0, AGENTS.md rule 2). The bus
-    reads it when a message changes the record's fields `took` (MessageBus._newest), and every
-    reader takes it from there (streamed_record): the Greeks the record `held` stand when the
-    message changed none of their fields.
+    value, and TOTAL_VOLUME is a count as sent (a reported 0 is 0, AGENTS.md rule 2). Read once
+    per version of the record, on its first read (streamed_record).
     """
-    top = StreamedTop(**streamed_top(content))
-    if _GREEKS_SENT.isdisjoint(took):
-        return Streamed(top, held.greeks)
     sent = {
         name: Received(v, stamps[name.upper()][1]) for name, v in streamed_greeks(content).items()
     }
     volume = schwab_count(content.get("TOTAL_VOLUME"))
     if volume is not None:
         sent["total_volume"] = Received(volume, stamps["TOTAL_VOLUME"][1])
-    return Streamed(top, StreamedGreeks(**sent))
+    return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
 
 
 def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
     """Return what the stream holds of a LEVELONE record on the bus, (topic, record).
 
-    Read once, when the record changed (read_streamed); NOT_STREAMED when the bus holds no record.
+    Its fields read on the first read of this version of the record (read_streamed) and held in
+    it as `streamed`; NOT_STREAMED when the bus holds no record. A version is never changed: a
+    message makes a new record (MessageBus._newest), so a read on any thread reads one version
+    whole, and two first reads at once read the same fields and hold equal values.
     """
-    return NOT_STREAMED if record is None else record[1]["streamed"]
+    if record is None:
+        return NOT_STREAMED
+    topic, rec = record
+    held: Streamed | None = rec["streamed"]
+    if held is None:
+        held = read_streamed(rec[FIELD_DELTA[topic.split(".", 1)[0]]], rec["field_ts"])
+        rec["streamed"] = held
+    return held
 
 
 def read_book(content_item: dict[str, Any], service: str) -> Book | None:
@@ -570,7 +570,7 @@ class MessageBus:
 
     It becomes its topic's current record -- the newest by Schwab's time (`schwab_ts`, the
     frame's timestamp; a chain by its fetch time): a LEVELONE message merged field by field, its
-    fields read once into the record's `streamed` (read_streamed), a book, bar or news item whole,
+    fields read on the first read of each version (streamed_record), a book, bar or news item whole,
     a chain whole once all its parts are in -- and each reader takes it by its policy (LOG or
     LATEST).
     """
@@ -627,21 +627,17 @@ class MessageBus:
         stamp = (t, msg.get("ts_recv"))
         if held is None:
             merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
-            before, took = NOT_STREAMED, list(body)
         else:
             rec = held[1]
-            merged, stamps, before = dict(rec[body_key]), dict(rec["field_ts"]), rec["streamed"]
+            merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
             took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
             if not took:
                 return False
             for f in took:
                 merged[f], stamps[f] = body[f], stamp
             top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time
-        streamed = read_streamed(merged, stamps, before, took)
-        self.current[key] = (
-            topic,
-            {**top, body_key: merged, "field_ts": stamps, "streamed": streamed},
-        )
+        # a new version of the record, whose fields are read on its first read (streamed_record)
+        self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps, "streamed": None})
         return True
 
     def _chain(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
