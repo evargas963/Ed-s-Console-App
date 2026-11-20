@@ -91,7 +91,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
     shown on the page.
-  - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.
   - P-18 the Trade Desk matches strikes to walls on the page (`k === cw`).
   - P-24 `static/js/ed-order-flow.js` shows one fixed reason for every no-book cause.
 - STANDARD-CHECKS (QUEUED; also ENF-01, REPO-WIDE-SHAPES): each hand-built check goes once a

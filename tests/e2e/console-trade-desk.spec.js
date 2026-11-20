@@ -603,6 +603,60 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: the prior value area band, its words, the VWAP's and the POC label are drawn as served", async ({
+    page,
+  }) => {
+    // register P-16: the map picked PD_VAL, PD_VAH, VWAP and TODAY_POC out of the levels by id
+    // and wrote "VA … – …" and "POC est …" itself; it draws the levels panel's fields
+    const errs = watchErrors(page);
+    await intercept(page); // every panel sent in its real shape
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const pva = LEVELS.prior_value_area;
+    const chart = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
+    await expect.poll(async () => (await chart()).valueArea).toEqual([pva.low, pva.high]);
+    expect((await chart()).volumeProfileMark).toBe(LEVELS.volume_profile.poc_label);
+    await expect(page.locator('#tdmFamilies [data-famv="prior_day"]')).toHaveText(pva.text);
+    await expect(page.locator('#tdmFamilies [data-famv="vwap"]')).toHaveText(LEVELS.vwap_text);
+    expect(errs).toEqual([]);
+  });
+
+  test("Desk: no prior value area band when the prior value area is absent", async ({ page }) => {
+    // INDUCED: SPY's levels with the prior session's value area absent, as the program serves
+    // $SPX's (Schwab's index bars carry no volume; tests/test_trade_desk_served_v1.py)
+    const errs = watchErrors(page);
+    await intercept(page);
+    const reason = "no RTH volume in the prior session 2026-11-11's bars for its volume profile";
+    deskPanels().levels = levelsAt((key, params) =>
+      Object.assign({}, REAL.levels[params.tf], {
+        prior_value_area: null,
+        levels: REAL.levels[params.tf].levels.filter((r) => !/^PD_(VAL|VAH|POC)$/.test(r.id)),
+        families_absent: REAL.levels[params.tf].families_absent.concat([
+          { family: "prior_value_area", reason: reason },
+        ]),
+      }),
+    );
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
+      .toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.EdTradeDeskMap.state().chart.valueArea)).toEqual([
+      null,
+      null,
+    ]);
+    await expect(page.locator('#tdmFamilies [data-famv="prior_day"]')).toHaveText("");
+    expect(errs).toEqual([]);
+  });
+
   test("Desk: levels sent for a timeframe the chart has left are not drawn", async ({ page }) => {
     // the program's 5m levels, sent before it read the switch to 15m, arrive after it
     const errs = watchErrors(page);

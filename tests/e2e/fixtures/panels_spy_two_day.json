@@ -48648,6 +48648,7 @@
           754.34804745119
         ]
       ],
+      "vwap_text": "756.59",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 60,
@@ -49180,8 +49181,14 @@
         ],
         "max_volume": 32592.164337622115,
         "poc": 756.7,
+        "poc_label": "POC est 756.70",
         "vah": 757.84,
         "val": 756.0
+      },
+      "prior_value_area": {
+        "low": 758.01,
+        "high": 761.62,
+        "text": "VA 758.01 \u2013 761.62"
       },
       "tf": "1",
       "families_absent": [],
@@ -50252,6 +50259,7 @@
           754.34804745119
         ]
       ],
+      "vwap_text": "756.59",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 60,
@@ -50784,8 +50792,14 @@
         ],
         "max_volume": 32592.164337622115,
         "poc": 756.7,
+        "poc_label": "POC est 756.70",
         "vah": 757.84,
         "val": 756.0
+      },
+      "prior_value_area": {
+        "low": 758.01,
+        "high": 761.62,
+        "text": "VA 758.01 \u2013 761.62"
       },
       "tf": "5",
       "families_absent": [],
@@ -51824,6 +51838,7 @@
           754.34804745119
         ]
       ],
+      "vwap_text": "756.59",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 60,
@@ -52356,8 +52371,14 @@
         ],
         "max_volume": 32592.164337622115,
         "poc": 756.7,
+        "poc_label": "POC est 756.70",
         "vah": 757.84,
         "val": 756.0
+      },
+      "prior_value_area": {
+        "low": 758.01,
+        "high": 761.62,
+        "text": "VA 758.01 \u2013 761.62"
       },
       "tf": "15",
       "families_absent": [],

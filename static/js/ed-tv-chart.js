@@ -1602,6 +1602,8 @@
           })(S.bars.length ? S.bars[0].t : heat.h ? heat.h.bucket_ts[0] : null),
           zones: zones.zones.length,
           volumeProfileBins: vprofile.rows.length,
+          volumeProfileMark: vprofile.mark && vprofile.mark.label,
+          valueArea: [band._lo, band._hi],
           levels: S.priceLines.map(function (l) {
             return l.options().title;
           }),
