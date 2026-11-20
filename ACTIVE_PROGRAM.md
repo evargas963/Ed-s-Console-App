@@ -86,6 +86,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Queued
 
+- HTTPX2 (QUEUED, on upgrade): authlib 1.9.1 warns that its httpx fallback is deprecated ("please
+  use httpx2"); schwab-py 1.5.1 is built on httpx. Left as is (operator 2026-11-19): authlib, httpx
+  and schwab-py stay pinned in `requirements.txt`, and are upgraded together, with the sign-in
+  refresh tested before a deploy, when schwab-py moves to httpx2 or authlib drops the fallback.
 - P1-6 (QUEUED): found defects, each checked against the code on 2026-11-19 and fixed at its source
   with a test that fails before:
   - S-23 `push/strikes.py` `_side_sums` splits the per-strike GEX (priced at the snapshot's spot) by
@@ -102,8 +106,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
     served.
-  - M-22 `book_net_gex` sums only strikes with a known `net_gex_1pct` and does not say how many it
-    left out.
   - M-24 `calc.math_levels.compute_charm_by_strike` returns `{}` with no reason when spot is missing
     (a branch `compute_terrain` makes unreachable: delete it).
   - M-27 `calc.math_levels.gamma_at_price` returns the end point's value for a price outside the
@@ -112,7 +114,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     alone over books keyed (date, dte); same-date books overwrite.
   - O-13 `app/options/order_flow/streaming.py` drops malformed messages silently; `live_ui` logs a
     bad page frame but does not count it.
-  - O-18 `app/options/order_flow/history.py`: a minimum axis width of 0.01 of our own.
   - P-09 `static/js/ed-core.js` reports a failed watchlist send without its HTTP status; first-of
     reads (`r.call || r.put` in `ed-gamma-panels.js`, `r.label || r.id` in `ed-trade-desk.js`).
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
@@ -244,12 +245,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Operator decides
 
-- WRITER-COUNT-PROOF (OPERATOR): in `stream_spine.CaptureWriter`, two counts were fixed by reading
-  the code with no test that fails before (`_refused` resetting `_stored` after a partial batch;
-  `_spilled` counted in the same locked section). Decision: accept the code-read proof, or name a
-  way to induce each without patching the writer. And: what the writer does with a statement that
-  fails for its own reason rather than a refusal (`_prune_part`, the spill-progress row,
-  `_finish_spill`, `stream_write_failures`), which today retries without end and can stop recording.
 - ONE-30 (OPERATOR): an option contract's own SECURITY_STATUS is not read; inside its option window
   a Halted contract reads LIVE (`live_market_plane.not_trading`). Re-subscription snapshots resend
   old statuses, so taking the field needs a rule for which message is current.
@@ -258,15 +253,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - LOCAL-SOCKETS (OPERATOR): the page's socket `/ws` binds every address of this PC
   (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
   read the price rows. Changing the bind is his setting.
-- OWN-PATH (OPERATOR; also RUNTIME-SEPARATION): move production (and its runtime state: database,
-  logs, token) out of the user profile to a folder of its own on C:. Needs the delete-protection
-  ACLs re-applied by the operator, the start shortcut, the `.venv` rebuilt, and one stop and start.
-  He schedules it.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
-  model gates on derived reads (the regime withheld under the flip's ±5% strike-span floor in
-  `calc.terrain_read`; GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta tolerance;
-  same-day expiries out of the 1-day move; wall candidates at 3× the median level; depth to 5
-  levels); a book side with no levels has no depth total.
+  model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
+  tolerance; same-day expiries out of the 1-day move; wall candidates at 3× the median level; depth
+  to 5 levels); a book side with no levels has no depth total.
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).

@@ -43,7 +43,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         states = [
             col[side]["state"]
             for cell in cached.gamma_surface["cells"]
-            for col, pair in zip(cell.get("stream") or [], cell.get("contracts") or [])
+            for col, pair in zip(cell["stream"], cell["contracts"], strict=True)
             for side in ("call", "put")
             if col and pair.get(side) == _A
         ]

@@ -112,7 +112,7 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
     for day in _FX["days"]:
         by_exp: dict = {}
         for c in day["contracts"]:
-            by_exp.setdefault(str(c.get("expirationDate") or "")[:10], []).append(c)
+            by_exp.setdefault(c["expirationDate"][:10], []).append(c)
         for exp, cs in by_exp.items():
             store_capture(
                 db,

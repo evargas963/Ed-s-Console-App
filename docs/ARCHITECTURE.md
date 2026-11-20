@@ -55,4 +55,6 @@ The database, the Schwab token, logs and diagnostics are runtime state, not sour
 standalone checkout uses itself and a linked worktree uses the primary checkout's runtime (it reads,
 and never starts a live program on it). Runtime state lives in the runtime root's `data/`, `logs/`
 and `schwab_token.json`, each ignored by git, so source changes never touch it; in a standalone
-checkout they sit inside the checkout.
+checkout they sit inside the checkout. Production stays where it is, in the operator's Documents
+folder (operator 2026-11-19: "lets not move it. lets leave it alone"): the folder is local, not
+synced, on the same drive, and a move would mean lifting the database's delete protection.

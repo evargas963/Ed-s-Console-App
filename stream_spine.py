@@ -173,8 +173,9 @@ CREATE TABLE IF NOT EXISTS stream_feed_status (
     last_data_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_sfs_ts ON stream_feed_status(ts);
--- Every message a write refused, kept as sent: when it failed, its topic (a bus topic, or
--- chain_history.<TICKER> for a chain whose history write failed), the message as JSON, and the
+-- Every message a write refused, kept as sent: when it failed, its topic (a bus topic,
+-- chain_history.<TICKER> for a chain whose history write failed, keep.<table> or
+-- stream_spill_progress for a statement of the writer's own), the message as JSON, and the
 -- error (type and text). Nothing here is a correction; each row is what could not be stored.
 CREATE TABLE IF NOT EXISTS stream_write_failures (
     ts REAL NOT NULL,
@@ -786,6 +787,13 @@ def _refuses_every_write(error: sqlite3.DatabaseError) -> bool:
     return not hasattr(error, "sqlite_errorcode") or error.sqlite_errorcode & 0xFF in REFUSAL_CODES
 
 
+def _its_own(error: Exception) -> bool:
+    """Whether `error`, from one row or statement, is that one's alone (else every write's)."""
+    return isinstance(error, ROW_FAILURES) or (
+        isinstance(error, sqlite3.DatabaseError) and not _refuses_every_write(error)
+    )
+
+
 #: the writer's states, on the heartbeat
 WRITER_NOT_STARTED, WRITER_RECORDING, WRITER_BLOCKED, WRITER_DEAD, WRITER_STOPPED = (
     "not_started",
@@ -1299,7 +1307,9 @@ class CaptureWriter:
 
     Each round writes up to `batch_rows` queued messages, and commits once the batch has
     `batch_rows` rows or `batch_sec` has passed. A message
-    whose row is refused is kept as sent in stream_write_failures, in the same batch. While the
+    whose row is refused is kept as sent in stream_write_failures, in the same batch, and so is a
+    statement of the writer's own (a keep part, a spill's progress row) that fails for its own
+    reason. While the
     database refuses every write (DATABASE_REFUSALS, each wait `timeout_sec`), the open batch
     is rolled back and its messages, and every one after, are held in order and written again,
     on a new connection, every `retry_sec` plus up to `batch_sec` (state blocked, with the
@@ -1400,10 +1410,8 @@ class CaptureWriter:
                 return _STORED_FIRST[kind](conn, msg)
             values = spec[1](msg)
             conn.execute(spec[0], values)
-        except ROW_FAILURES as e:
-            return self._kept_row(conn, topic, msg, e)
-        except DATABASE_REFUSALS as e:
-            if _refuses_every_write(e):
+        except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+            if not _its_own(e):
                 raise
             return self._kept_row(conn, topic, msg, e)
         return RowWritten(_TABLES[kind][0], values)
@@ -1419,6 +1427,20 @@ class CaptureWriter:
             reason,
         )
         return self._keep(conn, KeptFailure(topic, msg, reason, self.clock()))
+
+    def _own_failure(
+        self, conn: sqlite3.Connection, error: Exception, topic: str, msg: dict[str, Any]
+    ) -> None:
+        """Keep `msg`, a statement of the writer's own that failed for its own reason, as sent.
+
+        Committed with what the open transaction holds and counted, so the writer goes on (a
+        refusal of every write is the caller's to raise: the writer holds what it has and tries
+        again).
+        """
+        kept = self._kept_row(conn, topic, msg, error)
+        conn.commit()
+        with self._lock:
+            self._committed([(kept, kept)])
 
     def _log_once_a_minute(self, key: tuple[str, str], fmt: str, *args: object) -> None:
         """One log line per kind a minute, with how many came since the last line."""
@@ -1759,7 +1781,7 @@ class CaptureWriter:
                 head + "VALUES" + ",".join([one] * len(values)), [v for r in values for v in r]
             )
         except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
-            if not isinstance(e, ROW_FAILURES) and _refuses_every_write(e):
+            if not _its_own(e):
                 raise
             return [(item, self.insert(*item, conn=conn)) for item in items]
         table = _TABLES[kind][0]
@@ -1962,18 +1984,27 @@ class CaptureWriter:
     def _prune_part(self, conn: sqlite3.Connection, keep: _Keep) -> None:
         """Run the next part of `keep`, the keep in progress (prune), in one transaction.
 
-        A keep asked again meanwhile starts over; this one's count stays its own.
+        A keep asked again meanwhile starts over; this one's count stays its own. A part that
+        fails for its own reason is undone and kept as sent, and the keep goes on to the next table.
         """
         table, column = keep.tables[0]
-        if table in ARCHIVED:
-            removed, part = self._archive_part(conn, table, column, keep.before), ARCHIVE_ROWS
-        else:
-            removed = conn.execute(
-                f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
-                f"WHERE {column} < ? LIMIT ?)",
-                (keep.before, PRUNE_ROWS),
-            ).rowcount
-            part = PRUNE_ROWS
+        try:
+            if table in ARCHIVED:
+                removed, part = self._archive_part(conn, table, column, keep.before), ARCHIVE_ROWS
+            else:
+                removed = conn.execute(
+                    f"DELETE FROM {table} WHERE rowid IN (SELECT rowid FROM {table} "
+                    f"WHERE {column} < ? LIMIT ?)",
+                    (keep.before, PRUNE_ROWS),
+                ).rowcount
+                part = PRUNE_ROWS
+        except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+            conn.rollback()
+            if not _its_own(e):
+                raise
+            sent = {"table": table, "column": column, "before": keep.before}
+            self._own_failure(conn, e, f"keep.{table}", sent)
+            removed, part = 0, 1  # fewer than a part: the table is done
         conn.commit()
         with self._lock:
             keep.removed[table] += removed
@@ -2030,11 +2061,17 @@ class CaptureWriter:
             self._batch_spilled = True
             self._batch += self._stored_all(conn, [item for item, _end in records])
             end = records[-1][1]
-            conn.execute(
-                "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
-                "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
-                (spill.path.name, spill.written_back + len(records)),
-            )
+            progress = {"spill": spill.path.name, "written_back": spill.written_back + len(records)}
+            try:
+                conn.execute(
+                    "INSERT INTO stream_spill_progress(spill, written_back) VALUES(?,?) "
+                    "ON CONFLICT(spill) DO UPDATE SET written_back=excluded.written_back",
+                    tuple(progress.values()),
+                )
+            except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+                if not _its_own(e):
+                    raise
+                self._own_failure(conn, e, "stream_spill_progress", progress)
             conn.commit()
             with self._lock:
                 self._committed(self._batch)
@@ -2065,7 +2102,12 @@ class CaptureWriter:
             with self._lock:
                 self.left_on_disk.append(spill.status())
             return
-        conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
+        try:
+            conn.execute("DELETE FROM stream_spill_progress WHERE spill = ?", (spill.path.name,))
+        except (*ROW_FAILURES, *DATABASE_REFUSALS) as e:
+            if not _its_own(e):
+                raise
+            self._own_failure(conn, e, "stream_spill_progress", {"spill": spill.path.name})
         conn.commit()
         log.info(
             "stream writer: %s written back (%d messages); deleted", spill.path, spill.messages

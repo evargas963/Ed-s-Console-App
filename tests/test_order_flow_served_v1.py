@@ -59,18 +59,9 @@ def test_each_cell_carries_its_dominant_side_and_the_scale_top(heat):
         b, a = c["bid"], c["ask"]
         assert _sizes(c), c
         one_sided += b is None or a is None
-        want = (
-            "BID"
-            if a is None
-            else "ASK"
-            if b is None
-            else "BID"
-            if b > a
-            else "ASK"
-            if a > b
-            else "EVEN"
-        )
-        assert c["side"] == want
+        sent = {side: v for side, v in (("BID", b), ("ASK", a)) if v is not None}
+        larger = [side for side, v in sent.items() if v == max(sent.values())]
+        assert c["side"] == (larger[0] if len(larger) == 1 else "EVEN")
     assert one_sided, "real TSLA books: a price carries a bid or an ask, rarely both"
     assert heat["max_size"] == max(v for c in heat["cells"] for v in _sizes(c))
 
@@ -86,6 +77,25 @@ def test_the_default_window_drops_the_thin_tails(heat):
             inside.append(px)
     assert heat["display_lo"] == inside[0] and heat["display_hi"] == inside[-1]
     assert min(totals) <= heat["display_lo"] < heat["display_hi"] <= max(totals)
+
+
+def test_a_book_at_one_price_is_served_its_one_price_with_no_width_of_ours():
+    """Every size at one price: the window's top is its bottom, that price.
+
+    INDUCED: real TSLA NASDAQ_BOOK messages cut to their best bid alone (Schwab has not yet sent
+    a book with one level on one side); the 17 CFR 242.612 tick is $0.005 for some stocks, so a
+    minimum width of ours would put a price on the axis that no book held.
+    """
+    rows = [
+        (ts, svc, {**nat, "BIDS": nat["BIDS"][:1], "ASKS": []})
+        for ts, svc, nat in _FX["rows"][:50]
+        if nat["BIDS"]
+    ]
+    price = rows[0][2]["BIDS"][0]["BID_PRICE"]
+    rows = [r for r in rows if r[2]["BIDS"][0]["BID_PRICE"] == price]
+    d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=240, books=_books(rows))
+    assert {c["price"] for c in d["cells"]} == {price}
+    assert (d["display_lo"], d["display_hi"]) == (price, price)
 
 
 def test_the_window_ends_at_the_newest_book_with_levels_not_the_empty_after_close_snapshots():

@@ -521,7 +521,11 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
             ("ADD", ["TSLA"]),
             ("UNSUBS", ["TSLA"]),
         ], svc
-    assert not any("ZQZQZ" in r["parameters"].get("keys", "") for r in schwab.streamer.requests)
+    assert not any(
+        "ZQZQZ" in r["parameters"]["keys"]
+        for r in schwab.streamer.requests
+        if "keys" in r["parameters"]
+    )
     assert daemon.chains.watchlist == ["SPY"], "and stops fetching a removed one"
     assert capture.stored_watchlist(db) == ["SPY"], "the newest stored list"
 
