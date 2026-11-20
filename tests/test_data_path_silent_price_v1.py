@@ -26,8 +26,13 @@ from tests.test_live_push_channel_v1 import (
 )
 
 
-def _serving(stop: asyncio.Event, stats: dict) -> tuple[asyncio.Task, str]:
-    """Start the program's page socket on a port of its own; return its task and its URL."""
+def _serving(
+    stop: asyncio.Event, stats: dict, beats: list | None = None
+) -> tuple[asyncio.Task, str]:
+    """Start the program's page socket on a port of its own; return its task and its URL.
+
+    Each beat it records is appended to `beats`, when given.
+    """
     sock, url = listener()
     ui = asyncio.create_task(
         serve_page_socket(
@@ -36,7 +41,7 @@ def _serving(stop: asyncio.Event, stats: dict) -> tuple[asyncio.Task, str]:
             {
                 "heartbeat_fn": _daemon_heartbeat(),
                 "stats": stats,
-                "record_heartbeat": lambda _beat: None,
+                "record_heartbeat": beats.append if beats is not None else lambda _beat: None,
             },
         )
     )
@@ -49,11 +54,14 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     One that is not JSON (text or binary), one that is not a subscribe request with a list of
     symbols, and a symbol in it that is not a string, or is blank, are each logged with what
     arrived (its first 200 characters), never dropped unseen, and the page is still served.
+    Each is counted (`page_refused`), and the count rides the beat (`page_socket`). INDUCED: the
+    frames are a test's; no page of the program sends one.
     """
+    beats: list[dict] = []
 
     async def go():
         stop, stats = asyncio.Event(), {}
-        ui, url = _serving(stop, stats)
+        ui, url = _serving(stop, stats, beats)
         assert await _until(lambda: "clients" in stats)  # serving
         ws = await connect(f"{url}/ws", max_size=None)
         try:
@@ -70,6 +78,11 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
             # the socket still serves the page after them
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             assert json.loads(await asyncio.wait_for(ws.recv(), 5))["type"] == "symbols"
+            assert stats["page_refused"] == 4, stats
+            # the next beat carries the count
+            assert await _until(
+                lambda: bool(beats) and beats[-1]["page_socket"]["page_refused"] == 4
+            ), beats[-1:]
         finally:  # a failure still closes the socket: cancelling over an open one can hang
             await ws.close()
             stop.set()

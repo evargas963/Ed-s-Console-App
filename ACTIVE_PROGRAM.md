@@ -95,8 +95,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
     served.
-  - O-13 `app/options/order_flow/streaming.py` drops malformed messages silently; `live_ui` logs a
-    bad page frame but does not count it.
   - P-09 `static/js/ed-core.js` reports a failed watchlist send without its HTTP status; first-of
     reads (`r.call || r.put` in `ed-gamma-panels.js`, `r.label || r.id` in `ed-trade-desk.js`).
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
