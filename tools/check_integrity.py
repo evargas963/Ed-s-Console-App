@@ -155,7 +155,22 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
                 found.add(node.attr)  # a value an object is given (`self.name = ...`)
             elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
                 found.add(node.target.id)  # a record's declared field
+        # a constant the module defines at its top (a function's own names are not the product's)
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                found.update(t.id for t in node.targets if isinstance(t, ast.Name))
     return found
+
+
+def _names(assertion: str) -> set[str]:
+    """What an assertion names: a function it calls, a value by its key or its attribute, and, in
+    Python, every name it reads (the parser's own reading, never a guess from the text)."""
+    named = {name for pair in NAMED.findall(assertion) for name in pair if name}
+    try:
+        tree = ast.parse(assertion, mode="eval")
+    except SyntaxError:  # a Playwright expect: the pattern alone reads it
+        return named
+    return named | {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
 
 
 def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
@@ -167,9 +182,7 @@ def lost_assertions(root: Path, base: str, files: list[str]) -> list[str]:
     out = []
     for test in sorted(before.keys() & after.keys()):
         lost = [
-            a
-            for a in sorted(before[test] - after[test])
-            if not deleted.intersection(name for pair in NAMED.findall(a) for name in pair)
+            a for a in sorted(before[test] - after[test]) if not deleted.intersection(_names(a))
         ]
         # an assertion corrected or strengthened is one for one; only a net loss is a loss
         if len(lost) > len(after[test] - before[test]):
