@@ -112,7 +112,11 @@ test.describe("#4 per-panel source / as-of / freshness", () => {
     await expect(badge).toContainText("terrain · LIVE");
     await expect(badge).toContainText(STRIKES.levels_time_ct);
     await expect(badge).toContainText(STRIKES.levels_age_text);
-    await expect(page.locator("#gbsBody")).toContainText(String(STRIKES.spot_strike));
+    // the row the server marks as the price's, drawn with its mark
+    const atPrice = STRIKES.today.all.filter((r) => r.marks.some((m) => m.kind === "spot"));
+    await expect(page.locator("#gbsBody .gbs-row.mark-spot .gbs-k")).toHaveText(
+      atPrice.map((r) => r.strike_text),
+    );
   });
 
   test("Strike Detail discloses the vendor chain scope", async ({ page }) => {

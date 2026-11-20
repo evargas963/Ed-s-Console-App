@@ -23,7 +23,7 @@ def strike_bar_payload(
     """Return a per-strike bar panel's answer at `now` (vanna, charm).
 
     The published rows `key`, windowed for the panel (windowed), each as the page draws it
-    (served: delta-shares, compact), with the live price and the strike nearest it.
+    (served: delta-shares, compact, the row at the price marked), with the live price.
     """
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
@@ -37,8 +37,7 @@ def strike_bar_payload(
         "ticker": tk,
         "available": bool(rows),
         "spot": spot,
-        "spot_strike": spot_strike,
-        "rows": [served(r, key) for r in win],
+        "rows": [served(r, key, {"spot": spot_strike}) for r in win],
         "view": view,
         "scope": scope,
         "reason": None if rows else "no usable strikes for this chain",

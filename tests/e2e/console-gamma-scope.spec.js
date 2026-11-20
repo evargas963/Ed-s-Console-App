@@ -24,7 +24,8 @@ const WINDOW = {
 function strikesFor(scope) {
   return BY_SCOPE[scope];
 }
-const SPOT = REAL.strikes.spot_strike; // the strike at the price
+// the strike at the price: the row the server marks as the price's
+const SPOT = REAL.strikes.today.all.find((r) => r.marks.some((m) => m.kind === "spot")).strike;
 const TERRAIN = REAL.terrain;
 const BARS = {
   ticker: "SPY",
@@ -88,7 +89,14 @@ test.describe("the Gamma presentation scope", () => {
     // induced: the real rows with the GEX and volume of the strike at the price not known
     const rows = WINDOW.auto.map((r) =>
       r.strike === SPOT
-        ? { strike: r.strike, value: null, volume: null, text: null, volume_text: null }
+        ? {
+            strike: r.strike,
+            value: null,
+            volume: null,
+            text: null,
+            volume_text: null,
+            marks: r.marks,
+          }
         : r,
     );
     panels.strikes = Object.assign({}, strikesFor("auto"), { today: { all: rows } });
@@ -172,7 +180,7 @@ test.describe("the Gamma presentation scope", () => {
         .filter(Boolean)
         .map((w) => ({ centre: w.centre, shift: w.shift }));
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const atPrice = page.locator("#gbsBody .gbs-row.spot .gbs-k"); // the row at the price, in view
+    const atPrice = page.locator("#gbsBody .gbs-row.mark-spot .gbs-k"); // the row at the price, in view
     await expect(atPrice).toBeVisible();
     const box = await atPrice.boundingBox();
     const rowH = await page

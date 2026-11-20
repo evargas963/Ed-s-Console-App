@@ -9,6 +9,7 @@
           "volume": 2260.0,
           "strike_text": "257.5",
           "text": "$1.65M",
+          "marks": [],
           "volume_text": "2,260"
         },
         {
@@ -17,6 +18,7 @@
           "volume": 9101.0,
           "strike_text": "260",
           "text": "$21.97M",
+          "marks": [],
           "volume_text": "9,101"
         },
         {
@@ -25,6 +27,7 @@
           "volume": 5025.0,
           "strike_text": "262.5",
           "text": "-$8.79M",
+          "marks": [],
           "volume_text": "5,025"
         },
         {
@@ -33,6 +36,7 @@
           "volume": 10846.0,
           "strike_text": "265",
           "text": "$61.74M",
+          "marks": [],
           "volume_text": "10,846"
         },
         {
@@ -41,6 +45,7 @@
           "volume": 9951.0,
           "strike_text": "267.5",
           "text": "$29.51M",
+          "marks": [],
           "volume_text": "9,951"
         },
         {
@@ -49,6 +54,20 @@
           "volume": 32975.0,
           "strike_text": "270",
           "text": "$156.77M",
+          "marks": [
+            {
+              "kind": "spot",
+              "label": "SPOT"
+            },
+            {
+              "kind": "call",
+              "label": "Call wall"
+            },
+            {
+              "kind": "put",
+              "label": "Put wall"
+            }
+          ],
           "volume_text": "32,975"
         },
         {
@@ -57,6 +76,7 @@
           "volume": 28020.0,
           "strike_text": "272.5",
           "text": "$28.89M",
+          "marks": [],
           "volume_text": "28,020"
         },
         {
@@ -65,6 +85,7 @@
           "volume": 44079.0,
           "strike_text": "275",
           "text": "$207.67M",
+          "marks": [],
           "volume_text": "44,079"
         },
         {
@@ -73,6 +94,7 @@
           "volume": 11370.0,
           "strike_text": "277.5",
           "text": "$15.20M",
+          "marks": [],
           "volume_text": "11,370"
         },
         {
@@ -81,6 +103,7 @@
           "volume": 35004.0,
           "strike_text": "280",
           "text": "$108.84M",
+          "marks": [],
           "volume_text": "35,004"
         },
         {
@@ -89,6 +112,7 @@
           "volume": 3380.0,
           "strike_text": "282.5",
           "text": "$7.22M",
+          "marks": [],
           "volume_text": "3,380"
         }
       ],
@@ -99,6 +123,7 @@
           "volume": 1623.0,
           "strike_text": "257.5",
           "text": "-$1.18M",
+          "marks": [],
           "volume_text": "1,623"
         },
         {
@@ -107,6 +132,7 @@
           "volume": 4278.0,
           "strike_text": "260",
           "text": "$7.68M",
+          "marks": [],
           "volume_text": "4,278"
         },
         {
@@ -115,6 +141,7 @@
           "volume": 4744.0,
           "strike_text": "262.5",
           "text": "-$4.27M",
+          "marks": [],
           "volume_text": "4,744"
         },
         {
@@ -123,6 +150,7 @@
           "volume": 6942.0,
           "strike_text": "265",
           "text": "$7.03M",
+          "marks": [],
           "volume_text": "6,942"
         },
         {
@@ -131,6 +159,7 @@
           "volume": 8563.0,
           "strike_text": "267.5",
           "text": "$25.29M",
+          "marks": [],
           "volume_text": "8,563"
         },
         {
@@ -139,6 +168,20 @@
           "volume": 24041.0,
           "strike_text": "270",
           "text": "$57.27M",
+          "marks": [
+            {
+              "kind": "spot",
+              "label": "SPOT"
+            },
+            {
+              "kind": "call",
+              "label": "Call wall"
+            },
+            {
+              "kind": "put",
+              "label": "Put wall"
+            }
+          ],
           "volume_text": "24,041"
         },
         {
@@ -147,6 +190,7 @@
           "volume": 26347.0,
           "strike_text": "272.5",
           "text": "$19.76M",
+          "marks": [],
           "volume_text": "26,347"
         },
         {
@@ -155,6 +199,7 @@
           "volume": 35920.0,
           "strike_text": "275",
           "text": "$49.22M",
+          "marks": [],
           "volume_text": "35,920"
         },
         {
@@ -163,6 +208,7 @@
           "volume": 10985.0,
           "strike_text": "277.5",
           "text": "$11.85M",
+          "marks": [],
           "volume_text": "10,985"
         },
         {
@@ -171,6 +217,7 @@
           "volume": 18058.0,
           "strike_text": "280",
           "text": "$13.98M",
+          "marks": [],
           "volume_text": "18,058"
         },
         {
@@ -179,6 +226,7 @@
           "volume": 3155.0,
           "strike_text": "282.5",
           "text": "$5.72M",
+          "marks": [],
           "volume_text": "3,155"
         }
       ],
@@ -189,6 +237,7 @@
           "volume": 637.0,
           "strike_text": "257.5",
           "text": "$2.83M",
+          "marks": [],
           "volume_text": "637"
         },
         {
@@ -197,6 +246,7 @@
           "volume": 4823.0,
           "strike_text": "260",
           "text": "$14.29M",
+          "marks": [],
           "volume_text": "4,823"
         },
         {
@@ -205,6 +255,7 @@
           "volume": 281.0,
           "strike_text": "262.5",
           "text": "-$4.52M",
+          "marks": [],
           "volume_text": "281"
         },
         {
@@ -213,6 +264,7 @@
           "volume": 3904.0,
           "strike_text": "265",
           "text": "$54.71M",
+          "marks": [],
           "volume_text": "3,904"
         },
         {
@@ -221,6 +273,7 @@
           "volume": 1388.0,
           "strike_text": "267.5",
           "text": "$4.22M",
+          "marks": [],
           "volume_text": "1,388"
         },
         {
@@ -229,6 +282,20 @@
           "volume": 8934.0,
           "strike_text": "270",
           "text": "$99.51M",
+          "marks": [
+            {
+              "kind": "spot",
+              "label": "SPOT"
+            },
+            {
+              "kind": "call",
+              "label": "Call wall"
+            },
+            {
+              "kind": "put",
+              "label": "Put wall"
+            }
+          ],
           "volume_text": "8,934"
         },
         {
@@ -237,6 +304,7 @@
           "volume": 1673.0,
           "strike_text": "272.5",
           "text": "$9.12M",
+          "marks": [],
           "volume_text": "1,673"
         },
         {
@@ -245,6 +313,7 @@
           "volume": 8159.0,
           "strike_text": "275",
           "text": "$158.45M",
+          "marks": [],
           "volume_text": "8,159"
         },
         {
@@ -253,6 +322,7 @@
           "volume": 385.0,
           "strike_text": "277.5",
           "text": "$3.34M",
+          "marks": [],
           "volume_text": "385"
         },
         {
@@ -261,6 +331,7 @@
           "volume": 16946.0,
           "strike_text": "280",
           "text": "$94.87M",
+          "marks": [],
           "volume_text": "16,946"
         },
         {
@@ -269,6 +340,7 @@
           "volume": 225.0,
           "strike_text": "282.5",
           "text": "$1.49M",
+          "marks": [],
           "volume_text": "225"
         }
       ]
@@ -280,67 +352,91 @@
             "strike": 257.5,
             "value": 131184309.43495838,
             "strike_text": "257.5",
-            "text": "$131.18M"
+            "text": "$131.18M",
+            "marks": []
           },
           {
             "strike": 260.0,
             "value": 2424231025.6597085,
             "strike_text": "260",
-            "text": "$2.42B"
+            "text": "$2.42B",
+            "marks": []
           },
           {
             "strike": 262.5,
             "value": 135328091.90379718,
             "strike_text": "262.5",
-            "text": "$135.33M"
+            "text": "$135.33M",
+            "marks": []
           },
           {
             "strike": 265.0,
             "value": 1681355991.268859,
             "strike_text": "265",
-            "text": "$1.68B"
+            "text": "$1.68B",
+            "marks": []
           },
           {
             "strike": 267.5,
             "value": 230911206.37131667,
             "strike_text": "267.5",
-            "text": "$230.91M"
+            "text": "$230.91M",
+            "marks": []
           },
           {
             "strike": 270.0,
             "value": 2576194099.2853613,
             "strike_text": "270",
-            "text": "$2.58B"
+            "text": "$2.58B",
+            "marks": [
+              {
+                "kind": "spot",
+                "label": "SPOT"
+              },
+              {
+                "kind": "call",
+                "label": "Call wall"
+              },
+              {
+                "kind": "put",
+                "label": "Put wall"
+              }
+            ]
           },
           {
             "strike": 272.5,
             "value": 180057431.15690106,
             "strike_text": "272.5",
-            "text": "$180.06M"
+            "text": "$180.06M",
+            "marks": []
           },
           {
             "strike": 275.0,
             "value": 2187212488.213221,
             "strike_text": "275",
-            "text": "$2.19B"
+            "text": "$2.19B",
+            "marks": []
           },
           {
             "strike": 277.5,
             "value": 48729605.365832165,
             "strike_text": "277.5",
-            "text": "$48.73M"
+            "text": "$48.73M",
+            "marks": []
           },
           {
             "strike": 280.0,
             "value": 1843777670.313355,
             "strike_text": "280",
-            "text": "$1.84B"
+            "text": "$1.84B",
+            "marks": []
           },
           {
             "strike": 282.5,
             "value": 13705358.33612568,
             "strike_text": "282.5",
-            "text": "$13.71M"
+            "text": "$13.71M",
+            "marks": []
           }
         ],
         "view": {
@@ -353,7 +449,8 @@
           "strike": 250.0,
           "value": 3389901194.544876,
           "strike_text": "250",
-          "text": "$3.39B"
+          "text": "$3.39B",
+          "marks": []
         }
       },
       "oi": {
@@ -362,67 +459,91 @@
             "strike": 257.5,
             "value": 9336.0,
             "strike_text": "257.5",
-            "text": "9,336"
+            "text": "9,336",
+            "marks": []
           },
           {
             "strike": 260.0,
             "value": 170882.0,
             "strike_text": "260",
-            "text": "170,882"
+            "text": "170,882",
+            "marks": []
           },
           {
             "strike": 262.5,
             "value": 12234.0,
             "strike_text": "262.5",
-            "text": "12,234"
+            "text": "12,234",
+            "marks": []
           },
           {
             "strike": 265.0,
             "value": 115347.0,
             "strike_text": "265",
-            "text": "115,347"
+            "text": "115,347",
+            "marks": []
           },
           {
             "strike": 267.5,
             "value": 15363.0,
             "strike_text": "267.5",
-            "text": "15,363"
+            "text": "15,363",
+            "marks": []
           },
           {
             "strike": 270.0,
             "value": 191178.0,
             "strike_text": "270",
-            "text": "191,178"
+            "text": "191,178",
+            "marks": [
+              {
+                "kind": "spot",
+                "label": "SPOT"
+              },
+              {
+                "kind": "call",
+                "label": "Call wall"
+              },
+              {
+                "kind": "put",
+                "label": "Put wall"
+              }
+            ]
           },
           {
             "strike": 272.5,
             "value": 15719.0,
             "strike_text": "272.5",
-            "text": "15,719"
+            "text": "15,719",
+            "marks": []
           },
           {
             "strike": 275.0,
             "value": 187874.0,
             "strike_text": "275",
-            "text": "187,874"
+            "text": "187,874",
+            "marks": []
           },
           {
             "strike": 277.5,
             "value": 8697.0,
             "strike_text": "277.5",
-            "text": "8,697"
+            "text": "8,697",
+            "marks": []
           },
           {
             "strike": 280.0,
             "value": 168822.0,
             "strike_text": "280",
-            "text": "168,822"
+            "text": "168,822",
+            "marks": []
           },
           {
             "strike": 282.5,
             "value": 8995.0,
             "strike_text": "282.5",
-            "text": "8,995"
+            "text": "8,995",
+            "marks": []
           }
         ],
         "view": {
@@ -435,7 +556,8 @@
           "strike": 300.0,
           "value": 255572.0,
           "strike_text": "300",
-          "text": "255,572"
+          "text": "255,572",
+          "marks": []
         }
       }
     },
@@ -468,13 +590,13 @@
       "gex_below_text": "-$55.67M",
       "gex_above_text": "$993.01M"
     },
-    "spot_strike": 270.0,
     "max_abs_row": {
       "strike": 275.0,
       "value": 207666055.09548968,
       "volume": 44079.0,
       "strike_text": "275",
       "text": "$207.67M",
+      "marks": [],
       "volume_text": "44,079"
     },
     "migration": {
@@ -2193,6 +2315,7 @@
           "volume": 382.0,
           "strike_text": "242.5",
           "text": "-$767.67K",
+          "marks": [],
           "volume_text": "382"
         },
         {
@@ -2201,6 +2324,7 @@
           "volume": 948.0,
           "strike_text": "245",
           "text": "-$10.23M",
+          "marks": [],
           "volume_text": "948"
         },
         {
@@ -2209,6 +2333,7 @@
           "volume": 275.0,
           "strike_text": "247.5",
           "text": "-$1.95M",
+          "marks": [],
           "volume_text": "275"
         },
         {
@@ -2217,6 +2342,7 @@
           "volume": 3458.0,
           "strike_text": "250",
           "text": "$15.93M",
+          "marks": [],
           "volume_text": "3,458"
         },
         {
@@ -2225,6 +2351,7 @@
           "volume": 1174.0,
           "strike_text": "252.5",
           "text": "-$1.51M",
+          "marks": [],
           "volume_text": "1,174"
         },
         {
@@ -2233,6 +2360,7 @@
           "volume": 4151.0,
           "strike_text": "255",
           "text": "-$84.22K",
+          "marks": [],
           "volume_text": "4,151"
         },
         {
@@ -2241,6 +2369,7 @@
           "volume": 2260.0,
           "strike_text": "257.5",
           "text": "$1.65M",
+          "marks": [],
           "volume_text": "2,260"
         },
         {
@@ -2249,6 +2378,7 @@
           "volume": 9101.0,
           "strike_text": "260",
           "text": "$21.97M",
+          "marks": [],
           "volume_text": "9,101"
         },
         {
@@ -2257,6 +2387,7 @@
           "volume": 5025.0,
           "strike_text": "262.5",
           "text": "-$8.79M",
+          "marks": [],
           "volume_text": "5,025"
         },
         {
@@ -2265,6 +2396,7 @@
           "volume": 10846.0,
           "strike_text": "265",
           "text": "$61.74M",
+          "marks": [],
           "volume_text": "10,846"
         },
         {
@@ -2273,6 +2405,7 @@
           "volume": 9951.0,
           "strike_text": "267.5",
           "text": "$29.51M",
+          "marks": [],
           "volume_text": "9,951"
         },
         {
@@ -2281,6 +2414,20 @@
           "volume": 32975.0,
           "strike_text": "270",
           "text": "$156.77M",
+          "marks": [
+            {
+              "kind": "spot",
+              "label": "SPOT"
+            },
+            {
+              "kind": "call",
+              "label": "Call wall"
+            },
+            {
+              "kind": "put",
+              "label": "Put wall"
+            }
+          ],
           "volume_text": "32,975"
         },
         {
@@ -2289,6 +2436,7 @@
           "volume": 28020.0,
           "strike_text": "272.5",
           "text": "$28.89M",
+          "marks": [],
           "volume_text": "28,020"
         },
         {
@@ -2297,6 +2445,7 @@
           "volume": 44079.0,
           "strike_text": "275",
           "text": "$207.67M",
+          "marks": [],
           "volume_text": "44,079"
         },
         {
@@ -2305,6 +2454,7 @@
           "volume": 11370.0,
           "strike_text": "277.5",
           "text": "$15.20M",
+          "marks": [],
           "volume_text": "11,370"
         },
         {
@@ -2313,6 +2463,7 @@
           "volume": 35004.0,
           "strike_text": "280",
           "text": "$108.84M",
+          "marks": [],
           "volume_text": "35,004"
         },
         {
@@ -2321,6 +2472,7 @@
           "volume": 3380.0,
           "strike_text": "282.5",
           "text": "$7.22M",
+          "marks": [],
           "volume_text": "3,380"
         },
         {
@@ -2329,6 +2481,7 @@
           "volume": 9362.0,
           "strike_text": "285",
           "text": "$72.62M",
+          "marks": [],
           "volume_text": "9,362"
         },
         {
@@ -2337,6 +2490,7 @@
           "volume": 1563.0,
           "strike_text": "287.5",
           "text": "$4.14M",
+          "marks": [],
           "volume_text": "1,563"
         },
         {
@@ -2345,6 +2499,7 @@
           "volume": 5579.0,
           "strike_text": "290",
           "text": "$71.20M",
+          "marks": [],
           "volume_text": "5,579"
         },
         {
@@ -2353,6 +2508,7 @@
           "volume": 40.0,
           "strike_text": "292.5",
           "text": "$99.01K",
+          "marks": [],
           "volume_text": "40"
         },
         {
@@ -2361,6 +2517,7 @@
           "volume": 3755.0,
           "strike_text": "295",
           "text": "$32.39M",
+          "marks": [],
           "volume_text": "3,755"
         },
         {
@@ -2369,6 +2526,7 @@
           "volume": 152.0,
           "strike_text": "297.5",
           "text": "$108.40K",
+          "marks": [],
           "volume_text": "152"
         }
       ],
@@ -2379,6 +2537,7 @@
           "volume": 301.0,
           "strike_text": "242.5",
           "text": "-$218.49K",
+          "marks": [],
           "volume_text": "301"
         },
         {
@@ -2387,6 +2546,7 @@
           "volume": 276.0,
           "strike_text": "245",
           "text": "-$446.00K",
+          "marks": [],
           "volume_text": "276"
         },
         {
@@ -2395,6 +2555,7 @@
           "volume": 94.0,
           "strike_text": "247.5",
           "text": "-$448.32K",
+          "marks": [],
           "volume_text": "94"
         },
         {
@@ -2403,6 +2564,7 @@
           "volume": 1284.0,
           "strike_text": "250",
           "text": "-$2.11M",
+          "marks": [],
           "volume_text": "1,284"
         },
         {
@@ -2411,6 +2573,7 @@
           "volume": 707.0,
           "strike_text": "252.5",
           "text": "-$714.49K",
+          "marks": [],
           "volume_text": "707"
         },
         {
@@ -2419,6 +2582,7 @@
           "volume": 3020.0,
           "strike_text": "255",
           "text": "-$4.14M",
+          "marks": [],
           "volume_text": "3,020"
         },
         {
@@ -2427,6 +2591,7 @@
           "volume": 1623.0,
           "strike_text": "257.5",
           "text": "-$1.18M",
+          "marks": [],
           "volume_text": "1,623"
         },
         {
@@ -2435,6 +2600,7 @@
           "volume": 4278.0,
           "strike_text": "260",
           "text": "$7.68M",
+          "marks": [],
           "volume_text": "4,278"
         },
         {
@@ -2443,6 +2609,7 @@
           "volume": 4744.0,
           "strike_text": "262.5",
           "text": "-$4.27M",
+          "marks": [],
           "volume_text": "4,744"
         },
         {
@@ -2451,6 +2618,7 @@
           "volume": 6942.0,
           "strike_text": "265",
           "text": "$7.03M",
+          "marks": [],
           "volume_text": "6,942"
         },
         {
@@ -2459,6 +2627,7 @@
           "volume": 8563.0,
           "strike_text": "267.5",
           "text": "$25.29M",
+          "marks": [],
           "volume_text": "8,563"
         },
         {
@@ -2467,6 +2636,20 @@
           "volume": 24041.0,
           "strike_text": "270",
           "text": "$57.27M",
+          "marks": [
+            {
+              "kind": "spot",
+              "label": "SPOT"
+            },
+            {
+              "kind": "call",
+              "label": "Call wall"
+            },
+            {
+              "kind": "put",
+              "label": "Put wall"
+            }
+          ],
           "volume_text": "24,041"
         },
         {
@@ -2475,6 +2658,7 @@
           "volume": 26347.0,
           "strike_text": "272.5",
           "text": "$19.76M",
+          "marks": [],
           "volume_text": "26,347"
         },
         {
@@ -2483,6 +2667,7 @@
           "volume": 35920.0,
           "strike_text": "275",
           "text": "$49.22M",
+          "marks": [],
           "volume_text": "35,920"
         },
         {
@@ -2491,6 +2676,7 @@
           "volume": 10985.0,
           "strike_text": "277.5",
           "text": "$11.85M",
+          "marks": [],
           "volume_text": "10,985"
         },
         {
@@ -2499,6 +2685,7 @@
           "volume": 18058.0,
           "strike_text": "280",
           "text": "$13.98M",
+          "marks": [],
           "volume_text": "18,058"
         },
         {
@@ -2507,6 +2694,7 @@
           "volume": 3155.0,
           "strike_text": "282.5",
           "text": "$5.72M",
+          "marks": [],
           "volume_text": "3,155"
         },
         {
@@ -2515,6 +2703,7 @@
           "volume": 4684.0,
           "strike_text": "285",
           "text": "$3.68M",
+          "marks": [],
           "volume_text": "4,684"
         },
         {
@@ -2523,6 +2712,7 @@
           "volume": 1026.0,
           "strike_text": "287.5",
           "text": "$555.48K",
+          "marks": [],
           "volume_text": "1,026"
         },
         {
@@ -2531,6 +2721,7 @@
           "volume": 1932.0,
           "strike_text": "290",
           "text": "$895.37K",
+          "marks": [],
           "volume_text": "1,932"
         },
         {
@@ -2539,6 +2730,7 @@
           "volume": 36.0,
           "strike_text": "292.5",
           "text": "$91.87K",
+          "marks": [],
           "volume_text": "36"
         },
         {
@@ -2547,6 +2739,7 @@
           "volume": 561.0,
           "strike_text": "295",
           "text": "$423.98K",
+          "marks": [],
           "volume_text": "561"
         },
         {
@@ -2555,6 +2748,7 @@
           "volume": 152.0,
           "strike_text": "297.5",
           "text": "$108.40K",
+          "marks": [],
           "volume_text": "152"
         }
       ],
@@ -2565,6 +2759,7 @@
           "volume": 81.0,
           "strike_text": "242.5",
           "text": "-$549.18K",
+          "marks": [],
           "volume_text": "81"
         },
         {
@@ -2573,6 +2768,7 @@
           "volume": 672.0,
           "strike_text": "245",
           "text": "-$9.78M",
+          "marks": [],
           "volume_text": "672"
         },
         {
@@ -2581,6 +2777,7 @@
           "volume": 181.0,
           "strike_text": "247.5",
           "text": "-$1.50M",
+          "marks": [],
           "volume_text": "181"
         },
         {
@@ -2589,6 +2786,7 @@
           "volume": 2174.0,
           "strike_text": "250",
           "text": "$18.04M",
+          "marks": [],
           "volume_text": "2,174"
         },
         {
@@ -2597,6 +2795,7 @@
           "volume": 467.0,
           "strike_text": "252.5",
           "text": "-$795.26K",
+          "marks": [],
           "volume_text": "467"
         },
         {
@@ -2605,6 +2804,7 @@
           "volume": 1131.0,
           "strike_text": "255",
           "text": "$4.05M",
+          "marks": [],
           "volume_text": "1,131"
         },
         {
@@ -2613,6 +2813,7 @@
           "volume": 637.0,
           "strike_text": "257.5",
           "text": "$2.83M",
+          "marks": [],
           "volume_text": "637"
         },
         {
@@ -2621,6 +2822,7 @@
           "volume": 4823.0,
           "strike_text": "260",
           "text": "$14.29M",
+          "marks": [],
           "volume_text": "4,823"
         },
         {
@@ -2629,6 +2831,7 @@
           "volume": 281.0,
           "strike_text": "262.5",
           "text": "-$4.52M",
+          "marks": [],
           "volume_text": "281"
         },
         {
@@ -2637,6 +2840,7 @@
           "volume": 3904.0,
           "strike_text": "265",
           "text": "$54.71M",
+          "marks": [],
           "volume_text": "3,904"
         },
         {
@@ -2645,6 +2849,7 @@
           "volume": 1388.0,
           "strike_text": "267.5",
           "text": "$4.22M",
+          "marks": [],
           "volume_text": "1,388"
         },
         {
@@ -2653,6 +2858,20 @@
           "volume": 8934.0,
           "strike_text": "270",
           "text": "$99.51M",
+          "marks": [
+            {
+              "kind": "spot",
+              "label": "SPOT"
+            },
+            {
+              "kind": "call",
+              "label": "Call wall"
+            },
+            {
+              "kind": "put",
+              "label": "Put wall"
+            }
+          ],
           "volume_text": "8,934"
         },
         {
@@ -2661,6 +2880,7 @@
           "volume": 1673.0,
           "strike_text": "272.5",
           "text": "$9.12M",
+          "marks": [],
           "volume_text": "1,673"
         },
         {
@@ -2669,6 +2889,7 @@
           "volume": 8159.0,
           "strike_text": "275",
           "text": "$158.45M",
+          "marks": [],
           "volume_text": "8,159"
         },
         {
@@ -2677,6 +2898,7 @@
           "volume": 385.0,
           "strike_text": "277.5",
           "text": "$3.34M",
+          "marks": [],
           "volume_text": "385"
         },
         {
@@ -2685,6 +2907,7 @@
           "volume": 16946.0,
           "strike_text": "280",
           "text": "$94.87M",
+          "marks": [],
           "volume_text": "16,946"
         },
         {
@@ -2693,6 +2916,7 @@
           "volume": 225.0,
           "strike_text": "282.5",
           "text": "$1.49M",
+          "marks": [],
           "volume_text": "225"
         },
         {
@@ -2701,6 +2925,7 @@
           "volume": 4678.0,
           "strike_text": "285",
           "text": "$68.94M",
+          "marks": [],
           "volume_text": "4,678"
         },
         {
@@ -2709,6 +2934,7 @@
           "volume": 537.0,
           "strike_text": "287.5",
           "text": "$3.59M",
+          "marks": [],
           "volume_text": "537"
         },
         {
@@ -2717,6 +2943,7 @@
           "volume": 3647.0,
           "strike_text": "290",
           "text": "$70.30M",
+          "marks": [],
           "volume_text": "3,647"
         },
         {
@@ -2725,6 +2952,7 @@
           "volume": 4.0,
           "strike_text": "292.5",
           "text": "$7.13K",
+          "marks": [],
           "volume_text": "4"
         },
         {
@@ -2733,6 +2961,7 @@
           "volume": 3194.0,
           "strike_text": "295",
           "text": "$31.96M",
+          "marks": [],
           "volume_text": "3,194"
         },
         {
@@ -2741,6 +2970,7 @@
           "volume": 0.0,
           "strike_text": "297.5",
           "text": "$0",
+          "marks": [],
           "volume_text": "0"
         }
       ]
@@ -2752,139 +2982,175 @@
             "strike": 242.5,
             "value": 14334648.04847628,
             "strike_text": "242.5",
-            "text": "$14.33M"
+            "text": "$14.33M",
+            "marks": []
           },
           {
             "strike": 245.0,
             "value": 1073134875.5119518,
             "strike_text": "245",
-            "text": "$1.07B"
+            "text": "$1.07B",
+            "marks": []
           },
           {
             "strike": 247.5,
             "value": 84535526.9852373,
             "strike_text": "247.5",
-            "text": "$84.54M"
+            "text": "$84.54M",
+            "marks": []
           },
           {
             "strike": 250.0,
             "value": 3389901194.544876,
             "strike_text": "250",
-            "text": "$3.39B"
+            "text": "$3.39B",
+            "marks": []
           },
           {
             "strike": 252.5,
             "value": 88924736.26946934,
             "strike_text": "252.5",
-            "text": "$88.92M"
+            "text": "$88.92M",
+            "marks": []
           },
           {
             "strike": 255.0,
             "value": 1284223014.2757084,
             "strike_text": "255",
-            "text": "$1.28B"
+            "text": "$1.28B",
+            "marks": []
           },
           {
             "strike": 257.5,
             "value": 131184309.43495838,
             "strike_text": "257.5",
-            "text": "$131.18M"
+            "text": "$131.18M",
+            "marks": []
           },
           {
             "strike": 260.0,
             "value": 2424231025.6597085,
             "strike_text": "260",
-            "text": "$2.42B"
+            "text": "$2.42B",
+            "marks": []
           },
           {
             "strike": 262.5,
             "value": 135328091.90379718,
             "strike_text": "262.5",
-            "text": "$135.33M"
+            "text": "$135.33M",
+            "marks": []
           },
           {
             "strike": 265.0,
             "value": 1681355991.268859,
             "strike_text": "265",
-            "text": "$1.68B"
+            "text": "$1.68B",
+            "marks": []
           },
           {
             "strike": 267.5,
             "value": 230911206.37131667,
             "strike_text": "267.5",
-            "text": "$230.91M"
+            "text": "$230.91M",
+            "marks": []
           },
           {
             "strike": 270.0,
             "value": 2576194099.2853613,
             "strike_text": "270",
-            "text": "$2.58B"
+            "text": "$2.58B",
+            "marks": [
+              {
+                "kind": "spot",
+                "label": "SPOT"
+              },
+              {
+                "kind": "call",
+                "label": "Call wall"
+              },
+              {
+                "kind": "put",
+                "label": "Put wall"
+              }
+            ]
           },
           {
             "strike": 272.5,
             "value": 180057431.15690106,
             "strike_text": "272.5",
-            "text": "$180.06M"
+            "text": "$180.06M",
+            "marks": []
           },
           {
             "strike": 275.0,
             "value": 2187212488.213221,
             "strike_text": "275",
-            "text": "$2.19B"
+            "text": "$2.19B",
+            "marks": []
           },
           {
             "strike": 277.5,
             "value": 48729605.365832165,
             "strike_text": "277.5",
-            "text": "$48.73M"
+            "text": "$48.73M",
+            "marks": []
           },
           {
             "strike": 280.0,
             "value": 1843777670.313355,
             "strike_text": "280",
-            "text": "$1.84B"
+            "text": "$1.84B",
+            "marks": []
           },
           {
             "strike": 282.5,
             "value": 13705358.33612568,
             "strike_text": "282.5",
-            "text": "$13.71M"
+            "text": "$13.71M",
+            "marks": []
           },
           {
             "strike": 285.0,
             "value": 906483530.6723351,
             "strike_text": "285",
-            "text": "$906.48M"
+            "text": "$906.48M",
+            "marks": []
           },
           {
             "strike": 287.5,
             "value": 12252729.095436059,
             "strike_text": "287.5",
-            "text": "$12.25M"
+            "text": "$12.25M",
+            "marks": []
           },
           {
             "strike": 290.0,
             "value": 998231259.7717707,
             "strike_text": "290",
-            "text": "$998.23M"
+            "text": "$998.23M",
+            "marks": []
           },
           {
             "strike": 292.5,
             "value": 177449.65845537002,
             "strike_text": "292.5",
-            "text": "$177.45K"
+            "text": "$177.45K",
+            "marks": []
           },
           {
             "strike": 295.0,
             "value": 323627650.93762153,
             "strike_text": "295",
-            "text": "$323.63M"
+            "text": "$323.63M",
+            "marks": []
           },
           {
             "strike": 297.5,
             "value": 149524.35789816,
             "strike_text": "297.5",
-            "text": "$149.52K"
+            "text": "$149.52K",
+            "marks": []
           }
         ],
         "view": {
@@ -2897,7 +3163,8 @@
           "strike": 250.0,
           "value": 3389901194.544876,
           "strike_text": "250",
-          "text": "$3.39B"
+          "text": "$3.39B",
+          "marks": []
         }
       },
       "oi": {
@@ -2906,139 +3173,175 @@
             "strike": 242.5,
             "value": 3724.0,
             "strike_text": "242.5",
-            "text": "3,724"
+            "text": "3,724",
+            "marks": []
           },
           {
             "strike": 245.0,
             "value": 94255.0,
             "strike_text": "245",
-            "text": "94,255"
+            "text": "94,255",
+            "marks": []
           },
           {
             "strike": 247.5,
             "value": 10313.0,
             "strike_text": "247.5",
-            "text": "10,313"
+            "text": "10,313",
+            "marks": []
           },
           {
             "strike": 250.0,
             "value": 243035.0,
             "strike_text": "250",
-            "text": "243,035"
+            "text": "243,035",
+            "marks": []
           },
           {
             "strike": 252.5,
             "value": 8793.0,
             "strike_text": "252.5",
-            "text": "8,793"
+            "text": "8,793",
+            "marks": []
           },
           {
             "strike": 255.0,
             "value": 99274.0,
             "strike_text": "255",
-            "text": "99,274"
+            "text": "99,274",
+            "marks": []
           },
           {
             "strike": 257.5,
             "value": 9336.0,
             "strike_text": "257.5",
-            "text": "9,336"
+            "text": "9,336",
+            "marks": []
           },
           {
             "strike": 260.0,
             "value": 170882.0,
             "strike_text": "260",
-            "text": "170,882"
+            "text": "170,882",
+            "marks": []
           },
           {
             "strike": 262.5,
             "value": 12234.0,
             "strike_text": "262.5",
-            "text": "12,234"
+            "text": "12,234",
+            "marks": []
           },
           {
             "strike": 265.0,
             "value": 115347.0,
             "strike_text": "265",
-            "text": "115,347"
+            "text": "115,347",
+            "marks": []
           },
           {
             "strike": 267.5,
             "value": 15363.0,
             "strike_text": "267.5",
-            "text": "15,363"
+            "text": "15,363",
+            "marks": []
           },
           {
             "strike": 270.0,
             "value": 191178.0,
             "strike_text": "270",
-            "text": "191,178"
+            "text": "191,178",
+            "marks": [
+              {
+                "kind": "spot",
+                "label": "SPOT"
+              },
+              {
+                "kind": "call",
+                "label": "Call wall"
+              },
+              {
+                "kind": "put",
+                "label": "Put wall"
+              }
+            ]
           },
           {
             "strike": 272.5,
             "value": 15719.0,
             "strike_text": "272.5",
-            "text": "15,719"
+            "text": "15,719",
+            "marks": []
           },
           {
             "strike": 275.0,
             "value": 187874.0,
             "strike_text": "275",
-            "text": "187,874"
+            "text": "187,874",
+            "marks": []
           },
           {
             "strike": 277.5,
             "value": 8697.0,
             "strike_text": "277.5",
-            "text": "8,697"
+            "text": "8,697",
+            "marks": []
           },
           {
             "strike": 280.0,
             "value": 168822.0,
             "strike_text": "280",
-            "text": "168,822"
+            "text": "168,822",
+            "marks": []
           },
           {
             "strike": 282.5,
             "value": 8995.0,
             "strike_text": "282.5",
-            "text": "8,995"
+            "text": "8,995",
+            "marks": []
           },
           {
             "strike": 285.0,
             "value": 104797.0,
             "strike_text": "285",
-            "text": "104,797"
+            "text": "104,797",
+            "marks": []
           },
           {
             "strike": 287.5,
             "value": 5278.0,
             "strike_text": "287.5",
-            "text": "5,278"
+            "text": "5,278",
+            "marks": []
           },
           {
             "strike": 290.0,
             "value": 130106.0,
             "strike_text": "290",
-            "text": "130,106"
+            "text": "130,106",
+            "marks": []
           },
           {
             "strike": 292.5,
             "value": 1072.0,
             "strike_text": "292.5",
-            "text": "1,072"
+            "text": "1,072",
+            "marks": []
           },
           {
             "strike": 295.0,
             "value": 67976.0,
             "strike_text": "295",
-            "text": "67,976"
+            "text": "67,976",
+            "marks": []
           },
           {
             "strike": 297.5,
             "value": 1226.0,
             "strike_text": "297.5",
-            "text": "1,226"
+            "text": "1,226",
+            "marks": []
           }
         ],
         "view": {
@@ -3051,7 +3354,8 @@
           "strike": 300.0,
           "value": 255572.0,
           "strike_text": "300",
-          "text": "255,572"
+          "text": "255,572",
+          "marks": []
         }
       }
     },
@@ -3084,13 +3388,13 @@
       "gex_below_text": "-$55.67M",
       "gex_above_text": "$993.01M"
     },
-    "spot_strike": 270.0,
     "max_abs_row": {
       "strike": 275.0,
       "value": 207666055.09548968,
       "volume": 44079.0,
       "strike_text": "275",
       "text": "$207.67M",
+      "marks": [],
       "volume_text": "44,079"
     },
     "migration": {

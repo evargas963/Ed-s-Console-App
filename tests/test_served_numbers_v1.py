@@ -78,7 +78,10 @@ def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_mak
         "volume": 9877.0,
         "text": "$1.50B",
         "volume_text": "9,877",
+        "marks": [{"kind": "call", "label": "Call wall"}],  # SPY's call wall, 775
     }
+    terrain = json.loads((E2E / "panels_spy_two_day.json").read_text(encoding="utf-8"))["terrain"]
+    assert terrain["call_wall"] == spy["max_abs_row"]["strike"]
     first = spy["today"]["all"][0]
     assert first["text"] == "-$177.45M"
     # every contract shows: two decimals in thousands showed this as 65.58K

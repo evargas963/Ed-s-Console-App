@@ -65,7 +65,9 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         last = _QUOTE["native"]["LAST_PRICE"]
         strikes = push_strikes.terrain_strikes_payload(tk, "auto", None, 0, at)
         listed = [r["strike"] for r in strikes["today"]["all"]]
-        assert strikes["spot_strike"] == min(listed, key=lambda k: abs(k - last))
+        spot = {"kind": "spot", "label": "SPOT"}
+        marked = [r["strike"] for r in strikes["today"]["all"] if spot in r["marks"]]
+        assert marked == [min(listed, key=lambda k: abs(k - last))]
         assert all(v["note"] is None for v in strikes["views"].values() if v["centre"] is not None)
         for key in push_strike_bars.STRIKE_BAR_METHODS:
             bars = push_strike_bars.strike_bar_payload(tk, key, "auto", None, 0, at)

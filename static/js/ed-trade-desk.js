@@ -433,7 +433,7 @@
     );
   }
 
-  function migrationSection(strikesD, terrain) {
+  function migrationSection(strikesD) {
     // none sent yet for this ticker ('-'), or the program's words for why it is not drawn
     var why =
       strikesD === undefined
@@ -477,14 +477,10 @@
           " · double-click a strike to follow the price</div>"
         : "") + (view.note ? '<div class="gbs-allexp">' + esc(view.note) + "</div>" : ""); // why not around the price
     var maxAbs = view.max_abs_with_prior; // served: today's and the prior day's bars, one scale
-    var spotStrike = strikesD.spot_strike; // served: the listed strike nearest the live price
-    var cw = terrain && terrain.call_wall,
-      pw = terrain && terrain.put_wall;
     var rows = "";
     win.forEach(function (r) {
       // a strike with no GEX value is unknown, not a zero bar
       var m = migRow[r.strike],
-        k = r.strike,
         gx = r.value,
         gy = m ? m.prior : null;
       var hasGy = gy != null && gx != null;
@@ -506,14 +502,13 @@
             '">' +
             esc(m.change_text) + // served: "▲$1.23M" / "▼$1.23M"
             "</span>";
-      var rowCls =
-        "gbs-row mig-row" +
-        (k === spotStrike ? " spot" : "") +
-        (cw != null && k === cw ? " mig-wall-call" : "") +
-        (pw != null && k === pw ? " mig-wall-put" : "");
       rows +=
-        '<div class="' +
-        rowCls +
+        '<div class="gbs-row mig-row' +
+        r.marks
+          .map(function (mk) {
+            return " mark-" + mk.kind; // served: the strike at the price, the call and put walls
+          })
+          .join("") +
         '">' +
         '<span class="gbs-k">' +
         r.strike_text +
@@ -534,9 +529,11 @@
         '<span class="gbs-vol" title="session volume">' +
         esc(orDash(r.volume_text)) +
         "</span>" +
-        (k === spotStrike ? migTag("SPOT", "spot") : "") +
-        (cw != null && k === cw ? migTag("Call wall", "call") : "") +
-        (pw != null && k === pw ? migTag("Put wall", "put") : "") +
+        r.marks
+          .map(function (mk) {
+            return migTag(mk.label, mk.kind);
+          })
+          .join("") +
         "</div>";
     });
     var scopeChips =
@@ -647,7 +644,7 @@
       confirmStage(sent) +
       "</div>" +
       contextSummary(terrain, snap, levelsD) +
-      migrationSection(strikesD, terrain) +
+      migrationSection(strikesD) +
       '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
       "This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. " +
       "THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>";
