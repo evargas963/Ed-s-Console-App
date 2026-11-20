@@ -385,6 +385,44 @@ def test_each_missing_column_says_why_and_an_unreported_count_is_not_called_zero
     }
 
 
+def test_a_negative_gamma_is_taken_as_sent_in_both_legs():
+    """SPY's captured 0DTE chain (SPY_0DTE), the call at the strike nearest the price INDUCED.
+
+    Its gamma made negative (no capture holds a negative gamma; Schwab's -999 stays not sent
+    in the reader). AGENTS rule 2: a gamma is taken as sent whatever its size, so that strike's
+    net gamma, its size in the score and its put/call gamma come from both legs as sent: each
+    leg gamma x open interest x multiplier x price^2 x 1%, worked out here from the raw chain.
+    """
+    held = SPY_0DTE
+    strike = min({c["strikePrice"] for c in held.chain}, key=lambda k: abs(k - held.spot))
+    chain = []
+    for c in held.chain:
+        row = dict(c)
+        if row["strikePrice"] == strike and row["putCall"] == "CALL":
+            row["gamma"] = -abs(row["gamma"])
+        chain.append(row)
+    legs = {
+        side: sum(
+            c["gamma"] * c["openInterest"] * c["multiplier"] * held.spot * held.spot * 0.01
+            for c in chain
+            if c["strikePrice"] == strike and c["putCall"] == side
+        )
+        for side in ("CALL", "PUT")
+    }
+    call, put = legs["CALL"], legs["PUT"]
+    assert call < 0 < put
+    matrix = _matrix_of("SPY", chain, held.spot, held.now, 0.0)
+    ranked = matrix.ranked[strike]
+    assert ranked.factors["GEXM"] == pytest.approx(abs(call - put), rel=1e-12)
+    assert "net gamma" not in ranked.result["missing"] and ranked.result["score"] is not None
+    row = window_rows(matrix, [strike])[0]
+    assert row["net_gex"] == pytest.approx(call - put, rel=1e-12)
+    assert row["net_gex_text"] == screen_text(call - put, "dollars")
+    assert row["pc_gex_text"] == f"{put / call:.2f}"
+    assert row["gross"] == pytest.approx(abs(call) + abs(put), rel=1e-12)
+    assert row["net_reason"] is None and row["pc_gex_reason"] is None
+
+
 def test_a_thin_or_flat_book_says_so():
     """SPY's 2026-11-23 expiry in its 2026-11-09 11:06 ET whole-chain capture (SPY_FULL).
 

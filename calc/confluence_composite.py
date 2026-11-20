@@ -13,7 +13,6 @@ from typing import Any, TypedDict
 
 from calc.math_exposure_core import (
     Bucket,
-    BucketField,
     bucket_metric,
     strike_total_oi,
     strike_total_volume,
@@ -233,21 +232,15 @@ def _in_universe(factors: dict[str, float | None]) -> bool:
     return (oi is not None and oi > 0) or (vol is not None and vol > 0)
 
 
-def _legs_ok(
-    bucket: Bucket, call_key: BucketField, put_key: BucketField
-) -> tuple[float, float] | None:
-    call = bucket_metric(bucket, call_key)
-    put = bucket_metric(bucket, put_key)
-    if call is None or put is None or call < 0 or put < 0:
-        return None
-    return call, put
-
-
 def magnitudes(
     bucket: Bucket, charm: CharmBucket | None, iv: float | None, spot: float
 ) -> dict[str, float | None]:
-    """Return the scored magnitudes, plus the signed numbers the columns show."""
-    gex = _legs_ok(bucket, "call_gex_1pct", "put_gex_1pct")
+    """Return the scored magnitudes, plus the signed numbers the columns show.
+
+    Each leg's gamma is Schwab's as sent, whatever its sign (AGENTS rule 2).
+    """
+    call_gex = bucket_metric(bucket, "call_gex_1pct")
+    put_gex = bucket_metric(bucket, "put_gex_1pct")
     net_gex = bucket_metric(bucket, "net_gex_1pct")
     dex = bucket_metric(bucket, "net_dex_dollars")
     vanna = bucket_metric(bucket, "net_vanna")
@@ -255,7 +248,7 @@ def magnitudes(
     vol = strike_total_volume(bucket)
     charm_net = None if charm is None else schwab_number(charm["net_charm"])
     out = {
-        "GEXM": None if gex is None or net_gex is None else abs(net_gex),
+        "GEXM": None if net_gex is None else abs(net_gex),
         "OI": oi,
         "VOL": vol,
         "DEXM": None if dex is None else abs(dex),
@@ -263,9 +256,11 @@ def magnitudes(
         "IV": iv,
         "CHARMM": None if charm_net is None else abs(charm_net),
     }
-    out["_net_gex"] = None if gex is None else net_gex
+    out["_net_gex"] = net_gex
     out["_gross"] = total_gex_dollars_at_strike(bucket)  # the Abs Γ level's one producer
-    out["_pc_gex"] = None if gex is None or gex[0] == 0 else gex[1] / gex[0]
+    out["_pc_gex"] = (
+        None if call_gex is None or put_gex is None or call_gex == 0 else put_gex / call_gex
+    )
     out["_dex"] = dex
     out["_vanna"] = None if vanna is None else vanna * spot
     out["_pc_vol"] = None
