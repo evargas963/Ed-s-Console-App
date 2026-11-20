@@ -51,7 +51,7 @@ from datetime import date, datetime
 from itertools import zip_longest
 from pathlib import Path
 from types import FrameType
-from typing import Any, TextIO, TypedDict, cast, override
+from typing import Any, NoReturn, TextIO, TypedDict, cast, override
 
 import uvicorn
 
@@ -79,7 +79,7 @@ from calc.terrain_engine import nearest_position
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
 from feed.connection import SERVICES, Connection
-from feed.schwab_client import SchwabClientState, build_client_from_token, check_ticker
+from feed.schwab_client import Client, SchwabClientState, build_client_from_token, check_ticker
 from instrument_identity import ticker_storage_key
 from option_contract import GREEK_FIELDS, OptionContract
 from stream_spine import (
@@ -271,7 +271,7 @@ def sign_in_line(waiting: str | None) -> dict[str, str]:
             return {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
 
 
-def _not_started() -> object:
+def _not_started() -> NoReturn:
     """Raise ConnectionError: before run the daemon has no Schwab client to make a check with."""
     raise ConnectionError("the Schwab connection has not started")
 
@@ -322,7 +322,7 @@ class Daemon:
         self.chains: ChainSweep | None = None  # its round time, its tickers
         self.writer: CaptureWriter | None = None  # its state rides the heartbeat
         #: the daemon's one Schwab client (run): the checks; none before run
-        self.schwab_client: Callable[[], object] = _not_started
+        self.schwab_client: Callable[[], Client] = _not_started
         #: the one Schwab stream connection, asking for what is wanted (wanted)
         self.connection = Connection(bus, health, self.wanted, time_et.now)
 
@@ -635,7 +635,7 @@ class Daemon:
             "sign_in": sign_in_line(self.chains.waiting) if self.chains is not None else None,
         }
 
-    async def run(self, schwab_client: Callable[[], object], stop: asyncio.Event) -> None:
+    async def run(self, schwab_client: Callable[[], Client], stop: asyncio.Event) -> None:
         """Run the stream connection until stop (Connection.run: it reconnects with backoff).
 
         It runs on the daemon's one Schwab client (`schwab_client()`), which also makes the
@@ -998,7 +998,7 @@ def _worker_ended(worker: asyncio.Future[None]) -> None:
 async def run_chains(
     daemon: Daemon,
     db_path: Path | str,
-    schwab_client: Callable[[], object],
+    schwab_client: Callable[[], Client],
     stop: asyncio.Event,
     *,
     failures: CaptureWriter,
@@ -1035,7 +1035,7 @@ async def run_chains(
         await asyncio.gather(worker, return_exceptions=True)
 
 
-def one_schwab_client(build: Callable[[], SchwabClientState]) -> Callable[[], object]:
+def one_schwab_client(build: Callable[[], SchwabClientState]) -> Callable[[], Client]:
     """Return the daemon's one Schwab client, for the stream and every chain request.
 
     It comes as a function that returns it: built (`build()`, a SchwabClientState) when first
@@ -1044,10 +1044,10 @@ def one_schwab_client(build: Callable[[], SchwabClientState]) -> Callable[[], ob
     token file. A build that fails raises, and the next ask builds again; a built client is
     never replaced.
     """
-    built: list[object] = []
+    built: list[Client] = []
     building = threading.Lock()
 
-    def schwab_client() -> object:
+    def schwab_client() -> Client:
         with building:
             if not built:
                 state = build()

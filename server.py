@@ -10,7 +10,7 @@ import time
 from collections.abc import AsyncGenerator, Callable, Collection, Iterable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
@@ -27,6 +27,7 @@ from app.market_data.schwab.streaming import live_ui
 from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, VOLATILITY_INDEX
 from app.options.order_flow.state import rest_quotes, streamed_values
 from app.options.order_flow.streaming import (
+    FEED,
     price_state,
     select_flow_contract,
     start_order_flow_stream,
@@ -59,7 +60,7 @@ from calc.terrain_engine import (
 )
 from calc.terrain_read import crossed
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
-from db import LevelCrossEvent, get_db
+from db import LevelCrossEvent, StoredCross, get_db
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from numeric_contract import (
@@ -98,6 +99,7 @@ from state.price_level_store import (
     canonical_price_level_snapshot,
     materialize_price_level_snapshot,
 )
+from stream_spine import CAPTURE_STORED
 from time_et import (
     ET,
     ct_label,
@@ -1006,37 +1008,47 @@ def _level_crosses_at(
     ]
 
 
+#: how long the pricing thread waits for the Recorder to commit a price's crosses (store first),
+#: as the chain sweep waits for a capture's (chain_sweep.CAPTURE_WAIT_SEC)
+CROSS_WAIT_SEC = 10.0
+
+
 def _log_level_crosses(
     tk: str, spot: float, crosses: list[tuple[float, str, str]], now: float, now_text: str
 ) -> None:
     """Store the crosses _level_crosses_at found, hold them for live readers, tell the open pages.
 
-    Every cross is stored, as it happened. Runs on the pricing thread; a failed store is logged.
+    Every cross is stored as it happened, by the Recorder, the database's one writer, before it
+    is held (store first: CaptureWriter.store_crosses). Runs on the pricing thread; crosses the
+    Recorder did not store in the wait (refused, or held while the database refuses writes, and
+    written once it takes them) are logged and not held.
     """
-    try:
-        logged = get_db().record_level_crosses(
-            [
-                LevelCrossEvent(
-                    ticker=tk,
-                    ts_utc=now,
-                    ts_et=now_text,
-                    level_name=name,
-                    level_value=value,
-                    direction=side,
-                    spot_at_cross=spot,
-                    zone_before=None,
-                    zone_after=None,
-                    timeframe="1m",
-                )
-                for value, name, side in crosses
-            ]
+    events = [
+        LevelCrossEvent(
+            ticker=tk,
+            ts_utc=now,
+            ts_et=now_text,
+            level_name=name,
+            level_value=value,
+            direction=side,
+            spot_at_cross=spot,
+            zone_before=None,
+            zone_after=None,
+            timeframe="1m",
         )
-    except Exception:
-        log.exception("level crosses of %s at %s not stored: %s", tk, spot, crosses)
+        for value, name, side in crosses
+    ]
+    daemon = FEED.daemon
+    if daemon is None or daemon.writer is None:
+        log.warning("level crosses of %s at %s not stored: no Recorder runs", tk, spot)
         return
-    if logged:
-        cross_store.add(tk, logged)
-        _levels_changed(tk)
+    msg = {"ticker": tk, "ts_utc": now, "crosses": [asdict(e) for e in events]}
+    outcome, ids = daemon.writer.store_crosses(msg, CROSS_WAIT_SEC)
+    if outcome != CAPTURE_STORED:
+        log.warning("level crosses of %s at %s not stored (%s): %s", tk, spot, outcome, crosses)
+        return
+    cross_store.add(tk, [StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, ids)])
+    _levels_changed(tk)
 
 
 def _charm_rows(snap: TerrainSnapshot) -> list[StrikeValue]:

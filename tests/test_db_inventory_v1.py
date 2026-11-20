@@ -1,7 +1,7 @@
 """db.inventory: what the census counts in each database, read without writing.
 
-Read from databases the Recorder itself made (CaptureWriter's schema, EdDB's schema and its write
-of a captured SPY print's level cross).
+Read from databases the Recorder itself made (CaptureWriter's schema and its write of a captured
+SPY print's level cross, store_crosses).
 """
 
 from __future__ import annotations
@@ -11,8 +11,9 @@ import re
 import pytest
 
 from calc.terrain_read import CROSSED_UP
-from db import ColumnInventory, EdDB, LevelCrossEvent, inventory
+from db import ColumnInventory, LevelCrossEvent, inventory
 from stream_spine import CAPTURE_TABLE, RECEIPT_TIME_INDEXES, STREAM_SCHEMA_SQL, CaptureWriter
+from tests.feed_live_helper import stored_crosses
 from tests.real_chains import SPY_PRINT_A_STRIKE_AWAY
 
 CREATED = re.findall(r"CREATE TABLE IF NOT EXISTS (\w+) \(", STREAM_SCHEMA_SQL)
@@ -45,8 +46,8 @@ def test_every_stream_table_the_writer_creates_is_counted_with_its_columns(tmp_p
 
 def test_a_console_row_is_counted_and_the_sqlite_clock_column_shows_its_default(tmp_path):
     path = tmp_path / "ed_console.db"
-    edb = EdDB(path, allow_noncanonical=True)
-    edb.record_level_crosses(
+    stored_crosses(
+        CaptureWriter(path),
         [
             LevelCrossEvent(
                 ticker="SPY",
@@ -60,7 +61,7 @@ def test_a_console_row_is_counted_and_the_sqlite_clock_column_shows_its_default(
                 zone_after=None,
                 timeframe="1m",
             )
-        ]
+        ],
     )
 
     (crosses,) = [t for t in inventory(path) if t.name == "level_crosses"]

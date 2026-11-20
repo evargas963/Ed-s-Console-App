@@ -5,9 +5,8 @@ from __future__ import annotations
 import functools
 import logging
 import sqlite3
-import threading
 from contextlib import closing
-from dataclasses import asdict, dataclass, fields
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 from db_authority import (
@@ -15,13 +14,8 @@ from db_authority import (
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
-from db_safety import maybe_install_sql_guard_on_connection
 
 log = logging.getLogger(__name__)
-
-
-# One-time EdDB schema bootstrap (single-threaded init; avoids overlapping CREATE/migrate).
-_SCHEMA_INIT_LOCK = threading.Lock()
 
 
 #: SQLite access tuning (read-side accelerants for the large WAL DB).
@@ -156,10 +150,10 @@ def inventory(db_path: Path) -> tuple[TableInventory, ...]:
 
 
 class EdDB:
-    """Main database interface for Ed Console.
+    """The console's read of the one database: its stored level crosses, read-only.
 
-    Reads use a fresh connection per call (WAL allows concurrent readers). Writes use
-    ordinary connections + SQLite busy_timeout/WAL.
+    The Recorder (stream_spine.CaptureWriter, store_crosses) is the database's one writer; every
+    connection here is opened read-only (SQLite's mode=ro), so a write through it fails.
     """
 
     def __init__(
@@ -174,77 +168,29 @@ class EdDB:
                 "Pass allow_noncanonical=True, or set ED_CONSOLE_ALLOW_NONCANONICAL_DB=1 "
                 "for harness/test/alternate DBs."
             )
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with _SCHEMA_INIT_LOCK:
-            self._bootstrap_sql_guard_suppress = True
-            try:
-                self._init_schema()
-            finally:
-                self._bootstrap_sql_guard_suppress = False
-        log.info(f"EdDB initialized at {self.db_path}")
 
     def _connect(self, *, timeout_sec: float = 30.0) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=timeout_sec)
+        conn = sqlite3.connect(
+            f"file:{self.db_path.as_posix()}?mode=ro", uri=True, timeout=timeout_sec
+        )
         conn.row_factory = sqlite3.Row
         configure_sqlite_connection(conn, busy_timeout_ms=int(timeout_sec * 1000))
-        if not self._bootstrap_sql_guard_suppress:
-            maybe_install_sql_guard_on_connection(conn, self.db_path)
         return conn
 
-    def _init_schema(self) -> None:
-        """Create all tables if they don't exist. Safe to call on every startup."""
-        with closing(self._connect()) as conn, conn:
-            conn.executescript("""
-
-            -- ── Level cross events ────────────────────────────────────────────
-            CREATE TABLE IF NOT EXISTS level_crosses (
-                cross_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                ticker          TEXT    NOT NULL,
-                ts_utc          REAL    NOT NULL,
-                ts_et           TEXT    NOT NULL,
-                level_name      TEXT    NOT NULL,
-                level_value     REAL    NOT NULL,
-                direction       TEXT    NOT NULL,
-                spot_at_cross   REAL    NOT NULL,
-                zone_before     TEXT,
-                zone_after      TEXT,
-                timeframe       TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_cross_ticker_ts
-                ON level_crosses(ticker, ts_utc);
-
-
-            """)
-        log.info("Schema initialized")
-
-    # ════════════════════════════════════════════════════════════════════════
-    # LEVEL CROSS OPERATIONS
-    # ════════════════════════════════════════════════════════════════════════
-
-    def record_level_crosses(self, events: list[LevelCrossEvent]) -> list[StoredCross]:
-        """Store the level crosses of one price, all in one transaction.
-
-        server._log_level_crosses decides them. Every one is stored, or none is and the error is
-        raised. Returns the rows stored, each as get_recent_crosses reads it back.
-        """
-        cols = [f.name for f in fields(LevelCrossEvent)]
-        sql = (
-            f"INSERT INTO level_crosses ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})"
-            " RETURNING cross_id"
-        )
-        logged: list[StoredCross] = []
-        # the connection is the transaction (commit, or roll back on an error) and is closed
-        with closing(self._connect()) as conn, conn:
-            for event in events:
-                d = asdict(event)
-                (cross_id,) = conn.execute(sql, [d[c] for c in cols]).fetchone()
-                logged.append(StoredCross(**d, cross_id=cross_id))  # the stored row
-        return logged
-
     def get_recent_crosses(self, ticker: str, n: int = 20) -> list[StoredCross]:
-        """Return the most recent level crosses, each the row record_level_crosses returns."""
+        """Return the most recent level crosses, each the row the Recorder stored.
+
+        None stored yet (no database, or no level_crosses table before the Recorder's first
+        start) is no cross.
+        """
+        if not self.db_path.is_file():
+            return []
         cols = ", ".join(["cross_id", *(f.name for f in fields(LevelCrossEvent))])
-        with closing(self._connect()) as conn, conn:
+        with closing(self._connect()) as conn:
+            if not conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'level_crosses'"
+            ).fetchone():
+                return []
             rows = conn.execute(
                 f"""
                 SELECT {cols} FROM level_crosses
@@ -261,8 +207,7 @@ class EdDB:
 def get_db() -> EdDB:
     """Return the program's one EdDB, made at the first call (functools.cache).
 
-    An EdDB holds nothing but its path (a connection per call) and its schema setup is locked and
-    creates only what is missing, so a second one made by a concurrent first call is the same
-    database; the cache keeps one.
+    An EdDB holds nothing but its path (a read-only connection per call), so a second one made by
+    a concurrent first call reads the same database; the cache keeps one.
     """
     return EdDB()

@@ -183,6 +183,22 @@ CREATE TABLE IF NOT EXISTS stream_write_failures (
     error TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_swf_ts ON stream_write_failures(ts);
+-- Every level a price reached or passed, one row per cross, each price's crosses written together
+-- (store_first: the console holds a cross only once it is here).
+CREATE TABLE IF NOT EXISTS level_crosses (
+    cross_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker          TEXT    NOT NULL,
+    ts_utc          REAL    NOT NULL,
+    ts_et           TEXT    NOT NULL,
+    level_name      TEXT    NOT NULL,
+    level_value     REAL    NOT NULL,
+    direction       TEXT    NOT NULL,
+    spot_at_cross   REAL    NOT NULL,
+    zone_before     TEXT,
+    zone_after      TEXT,
+    timeframe       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cross_ticker_ts ON level_crosses(ticker, ts_utc);
 -- How far each spill file's write-back got, written in the same transaction as each part it
 -- wrote: how many of its records are in the database.
 CREATE TABLE IF NOT EXISTS stream_spill_progress (
@@ -686,6 +702,51 @@ def _capture_written(conn: sqlite3.Connection, msg: Any) -> RowWritten:
     return RowWritten(
         CAPTURE_TABLE, (msg["ticker"], msg["ts_utc"], store_capture_message(conn, msg))
     )
+
+
+#: a price's level crosses and their table: one row per cross (store_crosses)
+CROSS, CROSS_TABLE = "cross", "level_crosses"
+#: a cross's columns, in its row's order; its cross_id is the database's
+CROSS_COLUMNS = (
+    "ticker",
+    "ts_utc",
+    "ts_et",
+    "level_name",
+    "level_value",
+    "direction",
+    "spot_at_cross",
+    "zone_before",
+    "zone_after",
+    "timeframe",
+)
+_CROSS_INSERT = (
+    f"INSERT INTO {CROSS_TABLE}({','.join(CROSS_COLUMNS)}) "
+    f"VALUES({','.join('?' for _ in CROSS_COLUMNS)}) RETURNING cross_id"
+)
+
+
+def _crosses_written(conn: sqlite3.Connection, msg: Any) -> RowWritten:
+    """Write a price's crosses (`crosses`, each a row of CROSS_COLUMNS) in `conn`'s transaction.
+
+    Every row is written or none: a row the database refuses rolls back the price's rows and
+    raises. Its row record: (ticker, time, each row's cross_id).
+    """
+    conn.execute("SAVEPOINT crosses")
+    try:
+        ids = tuple(
+            conn.execute(_CROSS_INSERT, [c[k] for k in CROSS_COLUMNS]).fetchone()[0]
+            for c in msg["crosses"]
+        )
+    except BaseException:
+        conn.execute("ROLLBACK TO crosses")
+        raise
+    finally:
+        conn.execute("RELEASE crosses")
+    return RowWritten(CROSS_TABLE, (msg["ticker"], msg["ts_utc"], ids))
+
+
+#: the kinds stored first, each message written as its several rows, all or none (_stored_first)
+_STORED_FIRST = {CAPTURE: _capture_written, CROSS: _crosses_written}
 
 
 #: Topics stored as Schwab's item verbatim: a message without that item is not a row.
@@ -1295,9 +1356,9 @@ class CaptureWriter:
         self.last_failure: str | None = None
         self.last_failure_ts: float | None = None
         self.unrecorded = 0
-        #: (ticker, ts_utc) -> told when that capture's batch is committed, with whether any of
-        #: its rows was written (store_capture)
-        self._captures: dict[tuple[str, float], tuple[threading.Event, list[str]]] = {}
+        #: (kind, ticker, ts_utc) -> told when that message's batch is committed, with its outcome
+        #: (_stored_first: a capture or a price's crosses)
+        self._waiters: dict[tuple[str, str, float], tuple[threading.Event, list[Outcome]]] = {}
         self.error: str | None = None
         self.error_ts: float | None = None
         self.left_on_disk: list[dict[str, str | int]] = []
@@ -1320,7 +1381,7 @@ class CaptureWriter:
         """
         kind = topic.split(".", 1)[0]
         spec = _INSERTS.get(kind)
-        if spec is None and kind != CAPTURE:
+        if spec is None and kind not in _STORED_FIRST:
             return None
         if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
             return None
@@ -1335,8 +1396,8 @@ class CaptureWriter:
                 self._committed([((topic, msg), out)])
             return out
         try:
-            if spec is None:  # a capture: its rows, one per expiry, all or none
-                return _capture_written(conn, msg)
+            if spec is None:  # a capture or a price's crosses: its rows, all or none
+                return _STORED_FIRST[kind](conn, msg)
             values = spec[1](msg)
             conn.execute(spec[0], values)
         except ROW_FAILURES as e:
@@ -1402,25 +1463,49 @@ class CaptureWriter:
         """Write a chain capture (capture_message) and wait up to `wait_sec` for its commit.
 
         Another thread: the chain sweep, which tells the console of the chain only after this
-        returns (store first). Returns CAPTURE_STORED, CAPTURE_REFUSED (none of its rows written:
-        refused and kept as sent in stream_write_failures, nothing to store, or the writer dead,
-        counted unrecorded) or CAPTURE_HELD (not committed within `wait_sec`: the writer holds it
-        and writes it once the database takes writes). A writer whose thread is not running
-        writes it here, on a connection of its own.
+        returns (store first). Returns CAPTURE_STORED, CAPTURE_REFUSED or CAPTURE_HELD
+        (_stored_first).
         """
-        item = (f"{CAPTURE}.{msg['ticker']}", msg)
-        done, result = threading.Event(), list[str]()
+        return self._stored_first(CAPTURE, msg, wait_sec)[0]
+
+    def store_crosses(self, msg: dict[str, Any], wait_sec: float) -> tuple[str, tuple[int, ...]]:
+        """Write a price's level crosses and wait up to `wait_sec` for their commit.
+
+        `msg` is {"ticker", "ts_utc", "crosses": [a row of CROSS_COLUMNS, ...]}. Another thread:
+        the console's pricing thread, which holds the crosses only once they are stored (store
+        first). Returns (CAPTURE_STORED, each row's cross_id), or (CAPTURE_REFUSED or
+        CAPTURE_HELD, ()) (_stored_first).
+        """
+        outcome, out = self._stored_first(CROSS, msg, wait_sec)
+        return outcome, out.values[2] if outcome == CAPTURE_STORED else ()
+
+    def _stored_first(self, kind: str, msg: dict[str, Any], wait_sec: float) -> tuple[str, Any]:
+        """Write `msg`, a message of a kind stored first, and wait up to `wait_sec` for its commit.
+
+        Returns (CAPTURE_STORED, its RowWritten) once committed with at least one row,
+        (CAPTURE_REFUSED, its outcome) when none of its rows was written (refused and kept as
+        sent in stream_write_failures, nothing to store, or the writer dead, counted
+        unrecorded), or (CAPTURE_HELD, None) when not committed within `wait_sec` (the writer
+        holds it and writes it once the database takes writes). A writer whose thread is not
+        running writes it here, on a connection of its own.
+        """
+        item = (f"{kind}.{msg['ticker']}", msg)
+        done, result = threading.Event(), list[Outcome]()
         with self._lock:
             standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
             if self.state == WRITER_DEAD:
                 self.unrecorded += 1
-                return CAPTURE_REFUSED
-            self._captures[(msg["ticker"], msg["ts_utc"])] = (done, result)
+                return CAPTURE_REFUSED, None
+            self._waiters[(kind, msg["ticker"], msg["ts_utc"])] = (done, result)
             if not standalone:
                 self._q.put(item)
         if standalone:
             self._write_alone(item)
-        return result[0] if done.wait(wait_sec) else CAPTURE_HELD
+        if not done.wait(wait_sec):
+            return CAPTURE_HELD, None
+        out = result[0]
+        stored = isinstance(out, RowWritten) and bool(out.values[2])
+        return (CAPTURE_STORED if stored else CAPTURE_REFUSED), out
 
     def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
         """One stream_write_failures row.
@@ -1451,13 +1536,12 @@ class CaptureWriter:
                 self.last_failure, self.last_failure_ts = f"{out.topic}: {out.error}", out.ts
             if (
                 isinstance(item, tuple)
-                and item[0].startswith(f"{CAPTURE}.")
+                and (kind := item[0].split(".", 1)[0]) in _STORED_FIRST
                 and isinstance(msg := item[1], dict)
             ):
-                waiter = self._captures.pop((msg["ticker"], msg["ts_utc"]), None)
+                waiter = self._waiters.pop((kind, msg["ticker"], msg["ts_utc"]), None)
                 if waiter is not None:
-                    stored = isinstance(out, RowWritten) and out.values[2] > 0
-                    waiter[1].append(CAPTURE_STORED if stored else CAPTURE_REFUSED)
+                    waiter[1].append(out)
                     waiter[0].set()
         if self.state == WRITER_BLOCKED:
             self.state, self.error, self.error_ts = WRITER_RECORDING, None, None

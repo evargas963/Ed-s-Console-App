@@ -155,9 +155,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`state/capture_store.py`); the level crosses (`state/cross_store.py`).
 - **`ed.db`** (`db_authority.canonical_db_path`): the stream's tables (D4), written by
   `stream_spine.CaptureWriter`; the chain captures (`complete_chain_captures`), written by the same
-  writer (`CaptureWriter.store_capture`); the level crosses (`level_crosses`), written by the
-  console part (`EdDB.record_level_crosses`). A new database gets its receipt-time indexes with its
-  tables (`stream_spine.RECEIPT_TIME_INDEXES`); an existing table is never reindexed at a start.
+  writer (`CaptureWriter.store_capture`); the level crosses (`level_crosses`), written by the same
+  writer (`CaptureWriter.store_crosses`). The console part reads it read-only (`db.EdDB`, SQLite's
+  `mode=ro`). A new database gets its receipt-time indexes with its tables
+  (`stream_spine.RECEIPT_TIME_INDEXES`); an existing table is never reindexed at a start.
 - **Spill files** (`ed.<ms>.<n>.spill`, beside `ed.db`): the writer's held messages while the
   database refuses writes (D4).
 
@@ -262,8 +263,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_options_flow_tape_v1.py`.
 - **Level crosses.** On each streamed equity quote (`server._on_stream_tick`) the four levels of
   `server.CROSS_LEVELS` (gamma flip, call wall, put wall, largest gamma strike) are checked for a
-  cross between the previous and the new price (`calc.terrain_read.crossed`). Every cross is stored
-  on the pricing thread (`server._log_level_crosses`, `level_crosses`), held in
+  cross between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses
+  are stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
+  `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
   `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
   `push.desk.DESK_LOOKBACK`). Enforced by: `tests/test_level_crosses_wire.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
@@ -281,9 +283,8 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   at once on every stream service and REST request. The page draws the list each beat carries.
 
 Not yet one State: the console part keeps its own parsed books and tape
-(`order_flow.state.OrderFlowState`) beside the bus's records, and the level crosses have their own
-writer (`EdDB.record_level_crosses`) beside the Recorder; the work is `ACTIVE_PROGRAM.md` ONE-\* and
-P2-DB5.
+(`order_flow.state.OrderFlowState`) beside the bus's records; the work is `ACTIVE_PROGRAM.md`
+ENF-23.
 
 ## 4. Where each part runs
 
@@ -309,7 +310,9 @@ them".
   `tests/test_schwab_client_import_boundary.py`.
 - **3. The browser is never pushed a whole chain.** Enforced by: no machine check — ENF-16.
 - **5. One database.** `ed.db` holds the stream's tables (D4), the chain history (decision 7) and
-  the level crosses. Enforced by: `tests/test_one_database_v1.py`; the one writer — P2-DB5.
+  the level crosses, with one writer, the Recorder. Enforced by: `tests/test_one_database_v1.py`;
+  the console's read-only reads, `tests/test_level_crosses_wire.py`
+  (`test_the_console_reads_the_crosses_and_a_write_through_it_fails`).
 - **6. Before any table is dropped:** each table's size is measured read-only, dropping needs the
   operator's word, and VACUUM is an offline maintenance step. Enforced by:
   `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`); starting `EdDB` drops nothing

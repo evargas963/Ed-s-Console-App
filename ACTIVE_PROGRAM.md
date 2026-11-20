@@ -182,8 +182,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   whether options are open, from Schwab's windows, for every reader; a pre-market real chain's
   Greeks, volume and open interest; a half day's windows when Schwab sends one; a stock 0DTE chain
   from 16:00 to 16:15 on a stock expiry day.
-- P2-DB5 (QUEUED): the program reads the database read-only outside the Recorder; ships with a check
-  that a write outside the one writer fails.
 - TU-05 (QUEUED, after the rest): Options → Multi-Map and Key Levels → Vanna Support, Charm
   Resistance: vanna and charm exposure in dollars per strike and expiry.
 - TU-08 (QUEUED, after the rest): Key Levels → Zero Gamma, Volatility Trigger: the regime dead-zone
