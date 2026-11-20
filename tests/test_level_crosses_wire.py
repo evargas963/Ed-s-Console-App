@@ -16,7 +16,7 @@ import sqlite3
 import threading
 import warnings
 from contextlib import closing
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -88,7 +88,7 @@ def _publish_close(tk: str = "SPY", now: float | None = None) -> dict:
 
 
 def _stored(tk: str) -> list:
-    return server.get_db().get_recent_crosses(tk, n=cross_store.CROSSES_KEPT)
+    return server.get_db().get_recent_crosses(tk, within_sec=cross_store.CROSSES_HELD_SEC)
 
 
 def _print(msg: dict, tk: str = "SPY") -> list:
@@ -463,7 +463,7 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
         ("Call wall", 765.0, CROSSED_UP, STRIKE_AWAY)
     ]
     # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
-    assert edb.get_recent_crosses("SPY", n=10) == stored
+    assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == stored
 
 
 def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
@@ -494,7 +494,7 @@ def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
                 )
             ],
         )
-        assert len(edb.get_recent_crosses("SPY", n=10)) == 1
+        assert len(edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC)) == 1
         gc.collect()
     assert [str(w.message) for w in caught if issubclass(w.category, ResourceWarning)] == []
     (tmp_path / "level_crosses.db").unlink()  # Windows refuses this while a connection holds it
@@ -522,7 +522,7 @@ def test_the_console_reads_the_crosses_and_a_write_through_it_fails(tmp_path: Pa
     edb = EdDB(tmp_path / "level_crosses.db")
     with closing(edb._connect()) as conn, pytest.raises(sqlite3.OperationalError, match="readonly"):
         conn.execute("DELETE FROM level_crosses")
-    assert edb.get_recent_crosses("SPY", n=10) == stored
+    assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == stored
 
 
 def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Path) -> None:
@@ -553,7 +553,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
     sent = [asdict(cross("Call wall", 765.0)), asdict(cross("Γ flip", None))]
     msg = {"ticker": "SPY", "ts_utc": SPY_PRINT_A_STRIKE_AWAY["ts_recv"], "crosses": sent}
     assert writer.store_crosses(msg, 10.0) == (CAPTURE_REFUSED, ())
-    assert edb.get_recent_crosses("SPY", n=10) == []
+    assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == []
     with closing(sqlite3.connect(tmp_path / "level_crosses.db")) as conn:
         (kept,) = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
     assert kept[0] == "cross.SPY" and kept[1].startswith("IntegrityError")
@@ -562,7 +562,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
 def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
     """RC-88: one price crossing a strike where several levels sit is stored as one row per level.
 
-    The one reader (state.cross_store.merged_recent) serves one event per (time, value, direction)
+    The one reader (state.cross_store.merged_since) serves one event per (time, value, direction)
     that names every level. Real SPY rows, tests/fixtures/real_spy_level_crosses.json (newest
     first, as the database returns them): 400 rows, 243 events, up to 6 levels on one event, held
     oldest first as the console's start holds them.
@@ -580,12 +580,57 @@ def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
             StoredCross(**{k: v for k, v in r.items() if k in stored}) for r in rows[::-1]
         ]
     try:
-        events = cross_store.merged_recent(tk, 400)
+        events = cross_store.merged_since(tk, 0.0)
     finally:
         with cross_store._lock:
             cross_store._crosses.pop(tk, None)
     assert len(events) == 243
     assert max(len(e.level_names) for e in events) == 6
+
+
+def test_every_cross_of_the_longest_window_is_held_and_read_however_many():
+    """SPY recorded 4,615 crosses in the 20 days to 2026-11-20 (ed.db, read-only); every one of a
+    window is held and read, never the newest so many.
+
+    INDUCED: the 400 real SPY rows of tests/fixtures/real_spy_level_crosses.json (243 events over
+    16 days) retimed a minute apart, each event's rows keeping one time, and repeated on 10 days a
+    day apart: 4,000 rows in the window, more than the 1,600 once kept; and one row older than the
+    window, let go.
+    """
+    rows = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_level_crosses.json").read_text(
+            encoding="utf-8"
+        )
+    )["rows"][::-1]
+    stored = {f.name for f in fields(StoredCross)}
+    base = [StoredCross(**{k: v for k, v in r.items() if k in stored}) for r in rows]
+    minute = {t: i * 60.0 for i, t in enumerate(sorted({c.ts_utc for c in base}))}
+    assert max(minute.values()) < 86400, "a day apart keeps the copies in order"
+    days = [
+        replace(c, ts_utc=base[0].ts_utc + d * 86400 + minute[c.ts_utc])
+        for d in range(10)
+        for c in base
+    ]
+    newest = days[-1].ts_utc
+    old = replace(base[0], ts_utc=newest - cross_store.CROSSES_HELD_SEC - 1)
+    tk = "ZZWIN"
+    with cross_store._lock:
+        cross_store._crosses[tk] = []
+    try:
+        cross_store.add(tk, [old])
+        cross_store.add(tk, days)
+        held = list(cross_store._crosses[tk])
+        events = cross_store.merged_since(tk, 0.0)
+        since_day_5 = cross_store.merged_since(tk, base[0].ts_utc + 5 * 86400)
+    finally:
+        with cross_store._lock:
+            cross_store._crosses.pop(tk, None)
+    assert held == days, "every row of the window, oldest first; the older one let go"
+    assert len(events) == 10 * 243
+    assert len(since_day_5) == 5 * 243
+    assert [e.cross.ts_utc for e in events] == sorted(
+        (e.cross.ts_utc for e in events), reverse=True
+    )
 
 
 def test_a_test_publishes_spys_close_levels_and_leaves_them():
@@ -603,4 +648,4 @@ def test_levels_and_crosses_an_earlier_test_published_are_not_held_for_the_next(
     them as its own in mutmut's order (run 44716212849).
     """
     assert level_store.published_levels("SPY") is None
-    assert cross_store.merged_recent("SPY", 200) == []
+    assert cross_store.merged_since("SPY", 0.0) == []

@@ -1283,7 +1283,8 @@
    ],
    "shrank": [],
    "shrank_text": "",
-   "volume_total": 9570957.0
+   "volume_total": 9570957.0,
+   "volume_zero_text": null
   },
   "far": {
    "busiest": [],
@@ -1295,7 +1296,8 @@
    "rows": [],
    "shrank": [],
    "shrank_text": "",
-   "volume_total": null
+   "volume_total": null,
+   "volume_zero_text": null
   },
   "near": {
    "busiest": [
@@ -2333,7 +2335,8 @@
    ],
    "shrank": [],
    "shrank_text": "",
-   "volume_total": 9570957.0
+   "volume_total": 9570957.0,
+   "volume_zero_text": null
   }
  },
  "ticker": "SPY",
