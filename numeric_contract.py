@@ -20,6 +20,8 @@ def float_finite_or_none(value: Any) -> float | None:
     None when it is not a number (None, text, a bool) or not finite. Text is never read as a
     number.
     """
+    if isinstance(value, float):  # a float, numpy's float64 included: one C type check
+        return float(value) if math.isfinite(value) else None
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         return None
     v = float(value)
