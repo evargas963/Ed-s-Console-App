@@ -142,7 +142,8 @@ def test_all_expirations_is_every_expirys_contracts(published):
     assert body["max_abs_row"]["strike"] == top["strike"]
 
 
-def test_an_expiry_the_chain_does_not_list_is_said_never_another(published):
+@pytest.mark.usefixtures("published")
+def test_an_expiry_the_chain_does_not_list_is_said_never_another():
     body = _strikes(NOT_LISTED)
     assert body["available"] is False
     assert body["reason"] == f"the chain lists no contracts for {NOT_LISTED}"
