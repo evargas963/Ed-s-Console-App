@@ -37,8 +37,10 @@ from calc.terrain_read import level_side
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from db import LevelCrossEvent
 from option_contract import read_chain
+from push import confluence as push_confluence
 from push import desk as push_desk
 from push import levels as push_levels
+from push import liquidity as push_liquidity
 from state import bar_store, cross_store, level_store, price_level_store
 from tests.feed_live_helper import (
     daemon_bars,
@@ -426,42 +428,68 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
     )
 
 
-def test_a_same_day_chain_has_no_expected_move_and_says_why(spy_levels):
-    """The SPY capture lists only the 0DTE expiry.
+#: every key and word the implied one-day move and its ±1σ band were served under (operator
+#: 2026-11-20: the bands are removed from everywhere)
+ONE_DAY_MOVE = {
+    "implied_1d_move",
+    "atm_iv_text",
+    "move_points_text",
+    "move_dte_text",
+    "move_text",
+    "em_up",
+    "em_dn",
+    "expected_move",
+    "+1σ move",
+    "−1σ move",
+    "EM+",
+    "EM−",
+}
 
-    The terrain's one-day move needs one a day out.
-    """
-    _spot, terrain, serve = spy_levels
-    assert terrain.get("implied_1d_move") is None
-    body = serve()
-    assert not {"em_up", "em_dn"} & {r["id"] for r in body["levels"]}
-    assert {"family": "expected_move", "reason": "the terrain has no implied 1-day move"} in body[
-        "families_absent"
-    ]
+
+def _keys_and_words(value, out):
+    """Collect every key and every string of a served payload, at any depth."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            out.add(k)
+            _keys_and_words(v, out)
+    elif isinstance(value, list):
+        for v in value:
+            _keys_and_words(v, out)
+    elif isinstance(value, str):
+        out.add(value)
+    return out
 
 
-def test_the_expected_move_is_the_live_price_plus_and_minus_the_terrain_move():
+def test_no_payload_serves_a_one_day_move_or_its_band():
     """Real CRWD chain (expiries a day and more out), priced at 2026-09-02 12:00 ET.
 
-    That is the capture day its source names (stand-in: the hour). Stand-in: its capture spot as
-    Schwab's LAST_PRICE.
+    The chain that priced a one-day move and its ±1σ band: the terrain, the levels, the
+    confluence matrix and the liquidity zones served from it carry neither, by any key or word,
+    and no confluence row is marked inside a band. Stand-in: its capture spot as Schwab's
+    LAST_PRICE.
     """
     fx = _load("real_crwd_complete_chain_quarter.json")
     spot = float(fx["spot"])
+    priced_at = datetime(2026, 9, 2, 12, 0, tzinfo=time_et.ET)
     _forget(DESK_EM)
     try:
-        terrain = _priced(
-            DESK_EM, fx["chain"], spot, datetime(2026, 9, 2, 12, 0, tzinfo=time_et.ET).timestamp()
-        )
+        terrain = _priced(DESK_EM, fx["chain"], spot, priced_at.timestamp())
         _live_price(DESK_EM, spot)
-        body = push_levels.levels_payload(DESK_EM, "1", FRIDAY_CLOSE)
+        levels = push_levels.levels_payload(DESK_EM, "1", FRIDAY_CLOSE)
+        # the matrix of the chain's one expiry (2026-09-18), asked while it is open
+        confluence = push_confluence.confluence_payload(DESK_EM, None, priced_at)
+        liquidity = push_liquidity.liquidity_snapshot(DESK_EM, FRIDAY_CLOSE)
     finally:
         _forget(DESK_EM)
-    by_id = {r["id"]: r for r in body["levels"]}
-    em = terrain["implied_1d_move"]["points"]
-    assert by_id["em_up"]["price"] == spot + em and by_id["em_dn"]["price"] == spot - em
-    assert by_id["em_up"]["family"] == by_id["em_dn"]["family"] == "expected_move"
-    assert "expected_move" not in {f["family"] for f in body["families_absent"]}
+    assert terrain["call_wall"] is not None and levels["levels"] and confluence["rows"]
+    for name, body in (
+        ("terrain", terrain),
+        ("levels", levels),
+        ("confluence", confluence),
+        ("liquidity", liquidity),
+    ):
+        assert not ONE_DAY_MOVE & _keys_and_words(body, set()), name
+    assert not any("inside" in row for row in confluence["rows"])
 
 
 def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):

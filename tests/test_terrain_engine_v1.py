@@ -20,7 +20,6 @@ from calc.terrain_engine import (
     WALL_BREACHED,
     WALL_CONTAINS,
     atm_sigma_by_expiry,
-    compute_implied_one_day_move,
     compute_terrain,
     nearest_position,
     nearest_strike,
@@ -28,7 +27,7 @@ from calc.terrain_engine import (
     wall_geometry_state,
 )
 from option_contract import read_chain, read_contract
-from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, spy_0dte_book
+from tests.real_chains import MRVL, NFLX, SPY_0DTE, spy_0dte_book
 from time_et import sessions
 
 NOW = SPY_0DTE.now
@@ -136,37 +135,6 @@ def test_payload_is_json_serialisable() -> None:
     assert "flip_note" in round_tripped
 
 
-# ── RC-113: the institutional sigma band (SpotGamma-on-Bloomberg standard) ───────────────────
-
-
-def test_implied_one_day_move_matches_the_named_formula() -> None:
-    """EM = S x sigma_ATM x sqrt(1/252).
-
-    The chain here is hand-built ON PURPOSE — a formula verification needs known inputs (the
-    real-chain test below covers the live shape).
-    """
-    spot = 700.0
-    # formula verification REQUIRES known inputs — the exactness
-    # assertion below is meaningless on a live chain; the real-chain test covers the live shape.
-    chain = read_chain(
-        [
-            {"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1},
-            {"putCall": "PUT", "strikePrice": 700.0, "volatility": 24.0, "daysToExpiration": 1},
-            # a farther expiry with wild IV must be IGNORED — front expiry only
-            {"putCall": "CALL", "strikePrice": 700.0, "volatility": 80.0, "daysToExpiration": 30},
-            # far-from-money same-expiry must lose to the ATM pair
-            {"putCall": "PUT", "strikePrice": 650.0, "volatility": 99.0, "daysToExpiration": 1},
-        ]
-    )
-    em = compute_implied_one_day_move(chain, spot, atm_sigma_by_expiry(chain, spot))
-    assert em is not None
-    sigma = (0.20 + 0.24) / 2.0
-    assert abs(em["points"] - spot * sigma * (1.0 / 252.0) ** 0.5) < 1e-4
-    assert em["iv_pct_atm"] == 22.0, "sigma must be the ATM call/put mean, Schwab percent /100"
-    assert em["dte_used"] == 1
-    assert "sqrt(1/252)" in em["method"], "the method label is part of the contract"
-
-
 def test_a_price_midway_between_two_strikes_takes_the_lower_strikes_iv_in_any_order() -> None:
     """The real SPY chain at a price exactly between two of its listed strikes.
 
@@ -214,23 +182,6 @@ def test_the_nearest_strike_is_one_rule_for_a_list_in_order_and_a_list_that_is_n
     assert nearest_position([], spot) == -1 and nearest_strike([], spot) is None
 
 
-def test_implied_move_fails_closed_without_usable_iv() -> None:
-    """No usable ATM IV -> None. A fabricated sigma is worse than no sigma."""
-    # fail-closed tests MUST feed malformed contracts on purpose.
-    assert compute_implied_one_day_move([], 700.0, {}) is None
-    assert compute_implied_one_day_move(None, 700.0, {}) is None
-    negative = read_chain(
-        [{"putCall": "CALL", "strikePrice": 700.0, "volatility": -5.0, "daysToExpiration": 1}]
-    )
-    assert (
-        compute_implied_one_day_move(negative, 700.0, atm_sigma_by_expiry(negative, 700.0)) is None
-    ), "negative IV must not produce a band"
-    no_spot = read_chain(
-        [{"putCall": "CALL", "strikePrice": 700.0, "volatility": 20.0, "daysToExpiration": 1}]
-    )
-    assert compute_implied_one_day_move(no_spot, None, {}) is None
-
-
 def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> None:
     """The ATM call's IV is Schwab's -999 (no value): that leg has no IV.
 
@@ -266,30 +217,11 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     assert atm_sigma_by_expiry(chain, 700.0) == {"2026-10-02": None}
 
 
-def test_real_chain_carries_the_sigma_band() -> None:
-    """The 1-day band uses the first expiry at least a day out (2026-09-27).
-
-    A same-day-only chain has none; the CRWD chain (9 days out, valued at its capture) has one.
-    """
-    chain, spot = spy_0dte_book()
-    assert compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions()).implied_1d_move is None
-    snap = compute_terrain(
-        "CRWD", read_chain(CRWD.chain), CRWD.spot, now=CRWD.now, sessions=sessions()
-    )
-    em = snap.implied_1d_move
-    assert em is not None, "the CRWD chain must yield a band (its ATM IV is present)"
-    s = CRWD.spot
-    # a one-day sigma is points, not pennies and not tens of percent of spot
-    assert 0.0005 * s < em["points"] < 0.15 * s, em
-    assert "implied_1d_move" in snap.to_dict(), "the payload must carry the band to the chart"
-
-
 def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     """The Trade Desk's Volatility card draws ATM IV by expiry (2026-09-28).
 
-    The ATM rule was applied to the front expiry only (the implied move); it is one function for
-    every expiry, and the implied move reads its front entry. Real MRVL full chain, 20 expiries,
-    valued at its capture (tests/real_chains.py).
+    One function for every expiry. Real MRVL full chain, 20 expiries, valued at its capture
+    (tests/real_chains.py).
     """
     chain = read_chain(MRVL.chain)
     snap = compute_terrain("MRVL", chain, MRVL.spot, now=MRVL.now, sessions=sessions())
@@ -297,10 +229,6 @@ def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:
     assert list(by_exp) == sorted({c.expiry for c in chain})
     assert list(snap.pcr_by_expiry) == list(by_exp), "both card lines run nearest expiry first"
     assert all(v is None or 0 < v < 1000 for v in by_exp.values())
-    em = snap.implied_1d_move
-    front = min(c.days_to_expiry for c in chain if c.days_to_expiry >= 1)
-    front_exp = {c.expiry for c in chain if c.days_to_expiry == front}.pop()
-    assert em is not None and by_exp[front_exp] == em["iv_pct_atm"]
 
 
 def test_an_expiry_whose_contracts_carry_two_dtes_is_one_expiry() -> None:

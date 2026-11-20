@@ -140,8 +140,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 272.5,
@@ -261,8 +260,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 270.0,
@@ -382,8 +380,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 267.5,
@@ -503,8 +500,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 265.0,
@@ -624,8 +620,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 262.5,
@@ -745,8 +740,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 260.0,
@@ -866,8 +860,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 257.5,
@@ -987,8 +980,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 255.0,
@@ -1108,8 +1100,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 252.5,
@@ -1229,8 +1220,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 250.0,
@@ -1350,8 +1340,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     }
    ],
    "spot": null,
@@ -1722,8 +1711,7 @@
    "regime": "LONG_GAMMA_CHOP",
    "flip_text": "249.97",
    "pin_text": null,
-   "pin_note": null,
-   "move_text": null
+   "pin_note": null
   },
   "2026-10-16": {
    "preset": "MONTHLY",
@@ -1864,8 +1852,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 312.5,
@@ -1985,8 +1972,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 310.0,
@@ -2106,8 +2092,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 307.5,
@@ -2227,8 +2212,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 305.0,
@@ -2348,8 +2332,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 302.5,
@@ -2469,8 +2452,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 300.0,
@@ -2590,8 +2572,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 297.5,
@@ -2711,8 +2692,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 295.0,
@@ -2832,8 +2812,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 292.5,
@@ -2953,8 +2932,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     },
     {
      "strike": 290.0,
@@ -3074,8 +3052,7 @@
       }
      ],
      "distance_text": null,
-     "spot_line": false,
-     "inside": false
+     "spot_line": false
     }
    ],
    "spot": null,
@@ -3421,8 +3398,7 @@
    "regime": "LONG_GAMMA_CHOP",
    "flip_text": "249.97",
    "pin_text": null,
-   "pin_note": null,
-   "move_text": null
+   "pin_note": null
   }
  },
  "front_passed": {
@@ -3564,8 +3540,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 312.5,
@@ -3685,8 +3660,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 310.0,
@@ -3806,8 +3780,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 307.5,
@@ -3927,8 +3900,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 305.0,
@@ -4048,8 +4020,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 302.5,
@@ -4169,8 +4140,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 300.0,
@@ -4290,8 +4260,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 297.5,
@@ -4411,8 +4380,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 295.0,
@@ -4532,8 +4500,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 292.5,
@@ -4653,8 +4620,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    },
    {
     "strike": 290.0,
@@ -4774,8 +4740,7 @@
      }
     ],
     "distance_text": null,
-    "spot_line": false,
-    "inside": false
+    "spot_line": false
    }
   ],
   "spot": null,
@@ -5116,7 +5081,6 @@
   "regime": "LONG_GAMMA_CHOP",
   "flip_text": "249.97",
   "pin_text": null,
-  "pin_note": null,
-  "move_text": null
+  "pin_note": null
  }
 }

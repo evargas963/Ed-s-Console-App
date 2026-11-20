@@ -10983,12 +10983,6 @@
       "put_charm_wall": 265.0
     },
     "same_day_repriced_from": "2026-10-16",
-    "implied_1d_move": {
-      "points": 8.084099646977684,
-      "iv_pct_atm": 47.69963702,
-      "dte_used": 9.0,
-      "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); sigma = mean ATM call/put implied vol of the first expiry at least a day out"
-    },
     "call_delta_wall": 117.5,
     "put_delta_wall": 250.0,
     "contracts_used": 244,
@@ -11052,9 +11046,6 @@
     "pcr_volume_by_expiry_text": {
       "2026-10-16": "1.02"
     },
-    "atm_iv_text": "47.70",
-    "move_points_text": "8.08",
-    "move_dte_text": "9",
     "levels_ts_utc": 1791383920.598783,
     "chain_basis": "every_expiry_strike_range_ALL",
     "spot_source": "streaming_plane",

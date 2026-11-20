@@ -61,7 +61,6 @@ from numeric_contract import (
     dollars_text,
     fixed_text,
     float_finite_or_none,
-    iv_text,
     price_text,
 )
 from option_contract import OptionContract
@@ -134,15 +133,6 @@ class PositioningMigration(TypedDict):
     volume_total: float | None
 
 
-class OneDayMove(TypedDict):
-    """compute_implied_one_day_move's band: its half-width, the ATM volatility, the expiry used."""
-
-    points: float
-    iv_pct_atm: float
-    dte_used: float
-    method: str
-
-
 @dataclass(frozen=True)
 class TerrainSnapshot:
     """Everything the terrain tab renders, computed from one chain."""
@@ -208,12 +198,6 @@ class TerrainSnapshot:
     #: the expiry the same-day levels were re-priced from to today's close (a model, said on
     #: hover); None when they are today's own expiry as held, or absent
     same_day_repriced_from: str | None = None
-
-    #: The institutional sigma band — {points, iv_pct_atm, dte_used, method} or None
-    #: when ATM IV is unusable (fail-closed, never a fabricated band). `points` is the
-    #: one-sigma half-width; the client centers it on the live spot. The wall RANGE itself
-    #: is the put_wall↔call_wall corridor — already carried above, drawn client-side.
-    implied_1d_move: OneDayMove | None = None
 
     #: Delta walls owned by THIS producer — same wide chain,
     #: one book. Concepts terrain does not compute (OI/vanna walls, inflections) do not
@@ -283,7 +267,6 @@ class TerrainSnapshot:
         the contracts used as the screen shows them.
         """
         light = replace(self, **{n: None for n in _HEAVY_FIELDS})
-        move = self.implied_1d_move
         return {
             **{k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS},
             "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
@@ -298,9 +281,6 @@ class TerrainSnapshot:
             "pcr_volume_by_expiry_text": {
                 ex: fixed_text(v, 2) for ex, v in self.pcr_volume_by_expiry.items()
             },
-            "atm_iv_text": None if move is None else iv_text(move["iv_pct_atm"]),
-            "move_points_text": None if move is None else price_text(move["points"]),
-            "move_dte_text": None if move is None else count_text(move["dte_used"]),
         }
 
 
@@ -577,53 +557,6 @@ def atm_sigma_by_expiry(
         sig = [v for x in ("CALL", "PUT") if x in s and (v := s[x][1]) is not None]
         out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 else None
     return out
-
-
-def compute_implied_one_day_move(
-    contracts: list[OptionContract],
-    spot: float | None,
-    atm_sigma: dict[str | None, float | None],
-) -> OneDayMove | None:
-    """Compute the institutional sigma band: EM_1d = S x sigma_ATM x sqrt(1/252).
-
-    THE STANDARD, named: SpotGamma — whose levels product ships on Bloomberg — treats the
-    wall as a single strike, the RANGE as the put-wall-to-call-wall corridor, and overlays
-    the Implied 1-Day Move: a one-standard-deviation band (68.3 percent confidence). The
-    textbook EM uses front-expiry ATM implied volatility, annualized, scaled by
-    sqrt(1/252) for one trading day.
-
-    IV source: the call+put pair closest to spot on the first expiry at least one day out (a
-    same-day expiry's IV prices hours, not a day), from `atm_sigma` (atm_sigma_by_expiry of the
-    same contracts, computed once by the caller). Schwab `volatility` is PERCENT, not a fraction
-    (measured on 1,600 sampled contracts); atm_sigma_by_expiry converts it through
-    schwab_iv_to_sigma. Fails closed: no usable ATM IV means None, never a fabricated band (a
-    made-up sigma is worse than no sigma).
-
-    Returns {points, iv_pct_atm, dte_used, method} — `points` is the one-sigma HALF-width
-    in price points; the client centers it on the LIVE spot so the band can never disagree
-    with the price beside it.
-    """
-    if spot is None or spot <= 0 or not contracts:
-        return None
-    # A contract that does not state its DTE is dropped BEFORE the min, so an all-unreadable
-    # chain yields None here (no front expiry).
-    # the first expiry at least one day out: a same-day expiry's IV prices hours, not a day
-    _dtes = [d for c in contracts if (d := c.days_to_expiry) is not None and d >= 1]
-    front = min(_dtes, default=None)
-    if front is None:
-        return None
-    at_front = {c.expiry for c in contracts if c.days_to_expiry == front}
-    sigma = atm_sigma[at_front.pop()] if len(at_front) == 1 else None
-    if sigma is None:
-        return None
-    em = float(spot) * sigma * (1.0 / 252.0) ** 0.5
-    return {
-        "points": em,
-        "iv_pct_atm": sigma * 100.0,
-        "dte_used": front,
-        "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); "
-        "sigma = mean ATM call/put implied vol of the first expiry at least a day out",
-    }
 
 
 def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
@@ -952,8 +885,6 @@ def compute_terrain(
     # ONE gamma at spot: Schwab's gamma as sent, summed over the book (the walls' own gamma)
     gamma_at_spot = book_net_gex(exposures)
     flip = _flip_fields(contracts, spot, gamma_at_spot, now, sessions, product)
-    # each expiry's ATM implied vol, once: the one-day move's and the per-expiry ATM IV's
-    atm_sigma = atm_sigma_by_expiry(contracts, spot)
     expiry_rows = _expiry_rows(contracts)
     by_expiry = _by_expiry(expiry_rows, spot, now, sessions, product)
     read = build_terrain_read(spot=spot, gamma_at_spot=gamma_at_spot)
@@ -984,7 +915,6 @@ def compute_terrain(
         pin_minutes_to_close=None if pin is None else pin.minutes_to_close,
         same_day=same_day,
         same_day_repriced_from=same_day_repriced_from,
-        implied_1d_move=compute_implied_one_day_move(contracts, spot, atm_sigma),
         **_front_max_pain(books),
         # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.
         contracts_used=diag.contracts_used,
@@ -996,7 +926,9 @@ def compute_terrain(
         **by_expiry,
         **_expiry_fields(books),
         atm_iv_pct_by_expiry={
-            e: None if s is None else s * 100.0 for e, s in atm_sigma.items() if e is not None
+            e: None if s is None else s * 100.0
+            for e, s in atm_sigma_by_expiry(contracts, spot).items()
+            if e is not None
         },
     )
 

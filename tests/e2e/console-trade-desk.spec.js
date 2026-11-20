@@ -625,6 +625,29 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: no one-day move or its ±1σ band is switched, drawn or written", async ({ page }) => {
+    // operator 2026-11-20: the standard deviation bands of the implied one-day move are removed
+    // from everywhere; SPY's real panels, as served
+    const errs = watchErrors(page);
+    await intercept(page);
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
+      .toBeGreaterThan(0);
+    await expect(page.locator('#tdmFamilies [data-fam="vwap"]')).toHaveCount(1);
+    await expect(page.locator('#tdmFamilies [data-fam="expected_move"]')).toHaveCount(0);
+    await expect(page.locator("#tdmFamilies")).not.toContainText("σ move");
+    const titles = await page.evaluate(() => window.EdTradeDeskMap.state().chart.levels);
+    expect(titles.filter((t) => /σ move/.test(t))).toEqual([]);
+    await expect(page.locator("#tdmCardVol")).not.toContainText(/1-day move|1σ|Move from/);
+    expect(errs).toEqual([]);
+  });
+
   test("Desk: no prior value area band when the prior value area is absent", async ({ page }) => {
     // INDUCED: SPY's levels with the prior session's value area absent, as the program serves
     // $SPX's (Schwab's index bars carry no volume; tests/test_trade_desk_served_v1.py)

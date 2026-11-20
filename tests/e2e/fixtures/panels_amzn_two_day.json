@@ -5144,12 +5144,6 @@
       "put_charm_wall": 265.0
     },
     "same_day_repriced_from": "2026-11-13",
-    "implied_1d_move": {
-      "points": 6.843076566955164,
-      "iv_pct_atm": 40.31862554,
-      "dte_used": 1.0,
-      "method": "S x sigma_ATM x sqrt(1/252), one standard deviation (68.3pct); sigma = mean ATM call/put implied vol of the first expiry at least a day out"
-    },
     "call_delta_wall": 250.0,
     "put_delta_wall": 270.0,
     "contracts_used": 2440,
@@ -5376,9 +5370,6 @@
       "2028-12-15": "0.40",
       "2029-01-19": "0.39"
     },
-    "atm_iv_text": "40.32",
-    "move_points_text": "6.84",
-    "move_dte_text": "1",
     "levels_ts_utc": 1794497958.2236412,
     "chain_basis": "every_expiry_strike_range_ALL",
     "spot_source": "streaming_plane",
@@ -84154,27 +84145,6 @@
           "price_text": "380.60"
         },
         {
-          "id": "em_up",
-          "price": 276.2680765669552,
-          "family": "expected_move",
-          "label": "+1\u03c3 move",
-          "short": "+1\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
-            "as_of_time_ct": "Thu 11/12 09:39 AM CT"
-          },
-          "note": null,
-          "distance": 6.843076566955176,
-          "side": "ABOVE",
-          "from_spot_text": "6.84 above spot",
-          "price_text": "276.27"
-        },
-        {
           "id": "lvp",
           "price": 275.0,
           "family": "gamma",
@@ -84776,27 +84746,6 @@
           "price_text": "263.16"
         },
         {
-          "id": "em_dn",
-          "price": 262.58192343304484,
-          "family": "expected_move",
-          "label": "\u22121\u03c3 move",
-          "short": "\u22121\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
-            "as_of_time_ct": "Thu 11/12 09:39 AM CT"
-          },
-          "note": null,
-          "distance": -6.843076566955176,
-          "side": "BELOW",
-          "from_spot_text": "6.84 below spot",
-          "price_text": "262.58"
-        },
-        {
           "id": "max_pain",
           "price": 260.0,
           "family": "gamma",
@@ -84970,8 +84919,6 @@
         "lvp",
         "call_charm_wall",
         "OVERNIGHT_LOW",
-        "em_up",
-        "em_dn",
         "max_pain",
         "put_charm_wall",
         "gsf",
@@ -86067,27 +86014,6 @@
           "price_text": "380.60"
         },
         {
-          "id": "em_up",
-          "price": 276.2680765669552,
-          "family": "expected_move",
-          "label": "+1\u03c3 move",
-          "short": "+1\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
-            "as_of_time_ct": "Thu 11/12 09:39 AM CT"
-          },
-          "note": null,
-          "distance": 6.843076566955176,
-          "side": "ABOVE",
-          "from_spot_text": "6.84 above spot",
-          "price_text": "276.27"
-        },
-        {
           "id": "lvp",
           "price": 275.0,
           "family": "gamma",
@@ -86689,27 +86615,6 @@
           "price_text": "263.16"
         },
         {
-          "id": "em_dn",
-          "price": 262.58192343304484,
-          "family": "expected_move",
-          "label": "\u22121\u03c3 move",
-          "short": "\u22121\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
-            "as_of_time_ct": "Thu 11/12 09:39 AM CT"
-          },
-          "note": null,
-          "distance": -6.843076566955176,
-          "side": "BELOW",
-          "from_spot_text": "6.84 below spot",
-          "price_text": "262.58"
-        },
-        {
           "id": "max_pain",
           "price": 260.0,
           "family": "gamma",
@@ -86883,8 +86788,6 @@
         "lvp",
         "call_charm_wall",
         "OVERNIGHT_LOW",
-        "em_up",
-        "em_dn",
         "max_pain",
         "put_charm_wall",
         "gsf",
@@ -87763,27 +87666,6 @@
           "price_text": "380.60"
         },
         {
-          "id": "em_up",
-          "price": 276.2680765669552,
-          "family": "expected_move",
-          "label": "+1\u03c3 move",
-          "short": "+1\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
-            "as_of_time_ct": "Thu 11/12 09:39 AM CT"
-          },
-          "note": null,
-          "distance": 6.843076566955176,
-          "side": "ABOVE",
-          "from_spot_text": "6.84 above spot",
-          "price_text": "276.27"
-        },
-        {
           "id": "lvp",
           "price": 275.0,
           "family": "gamma",
@@ -88385,27 +88267,6 @@
           "price_text": "263.16"
         },
         {
-          "id": "em_dn",
-          "price": 262.58192343304484,
-          "family": "expected_move",
-          "label": "\u22121\u03c3 move",
-          "short": "\u22121\u03c3 move",
-          "evidence_tier": "DERIVED",
-          "provenance": {
-            "producer": "push.levels.expected_move",
-            "carried": false
-          },
-          "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
-            "as_of_time_ct": "Thu 11/12 09:39 AM CT"
-          },
-          "note": null,
-          "distance": -6.843076566955176,
-          "side": "BELOW",
-          "from_spot_text": "6.84 below spot",
-          "price_text": "262.58"
-        },
-        {
           "id": "max_pain",
           "price": 260.0,
           "family": "gamma",
@@ -88579,8 +88440,6 @@
         "lvp",
         "call_charm_wall",
         "OVERNIGHT_LOW",
-        "em_up",
-        "em_dn",
         "max_pain",
         "put_charm_wall",
         "gsf",
