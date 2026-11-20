@@ -161,6 +161,7 @@ def _live_feed_starts_down(_markets_answers_held):
         live_market_plane._feed["status"] = None
         live_market_plane._by_ticker.clear()
         live_market_plane._fields_by_ticker.clear()
+        live_market_plane._built.clear()
     # the console reads each symbol's stream values from a bus's records: every test starts
     # bound to an empty bus of its own (feed_live_helper.BUS), as the program starts with one
     feed_live_helper.BUS = MessageBus()

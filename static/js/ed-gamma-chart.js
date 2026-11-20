@@ -1,6 +1,7 @@
 /* Ed Console — Options/Gamma Chart view. PRESENTATION ONLY.
    On the one TradingView-style chart every chart in the console uses (ed-tv-chart.js): the price
-   (the `bars:chart` panel, completed Schwab bars at the toolbar's timeframe), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
+   (the `bars:chart` panel, completed Schwab bars at the toolbar's timeframe, and the `forming:chart`
+   panel over them), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (the socket's `strikes:chart` panel: GEX `today.all`, DEX and OI `measures`) as a profile on the price axis --
    bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
@@ -47,7 +48,7 @@
   var _mode = "profile"; // 'profile' (bars) | 'dotmap' (dots)
   var _chart = null;
   var _liveQuote = null; // the header's price row (ed:quote_tick), the one displayed price
-  var _last = { bars: undefined, strikes: undefined, terrain: undefined };
+  var _last = { bars: undefined, forming: undefined, strikes: undefined, terrain: undefined };
   // the chart's timeframe (the toolbar's), kept per viewer
   var _tf = window.EdShell.pref("ed.gchart.tf", "1");
   function tfLabel() {
@@ -92,26 +93,36 @@
   }
 
   // The bars at the toolbar's timeframe, the profile (the Gamma scope's window, unpanned) and the
-  // flip and walls: the `bars:chart`, `strikes:chart` and `terrain:chart` panels (push.bars,
-  // push.strikes, push.terrain) the program sends on the page's socket while the chart is on,
-  // at once and each time the bars or the levels change.
-  var PANELS = { "bars:chart": "bars", "strikes:chart": "strikes", "terrain:chart": "terrain" };
+  // flip and walls: the `bars:chart`, `forming:chart`, `strikes:chart` and `terrain:chart` panels
+  // (push.bars, push.strikes, push.terrain) the program sends on the page's socket while the chart
+  // is on, at once and each time the bars, the trades or the levels change.
+  var PANELS = {
+    "bars:chart": "bars",
+    "forming:chart": "forming",
+    "strikes:chart": "strikes",
+    "terrain:chart": "terrain",
+  };
   function askPanels() {
     window.EdShell.showPanel("strikes:chart", isChart() ? window.EdShell.windowParams(null) : null);
     window.EdShell.showPanel("terrain:chart", isChart() ? {} : null);
   }
   function load() {
     askPanels();
+    var on = isChart() && ensureChart();
     window.EdShell.showPanel(
       "bars:chart",
-      isChart() && ensureChart() ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null,
+      on ? { tf: _tf, limit: window.EdTvChart.BARS_LIMIT[_tf] } : null,
     );
+    window.EdShell.showPanel("forming:chart", on ? { tf: _tf } : null);
   }
   document.addEventListener("ed:panel", function (e) {
     var key = PANELS[e.detail.type];
     if (!key) return;
     _last[key] = e.detail;
-    if (isChart() && _last.bars !== undefined) render();
+    if (!isChart() || _last.bars === undefined) return;
+    // the bars forming from the trades, drawn over the bars as they come (push.bars.forming)
+    if (key === "forming" && e.detail.failed == null) ensureChart().forming(e.detail);
+    else render();
   });
 
   function render() {
@@ -126,7 +137,7 @@
     // each panel as served; one not sent yet (undefined) draws nothing, and the program's words
     // when it could not produce one (`failed`) are said, never drawn as empty
     var words = "";
-    [barsD, sd, t].forEach(function (p) {
+    [barsD, _last.forming, sd, t].forEach(function (p) {
       if (p && p.failed != null) words = (words ? words + " · " : "") + p.failed;
     });
     var okBars = barsD && barsD.failed == null;
@@ -269,7 +280,7 @@
   });
   document.addEventListener("ed:view", load);
   document.addEventListener("ed:ticker", function () {
-    _last = { bars: undefined, strikes: undefined, terrain: undefined };
+    _last = { bars: undefined, forming: undefined, strikes: undefined, terrain: undefined };
     load();
   });
   document.addEventListener("ed:scope", askPanels); // a new window: the profile's panel asks it

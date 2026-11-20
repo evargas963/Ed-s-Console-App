@@ -225,17 +225,31 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `/pricehistory` for the 10 series of `chain_sweep.PRICE_HISTORY`, each when due
   (`ChainSweep.series_due`), before the chains → the bus (`pricehistory.<ticker>.<series>`) → the
   Recorder (`stream_pricehistory_raw`) and the bar writer. A bar is checked once
-  (`server._schwab_bar`); no bar is built from quotes. → the `bars`, `liquidity` and `desk` panels
-  (`server.BARS_PANELS`). Enforced by: `tests/test_data_path_pricehistory_v1.py`,
+  (`server._schwab_bar`); no bar built from quotes enters the bar store. → the `bars`, `liquidity`
+  and `desk` panels (`server.BARS_PANELS`). Enforced by: `tests/test_data_path_pricehistory_v1.py`,
   `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`.
+- **The forming bar.** Each price row (the equity quote, above) → `calc.forming_bar.next_built`,
+  called as the row is written (`live_market_plane.record_from_level_one_equity`), the plane holding
+  each ticker's built minutes (`live_market_plane.built_minutes`, the newest `forming_bar.KEPT`) →
+  the `forming` panel (`push.bars.forming`): each built minute Schwab has not sent its CHART_EQUITY
+  bar for (a held minute as new or newer drops it), rolled up to the chart's timeframe with the
+  minutes held in its bar (`push.bars.chart_bars`); the daily chart's is today's pushed candle. Its
+  open, high, low and close move with each trade; its volume is not built ("-", no volume bar) until
+  Schwab's CHART_EQUITY bar for the minute brings it (the operator's decision). Sent with each price
+  row and each new bar, after `bars` (`server.PRICED_PANELS`, `server.BARS_PANELS`), for the ticker
+  on screen only; the chart draws it over the newest bars (`ed-tv-chart.js` `forming`, Lightweight
+  Charts `series.update`). Its lifecycle owner is the price row's writer: a feed that stops leaves
+  the bar as it was, with its last trade's time; the program started within a minute builds none for
+  it. Enforced by: `tests/test_forming_bar_v1.py`, `tests/e2e/console-forming-bar.spec.js`.
 - **Price levels** (prior day, overnight, opening range, VWAP, value area). Producer
   `server._publish_price_levels`, from the bar store's bars after each bar, for the market's session
   (`time_et.market_session_date`) → `state/price_level_store.py` → the `levels` panel
   (`push.levels.levels_payload`) and the liquidity zones (`push.liquidity.liquidity_snapshot`). The
   `levels` panel and the liquidity zones are sent again with each price row
-  (`server.PRICED_PANELS`), since each level's distance and each zone's side are from the live price. What the Trade Desk chart draws from them is served whole: the
-  prior session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the
-  volume profile's POC label (`volume_profile.poc_label`).
+  (`server.PRICED_PANELS`), since each level's distance and each zone's side are from the live
+  price. What the Trade Desk chart draws from them is served whole: the prior session's value area
+  band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume profile's POC label
+  (`volume_profile.poc_label`).
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
   watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`),
   taking those answers again for `chain_sweep.CHAINS_AGAIN_SEC`; `/chains` and `/quotes` requests go

@@ -299,8 +299,8 @@
   // once and each time it changes. Per symbol: the option terrain (`terrain:map`), the Options
   // Book's lean at the front expiry in the Gamma scope's window (`option_book:desk`), the zones
   // (`liquidity:deskmap`), the book (`book:deskmap`) and the Order Flow card's hour of bars
-  // (`bars:flow`). Per timeframe: the chart's bars (`bars:deskmap`), levels (`levels:map`) and
-  // event window (`desk`).
+  // (`bars:flow`). Per timeframe: the chart's bars (`bars:deskmap`) and those forming
+  // (`forming:deskmap`), levels (`levels:map`) and event window (`desk`).
   var PANELS = { "terrain:map": "terrain" };
   // these are kept as null when the program could not produce them
   var OR_NULL = {
@@ -319,6 +319,7 @@
       on ? Object.assign(window.EdShell.windowParams(null), { expiry: null }) : null,
     );
     window.EdShell.showPanel("bars:deskmap", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
+    window.EdShell.showPanel("forming:deskmap", on ? { tf: S.tf } : null);
     window.EdShell.showPanel("bars:flow", on ? { tf: "1", limit: FLOW_BARS } : null);
     window.EdShell.showPanel("desk", on ? { tf: S.tf, limit: FULL_LIMIT[S.tf] } : null);
     window.EdShell.showPanel("liquidity:deskmap", on ? {} : null);
@@ -329,6 +330,12 @@
     // an answer for a timeframe no longer on the chart is not drawn; one not produced is none
     if (PER_TF[d.type] && (!ok || d.tf === S.tf)) takePerTf(PER_TF[d.type], ok ? d : null);
     if (d.type === "bars:deskmap" && S.chart && (!ok || d.tf === S.tf)) takeBars(d);
+    // the bars forming from the trades, drawn over the bars as they come (push.bars.forming)
+    if (d.type === "forming:deskmap" && S.chart && S.bars.length) {
+      if (ok) S.chart.forming(d);
+      else $("tdmChartEmpty").textContent = d.failed;
+      $("tdmChartEmpty").hidden = ok;
+    }
     if (d.type === "book:deskmap") {
       S.micro = ok ? d : null;
       paintCards();
