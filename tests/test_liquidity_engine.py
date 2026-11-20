@@ -487,7 +487,8 @@ def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
     got = {s["label"]: s["value"] for z in live.zones for s in z.source_levels}
     assert live.snapshot_type == SnapshotType.LIVE and live.summary is not None
     assert got["GAMMA_CALL_WALL"] == 671.0
-    assert (got["PDH"], got["PDL"], got["PDC"]) == (prior.high, prior.low, prior.close)
+    assert (got["PDH"], got["PDL"]) == (prior.high, prior.low)
+    assert got["PDC"] == prior.close
     overnight = [b for b in held if overnight_from <= b["timestamp"] / 1000 < opening]
     assert got["OVERNIGHT_HIGH"] == max(b["high"] for b in overnight)
     assert got["OVERNIGHT_LOW"] == min(b["low"] for b in overnight)
