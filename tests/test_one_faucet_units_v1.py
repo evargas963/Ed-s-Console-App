@@ -71,10 +71,11 @@ def test_a_contract_with_no_expiry_is_not_counted_as_same_day():
     assert not [d for (_e, d) in books if d is not None and d <= 0]
 
 
-def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
+def test_stored_captures_are_priced_at_their_own_capture_times(tmp_path):
     """The stored captures are priced at their own capture times, whatever the clock reads now.
 
-    Now is after the chain's expiry. Stand-in: SPY's real chain stored as two days' captures.
+    Now is after the chain's expiry. Stand-in: SPY's real chain stored as two days' captures: the
+    newer is today's levels, the older the prior day's.
     """
     db = tmp_path / "ed_console.db"
     for day, hour in ((7, 12), (6, 15)):
@@ -98,12 +99,13 @@ def test_forces_prices_yesterdays_chain_at_its_capture_time(tmp_path):
         server._publish_levels("SPY", captures=last_capture_per_day(db, "SPY", 2), now=later)
         levels = level_store.published_levels("SPY")
         assert levels is not None
-        body = levels.forces  # the producer's forces
     finally:
         with level_store._lock:
             level_store._levels.pop("SPY", None)
-    assert body["available"] is True
-    assert body["charm_below"] is not None and body.get("charm_error") is None, body
+    # priced at its capture time, the newer capture's contracts have time left: a charm map
+    charm = [b["net_charm"] for b in levels.snap.charm_by_strike.values()]
+    assert charm and any(v is not None for v in charm)
+    assert levels.prior_day is not None and levels.prior_day.charm_by_strike
 
 
 def test_the_put_call_volume_ratio_is_todays_trading_and_says_so_when_volume_is_missing():

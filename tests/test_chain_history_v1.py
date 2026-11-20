@@ -544,9 +544,9 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
 def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
     """2026-09-28: the only 09-25 captures were the partial morning chains (expiries to 37 days).
 
-    So the forces diffed Monday's full chain against them and every later expiry read as new open
+    So Monday's full chain was compared against them and every later expiry read as new open
     interest (SPY: +1.4M below and above spot in one day). Only full captures are read: with no
-    full prior day there is no prior close for the forces, so their numbers are absent.
+    full prior day there is no prior close, so the prior day's levels are absent.
     """
     db = tmp_path / "ed_console.db"
     # the reader returns stored contracts verbatim; none is priced.
@@ -577,9 +577,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
         server._publish_levels("ZZ", captures=caps, now=datetime.fromtimestamp(after, ET))
         levels = level_store.published_levels("ZZ")
         assert levels is not None
-        forces = levels.forces
     finally:
         with level_store._lock:
             level_store._levels.pop("ZZ", None)
-    assert forces["available"] is False
-    assert forces["doi_below"] is None and "reason" not in forces
+    assert levels.prior_day is None
