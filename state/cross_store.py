@@ -71,7 +71,7 @@ def merged_since(ticker: str, start: float) -> list[MergedCross]:
     are merged here, at the read, so the stored history keeps its per-level rows.
     """
     with _lock:
-        held = _crosses.get(ticker, [])
+        held = _held(ticker)
         raw = held[bisect_left(held, start, key=lambda c: c.ts_utc) :][::-1]
     merged: list[MergedCross] = []
     seen: dict[tuple[float, float, str], MergedCross] = {}
