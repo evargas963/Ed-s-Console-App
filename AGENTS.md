@@ -47,7 +47,7 @@ numbered rules hold, each naming the items it serves), in `.claude/rules/` and i
 and the item in `ACTIVE_PROGRAM.md` (an ENF item or STANDARD-CHECKS) that builds one. Enforced by:
 no machine check — ENF-12.
 
-## Shared rules (master copy: the operator's wording, identical to his project instructions; a change is proposed to him separately)
+## Shared rules (master copy: the operator's wording, copied in his Prompt Builder project on claude.ai; a change is proposed to him separately)
 
 ### First gate (EdWebConsole)
 
@@ -114,7 +114,9 @@ points are what that means here; the numbered rules below say how each one is ke
 - Clean up along the way in the area changed, listing each item. Behavior or data changes need
   approval.
 - Zero is a value; missing is unknown. Never treat one as the other.
-- Tests use only real captured data, with expected results from verified definitions. No fake data.
+- Tests use real captured data, with expected results from verified definitions. Where Schwab has
+  not yet sent a condition a test needs, the test may induce it, labeled INDUCED, until a capture
+  replaces it.
 - Every ticker is treated the same.
 - Treat existing code, tests, and documents as claims to challenge.
 - Display live values promptly and record everything completely. Measure performance; don't assume
@@ -257,11 +259,13 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
 8. **Clocks** (serves 5). Market logic in ET; the page shows Central Time. The market's sessions are
    Schwab's /markets answers, and before a day's first window the pre-market begins with the first
    stock trade Schwab streams that was made that day; no session table is typed by hand. Enforced
-   by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`, which refuses a clock
-   time typed in product code (in force)
+   by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`; a clock time typed in
+   code — ruff `TID251` bans `datetime.time` in every file (`pyproject.toml`, in force)
 9. **Real data** (serves 11). Tests run on captured Schwab data (`tests/fixtures/`) through the real
-   code; no stand-ins, no patches of the code under test. Enforced by: `tools/check_locks.py`:
-   patching lines in tests may not rise (locks); stand-ins left in the tests — STAND-INS
+   code; a condition Schwab has not yet sent is induced, labeled INDUCED, until a capture replaces
+   it; no patch of the code under test, by a patching tool or by assigning over its names
+   (`calc.spot = ...`). Enforced by: `tools/check_locks.py`: patching lines in tests may not rise
+   (locks); stand-ins left in the tests — STAND-INS
 10. **Only Feed talks to Schwab** (serves 2). Enforced by: import-linter on `locks.imports.toml` for
     Schwab's clients (locks); `locks.ruff.toml` banned names, per product file, for `http.client`,
     `urllib.request` and `websockets` (locks); a call made through Feed's own client

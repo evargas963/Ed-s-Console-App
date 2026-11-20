@@ -63,6 +63,7 @@ ignore = [
 "datetime.datetime.today".msg = "One clock: time_et.now()."
 "datetime.datetime.utcnow".msg = "One clock: time_et.now()."
 "datetime.date.today".msg = "One clock: time_et.now()."
+"datetime.time".msg = "No clock time is typed: the market's sessions are Schwab's /markets answers (AGENTS.md rule 8)."
 
 [tool.ruff.lint.per-file-ignores]
 #: the one producer of the time
