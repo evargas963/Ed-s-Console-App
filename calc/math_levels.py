@@ -435,6 +435,9 @@ def compute_gamma_support_levels(
 def gamma_at_price(profile: list[tuple[float, float]], price: float | None) -> float | None:
     """Net dealer gamma at `price`, linearly interpolated from the profile.
 
+    None outside the profile (below its lowest price or above its highest): the curve is not
+    computed there, so the value is not known.
+
     This -- not the flip -- is what determines the regime: positive means dealers are net
     long gamma there and will dampen moves; negative means they amplify. The flip is
     simply where this value crosses zero, and a chain need not contain such a crossing.
@@ -449,11 +452,8 @@ def gamma_at_price(profile: list[tuple[float, float]], price: float | None) -> f
     if not profile or price is None:
         return None
     pts = sorted(profile)
-    if price <= pts[0][0]:
-        return pts[0][1]
-    if price >= pts[-1][0]:
-        return pts[-1][1]
-    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+    # a profile of one price is the segment from it to itself
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:] or pts, strict=False):
         if x0 <= price <= x1:
             return _lerp(price, x0, x1, y0, y1)
     return None

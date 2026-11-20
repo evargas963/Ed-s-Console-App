@@ -95,8 +95,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
   - M-14 contracts with no strike or side are dropped; the count is logged (`push/chain.py`), never
     served.
-  - M-27 `calc.math_levels.gamma_at_price` returns the end point's value for a price outside the
-    profile.
   - M-32 `calc/terrain_engine.py`: the per-expiry PCR, volume PCR, DTE and ATM IV maps key by date
     alone over books keyed (date, dte); same-date books overwrite.
   - O-13 `app/options/order_flow/streaming.py` drops malformed messages silently; `live_ui` logs a
