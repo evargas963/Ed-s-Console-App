@@ -97,7 +97,7 @@ def _net_gex(contracts: list[dict], spot: float) -> dict[float, float | None]:
             continue
         sign = 1.0 if c["putCall"] == "CALL" else -1.0
         part = 0.0 if oi == 0 else sign * gamma * oi * c["multiplier"] * spot * spot * 0.01
-        out[k] = (out.get(k) or 0.0) + part
+        out[k] = out.get(k, 0) + part  # a running total: the sum of nothing is 0
     return out
 
 

@@ -318,8 +318,8 @@
     host.querySelectorAll(".gbs-row").forEach(function (rr) {
       // click a strike: every panel follows it
       rr.addEventListener("click", function () {
-        window.EdShell.setStrike(Number(rr.getAttribute("data-strike")), opts.expiry || null);
-      }); // the rows' own expiry; every expiry's row: no expiry
+        window.EdShell.setStrike(Number(rr.getAttribute("data-strike")), opts.expiry);
+      }); // the rows' own expiry; every expiry's row: null, no expiry
     });
     var firstRow = host.querySelector(".gbs-row");
     window.EdShell.wireStrikeAxis(
@@ -534,7 +534,7 @@
         return;
       }
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
-      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "" });
+      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "", expiry: null }); // every expiry's rows
     }
     function ask() {
       if (!inSub()) {

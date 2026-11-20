@@ -92,6 +92,8 @@ def _scale_with_prior(
     return max(both) if both else None
 
 
+#: the expiry choice of every expiry (None), as the expiry dropdown names it
+ALL_EXPIRATIONS = "All Expirations"
 #: why the migration compares nothing while no prior day's levels are held
 NO_PRIOR_DAY = "The first day-over-day comparison lands after the next wide morning capture."
 #: why the migration compares nothing while both days are held but no strike is known on both
@@ -176,9 +178,12 @@ def terrain_strikes_payload(
     if today is None:
         return unavailable(tk, f"the chain lists no contracts for {expiry}", **verdict)
     prior = None if prior_day is None else _rows_of(prior_day.per_strike, expiry)
+    # a prior day that holds no levels, or lists no contract of this expiry, holds no book of it:
+    # the producer's view of no book, so no strike is compared
+    prior_book = no_book if prior is None else prior
     walls = (None, None) if snap is None else (snap.call_wall, snap.put_wall)
     live_spot, _live_src, _live_ts = resolve_spot(tk, now=now)  # the one spot on every screen
-    migration = positioning_migration(today["gex"], [] if prior is None else prior["gex"], *walls)
+    migration = positioning_migration(today["gex"], prior_book["gex"], *walls)
     lists = {m: today[m] for m in ("gex", "dex", "oi")}
     windows = {
         name: windowed(
@@ -197,7 +202,7 @@ def terrain_strikes_payload(
         "ticker": tk,
         # the expiry these rows are (None: every expiry), as the screen names it
         "expiry": expiry,
-        "expiry_text": "All Expirations" if expiry is None else expiry_label(expiry),
+        "expiry_text": ALL_EXPIRATIONS if expiry is None else expiry_label(expiry),
         # each strike's net GEX $ and volume, by name, with their texts and marks (served)
         "today": [served(r, "gex", marks) for r in windows["gex"][0]],
         # the Chart view's DEX and OI profiles: each measure's window (terrain_engine
