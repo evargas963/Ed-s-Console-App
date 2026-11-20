@@ -391,20 +391,10 @@ def cluster_price_levels_into_zones(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-#: the levels the zones cluster before the session's regular open, in order
-PREMARKET_LEVELS = (
-    "PDH",
-    "PD_VAH",
-    "PD_POC",
-    "PD_VAL",
-    "PDL",
-    "PDC",
-    "OVERNIGHT_HIGH",
-    "OVERNIGHT_LOW",
-)
-#: the levels the zones cluster from the session's regular open, in order (the option levels
-#: follow them)
-LIVE_LEVELS = (
+#: every level the zones cluster, at every hour (the option levels follow them); one the snapshot
+#: does not hold yet (the session's own before its open) is left out (operator 2026-11-20: "i
+#: want to see all the levels")
+ZONE_LEVELS = (
     "PDH",
     "PD_VAH",
     "PD_POC",
@@ -417,6 +407,7 @@ LIVE_LEVELS = (
     "TODAY_VAL",
     "PD_VAL",
     "PDL",
+    "PDC",
     "OVERNIGHT_HIGH",
     "OVERNIGHT_LOW",
 )
@@ -522,17 +513,19 @@ def build_zone_snapshot(
 ) -> SnapshotOutput:
     """Build the session's zones at `now` from the one price-level snapshot (``canonical``).
 
-    The zones' one builder, before the open and after it; no level helper runs here, and a level
-    the snapshot does not hold is left out, never replaced by spot, zero or a neighbour. Before
-    the session's regular open (Schwab's /markets), or while its hours are not held, the zones
-    cluster PREMARKET_LEVELS; from the open, LIVE_LEVELS with the option levels
-    (``extra_levels``) fused in and the value summary. Each zone is typed by its side of the live
-    ``price`` (_classify_live_cluster).
+    The zones' one builder, at every hour: every level of ZONE_LEVELS the snapshot holds, with
+    the option levels (``extra_levels``) fused in; no level helper runs here, and a level the
+    snapshot does not hold is left out, never replaced by spot, zero or a neighbour. The value
+    summary is built from the session's regular open (Schwab's /markets); before it, or while its
+    hours are not held, there is none. Each zone is typed by its side of the live ``price``
+    (_classify_live_cluster).
     """
+    levels = _held_levels(canonical, ZONE_LEVELS) + [
+        (float(pair[0]), str(pair[1])) for pair in extra_levels
+    ]
     regular = _regular(sessions, canonical.session_date)
     if regular is None or now < regular[0]:
         kind, summary = SnapshotType.PREMARKET, None
-        levels = _held_levels(canonical, PREMARKET_LEVELS)
     else:
         val, vah = canonical.price("TODAY_VAL"), canonical.price("TODAY_VAH")
         kind, summary = (
@@ -544,9 +537,6 @@ def build_zone_snapshot(
                 vwap_relation=vwap_against_value(canonical.price("VWAP"), val, vah),
             ),
         )
-        levels = _held_levels(canonical, LIVE_LEVELS) + [
-            (float(pair[0]), str(pair[1])) for pair in extra_levels
-        ]
     zones = [
         _zone(cluster, *_classify_live_cluster(cluster[0], cluster[1], price))
         for cluster in cluster_price_levels_into_zones(levels, config)

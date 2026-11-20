@@ -83832,19 +83832,34 @@
       {
         "zone_label": "Support",
         "zone_side": "support",
-        "zone_low": 266.54,
+        "zone_low": 265.62,
         "zone_high": 266.54,
-        "zone_low_text": "266.54",
+        "zone_low_text": "265.62",
         "zone_high_text": "266.54",
-        "anchor": 266.54,
+        "anchor": 266.08000000000004,
         "source_levels": [
+          {
+            "label": "PDL",
+            "value": 265.62,
+            "value_text": "265.62"
+          },
+          {
+            "label": "PD_VAL",
+            "value": 265.77,
+            "value_text": "265.77"
+          },
+          {
+            "label": "PDC",
+            "value": 266.17,
+            "value_text": "266.17"
+          },
           {
             "label": "PD_POC",
             "value": 266.54,
             "value_text": "266.54"
           }
         ],
-        "confluence_score": 1,
+        "confluence_score": 4,
         "interpretation_notes": "Below the price"
       },
       {
@@ -83864,29 +83879,6 @@
         ],
         "confluence_score": 1,
         "interpretation_notes": "Above the price"
-      },
-      {
-        "zone_label": "Support",
-        "zone_side": "support",
-        "zone_low": 265.62,
-        "zone_high": 265.77,
-        "zone_low_text": "265.62",
-        "zone_high_text": "265.77",
-        "anchor": 265.695,
-        "source_levels": [
-          {
-            "label": "PDL",
-            "value": 265.62,
-            "value_text": "265.62"
-          },
-          {
-            "label": "PD_VAL",
-            "value": 265.77,
-            "value_text": "265.77"
-          }
-        ],
-        "confluence_score": 2,
-        "interpretation_notes": "Below the price"
       },
       {
         "zone_label": "Resistance",

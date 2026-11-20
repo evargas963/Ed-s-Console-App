@@ -61680,12 +61680,17 @@
       {
         "zone_label": "Resistance",
         "zone_side": "resistance",
-        "zone_low": 760.0,
+        "zone_low": 759.81,
         "zone_high": 761.62,
-        "zone_low_text": "760.00",
+        "zone_low_text": "759.81",
         "zone_high_text": "761.62",
-        "anchor": 760.81,
+        "anchor": 760.7149999999999,
         "source_levels": [
+          {
+            "label": "PDC",
+            "value": 759.81,
+            "value_text": "759.81"
+          },
           {
             "label": "GAMMA_PUT_WALL",
             "value": 760.0,
@@ -61722,7 +61727,7 @@
             "value_text": "761.62"
           }
         ],
-        "confluence_score": 7,
+        "confluence_score": 8,
         "interpretation_notes": "Above the price"
       },
       {
