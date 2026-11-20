@@ -28,6 +28,16 @@ def test_plane_change_percent_is_schwab_net_change_percent():
     assert lmp.get_quote("NCPX").chg_pct == 1.0  # unchanged field stands
 
 
+def test_a_quote_an_earlier_test_recorded_is_not_held_for_the_next():
+    """Every test starts with no quote held, as the program starts with none.
+
+    The test above, run before this one in the same process, recorded NCPX; nothing of it is
+    held here (each run of one process found a quote of an earlier test's: mutmut's runs, one
+    process for every test, failed on it).
+    """
+    assert lmp.get_quote("NCPX") == lmp.NO_QUOTE
+
+
 def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_it():
     """SPY's values as Schwab sent them on 2026-09-28.
 
