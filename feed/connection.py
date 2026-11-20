@@ -175,8 +175,7 @@ def _publisher(
             log.warning("%s: a frame with no list of items, not taken: %.500r", service, msg)
             return
         for item in cast(list[Json], content):
-            key = item.get("key") if isinstance(item, dict) else None
-            if not isinstance(item, dict) or not isinstance(key, str) or not key:
+            if not isinstance(item, dict) or not isinstance(key := item.get("key"), str) or not key:
                 log.warning("%s: an item with no symbol, not taken: %.500r", service, item)
                 continue
             sym = key.upper()

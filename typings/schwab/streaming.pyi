@@ -2,7 +2,7 @@ import asyncio
 import json
 import ssl
 from enum import Enum
-from typing import Any, Protocol, Self, type_check_only
+from typing import Any, Protocol, type_check_only
 
 from schwab.client.base import BaseClient
 from schwab.utils import EnumEnforcer
@@ -18,13 +18,9 @@ class _Socket(Protocol):
 # spec, Enums); mypy's own check refuses a member-less enum in a stub (mypy/checker.py check_enum)
 class _BaseFieldEnum(Enum):  # type: ignore[misc]
     @classmethod
-    def all_fields(cls) -> list[Self]: ...
-    @classmethod
     def relabel_message(cls, old_msg: dict[str, Any], new_msg: dict[str, Any]) -> None: ...
 
 class UnparsableMessage(Exception):
-    raw_msg: str | bytes
-    json_parse_exception: json.JSONDecodeError
     def __init__(
         self,
         raw_msg: str | bytes,

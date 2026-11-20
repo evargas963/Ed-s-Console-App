@@ -7,7 +7,6 @@ TOKEN_ENDPOINT: str
 
 class TokenMetadata:
     creation_timestamp: int
-    unwrapped_token_write_func: Callable[..., object]
     token: dict[str, Any]
     def __init__(
         self,
@@ -19,9 +18,7 @@ class TokenMetadata:
     def from_loaded_token(
         cls, token: dict[str, Any], unwrapped_token_write_func: Callable[..., object]
     ) -> TokenMetadata: ...
-    def token_age(self) -> int: ...
     def wrapped_token_write_func(self) -> Callable[..., object]: ...
-    def wrap_token_in_metadata(self, token: dict[str, Any]) -> dict[str, Any]: ...
 
 class AuthContext(NamedTuple):
     callback_url: str
