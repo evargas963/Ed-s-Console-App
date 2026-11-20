@@ -98,8 +98,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
     `levels_ts_utc`, computed in push, not a calculator.
   - M-13 two strike rules: `calc.math_exposure_core.compute_exposures_by_strike` takes any strike,
     `calc.math_levels` rejects a strike ≤ 0 as INVALID.
-  - P-09 `static/js/ed-core.js` reports a failed watchlist send without its HTTP status; first-of
-    reads (`r.call || r.put` in `ed-gamma-panels.js`, `r.label || r.id` in `ed-trade-desk.js`).
   - P-14 `static/js/ed-tv-chart.js` drops markers with no bar uncounted and picks the nearest levels
     shown on the page.
   - P-16 `static/js/ed-trade-desk-map.js` picks the prior-day value area by id on the page.

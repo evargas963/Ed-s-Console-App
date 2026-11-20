@@ -27,6 +27,7 @@ from calc.order_flow import (
     compute_book_microstructure,
 )
 from calc.terrain_engine import (
+    SAME_DAY_LEVELS,
     WALL_BREACHED,
     WALL_CONTAINS,
     compute_terrain,
@@ -424,6 +425,8 @@ def test_every_level_is_served_with_its_name_and_short_tag(spy_levels):
         assert r["label"] and r["short"], r["id"]
         if r["id"] in LEVEL_NAMES:
             assert (r["label"], r["short"]) == LEVEL_NAMES[r["id"]]
+    # the 0DTE rows too: a page draws `label`, never an id in its place
+    assert [r["label"] for r in body["zero_dte"]] == [label for _id, label in SAME_DAY_LEVELS]
 
 
 def test_vwap_is_served_per_chart_bar(spy_levels):

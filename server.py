@@ -1647,15 +1647,18 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
 
     Its record is the answer, stamped with the record's time (`ts`, the program's clock, as each
     beat's status is): `ok` when it happened, else what happened (an invalid ticker with
-    Schwab's /quotes answer, one already on the list, ...).
+    Schwab's /quotes answer, one already on the list, ...), and the record's sentence for it
+    (`text`). With no answer, `text` says why.
     """
+    not_done = f"{ticker} is not {'added' if action == 'add' else 'removed'}"
     try:
         rec = await watchlist_request(action, ticker)
     except ConnectionError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=503)
+        return JSONResponse({"ok": False, "text": f"{not_done}: {e}"}, status_code=503)
     except TimeoutError:
         return JSONResponse(
-            {"ok": False, "error": "the capture daemon did not answer"}, status_code=504
+            {"ok": False, "text": f"{not_done}: the capture daemon did not answer"},
+            status_code=504,
         )
     return JSONResponse(
         {
@@ -1666,6 +1669,7 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
             "ts": rec["ts_recv"],
             "status": rec["status"],
             "answer": rec["answer"],
+            "text": rec["text"],
         }
     )
 

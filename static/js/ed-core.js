@@ -660,11 +660,11 @@
     return _wl ? _wl.slice() : [];
   }
   // the page's one request to the program besides its socket (an operator's command): its
-  // answer's status and JSON
+  // answer's JSON; an answer that is not JSON (not the program's) fails with its HTTP status
   function request(url, opts) {
     return fetch(url, opts).then(function (r) {
-      return r.json().then(function (j) {
-        return { ok: r.ok, j: j };
+      return r.json().catch(function () {
+        throw new Error("HTTP " + r.status);
       });
     });
   }
@@ -688,16 +688,12 @@
       : "the capture daemon is not reporting";
     if (feed) setWL(feed.watchlist, feed.ts);
   }
-  // the daemon's answer to an add or a removal: the new list, or what happened instead
-  function wlAnswer(a) {
-    if (a.j.tickers) setWL(a.j.tickers, a.j.ts);
-    if (a.j.ok) return true;
-    if (a.j.op === "invalid")
-      wlNotify(
-        a.j.ticker + " is not added: Schwab does not quote it (" + JSON.stringify(a.j.answer) + ")",
-      );
-    else wlNotify(a.j.error || a.j.ticker + ": " + a.j.op);
-    return false;
+  // the daemon's answer to an add or a removal: the new list, and the served sentence of what
+  // happened
+  function wlAnswer(j) {
+    if (j.tickers) setWL(j.tickers, j.ts);
+    wlNotify(j.text);
+    return j.ok;
   }
 
   function renderWatchlist() {
@@ -782,11 +778,11 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ticker: sym }),
     })
-      .then(function (a) {
-        if (wlAnswer(a)) setTicker(sym);
+      .then(function (j) {
+        if (wlAnswer(j)) setTicker(sym);
       })
       .catch(function (e) {
-        wlNotify(sym + " is not added: " + e);
+        wlNotify(sym + " is not added: " + e.message);
       });
   }
   // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
@@ -801,7 +797,7 @@
     request("/api/watchlist/" + encodeURIComponent(sym), { method: "DELETE", cache: "no-store" })
       .then(wlAnswer)
       .catch(function (e) {
-        wlNotify(sym + " is not removed: " + e);
+        wlNotify(sym + " is not removed: " + e.message);
       });
   }
 
@@ -1155,6 +1151,18 @@
     el.title = s ? s.why : "the daemon's Schwab sign-in, from its heartbeat";
     el.className = s ? "v " + s.cls : "v";
   }
+  // What the program left out since it started, as each heartbeat carries it: the line, its
+  // reason and its class are the program's (live_ui.left_out_line). None served: nothing was
+  // left out, and the cell is not shown.
+  function paintLeftOut(s) {
+    var el = document.getElementById("hLeftOut");
+    if (!el) return;
+    document.getElementById("hLeftOutKv").hidden = !s;
+    document.getElementById("hLeftOutSep").hidden = !s;
+    el.textContent = s ? s.line : "-";
+    el.title = s ? s.why : "";
+    el.className = s ? "v " + s.cls : "v";
+  }
   function openPriceSocket() {
     var ws;
     try {
@@ -1178,6 +1186,7 @@
       if (msg && msg.type === "feed") {
         paintRecord(msg.feed && msg.feed.writer);
         paintSignIn(msg.feed && msg.feed.sign_in);
+        paintLeftOut(msg.feed && msg.feed.left_out);
         if (msg.feed) paintSession(msg.feed.session, "");
         else paintSession(null, "session unknown: the daemon sent no status");
         ingestWatchlist(msg.feed);

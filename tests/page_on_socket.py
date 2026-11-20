@@ -20,7 +20,7 @@ class Pages:
     def __init__(self) -> None:
         self.loop = asyncio.new_event_loop()
         self.server = LiveUiServer(
-            lambda _now: {},
+            lambda _now: {"apply_failures": 0, "tick_failures": 0},
             {},
             panels=server.PAGE_PANELS,
             priced=server.PRICED_PANELS,
