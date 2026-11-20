@@ -414,6 +414,7 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
     served = stopped_price_answers()
     for route, name in STOPPED_FIXTURES.items():
         fx = json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
+        # what differs, by key, with both values: pytest's whole-dict diff reorders and truncates
         assert fx == served[route], (
             route,
             {

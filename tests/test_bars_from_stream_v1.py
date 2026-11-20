@@ -24,7 +24,7 @@ import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from push import bars as push_bars
 from state import bar_store
-from tests.feed_live_helper import daemon_bars, newest_bars, price_history
+from tests.feed_live_helper import daemon_bars, hold_schwab_daily, newest_bars, price_history
 from time_et import ET, ct_label
 
 TK = "ZZBARS"
@@ -212,3 +212,19 @@ def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute
     ]
     assert not any("forming" in b for b in body["bars"])
     assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}
+
+
+def test_a_test_holds_schwabs_daily_candles_through_the_bar_writer():
+    """SPY's real /pricehistory daily answer, held as the daemon holds it, in this test only."""
+    hold_schwab_daily("SPY")
+    assert bar_store.series("SPY", "1d")
+
+
+def test_a_daily_series_an_earlier_test_held_is_not_held_for_the_next():
+    """Every test starts with no bar or series held, as the program starts with none.
+
+    The test above, run before this one in the same process, held SPY's daily candles and left
+    them: nothing of them is held here. One test's candles changed another's daily ATR
+    (6.79 against none) in mutmut's runs, which put the tests in another order.
+    """
+    assert bar_store.series("SPY", "1d") == []
