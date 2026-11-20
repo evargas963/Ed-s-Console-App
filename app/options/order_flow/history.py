@@ -257,7 +257,9 @@ DISPLAY_TAIL_SHARE = 0.01
 def _display_window(cells: list[Cell]) -> tuple[float, float]:
     """Return (lo, hi), the price window of displayed size, trimmed at each end.
 
-    It holds all but DISPLAY_TAIL_SHARE of displayed size at each end.
+    It holds all but DISPLAY_TAIL_SHARE of displayed size at each end. When every size is at one
+    price, lo equals hi; the chart's library pads a one-price range (Lightweight Charts widens it
+    by five of its price steps each side).
     """
     totals: dict[float, float] = {}
     for c in cells:
@@ -267,7 +269,7 @@ def _display_window(cells: list[Cell]) -> tuple[float, float]:
     prices = sorted(totals)
     whole = sum(totals.values())
     if not whole:
-        return prices[0], max(prices[-1], prices[0] + 0.01)
+        return prices[0], prices[-1]
     lo = hi = None
     cum = 0.0
     for px in prices:
@@ -278,7 +280,7 @@ def _display_window(cells: list[Cell]) -> tuple[float, float]:
             hi = px
     lo = prices[0] if lo is None else lo
     hi = prices[-1] if hi is None or hi <= lo else hi
-    return lo, max(hi, lo + 0.01)
+    return lo, hi
 
 
 class RecentBooks:
