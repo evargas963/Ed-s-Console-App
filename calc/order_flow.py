@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, TypedDict
+from typing import Any
 
 import numpy as np
 
@@ -55,22 +55,6 @@ type Json = dict[str, Json] | list[Json] | str | float | None
 
 #: one level of a book: (price, TOTAL_VOLUME, the level's per-exchange rows), as Schwab sent them
 Level = tuple[float, float, Exchanges | None]
-
-
-class WallCandidate(TypedDict):
-    """A level whose displayed size is an outlier on its side (_book_wall_candidates)."""
-
-    side: str
-    price: float
-    #: its price as the screen shows it (price_text)
-    price_text: str | None
-    volume: float
-    #: its size as the screen shows it (count_text)
-    volume_text: str | None
-    #: its size over the median of its side's levels
-    median_mult: float
-    #: that ratio as the screen shows it (fixed_text, one decimal)
-    median_mult_text: str | None
 
 
 @dataclass(frozen=True)
@@ -171,13 +155,6 @@ def _resolve_quote_mark(data: FlowInput) -> float | None:
 # NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
 # absorption/iceberg (see `deferred`). No opaque composite score.
 
-#: HEURISTIC only: a displayed level is a WALL CANDIDATE when its size is at least this multiple
-#: of the MEDIAN level size across the ladder. A relative size-outlier convention (tunable, and
-#: blind to hidden/reserve size) — NOT an objectively-known liquidity wall. Surfaced with each
-#: candidate's `median_mult` so the API never asserts a proven wall. magic-threshold-ok:
-#: relative (× median).
-OF_BOOK_WALL_MEDIAN_MULT: float = 3.0
-
 #: Depth ladder for the canonical depth totals/imbalance — the existing 1/3/5 ladder.
 OF_MICRO_DEPTH_LADDER: tuple[int, ...] = (
     OF_BOOK_DEPTH_TOP,
@@ -271,43 +248,6 @@ def _book_pressure_curve(
     return out
 
 
-def _book_wall_candidates(
-    levels: list[tuple[float, float]], side: str, depth: int
-) -> list[WallCandidate]:
-    """Return HEURISTIC displayed-size anomalies as wall candidates.
-
-    They are candidates, NOT objectively-known liquidity walls. A level is a candidate when its
-    size ≥ OF_BOOK_WALL_MEDIAN_MULT × the MEDIAN level size across the best `depth` levels: a
-    relative size outlier in the DISPLAYED order book only (it cannot see hidden/reserve size,
-    and the multiple is a tunable convention, not a proven boundary). Each entry carries
-    `median_mult` (its size ÷ the median) so a consumer sees HOW anomalous rather than a binary
-    truth. Empty when there is no positive median or nothing clears the multiple.
-    """
-    lv = levels[:depth]
-    vols = sorted(v for _, v in lv)
-    if not vols:
-        return []
-    n = len(vols)
-    median = vols[n // 2] if n % 2 else (vols[n // 2 - 1] + vols[n // 2]) / 2.0
-    if median <= 0:
-        return []
-    out: list[WallCandidate] = []
-    for price, vol in lv:
-        if vol >= OF_BOOK_WALL_MEDIAN_MULT * median:
-            out.append(
-                {
-                    "side": side,
-                    "price": price,
-                    "price_text": price_text(price),
-                    "volume": vol,
-                    "volume_text": count_text(vol),
-                    "median_mult": vol / median,
-                    "median_mult_text": fixed_text(vol / median, 1),
-                }
-            )
-    return out
-
-
 #: each served book field's kind: NATIVE (Schwab's as sent) or DERIVED (computed here)
 _BOOK_CLASSIFICATION = {
     "top_of_book.bid": "NATIVE",
@@ -322,7 +262,6 @@ _BOOK_CLASSIFICATION = {
     "depth.*.ask_total": "DERIVED",
     "depth.*.imbalance": "DERIVED",
     "depth_pressure": "DERIVED",
-    "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)",
     "ages.book_age_sec": "DERIVED",
     "ages.quote_age_sec": "DERIVED",
     "ages.book_stale": "DERIVED",
@@ -399,10 +338,6 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
                 default=None,
             ),
         },
-        "wall_candidates": (
-            _book_wall_candidates(bid_levels, "bid", OF_BOOK_DEPTH_DEEP)
-            + _book_wall_candidates(ask_levels, "ask", OF_BOOK_DEPTH_DEEP)
-        ),
         "provenance_structural": {
             "book_time_ms": cb["book_time_ms"],
             "n_bid_levels": len(bid_levels),

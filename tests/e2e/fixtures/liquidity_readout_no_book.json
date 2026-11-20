@@ -26,8 +26,7 @@
     "top_of_book.ask": "NATIVE",
     "top_of_book.ask_size": "NATIVE",
     "top_of_book.bid": "NATIVE",
-    "top_of_book.bid_size": "NATIVE",
-    "wall_candidates": "DERIVED-HEURISTIC (size-outlier convention)"
+    "top_of_book.bid_size": "NATIVE"
   },
   "crossed": false,
   "deferred": [
@@ -230,6 +229,5 @@
     "bid_text": "760.18"
   },
   "top_outage": null,
-  "venue": "NYSE_BOOK",
-  "wall_candidates": []
+  "venue": "NYSE_BOOK"
 }

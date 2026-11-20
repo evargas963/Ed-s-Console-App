@@ -17,7 +17,7 @@ const TF = "5";
 const TERRAIN = REAL.terrain;
 const SPOT = TERRAIN.spot; // 757.075, Schwab's last trade
 const LEVELS = REAL.levels[TF];
-const EVENTS = REAL.desk[VENUE][TF];
+const EVENTS = REAL.desk[TF];
 // the route's answers for SPY's real books (tests/test_liquidity_readout_v1.py): live, the daemon's
 // connection ended, no book, and crossed inside the closing auction
 const READOUT_LIVE = require(path.join(__dirname, "liquidity_readout_live.json"));
@@ -53,7 +53,7 @@ async function intercept(page) {
   await page.addInitScript((venue) => localStorage.setItem("ed_book_venue", venue), MICRO.venue);
   // each reader is answered what the server answers its ask: the strikes window of its scope, the
   // levels and the bars of its timeframe (the flow card's are its own 60 one-minute bars), the
-  // queue of its venue and timeframe, the book of its venue
+  // queue of its timeframe, the book of its venue
   panels = {
     terrain: TERRAIN,
     liquidity: LIQ,
@@ -62,7 +62,7 @@ async function intercept(page) {
     tape: REAL.tape,
     strikes: (key, params) => (params.scope === "wider" ? REAL.strikes_wider : STRIKES),
     levels: (key, params) => REAL.levels[params.tf],
-    desk: (key, params) => REAL.desk[params.venue][params.tf],
+    desk: (key, params) => REAL.desk[params.tf],
     book: (key, params) => REAL.book[params.venue],
     bars: (key, params, name) => (name === "bars:flow" ? REAL.bars_flow : REAL.bars[params.tf]),
   };

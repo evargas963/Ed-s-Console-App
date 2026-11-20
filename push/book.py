@@ -63,7 +63,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> dict[str, 
     """Canonical L2 book microstructure at `now` (ORDER_FLOW_MARKET_MICROSTRUCTURE_V1).
 
     Top-of-book, spread, microprice, Top 1/3/5 depth totals + imbalance, depth-pressure curve,
-    wall_candidates, and ages — every field classified
+    and ages — every field classified
     NATIVE/DERIVED/PROXY. SERIALIZER, not a second producer: it delegates to the ONE canonical
     calc.order_flow.compute_book_microstructure keyed by this ticker, which carries
     the engine's already-computed structural state for the current book (memoized per ticker +

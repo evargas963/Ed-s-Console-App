@@ -197,7 +197,7 @@
       ["Book upstream", fh.book.text, "streaming_plane.feed_health.book", undefined],
     ];
     h.innerHTML =
-      header(desired, ss, d && d.put_call) +
+      header(desired, ss, d) +
       '<div class="fl-grid">' +
       section("Top of book" + (d.top_outage ? " · " + d.top_feed_label : ""), rowsTob, "") +
       section("Book microstructure", rowsBook, dim) +
@@ -211,10 +211,11 @@
       "</div>";
   }
 
-  function header(desired, ss, putCall) {
-    // putCall: the chain record's side, served
-    var strike = window.EdShell.getState().selStrike,
-      expiry = window.EdShell.getState().selExpiry;
+  function header(desired, ss, d) {
+    // the chain record's side, strike and expiry, as the contract panel serves them
+    var putCall = d && d.put_call,
+      strike = d && d.strike_text,
+      expiry = d && d.expiry;
     return (
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
       '<span class="fl-sym">' +
