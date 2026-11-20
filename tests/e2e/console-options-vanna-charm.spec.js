@@ -202,7 +202,7 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
         expiries: {},
         "terrain:levels": {},
         "levels:kl": { tf: "1" },
-        "strikes:gbs": AUTO,
+        "strikes:gbs": Object.assign({}, AUTO, { expiry: null }), // at All Expirations
         tape: {},
         surface: Object.assign({}, AUTO, { cols: expect.any(Number), expiry: null }),
       });

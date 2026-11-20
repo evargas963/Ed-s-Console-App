@@ -1135,6 +1135,12 @@
       shift: pan ? pan.shift | 0 : 0,
     };
   }
+  // A panel of the levels' strikes (the heatmap, GEX by Strike, the Chart's profiles, the
+  // migration, the Desk map) asks its window at the page's one expiry choice: the expiry picked,
+  // or null for All Expirations.
+  function windowAtExpiry(pan) {
+    return Object.assign(windowParams(pan), { expiry: state.expiryFilter });
+  }
   // The daemon's database writer, as each heartbeat carries it: the line and its class are the
   // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '-'.
   function paintRecord(w) {
@@ -1598,6 +1604,7 @@
       return state.scope;
     },
     windowParams: windowParams,
+    windowAtExpiry: windowAtExpiry,
     showPanel: showPanel,
     newPan: newPan,
     panServed: panServed,

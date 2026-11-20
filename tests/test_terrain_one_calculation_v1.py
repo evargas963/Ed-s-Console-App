@@ -61,16 +61,34 @@ def _same(was, now, path: str) -> None:
     assert was == now, (path, was, now)
 
 
+def _per_strike_keys(record: list, rename: dict[str, str], drop: set[str]) -> list:
+    """Return a written-out terrain with its per-strike rows' keys renamed and some dropped."""
+    return [
+        [
+            d,
+            key,
+            [[dd, rename.get(k, k), v] for dd, k, v in value if k not in drop]
+            if key == "per_strike"
+            else value,
+        ]
+        for d, key, value in record
+    ]
+
+
 def test_every_value_is_what_it_was():
     """Every field is what it was when the record was written, on every chain.
 
     Every key, order, absent value (None stays None: no value is invented, none turned into 0)
-    and text exactly; every number within a double's last digits (REL_TOL, ABS_TOL).
+    and text exactly; every number within a double's last digits (REL_TOL, ABS_TOL). The record
+    was written while the whole book's GEX rows were keyed `all`, beside the fixed `near` and
+    `far` DTE buckets the one expiry choice deleted; the whole book's rows are now `gex`, and each
+    expiry's own (`by_expiry`, new) are proved in tests/test_strikes_follow_the_expiry_v1.py.
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
     for tk, snap in terrains.items():
-        _same(BEFORE[tk], canonical(snap), tk)
+        was = _per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"})
+        _same(was, _per_strike_keys(canonical(snap), {}, {"by_expiry"}), tk)
 
 
 def test_each_value_is_computed_once_and_nothing_unread_is_computed():
@@ -102,6 +120,8 @@ def test_each_value_is_computed_once_and_nothing_unread_is_computed():
     )
     assert counts["time_to_expiry_years"] <= 4 * len(expiries), counts
     assert counts["atm_sigma_by_expiry"] == 1, counts
-    # the full book, the front expiry's, the <=7 and >7 days' rows and the same-day levels' own
-    assert counts["merge_exposure_books"] == 5, counts
+    # the full book, the front expiry's, the same-day levels' own, and each listed expiry's rows
+    # (the strike views at the expiry chosen) once
+    dated = {c.expiry for c in chain if c.expiry is not None}
+    assert counts["merge_exposure_books"] == 3 + len(dated), counts
     assert not DELETED & set(snap.to_dict()), "no unread value served"

@@ -871,7 +871,7 @@ def _marks(tk, listed, **walls):
     ]
 
 
-ALL = {"scope": "all", "centre": None, "shift": 0}
+ALL = {"scope": "all", "centre": None, "shift": 0, "expiry": None}
 
 
 @pytest.mark.usefixtures("no_levels")
@@ -1208,7 +1208,7 @@ def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
 
 # -- the per-strike rows: the strikes panel, each reader in its own window ----------------------
 
-AUTO = {"scope": "auto", "centre": None, "shift": 0}
+AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 
 
 def _per_strike(tk) -> list:
@@ -1218,7 +1218,7 @@ def _per_strike(tk) -> list:
     shows them, and its marks (_marks: the price's strike, the published walls).
     """
     snap = level_store.published_levels(tk).snap
-    rows = snap.per_strike["all"]
+    rows = snap.per_strike["gex"]
     marks = _marks(tk, [r.strike for r in rows], call=snap.call_wall, put=snap.put_wall)
     return [
         {
@@ -1248,11 +1248,11 @@ def test_each_strikes_reader_gets_its_own_window_at_once_with_no_get():
             while {"strikes:gbs", "strikes:chart"} - set(seen):
                 frame = json.loads(await asyncio.wait_for(ws.recv(), 5))
                 seen[frame["type"]] = frame
-            assert seen["strikes:chart"]["today"]["all"] == rows
-            gbs = seen["strikes:gbs"]["today"]["all"]
+            assert seen["strikes:chart"]["today"] == rows
+            gbs = seen["strikes:gbs"]["today"]
             assert len(gbs) == 11 and gbs == rows[rows.index(gbs[0]) : rows.index(gbs[0]) + 11]
             drawn = max(abs(r["value"]) for r in gbs if r["value"] is not None)
-            assert seen["strikes:gbs"]["views"]["all"]["max_abs"] == drawn
+            assert seen["strikes:gbs"]["view"]["max_abs"] == drawn
 
     asyncio.run(_serve_panels(body))
     assert "/api/terrain/strikes" not in {r.path for r in server.app.routes}
@@ -1264,7 +1264,7 @@ def test_before_the_tickers_chain_the_strikes_say_why_with_no_row():
         async with connect(url) as ws:
             await _select(ws, A, {"strikes:gbs": AUTO})
             frame = await _next(ws, "strikes:gbs")
-            assert frame["today"]["all"] == [] and frame["max_abs_row"] is None
+            assert frame["today"] == [] and frame["max_abs_row"] is None
             assert frame["levels_stale_reason"]  # why, never empty rows standing alone
             await _select(ws, A, {"strikes:gbs": {**AUTO, "shift": "two"}})  # one it cannot draw
             assert await _next(ws, "strikes:gbs") == {
@@ -1285,11 +1285,11 @@ def test_new_levels_reach_only_the_pages_showing_the_strikes_on_that_ticker():
             await _select(on_b, B, {"strikes:migration": ALL})
             await _select(list_only, A)
             for ws in (on_a, on_b):
-                assert (await _next(ws, "strikes:migration"))["today"]["all"] == []
+                assert (await _next(ws, "strikes:migration"))["today"] == []
             await _next(list_only, "expiries")
             await asyncio.to_thread(_publish, CRWD)
             frame = await _next(on_a, "strikes:migration")
-            assert frame["ticker"] == A and frame["today"]["all"] == _per_strike(A)
+            assert frame["ticker"] == A and frame["today"] == _per_strike(A)
             assert _kind(await _select(on_b, B, {}), "strikes:migration") == []
             assert _kind(await _select(list_only, A), "strikes:migration") == []
 
@@ -1307,7 +1307,7 @@ def test_a_switch_sends_the_new_tickers_strikes_and_none_of_the_old():
             assert (await _next(ws, "strikes:desk"))["ticker"] == A
             await _select(ws, B, {"strikes:desk": ALL})
             frame = await _next(ws, "strikes:desk")
-            assert frame["ticker"] == B and frame["today"]["all"] == _per_strike(B)
+            assert frame["ticker"] == B and frame["today"] == _per_strike(B)
             await asyncio.to_thread(_publish, CRWD)
             assert _kind(await _select(ws, B, {}), "strikes:desk") == []
 
@@ -1322,7 +1322,7 @@ def test_a_page_that_drops_and_returns_gets_its_strikes_again():
         for _ in range(2):
             async with connect(url) as ws:
                 await _select(ws, A, {**LIST, "strikes:gbs": ALL})
-                assert (await _next(ws, "strikes:gbs"))["today"]["all"] == _per_strike(A)
+                assert (await _next(ws, "strikes:gbs"))["today"] == _per_strike(A)
 
     asyncio.run(_serve_panels(body))
 

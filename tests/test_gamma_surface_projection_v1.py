@@ -394,7 +394,7 @@ def test_the_chart_draws_the_heatmaps_own_dex_and_oi_per_strike():
     )
     surface = project_gamma_surface(chain, snap.books)
     try:
-        window = {"scope": "all", "centre": None, "shift": 0}
+        window = {"scope": "all", "centre": None, "shift": 0, "expiry": None}
         measures = push_strikes.strikes("MRVL", NOW.timestamp(), window)["measures"]
     finally:
         with level_store._lock:

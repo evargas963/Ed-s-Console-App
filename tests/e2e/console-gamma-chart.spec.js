@@ -29,10 +29,10 @@ const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
 // tests/test_vanna_charm_by_strike_v1.py): eleven strikes around 270, with the DEX and OI measures
 const STRIKES = require("./fixtures/vanna_charm_panels_crwd.json").strikes;
-const SPOT = STRIKES.today.all.find((r) => r.marks.some((m) => m.kind === "spot")).strike; // 270
-const K = STRIKES.today.all[6].strike; // 272.5, the strike a test clicks
+const SPOT = STRIKES.today.find((r) => r.marks.some((m) => m.kind === "spot")).strike; // 270
+const K = STRIKES.today[6].strike; // 272.5, the strike a test clicks
 // each level with its text as the server serves it (two decimals, numeric_contract.price_text)
-const PUT_WALL = STRIKES.today.all[4].strike;
+const PUT_WALL = STRIKES.today[4].strike;
 const TERRAIN = {
   spot: SPOT,
   gamma_flip: SPOT - 0.5,
@@ -208,11 +208,9 @@ test.describe("Options/Gamma Chart subview", () => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     // induced: the real rows with the GEX of the strike at the price not known
-    const today = {
-      all: STRIKES.today.all.map((row) =>
-        row.strike === SPOT ? Object.assign({}, row, { value: null, text: null }) : row,
-      ),
-    };
+    const today = STRIKES.today.map((row) =>
+      row.strike === SPOT ? Object.assign({}, row, { value: null, text: null }) : row,
+    );
     await intercept(page, TERRAIN, Object.assign({}, STRIKES, { today }));
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator('.vtab[data-view="chart"]').click();
@@ -220,7 +218,7 @@ test.describe("Options/Gamma Chart subview", () => {
       .poll(() =>
         page.evaluate(() => (window.EdGammaChart.state() || { profile: {} }).profile.rows),
       )
-      .toBe(STRIKES.today.all.length - 1);
+      .toBe(STRIKES.today.length - 1);
     expect(errors).toEqual([]);
   });
 

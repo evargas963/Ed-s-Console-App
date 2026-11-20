@@ -366,7 +366,7 @@ def test_a_volume_only_tick_reaches_the_per_strike_volume_column():
     _streamed(_A, {"TOTAL_VOLUME": 999999}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     strike = round(_CONTRACTS[0]["strikePrice"], 2)
-    row = next(r for r in _cached().snap.per_strike["all"] if r[0] == strike)
+    row = next(r for r in _cached().snap.per_strike["gex"] if r[0] == strike)
     assert row[2] >= 999999
 
 

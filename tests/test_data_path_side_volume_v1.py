@@ -27,7 +27,7 @@ def _published(tk: str, chain: list, spot: float, now) -> dict:
     )
     try:
         body = push_strikes.strikes(
-            tk, time_et.now(), {"scope": "auto", "centre": None, "shift": 0}
+            tk, time_et.now(), {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
         )
     finally:
         with level_store._lock:
@@ -49,4 +49,4 @@ def test_a_volume_not_known_leaves_the_volume_total_unknown():
         for c in NFLX.chain
     ]
     body = _published(NFLX.ticker, chain, NFLX.spot, NFLX.now)
-    assert body["migration"]["all"]["volume_total"] is None
+    assert body["migration"]["volume_total"] is None

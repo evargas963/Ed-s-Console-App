@@ -17,15 +17,15 @@ const { watchRequests } = require("./fixtures/settled");
 const REAL = require("./fixtures/vanna_charm_panels_crwd.json");
 const BY_SCOPE = { auto: REAL.strikes, wider: REAL.strikes_wider, all: REAL.strikes_all };
 const WINDOW = {
-  auto: BY_SCOPE.auto.today.all,
-  wider: BY_SCOPE.wider.today.all,
-  all: BY_SCOPE.all.today.all,
+  auto: BY_SCOPE.auto.today,
+  wider: BY_SCOPE.wider.today,
+  all: BY_SCOPE.all.today,
 };
 function strikesFor(scope) {
   return BY_SCOPE[scope];
 }
 // the strike at the price: the row the server marks as the price's
-const SPOT = REAL.strikes.today.all.find((r) => r.marks.some((m) => m.kind === "spot")).strike;
+const SPOT = REAL.strikes.today.find((r) => r.marks.some((m) => m.kind === "spot")).strike;
 const TERRAIN = REAL.terrain;
 const BARS = {
   ticker: "SPY",
@@ -99,7 +99,7 @@ test.describe("the Gamma presentation scope", () => {
           }
         : r,
     );
-    panels.strikes = Object.assign({}, strikesFor("auto"), { today: { all: rows } });
+    panels.strikes = Object.assign({}, strikesFor("auto"), { today: rows });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const row = page.locator('#gbsBody .gbs-row[data-strike="' + SPOT + '"]');
     await expect(row.locator(".gbs-v")).toHaveText("-");
@@ -192,7 +192,7 @@ test.describe("the Gamma presentation scope", () => {
     for (let i = 1; i <= 3; i++)
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
     await page.mouse.up();
-    const centre = REAL.strikes.views.all.centre;
+    const centre = REAL.strikes.view.centre;
     await expect.poll(() => asks().pop(), { timeout: 5000 }).toEqual({ centre: centre, shift: 3 });
     await requests.settled(); // every held read has run
     await expect.poll(() => unsent).toBe(0); // and the slow panels have been sent

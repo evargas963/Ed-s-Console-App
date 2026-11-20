@@ -56,16 +56,24 @@ async function intercept(page) {
   await routeWatchlist(page, ["SPY"]);
   // the page asks the venue MICRO is the book of, unless the test names another after this
   await page.addInitScript((venue) => localStorage.setItem("ed_book_venue", venue), MICRO.venue);
-  // each reader is answered what the server answers its ask: the strikes window of its scope, the
-  // levels and the bars of its timeframe (the flow card's are its own 60 one-minute bars), the
-  // queue of its timeframe, the book of its venue
+  // each reader is answered what the server answers its ask: the strikes window of its scope at its
+  // expiry (the chain's second expiry, one it does not list, or All Expirations), the levels and
+  // the bars of its timeframe (the flow card's are its own 60 one-minute bars), the queue of its
+  // timeframe, the book of its venue
   panels = {
     terrain: TERRAIN,
     liquidity: LIQ,
     option_book: OPTION_BOOK,
     bookmap: HEAT,
     tape: REAL.tape,
-    strikes: (key, params) => (params.scope === "wider" ? REAL.strikes_wider : STRIKES),
+    strikes: (key, params) =>
+      params.expiry === REAL.strikes_second_expiry.expiry
+        ? REAL.strikes_second_expiry
+        : params.expiry
+          ? REAL.strikes_missing_expiry
+          : params.scope === "wider"
+            ? REAL.strikes_wider
+            : STRIKES,
     levels: (key, params) => REAL.levels[params.tf],
     desk: (key, params) => REAL.desk[params.tf],
     book: (key, params) => REAL.book[params.venue],

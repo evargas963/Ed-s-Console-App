@@ -351,9 +351,8 @@
       window.EdShell.showPanel("surface", null);
       return;
     }
-    var params = window.EdShell.windowParams(_pan);
+    var params = window.EdShell.windowAtExpiry(_pan); // expiry null, none selected: every column
     params.cols = autoColCount(host);
-    params.expiry = window.EdShell.getExpiry(); // null, none selected: every column
     window.EdShell.showPanel("surface", params);
   }
   document.addEventListener("ed:panel", function (e) {

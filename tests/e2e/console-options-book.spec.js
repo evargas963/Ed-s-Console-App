@@ -208,6 +208,12 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
       "Options lean" + OPTION_BOOK.expiry + " · books " + OPTION_BOOK.book_state,
     );
     expect(sock.subscribes[sock.subscribes.length - 1].panels["option_book:desk"]).toEqual(AUTO);
+    // the card follows the one expiry chosen, and All Expirations again (its front one)
+    const deskAsk = () => sock.subscribes[sock.subscribes.length - 1].panels["option_book:desk"];
+    await page.evaluate((e) => window.EdShell.setExpiry(e), OPTION_BOOK.expiry);
+    await expect.poll(() => deskAsk().expiry).toBe(OPTION_BOOK.expiry);
+    await page.evaluate(() => window.EdShell.setExpiry(""));
+    await expect.poll(deskAsk).toEqual(AUTO);
     // the four below/above rows are gone, the other facts stay
     await expect(card).toContainText("Call wall");
     await expect(card).not.toContainText("below / above");
