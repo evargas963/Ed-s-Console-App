@@ -66,9 +66,7 @@
     return row.t;
   }
 
-  function esc(value) {
-    return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
-  }
+  var esc = window.EdShell.esc;
 
   function isMatrix() {
     var st = state();
