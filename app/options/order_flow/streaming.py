@@ -340,7 +340,7 @@ def _answer_watchlist_request(msg: dict[str, Any]) -> None:
 def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None) -> None:
     """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick.
 
-    A print is kept with the bid and ask its record on the bus holds.
+    A print is kept with the bid and ask in force when it traded (state.push_level_one).
     """
     push_level_one("LEVELONE_EQUITIES", sym, msg["native"], ts_recv=ts, field_received=received)
     _flow(sym)
@@ -365,8 +365,8 @@ def _apply_option_quote(
 ) -> None:
     """Apply a LEVELONE_OPTIONS message: the contract's tape.
 
-    A print is kept with the bid and ask its record on the bus holds. Every message
-    sends the chain screens its values (the flow callback); a tick when the
+    A print is kept with the bid and ask in force when it traded (state.push_level_one). Every
+    message sends the chain screens its values (the flow callback); a tick when the
     newest message carried a value the levels use (a merged record holds the last of each field;
     only one this message brought is new).
     """

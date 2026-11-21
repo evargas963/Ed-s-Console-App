@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from typing import Any, overload
 
 from numeric_contract import schwab_count, schwab_number
+from option_contract import NO_TOP, StreamedTop
+from time_et import et_date_str_from_ts_utc
 
 # Source classification — mechanical, not aspirational.
 TAPE_CLASSIFICATION = "PROXY_LEE_READY_L1"
@@ -34,9 +36,10 @@ TAPE_COMPLETENESS = "INCOMPLETE_OBSERVATION"
 #: what the tape's pressure and cumulative delta are, shown on hover beside them
 TAPE_NOTE = (
     "Estimated, not Schwab's: Schwab sends no buyer or seller side. Each last trade is signed by "
-    "Lee and Ready (1991) against Schwab's bid and ask held with it: above their midpoint counts "
+    "Lee and Ready (1991) against Schwab's bid and ask in force when it traded, the newest quote "
+    "Schwab timed at or before the trade: above their midpoint counts "
     "as buying, below as selling, at it the tick test (above the trade before, buying; below, "
-    "selling; unchanged, the last change's side). A trade with no bid and ask, or at the "
+    "selling; unchanged, the last change's side). A trade with no such bid and ask, or at the "
     "midpoint before any price change, is unsigned; its share of the size is shown beside each "
     "value. On Nasdaq this method was right 81% of the time, the tick test alone 78% (Ellis, "
     "Michaely and O'Hara 2000); Finucane (2000) found the two about equal. Schwab's stream is "
@@ -107,6 +110,30 @@ def extract_vendor_print(item: dict[str, Any]) -> TradePrint | None:
     )
 
 
+def quote_in_force(trade_ms: int | None, top: StreamedTop, before: StreamedTop) -> StreamedTop:
+    """Return the quote in force when a trade was made: the newest Schwab timed at or before it.
+
+    `top` is the record's newest quote and `before` the one it replaced, each timed by Schwab's
+    QUOTE_TIME_MILLIS; `trade_ms` is the trade's TRADE_TIME_MILLIS. Schwab's update carries a
+    trade with the quote that followed it ("quotes may be recorded ahead of trades that triggered
+    them", Lee and Ready 1991), so the newest quote is the trade's only when Schwab timed it no
+    later than the trade. A quote Schwab timed on an earlier ET date than the trade is not in
+    force either: the market closes between ET dates (no window Schwab's /markets sends crosses
+    midnight ET), so the last quote before a close was replaced, unseen, before the first trade
+    after it. NO_TOP when the trade has no time or neither quote qualifies: no quote in force is
+    known, and a later one is never used.
+    """
+    if trade_ms is not None:
+        day = et_date_str_from_ts_utc(trade_ms / 1000.0)
+        for quote in (top, before):
+            timed = quote.quote_time_ms
+            if timed is None or timed > trade_ms:
+                continue
+            if et_date_str_from_ts_utc(timed / 1000.0) == day:
+                return quote
+    return NO_TOP
+
+
 def tick_rule_sign(prev_price: float | None, price: float | None, last: int | None) -> int | None:
     """Return the tick test's sign of a print: +1 above the price before, -1 below it.
 
@@ -124,10 +151,11 @@ def tick_rule_sign(prev_price: float | None, price: float | None, last: int | No
 
 
 def trade_sign(price: float | None, bid: float | None, ask: float | None, tick: int | None):
-    """Return Lee and Ready's sign of a print against the bid and ask held with it.
+    """Return Lee and Ready's sign of a print against the bid and ask in force when it traded.
 
-    +1 above their midpoint, -1 below it, at it the tick test's sign `tick` (Lee and Ready 1991,
-    Journal of Finance 46(2)). None without a price, a bid or an ask: no quote, no sign.
+    They are the ones kept with the print (quote_in_force). +1 above their midpoint, -1 below it,
+    at it the tick test's sign `tick` (Lee and Ready 1991, Journal of Finance 46(2)). None
+    without a price, a bid or an ask: no quote, no sign.
     """
     if price is None or bid is None or ask is None:
         return None

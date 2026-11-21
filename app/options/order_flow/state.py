@@ -25,12 +25,13 @@ from calc.l1_trade_observation import (
     VENDOR_TRADE_TIME,
     extract_vendor_print,
     is_adjacent_restatement,
+    quote_in_force,
     vendor_triple,
 )
 from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
 from option_contract import Streamed, StreamedTop, quote_values
-from stream_spine import NOT_STREAMED, held_key, read_book, streamed_record
+from stream_spine import NOT_STREAMED, held_key, quote_before, read_book, streamed_record
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -92,10 +93,12 @@ class OrderFlowState:
         ts_recv: float | None = None,
         field_received: dict[str, Any] | None = None,
     ) -> None:
-        """Keep the print one Schwab L1 record of `service` carries, with its quote then.
+        """Keep the print one Schwab L1 record of `service` carries, with the quote in force then.
 
-        A current record merged from several messages (the daemon's bus) carries each field's own
-        receive time in `field_received`; the print is stamped with the newest of its fields'.
+        That quote is the newest Schwab timed at or before the trade (quote_in_force): Schwab
+        sends a trade with the quote that followed it. A current record merged from several
+        messages (the daemon's bus) carries each field's own receive time in `field_received`;
+        the print is stamped with the newest of its fields'.
         """
         if not content_item:
             return
@@ -114,7 +117,10 @@ class OrderFlowState:
         if trade is None:
             return
         key = vendor_triple(trade.time_millis, trade.price, trade.size)
-        sent = self.streamed(service, sym)
+        # the symbol's record on the bus, taken once: its newest quote and the one that replaced,
+        # read from the same version of it
+        record = self.current.get(held_key(service, sym))
+        sent = streamed_record(record)
         with self._lock:
             # an adjacent repeat of the same trade is a restatement (l1_trade_observation): a
             # whole record, or the merged record on a quote change; never a second print
@@ -134,8 +140,13 @@ class OrderFlowState:
                     ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    # the bid, ask and Greeks the record held when the print was taken
-                    **history.quoted(trade.price, sent.top, sent.greeks),
+                    # the bid and ask in force when the trade was made, by Schwab's own quote and
+                    # trade times (never the quote that followed it), and the record's Greeks
+                    **history.quoted(
+                        trade.price,
+                        quote_in_force(trade.time_millis, sent.top, quote_before(record)),
+                        sent.greeks,
+                    ),
                 }
             )
 

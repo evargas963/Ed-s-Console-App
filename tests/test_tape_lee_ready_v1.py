@@ -1,4 +1,4 @@
-"""Each trade is a print, signed by Lee and Ready against the bid and ask Schwab sent with it.
+"""Each trade is a print, signed by Lee and Ready against the bid and ask in force when it traded.
 
 Schwab's LEVELONE stream sends only the fields that changed (Streamer API §1.5, Change), so a trade
 at the last trade's price arrives with a new TRADE_TIME_MILLIS and LAST_SIZE and no LAST_PRICE. The
@@ -7,16 +7,19 @@ the console takes that record (streaming._ingest_pushed); the tape (state.push_l
 each new (time, price, size) as a print, stamped with the receive time of the message that made it.
 
 Schwab sends no buyer or seller side (docs/schwab/schwab_support_emails_2026_10_12.txt). The tape
-signs each print by Lee and Ready (1991): above the midpoint of the bid and ask its record holds,
-+1; below, -1; at it, the tick test (the price before; unchanged, the last change's sign). A print
-with no bid and ask, or at the midpoint before any price change, is unsigned, and its share of the
-size is served beside each value.
+signs each print by Lee and Ready (1991): above the midpoint of the bid and ask in force when it
+traded, +1; below, -1; at it, the tick test (the price before; unchanged, the last change's sign).
+The quote in force is the newest Schwab timed (QUOTE_TIME_MILLIS) at or before the trade
+(TRADE_TIME_MILLIS): an update carries a trade with the quote that followed it, so its own quote
+is the trade's only when timed no later than it; otherwise it is the quote the update replaced. A
+print with no such bid and ask, or at the midpoint before any price change, is unsigned, and its
+share of the size is served beside each value.
 
 Real data: SPY's LEVELONE_EQUITIES messages of 2026-11-13 10:00:00-10:02:00 ET as the daemon
 recorded them (tests/fixtures/real_spy_levelone_2026_11_13_1000et.json), 113 messages, 4 of them
 trades at an unchanged price, through the daemon's bus and the console's intake
-(streaming._ingest_pushed) as production takes them. The expected prints and signs are worked out
-here by merging the messages' fields in order.
+(streaming._ingest_pushed) as production takes them. The expected prints, quotes and signs are
+worked out here by merging the messages' fields in order.
 """
 
 from __future__ import annotations
@@ -36,14 +39,29 @@ _MSGS = json.loads(
     )
 )["messages"]
 _FIELDS = ("TRADE_TIME_MILLIS", "LAST_PRICE", "LAST_SIZE", "BID_PRICE", "ASK_PRICE")
+#: the quote's fields: a message that changes one replaces the quote the record held
+_QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
+#: a print with no quote in force: no bid and no ask
+_NO_QUOTE = (None, None)
 
 
-def _expected() -> list[tuple[float, float | None]]:
-    """(size, signed size or None) of each new print, signed here from the merged fields."""
+def _walked() -> list[dict]:
+    """Each new print, worked out here by merging the messages' fields in order.
+
+    Its size, price and tick test; `in_force`, the (bid, ask) of the newest quote Schwab timed at
+    or before the trade: the update's own when its QUOTE_TIME_MILLIS is not after the trade's
+    TRADE_TIME_MILLIS, else the quote the update replaced when that one's is not, else _NO_QUOTE;
+    `same`, the (bid, ask) of the print's own update; and `later`, whether Schwab timed that
+    update's quote after the trade.
+    """
     held: dict[str, float] = {}
+    before: dict[str, float] = {}
     out, last_triple, prev, last_tick = [], None, None, None
     for m in _MSGS:
-        held.update({f: m["item"][f] for f in _FIELDS if f in m["item"]})
+        item = m["item"]
+        if any(f in item and f in held and item[f] != held[f] for f in _QUOTE):
+            before = {f: held[f] for f in _QUOTE if f in held}
+        held.update({f: item[f] for f in (*_FIELDS, *_QUOTE) if f in item})
         if "LAST_PRICE" not in held:
             continue
         triple = (held["TRADE_TIME_MILLIS"], held["LAST_PRICE"], held.get("LAST_SIZE"))
@@ -57,14 +75,49 @@ def _expected() -> list[tuple[float, float | None]]:
             tick = last_tick
         else:
             tick = 1 if price > prev else -1
-        mid = (held["BID_PRICE"] + held["ASK_PRICE"]) / 2.0
-        sign = 1 if price > mid else -1 if price < mid else tick
-        if triple[2] is not None:  # a print with no size adds nothing, and still sets the price
-            out.append((triple[2], None if sign is None else sign * triple[2]))
+        in_force = _NO_QUOTE
+        for quote in (held, before):
+            if "QUOTE_TIME_MILLIS" in quote and quote["QUOTE_TIME_MILLIS"] <= triple[0]:
+                in_force = (quote.get("BID_PRICE"), quote.get("ASK_PRICE"))
+                break
+        out.append(
+            {
+                "size": triple[2],
+                "price": price,
+                "tick": tick,
+                "in_force": in_force,
+                "same": (held["BID_PRICE"], held["ASK_PRICE"]),
+                "later": held["QUOTE_TIME_MILLIS"] > triple[0],
+            }
+        )
         if tick is not None:
             last_tick = tick
         prev = price
     return out
+
+
+def _signed(walked: list[dict], quote: str) -> list[tuple[float, float | None]]:
+    """(size, signed size or None) of each print with a size, signed against its `quote`.
+
+    Lee and Ready: above the quote's midpoint +1, below -1, at it the tick test; no bid or no
+    ask, no sign. A print with no size adds nothing.
+    """
+    out = []
+    for w in walked:
+        bid, ask = w[quote]
+        if bid is None or ask is None:
+            sign = None
+        else:
+            mid = (bid + ask) / 2.0
+            sign = 1 if w["price"] > mid else -1 if w["price"] < mid else w["tick"]
+        if w["size"] is not None:
+            out.append((w["size"], None if sign is None else sign * w["size"]))
+    return out
+
+
+def _expected() -> list[tuple[float, float | None]]:
+    """(size, signed size or None) of each new print, signed against the quote in force."""
+    return _signed(_walked(), "in_force")
 
 
 def _expected_prints() -> list[tuple[float, float, float | None, int]]:
@@ -117,15 +170,29 @@ def test_every_trade_is_a_print_received_when_its_message_was():
 
 
 def test_each_print_is_signed_against_the_quote_its_record_held():
+    """The quote kept with a print is the one in force when it traded, never a later one.
+
+    Of the 113 prints, 105 arrived in an update whose own quote Schwab timed after the trade.
+    104 of them are read against the quote that update replaced, and the first has none before
+    it: no bid and no ask, and it is unsigned. For 102 the bid or the ask in force is not the
+    update's own. Read against their own update's quote instead, 54 of the 111 prints with a size
+    would take the opposite sign.
+    """
     prints = _tape()
+    walked = _walked()
     want = _expected()
     assert len(prints) <= state.MAX_TAPE_PRINTS  # the tape kept every print of the two minutes
     got = [(size, signed) for _x, size, signed in l1._signed_walk(prints, None)]
     assert got == want
-    # the quote held is Schwab's, carried on the print
-    assert all(p["bid"] is not None and p["ask"] is not None for p in prints)
+    # the quote carried on each print is Schwab's quote in force when it traded
+    assert [(p["bid"], p["ask"]) for p in prints] == [w["in_force"] for w in walked]
+    assert sum(w["later"] for w in walked) == 105
+    assert [w["in_force"] for w in walked].count(_NO_QUOTE) == 1 and walked[0]["size"] is None
+    assert sum(w["in_force"] != w["same"] for w in walked) == 102
     # both sides occur in two minutes of SPY: the method is not one-sided
     assert {s > 0 for _sz, s in want if s} == {True, False}
+    later = _signed(walked, "same")
+    assert sum(a[1] * b[1] < 0 for a, b in zip(want, later, strict=True)) == 54
 
 
 def test_the_cumulative_delta_and_its_unsigned_share_are_served():

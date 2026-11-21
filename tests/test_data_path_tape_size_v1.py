@@ -26,15 +26,19 @@ _MSGS = json.loads(
 def test_a_print_keeps_the_size_schwab_sent():
     """LAST_SIZE is the count Schwab sent, and the signed size on the tape is that same count.
 
-    The stream's first three messages hold one sized print: 92 shares at 754.29 against a
-    754.30 / 754.32 quote, below its midpoint, so it signs -1 (each message on the bus as the
-    daemon puts it, and its record to the live state as the console takes it).
+    The stream's first three messages hold one sized print: 92 shares at 754.29. Its own
+    message's quote, 754.30 / 754.32, Schwab timed 6 ms after the trade; the quote in force when
+    it traded is the second message's 754.25 / 754.28. The print is above that midpoint, so it
+    signs +1 (each message on the bus as the daemon puts it, and its record to the live state as
+    the console takes it).
     """
     printed = l1.extract_vendor_print(_MSGS[2]["item"])
     assert printed is not None and printed.size == 92
+    sent = _MSGS[2]["item"]
+    assert sent["QUOTE_TIME_MILLIS"] - sent["TRADE_TIME_MILLIS"] == 6
     bus, state = MessageBus(), OrderFlowState()
     state.current = bus.current
     for m in _MSGS[:3]:
         apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
     points = l1.iter_signed_cum_points(state.prints("SPY"), _MSGS[2]["item"]["TRADE_TIME_MILLIS"])
-    assert points[-1][1] == -92
+    assert points[-1][1] == 92

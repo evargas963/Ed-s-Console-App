@@ -125,6 +125,9 @@ STREAMED_TOP = (
     ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number),
     ("MONEY_INTRINSIC_VALUE", "money_intrinsic", schwab_number),
 )
+#: the quote among them: its bid and ask, their sizes and Schwab's time of it. A message that
+#: changes one of these replaces the quote (stream_spine.MessageBus keeps the one it replaced)
+QUOTE_FIELDS = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
 
 
 @dataclass(frozen=True)

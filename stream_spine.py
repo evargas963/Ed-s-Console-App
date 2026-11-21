@@ -44,6 +44,7 @@ from numeric_contract import schwab_count, schwab_number
 from option_contract import (
     NO_GREEKS,
     NO_TOP,
+    QUOTE_FIELDS,
     Received,
     Streamed,
     StreamedGreeks,
@@ -418,6 +419,18 @@ def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
     return held
 
 
+def quote_before(record: tuple[str, dict[str, Any]] | None) -> StreamedTop:
+    """Return the quote a LEVELONE record's newest quote replaced, read as its top of book is.
+
+    The record's `quote_before` (MessageBus._newest): NO_TOP's values until a message changes
+    the quote, and when the bus holds no record. Read when a print is kept
+    (state.OrderFlowState.push_level_one), not on every message.
+    """
+    if record is None:
+        return NO_TOP
+    return StreamedTop(**streamed_top(record[1]["quote_before"]))
+
+
 def read_book(content_item: dict[str, Any], service: str) -> Book | None:
     """Read a Schwab book message; this is its one reader.
 
@@ -572,7 +585,9 @@ class MessageBus:
     frame's timestamp; a chain by its fetch time): a LEVELONE message merged field by field, its
     fields read on the first read of each version (streamed_record), a book, bar or news item whole,
     a chain whole once all its parts are in -- and each reader takes it by its policy (LOG or
-    LATEST).
+    LATEST). A LEVELONE record also keeps the quote its newest quote replaced (`quote_before`):
+    Schwab sends a trade with the quote that followed it, so a trade is read against the quote
+    in force when it was made (calc.l1_trade_observation.quote_in_force).
     """
 
     def __init__(self) -> None:
@@ -625,6 +640,7 @@ class MessageBus:
             self.current[key] = (topic, msg)
             return True
         stamp = (t, msg.get("ts_recv"))
+        before: dict[str, Any] = {}
         if held is None:
             merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
         else:
@@ -633,11 +649,22 @@ class MessageBus:
             took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
             if not took:
                 return False
+            # the quote this message replaces, whole as the record held it: a message that changes
+            # a quote field the record holds. One that brings no quote field, restates the quote
+            # held, or only fills in a field never sent, leaves the one kept before
+            before = rec["quote_before"]
+            for f in QUOTE_FIELDS:
+                if f in body and f in merged and body[f] != merged[f] and f in took:
+                    before = {q: merged[q] for q in QUOTE_FIELDS if q in merged}
+                    break
             for f in took:
                 merged[f], stamps[f] = body[f], stamp
             top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time
         # a new version of the record, whose fields are read on its first read (streamed_record)
-        self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps, "streamed": None})
+        self.current[key] = (
+            topic,
+            {**top, body_key: merged, "field_ts": stamps, "streamed": None, "quote_before": before},
+        )
         return True
 
     def _chain(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
