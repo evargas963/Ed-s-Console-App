@@ -61,8 +61,10 @@ test.describe("ticker / expiry / measure controls", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator('.vtab[data-view="chart"]').click();
     const first = SETS.SPY.bars["1"].bars[0];
+    // the view builds its chart; then the chart's first bar reads the served labels
+    await expect.poll(() => page.evaluate(() => window.EdGammaChart.state() !== null)).toBe(true);
     await expect
-      .poll(() => page.evaluate(() => window.EdGammaChart.state()?.firstTime))
+      .poll(() => page.evaluate(() => window.EdGammaChart.state().firstTime))
       .toEqual({ day: first.ticks[2], crosshair: first.time_ct });
     expect(first.ticks[2]).toMatch(/^Nov \d+$/);
   });

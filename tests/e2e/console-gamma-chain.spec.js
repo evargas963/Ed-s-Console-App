@@ -34,7 +34,7 @@ const TOP = FRONT.ladder[0];
 // each row's strike as the ladder draws it
 const strikes = (panel) => panel.ladder.map((r) => r.strike_text);
 // the 761 call's volume as a panel serves it
-const volume761 = (panel) => panel.ladder.find((r) => r.call?.symbol === CALL_761).call.volume_text;
+const volume761 = (panel) => panel.ladder.find((r) => r.call.symbol === CALL_761).call.volume_text;
 // the 761 call's volume cell on the drawn ladder
 const volumeCell = (page) => page.locator('#chainBody tr[data-csym="' + CALL_761 + '"] td').nth(1);
 
@@ -362,9 +362,6 @@ test.describe("expiry dropdown (register P-03): the list on the page's socket", 
     page.on("request", (r) => {
       if (r.url().includes("/api/expiries")) asked.push(r.url());
     });
-    await page.route("**/api/**", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-    );
     await routeWatchlist(page, ["SPY"]);
     let n = 0;
     await page.routeWebSocket(/\/ws$/, (ws) => onSocket(ws, ++n));
