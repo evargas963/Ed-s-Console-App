@@ -564,6 +564,10 @@ test.describe("Trade Desk renders served values", () => {
     );
     // the profile is drawn after the close too (the session's served profile) and names its basis
     await expect(page.locator("#tdmProfNote")).toHaveText(LEVELS.volume_profile.basis);
+    // the empty queue names what the desk panel puts in it: level crosses and wall breaches
+    await expect(page.locator("#tdmQueue .tdm-empty")).toHaveText(
+      "Nothing in the " + EVENTS.window_label + ". Level crosses and wall breaches land here.",
+    );
     expect(errs).toEqual([]);
   });
 

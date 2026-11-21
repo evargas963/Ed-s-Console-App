@@ -592,14 +592,16 @@ if kept is None:
     raise SystemExit(1)
 add(S, "import-linter contracts kept (reported)", "10", "lint-imports", count=int(kept.group(1)))
 for mode in ("basic", "strict"):
+    # the repository's own pyright settings (pyproject.toml: its files and its Python), so the
+    # count is the required check's; only the mode is the census's. The type stubs are named
+    # because pyright looks for them beside the config it is given, and they are in the tree
     cfg = LINT / f"pyright_{mode}.json"
     cfg.write_text(
         json.dumps(
             {
-                "include": [f"head/{f}" for f in PRODUCT_PY],
+                "extends": "head/pyproject.toml",
+                "stubPath": "head/typings",
                 "typeCheckingMode": mode,
-                "extraPaths": ["head"],
-                "pythonVersion": "3.13",
             }
         ),
         encoding="utf-8",

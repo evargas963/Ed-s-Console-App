@@ -249,6 +249,18 @@ def _answers(streamer, service: str) -> list[int]:
     ]
 
 
+def _both_arrive(want):
+    """Steps for a market: MRVL's and SPY's chains and prices arrive; Schwab then holds `want`."""
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(want))
+
+    return steps
+
+
 @pytest.mark.parametrize("keeps_what_fits", [True, False])
 def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(
     tmp_path, keeps_what_fits
@@ -263,14 +275,7 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(
     """
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, keeps_what_fits)
-
-    async def steps(m):
-        for tk in ("MRVL", "SPY"):
-            m.chain(tk)
-            m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(want))
-
-    market.run(steps)
+    market.run(_both_arrive(want))
     assert (len(want[L1]), len(want[BOOK])) == (2432 + 442, 100)
     book = _answers(market.streamer, BOOK)
     assert set(_answers(market.streamer, L1)) == {0} and book[:2] == [19, 24] and book[-1] == 0
@@ -483,15 +488,8 @@ def test_a_chains_contracts_are_asked_while_the_levels_are_being_priced(tmp_path
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     gate = threading.Event()
     pricing = server.chain_pricing.submit(gate.wait, 60)
-
-    async def steps(m):
-        for tk in ("MRVL", "SPY"):
-            m.chain(tk)
-            m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(want))
-
     try:
-        market.run(steps)
+        market.run(_both_arrive(want))
         assert not pricing.done(), "the pricing thread was held throughout"
     finally:
         gate.set()

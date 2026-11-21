@@ -26,7 +26,7 @@ import server as srv
 import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from feed.schwab_client import flatten_chain_contracts
-from option_contract import GREEKS, LISTED, read_chain
+from option_contract import LISTED, read_chain
 from push import chain as push_chain
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
@@ -100,7 +100,9 @@ _SHOWN = (
     "multiplier",
     "volatility",
     "nonStandard",
-    *GREEKS,
+    # the two Greeks the Chain ladder draws; theta, vega and rho are on no screen and not served
+    "gamma",
+    "delta",
     *LISTED,
 )
 

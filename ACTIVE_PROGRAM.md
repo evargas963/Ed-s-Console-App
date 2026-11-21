@@ -24,10 +24,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   tied to its writer, reader and Schwab field. Left: `stream_feed_status`'s `socket_open` and
   `schwab_last_frame_ts` (the same in every service's row of a round); `level_crosses`' `ts_et`,
   `timeframe` (always "1m") and `zone_before`/`zone_after` (None since the zones left); the chain
-  rows stored as plain text and the codec's plain-text branch. Schwab answers not recorded as sent
-  (the `/quotes` answers, every `/chains` answer but the capture window's, the stored chain's
-  blanked `totalVolume` and replaced Greeks in `feed/chain_sweep.py`) are the operator's decision.
-  Every step that deletes data is planned to him and run by him.
+  rows stored as plain text and the codec's plain-text branch; Schwab's `/expirationchain` answer,
+  the one market-data answer not recorded (`feed.schwab_client.option_expiries`). Every step that
+  deletes data is planned to the operator and run by him.
 - CENSUS (IN PROGRESS; also LINTERS): `tools/census/census.py` (`.github/workflows/census.yml`)
   counts every issue in the repository; each count is driven to 0, then becomes a failing `locks`
   check. Every language's standard checker (ESLint, Stylelint, html-validate, Prettier,
@@ -38,8 +37,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   nothing uses go to an archive beside the checkout; their deletion is the operator's.
 - REVIEW (IN PROGRESS): the repo-wide review's findings, each checked against the code and the
   sources and fixed with a test that fails on the old code. Next: an expiry answered with no
-  contracts is stored as nothing, unmarked; `positioning_migration`'s weighted strike and drift
-  leave out strikes not known on both days, unmarked; the gamma profile's unpriceable contracts
+  contracts is stored as nothing, unmarked; the gamma profile's unpriceable contracts
   (`calc.math_levels.contract_inputs` returns the count) shown; a settled contract's vanna and charm
   under one rule; a strike's IV leaves out contracts with unknown open interest or volume
   (`iv_by_strike`). Then the support and resistance line, once a longer price history shows which
@@ -60,11 +58,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - STREAM-ONE (NEXT): what Schwab streams comes only from the stream (AGENTS.md rule 3). Left: a
   streamed contract's open interest, volume and quote fields, which `/chains` still sends, read from
   the stream alone (open interest stays the chain's, rule 3's exception).
-- BARS-1M (NEXT): the 1-minute candle is the one source of every intraday timeframe: live from
-  CHART_EQUITY (Streamer §5.1), history from `/pricehistory` minute/1; 3/5/15/30/60-minute bars
-  built from it by exact OHLCV aggregation, one registered derived producer; daily and longer from
-  Schwab's daily candle, weekly and monthly built from it. Next: list the other intraday frequencies
-  `feed/chain_sweep.py` asks for and replace each.
 - FIELDS-LIVE (NEXT): every field number Schwab accepts is asked for
   (`feed.connection.HIGHEST_FIELD`; Schwab's replies in
   `tests/fixtures/real_schwab_field_number_replies_2026_10_12.json`). Next: show from the daemon log
