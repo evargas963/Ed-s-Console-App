@@ -58,7 +58,7 @@ _EVENING, _FIRST = (
 
 
 def _quote(items: list[dict]) -> StreamedTop:
-    """The quote a symbol's record holds after `items`, merged here field by field as sent."""
+    """Merge `items` field by field as sent: the quote a symbol's record holds after them."""
     held: dict = {}
     for item in items:
         held.update({f: item[f] for f in _QUOTE if f in item})

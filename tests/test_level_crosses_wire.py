@@ -67,7 +67,7 @@ BETWEEN = {"Call wall", "Abs Γ"}
 
 @pytest.fixture(autouse=True)
 def _the_recorder():
-    """The console stores each cross through the daemon's Recorder, as capture.run binds it."""
+    """Bind the daemon's Recorder as capture.run does: the console stores each cross through it."""
     recorder(server.get_db().db_path)
     yield
     ofs.bind_daemon(None)
@@ -591,8 +591,9 @@ def test_levels_crossed_together_are_one_event_naming_every_level() -> None:
 
 
 def test_every_cross_of_the_longest_window_is_held_and_read_however_many():
-    """SPY recorded 4,615 crosses in the 20 days to 2026-11-20 (ed.db, read-only); every one of a
-    window is held and read, never the newest so many.
+    """Every cross of a window is held and read, never the newest so many.
+
+    SPY recorded 4,615 crosses in the 20 days to 2026-11-20 (ed.db, read-only).
 
     INDUCED: the 400 real SPY rows of tests/fixtures/real_spy_level_crosses.json (243 events over
     16 days) retimed a minute apart, each event's rows keeping one time, and repeated on 10 days a

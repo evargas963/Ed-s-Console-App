@@ -46,7 +46,7 @@ _QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
 
 
 def _as_sent(v, count: bool = False) -> float | None:
-    """A Schwab field as sent (AGENTS.md rule 2), worked out here, outside the code under test.
+    """Read a Schwab field as sent (AGENTS.md rule 2), worked out here, outside the code under test.
 
     Not a number: absent, -999, text, a bool, NaN or infinity; a count is also never negative.
     """
@@ -58,19 +58,19 @@ def _as_sent(v, count: bool = False) -> float | None:
 
 
 def _fields(topic: str, rec: dict) -> dict:
-    """A record's merged Schwab fields: an option's `content`, an equity's `native`."""
+    """Return a record's merged Schwab fields: an option's `content`, an equity's `native`."""
     return rec["content" if topic.startswith("optquote.") else "native"]
 
 
 def _top_as_sent(fields: dict) -> StreamedTop:
-    """The top-of-book fields among `fields`, each as sent."""
+    """Return the top-of-book fields among `fields`, each as sent."""
     return StreamedTop(
         **{name: _as_sent(fields[f], count) for f, (name, count) in _TOP.items() if f in fields}
     )
 
 
 def _read_as_sent(topic: str, rec: dict) -> Streamed:
-    """The record's merged fields as sent, each Greek and the volume at its own receive time."""
+    """Read a record's merged fields as sent, each Greek and the volume at its own receive time."""
     content = _fields(topic, rec)
     at = rec["field_ts"]
     greeks = {f.lower(): Received(_as_sent(content[f]), at[f][1]) for f in _GREEKS if f in content}

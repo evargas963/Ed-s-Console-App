@@ -120,7 +120,7 @@ def _rotate(sweep, client) -> set[str]:
 
 
 def _assembled(published):
-    """What the console settles from the sweep's chain messages, as its intake routes them."""
+    """Return what the console's intake settles from the sweep's chain messages."""
     ofs._chain_parts.clear()
     return [
         o for t, msg in published if t.startswith("chain.") for o in ofs.assemble_chain_part(msg)

@@ -417,7 +417,7 @@ def test_no_lookahead_premarket():
 
 
 def _real_zones(now: datetime, option_levels: list[tuple[float, str]]):
-    """The one builder's zones at `now` over Schwab's SPY bars received before it.
+    """Return the one builder's zones at `now` over Schwab's SPY bars received before it.
 
     The newest receipt of each minute of 2026-10-01 and 10-02 (tests/liquidity_friday.py), the
     prior session Schwab's daily candle of 10-01; the price is the last bar's close.
@@ -436,7 +436,7 @@ def _real_zones(now: datetime, option_levels: list[tuple[float, str]]):
 
 
 def _real_snapshot(now: datetime):
-    """The price levels at `now` over Schwab's SPY bars received before it, and those bars."""
+    """Return the price levels at `now` over Schwab's SPY bars received before it, and the bars."""
     held = [b for b in friday_bars() if b["timestamp"] / 1000 < now.timestamp()]
     snap = build_price_level_snapshot(
         now.date(),

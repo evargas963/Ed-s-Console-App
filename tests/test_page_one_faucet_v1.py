@@ -499,7 +499,7 @@ def test_the_largest_gex_strike_is_served(held):
 
 
 def _marks_at(strike, snap, listed):
-    """The marks a row at `strike` carries, worked out here: the live price's, then the walls."""
+    """Work out the marks a row at `strike` carries: the live price's, then the walls."""
     at = {
         "spot": min(listed, key=lambda k: abs(k - LIVE)),
         "call": snap.call_wall,

@@ -304,7 +304,7 @@ def test_the_page_s_socket_sends_the_forming_bars_with_each_price_row_and_each_n
 
 
 def build_e2e_frames() -> dict[str, Any]:
-    """The browser test's frames: the 5-minute chart's bars and forming bars at three moments.
+    """Build the browser test's frames: the 5-minute chart's bars and forming bars at three moments.
 
     10:04:30 (10:04 built over Schwab's 10:00-10:03), 10:04:59 (10:04's later trades) and
     10:05:10 (Schwab's 10:04 bar arrived; 10:05 built, a new 5-minute bar).
