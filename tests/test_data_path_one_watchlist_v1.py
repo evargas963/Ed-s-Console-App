@@ -130,7 +130,7 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     Code 19 and then code 24, and every request after it was logged "unexpected requestid": each
     answer had been taken as the next request's. Now one reader matches each answer to its
     request by its requestid. Every watchlist ticker is asked for on each equity service and the
-    header's market context on quotes, bars and news, in one request per service; SPY's 442
+    market context on quotes, bars and news, in one request per service; SPY's 442
     2026-11-20 contracts on LEVELONE_OPTIONS past a limit of 2 (a stand-in limit) get Schwab's
     refusal, both answers recorded as sent. The refusal states the limit, so that service is
     asked once more, a SUBS of the first 2 of the option rule's order, which Schwab accepts; on
@@ -632,10 +632,10 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
 
 
 def test_the_page_is_told_the_market_context_with_its_display_names():
-    """The header's market context is served in the page with each symbol's display name.
+    """The market context is served in the page with each symbol's display name.
 
-    The daemon streams it whatever the watchlist holds. The one the Volatility card shows is
-    marked, so the page picks no symbol by its name.
+    The daemon streams it whatever the watchlist holds. The volatility index, which the header
+    and the Desk's Volatility card show, is marked, so the page picks no symbol by its name.
     """
     page = Path(server.__file__).parent / "static" / "index.html"
     html = server._with_page_settings(page.read_text(encoding="utf-8"))
