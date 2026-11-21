@@ -3,8 +3,8 @@
 Schwab's LEVELONE update carries a trade (LAST_PRICE, LAST_SIZE, TRADE_TIME_MILLIS) with the quote
 that followed it ("quotes may be recorded ahead of trades that triggered them", Lee and Ready
 1991). So the bus keeps, beside a record's newest quote, the quote that one replaced
-(stream_spine.MessageBus, `quote_before`), and the quote in force is the newer of the two that
-Schwab timed (QUOTE_TIME_MILLIS) at or before the trade and on its ET date
+(stream_spine.MessageBus, read by stream_spine.quote_before), and the quote in force is the newer
+of the two that Schwab timed (QUOTE_TIME_MILLIS) at or before the trade and on its ET date
 (calc.l1_trade_observation.quote_in_force); with neither, no quote in force is known. The tape
 keeps each print with it (tests/test_tape_lee_ready_v1.py, tests/test_options_flow_tape_v1.py).
 
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import calc.l1_trade_observation as l1
 from option_contract import NO_TOP, StreamedTop
-from stream_spine import MessageBus, streamed_record
+from stream_spine import MessageBus, quote_before
 from tests.feed_live_helper import on_the_bus
 from time_et import ET
 
@@ -82,11 +82,12 @@ def test_a_record_keeps_whole_the_quote_its_newest_quote_replaced():
     the quote the eighth replaces has that bid with the seventh's ask, sizes and time.
     """
     bus = MessageBus()
+    assert quote_before(None) == NO_TOP  # a symbol the bus holds no record of
     kept, read = [], []
     for row in _PUT[:8]:
         record = on_the_bus(bus, OPT, row["item"], row["ts_recv"], row["schwab_ts"])
         kept.append(record[1]["quote_before"])
-        read.append(streamed_record(record).before)
+        read.append(quote_before(record))
     assert kept[0] == {} and read[0] == NO_TOP
     assert kept[1] == {
         "BID_PRICE": 2.46,
@@ -174,7 +175,7 @@ def test_a_message_delivered_twice_does_not_move_the_quote_kept_before():
     again = _PUT[1]
     record = on_the_bus(bus, OPT, again["item"], again["ts_recv"], again["schwab_ts"])
     assert record[1]["quote_before"] == {f: _PUT[0]["item"][f] for f in _QUOTE}
-    assert streamed_record(record).before == _quote([_PUT[0]["item"]])
+    assert quote_before(record) == _quote([_PUT[0]["item"]])
 
 
 # ── the quote in force: the newest Schwab timed at or before the trade, on its ET date ───────

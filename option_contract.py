@@ -209,16 +209,10 @@ NO_GREEKS = StreamedGreeks()
 
 @dataclass(frozen=True)
 class Streamed:
-    """What the stream holds of one contract: its top of book and its Greeks.
-
-    `before` is the quote its newest quote replaced (QUOTE_FIELDS, as Schwab sent them), NO_TOP
-    until a message changes the quote: a trade Schwab timed before the newest quote is read
-    against it (calc.l1_trade_observation.quote_in_force).
-    """
+    """What the stream holds of one contract: its top of book and its Greeks."""
 
     top: StreamedTop
     greeks: StreamedGreeks
-    before: StreamedTop = NO_TOP
 
 
 def streamed_quote(sent: Streamed) -> dict[str, float | None]:
