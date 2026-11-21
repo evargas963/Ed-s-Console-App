@@ -39,7 +39,7 @@ test("the heatmap paints the served cells, and a click pins a readout, without a
     "Fri 09/25 06:55 PM CT – Fri 09/25 07:00 PM CT",
   );
   await expect
-    .poll(() => page.evaluate(() => window.EdBookHeatmap.state()?.heatCells))
+    .poll(() => page.evaluate(() => window.EdBookHeatmap.state().heatCells))
     .toBe(HEAT.cells.length);
   // the time axis and the crosshair read each bucket's served labels; the page formats no time
   expect(await page.evaluate(() => window.EdBookHeatmap.state().firstTime)).toEqual({
