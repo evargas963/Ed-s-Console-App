@@ -37,9 +37,6 @@ async function open(page, sub, answer) {
   page.on("request", (r) => {
     if (/vanna|charm/.test(r.url())) asked.push(r.url());
   });
-  await page.route("**/api/**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
-  );
   await routeWatchlist(page, ["CRWD", "MRVL"]);
   let n = 0;
   await page.routeWebSocket(/\/ws$/, (ws) => {
