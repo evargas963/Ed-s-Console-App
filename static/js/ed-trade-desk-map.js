@@ -1177,8 +1177,9 @@
       })
       .join("");
   }
-  // The shell header already carries the symbol, price, change and CT clock; this page adds
-  // the index context and the data-trust row beside it.
+  // The shell header already carries the symbol, price, change, the volatility index and the CT
+  // clock, on every page; this page adds the whole index context and the data-trust row beside
+  // it, the volatility index from the same served row (its Volatility card, and this strip).
   function vixText(vix, name) {
     if (!vix || vix.spot == null) return "waiting for the " + esc(name) + " stream";
     var txt =

@@ -1,4 +1,4 @@
-"""Which bus records are Schwab's, and the market context every page shows.
+"""Which bus records are Schwab's, and the market context every page asks for.
 
 Ed Console is one program: the console reads the daemon's bus in memory (app.options.order_flow.
 streaming._bus_loop), never a copy over a socket. The bus records the console takes -- Schwab only,
@@ -21,10 +21,11 @@ from __future__ import annotations
 
 from stream_spine import Payload
 
-#: The market context every page's header shows beside the selected ticker (Trade Desk): the
-#: daemon streams it whatever the watchlist holds.
+#: The market context: the daemon streams it whatever the watchlist holds, and every page asks
+#: for its price rows. The Trade Desk's Desk page shows all of it (the Volatility card, the foot
+#: strip).
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
-#: the market-context index the Volatility card shows
+#: the market-context index the header shows on every page, and the Desk's Volatility card
 VOLATILITY_INDEX = "$VIX"
 
 #: topic prefix -> the only `src` forwarded for it

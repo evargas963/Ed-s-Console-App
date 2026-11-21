@@ -1033,6 +1033,35 @@
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
   }
+  // A served row's trade time as the header says it, "last trade <CT>", with its served age
+  // while the push delivers one (`aged`); no trade time sent: null.
+  function tradeWhen(q, aged) {
+    if (q.trade_time_ct == null) return null;
+    return (
+      "last trade " +
+      q.trade_time_ct +
+      (aged && q.trade_age_text != null ? " · " + q.trade_age_text : "")
+    );
+  }
+  // The volatility index in the header of every page: its price row as served, the row the
+  // Desk's Volatility card draws (one producer, live_price_rows.price_row). Not live, the row's
+  // served word stands beside its served name, and why is its title, with its trade time and
+  // age. `down`: the header's word while the push is silent; it stands there instead, and the
+  // time has no age (the last age served is not the age now). No row served yet: "-", as loaded.
+  function paintVolatility(q, down) {
+    var cell = document.getElementById("hVolKv"),
+      chg = document.getElementById("hVolChg");
+    var word = down != null ? down : q.feed_live ? null : q.feed_label;
+    document.getElementById("hVolName").textContent =
+      VOLATILITY.display + (word != null ? " · " + word : "");
+    cell.className = word != null ? "hkv hvol stale" : "hkv hvol";
+    cell.title = [down == null ? q.outage : null, tradeWhen(q, down == null)]
+      .filter(Boolean)
+      .join(" · ");
+    document.getElementById("hVol").textContent = orDash(q.spot_disp);
+    chg.textContent = q.chg_pct != null ? orDash(q.chg_pct_text) : "";
+    chg.className = window.EdDraw.bySign(q.chg_pct, "pos", "neg", "");
+  }
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
@@ -1082,16 +1111,23 @@
   // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
   // age is served and the page computes none
   var _tradeShown = null;
+  // the volatility index's price row as last served, kept for a push outage (none yet: null)
+  var _volRow = null;
   // the program's own address, the one the page was loaded from
   function priceSocketUrl() {
     return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
-  // from live_push.MARKET_CONTEXT): [{key, display}]. The socket pushes only what a page
-  // subscribes to, so every page asks for it.
+  // from live_push.MARKET_CONTEXT): [{key, display, volatility}]. The socket pushes only what a
+  // page subscribes to, so every page asks for it: the header shows its volatility index on
+  // every page, and the Trade Desk's Desk page all of it (the Volatility card, the foot strip).
   var MARKET_CONTEXT = JSON.parse(
     document.querySelector('meta[name="ed-market-context"]').getAttribute("content"),
   );
+  // the volatility index: the entry the server marks (live_push.VOLATILITY_INDEX)
+  var VOLATILITY = MARKET_CONTEXT.filter(function (c) {
+    return c.volatility;
+  })[0];
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
@@ -1269,6 +1305,10 @@
   // verdict is the server's; the browser only picks the words.
   function ingestPriceRow(q) {
     if (!q || !q.ticker) return;
+    if (q.ticker === VOLATILITY.key) {
+      _volRow = q;
+      paintVolatility(q, null);
+    }
     if (q.ticker === state.key) {
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
       // window it considers covered (measured: row in at 6 ms, rAF paint at 773 ms).
@@ -1276,13 +1316,8 @@
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       _quoteShown = true;
-      _tradeShown = q.trade_time_ct != null ? "last trade " + q.trade_time_ct : null;
-      var trade =
-        q.trade_time_ct != null
-          ? "last trade " +
-            q.trade_time_ct +
-            (q.trade_age_text != null ? " · " + q.trade_age_text : "")
-          : null;
+      _tradeShown = tradeWhen(q, false);
+      var trade = tradeWhen(q, true);
       paintQuote({
         spot_disp: q.spot_disp,
         bidText: q.bid_text,
@@ -1310,7 +1345,9 @@
   }
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
   function checkPriceSilence() {
-    if (!state.ticker || pricePushHealthy()) return;
+    if (pricePushHealthy()) return;
+    if (_volRow) paintVolatility(_volRow, "OFFLINE"); // on every page, a ticker chosen or not
+    if (!state.ticker) return;
     markHeaderPushDown();
     markWlDegraded();
   }
@@ -1499,6 +1536,7 @@
       d.inert = true; // closed: out of the tab order and the accessibility tree
     });
     // initial ticker + header
+    document.getElementById("hVolName").textContent = VOLATILITY.display; // served
     if (state.ticker) setTicker(state.ticker);
     else paintNoTicker();
     _booting = false; // every REAL subsequent view/ticker change dispatches both events normally
@@ -1608,7 +1646,7 @@
     setTheme: applyTheme,
     marketContext: function () {
       return MARKET_CONTEXT.slice();
-    }, // served [{key, display}]
+    }, // served [{key, display, volatility}]
     setScope: setScope,
     getScope: function () {
       return state.scope;

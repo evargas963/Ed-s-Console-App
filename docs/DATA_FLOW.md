@@ -183,8 +183,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `capture.Daemon._took_quote` → `live_market_plane.record_from_level_one_equity` → the price row
   (`live_price_rows.price_row`) → `/ws` → header, watchlist and every panel's live price
   (`push.spot.resolve_spot`); (c) the console's intake → the tape and the level-cross check. The
-  last trade's price, size and time have one reader, `calc.l1_trade_observation.last_print`.
-  Enforced by: `tests/test_last_print_one_reader_v1.py`, `tests/test_data_path_quote_time_v1.py`.
+  last trade's price, size and time have one reader, `calc.l1_trade_observation.last_print`. Every
+  page asks for the market context's rows with its own ticker's (`live_push.MARKET_CONTEXT`): the
+  header draws the volatility index's (`live_push.VOLATILITY_INDEX`) on every page, and the Trade
+  Desk's Desk page all three (§6, decision 11). Enforced by:
+  `tests/test_last_print_one_reader_v1.py`, `tests/test_data_path_quote_time_v1.py`,
+  `tests/e2e/console-header.spec.js`.
 - **Order book.** NYSE_BOOK, NASDAQ_BOOK and OPTIONS_BOOK → the bus → the Recorder,
   `stream_book_raw` (D4) → the console (`order_flow.state.OrderFlowState`, one book per service,
   never combined) → the `book` and `bookmap` panels (`push.book.book`, `push/bookmap.py`), sent
@@ -421,3 +425,14 @@ them".
   regular and same-day, then the price levels of the `levels:kl` panel. Enforced by:
   `tests/test_data_path_same_day_levels_v1.py`, `tests/test_level_names_one_list_v1.py`,
   `tests/test_data_path_charm_side_unknown_v1.py`.
+- **11. One header, the same on every page.** The page has one header, drawn by the shell alone
+  (`static/js/ed-core.js`); no style or script changes it by workspace or view. Each value in it is
+  drawn from its one served producer: the selected ticker's price row and the volatility index's
+  (`live_price_rows.price_row`; the index is the market-context entry the server marks,
+  `live_push.VOLATILITY_INDEX`, and the Desk's Volatility card draws the same row), and the
+  program's beat (`live_ui.LiveUiServer.beat`: the daemon's clock, session, writer's line and
+  sign-in, `capture.Daemon.status`, and what the program left out). The index's name is its served
+  display name. Not live, it stands with the served word beside its name, and why, its trade time
+  and its age are its title; while the push is silent the header's own OFFLINE stands there and the
+  time has no age (D5). Before its row arrives it reads "-". Enforced by:
+  `tests/e2e/console-header.spec.js`, `tests/test_data_path_header_volatility_v1.py`.
