@@ -111,10 +111,10 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
     A panel that serves a price serves the live price, and not the price the payload was
     computed at, which no page reads (operator 2026-11-12: "Yes, remove it"): as the number
     (`spot`) where a reader takes it, and as the text its page prints (`spot_text`), which is the
-    chain's whole price. The strikes panel and the heatmap serve neither: their pages mark the
-    price's row by the served mark and take the price from the header row. The price's trade time
-    is the text the page shows (`spot_time_ct`); its instant is on the terrain alone, where the
-    desk's Right Now takes it (push.desk), and no page reads one.
+    chain's whole price. The strikes panel, the heatmap and the vanna and charm bars serve neither:
+    their pages mark the price's row by the served mark and take the price from the header row.
+    The price's trade time is the text the page shows (`spot_time_ct`); its instant is on the
+    terrain alone, where the desk's Right Now takes it (push.desk), and no page reads one.
     """
     now = time_et.now()
     served, printed, instant, drawn = {}, {}, set(), {}
@@ -128,12 +128,14 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
         if "spot_as_of_ts_utc" in body:
             instant.add(kind)
     assert {"terrain", "levels"} <= set(served)
-    assert not {"strikes", "surface", "chain"} & set(served)
+    assert not {"strikes", "surface", "chain", "vanna", "charm"} & set(served)
     # one price on every screen that prints it: the live price's text, the chain's among them
     assert {"chain", "levels"} <= set(printed) and set(printed.values()) == {f"{LIVE:.2f}"}
-    # the heatmap and the chain are drawn, the price's row marked on their rows: no key beside it
+    # the heatmap, the chain and the bars are drawn, the price's row marked on their rows: no
+    # key beside it
     assert drawn["surface"]["available"] and drawn["chain"]["status"] == "ok"
-    for kind in ("surface", "chain"):
+    assert drawn["vanna"]["available"] and drawn["charm"]["available"]
+    for kind in ("surface", "chain", "vanna", "charm"):
         assert not {"spot_source", "spot_strike"} & set(drawn[kind]), kind
     assert instant == {"terrain"}
     routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]

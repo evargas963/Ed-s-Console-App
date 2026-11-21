@@ -33,8 +33,8 @@ def strike_bar_payload(
 
     The published rows `key` of `expiry` (None: every expiry's, the whole book), windowed for the
     panel (windowed), each as the page draws it (served: delta-shares, compact, the row at the
-    price marked), with the live price. An expiry the published chain does not list is answered
-    with why, never another expiry's rows.
+    live price marked). An expiry the published chain does not list is answered with why, never
+    another expiry's rows.
     """
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
@@ -44,13 +44,11 @@ def strike_bar_payload(
     if book is None:
         return unavailable(tk, f"the chain lists no contracts for {expiry}")
     rows = book[key]
-    spot = resolve_spot(tk, now=now)[0]
-    spot_strike = nearest_strike([r.strike for r in rows], spot)
+    spot_strike = nearest_strike([r.strike for r in rows], resolve_spot(tk, now=now)[0])
     win, view = windowed(rows, spot_strike, scope, centre, shift)
     return {
         "ticker": tk,
         "available": bool(rows),
-        "spot": spot,
         "expiry": expiry,
         "rows": [served(r, key, {"spot": spot_strike}) for r in win],
         "view": view,

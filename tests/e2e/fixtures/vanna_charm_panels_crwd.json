@@ -2,7 +2,6 @@
   "vanna": {
     "ticker": "CRWD",
     "available": true,
-    "spot": 269.395,
     "expiry": null,
     "rows": [
       {
@@ -101,7 +100,6 @@
   "charm": {
     "ticker": "CRWD",
     "available": true,
-    "spot": 269.395,
     "expiry": null,
     "rows": [
       {
