@@ -370,10 +370,11 @@ def subscription_msg(
 # ---------------------------------------------------------------------------- the bus
 
 #: How a reader takes the bus. LOG: every message, in order -- the database writer, the record of
-#: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST: for each topic that changed since
-#: its last read, that topic's current record -- every live reader: a newer value replaces an
-#: older one at once, nothing old waits, and what a reader holds is bounded by the number of
-#: topics, never by how fast Schwab sends (D3).
+#: everything Schwab sent (docs/DATA_FLOW.md §2 D4), the daemon's window, and the header's news
+#: line, where each headline is a story of its own (capture.Daemon._took_news). LATEST: for each
+#: topic that changed since its last read, that topic's current record -- every other live
+#: reader: a newer value replaces an older one at once, nothing old waits, and what a reader
+#: holds is bounded by the number of topics, never by how fast Schwab sends (D3).
 LOG, LATEST = "log", "latest"
 #: the end of a LOG reader's messages, put in its queue once the stop is set (_end_at): no topic
 LOG_END: tuple[str, Any] = ("", None)
@@ -1072,8 +1073,9 @@ class WriterStatus:
     with how many records are written back; `lost`: messages neither the
     database nor the spill file took, received from `lost_first_ts` to `lost_last_ts`;
     `unrecorded`: messages a dead writer could not write; `error`: the database's refusal
-    (blocked) or what ended the thread (dead), from `error_ct`. `line` and `cls`: the header's
-    Record, as the page prints it.
+    (blocked) or what ended the thread (dead), from `error_ct`. `word`, `line` and `cls`: the
+    header's Record, as the page prints it: its cell's one word, the whole line (the cell's
+    title, and the header's alert while the class is "neg") and its class.
     """
 
     state: str
@@ -1094,14 +1096,16 @@ class WriterStatus:
     unrecorded: int
     error: str | None
     error_ct: str | None
+    word: str
     line: str
     cls: str
 
 
-def _record_line(s: dict[str, Any]) -> tuple[str, str]:
-    """Return the header's Record for a writer status: the line, and its class.
+def _record_line(s: dict[str, Any]) -> tuple[str, str, str]:
+    """Return the header's Record for a writer status: its word, the line, and its class.
 
-    The class is "neg" for anything but recording with nothing kept, spilled, lost or left.
+    The line begins with the word. The class is "neg" for anything but recording with nothing
+    kept, spilled, lost or left.
     """
     spill = s["spill"]
     if spill is None:
@@ -1147,7 +1151,7 @@ def _record_line(s: dict[str, Any]) -> tuple[str, str]:
         and not s["left_on_disk"]
         and s["lost"] == 0
     )
-    return " · ".join(parts), "" if ok else "neg"
+    return word, " · ".join(parts), "" if ok else "neg"
 
 
 def _object_bytes(obj: object, seen: set[int]) -> int:
@@ -1738,8 +1742,8 @@ class CaptureWriter:
                 "error": self.error,
                 "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None,
             }
-        line, cls = _record_line(s)
-        return asdict(WriterStatus(**s, line=line, cls=cls))
+        word, line, cls = _record_line(s)
+        return asdict(WriterStatus(**s, word=word, line=line, cls=cls))
 
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Hand every bus message to the writer thread until `stop`.

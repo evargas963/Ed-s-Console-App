@@ -39,6 +39,14 @@ Protocol (JSON text frames):
                                                                      within FEED_HEARTBEAT_
                                                                      MAX_AGE_SEC; the console
                                                                      takes its status from here)
+              and with it "news": {"items": [...], "left_out": words} (the header's news line,
+                                                                     push.news.news, on every
+                                                                     page, a ticker selected or
+                                                                     not: on a page's first beat,
+                                                                     then on the first beat after
+                                                                     a story comes, changes or
+                                                                     goes, or the Central day
+                                                                     turns)
 
 Delivery is latest-value-per-symbol per client (conflation, as Lightstreamer MERGE /
 LSEG conflated feeds do): a slow browser gets the newest row for each symbol it is behind
@@ -64,6 +72,7 @@ import live_market_plane as lmp
 import live_price_rows
 import time_et
 from instrument_identity import display_symbol, ticker_storage_key
+from push import news as push_news
 
 log = logging.getLogger(__name__)
 
@@ -167,12 +176,15 @@ def left_out_line(
 
 
 class _Client:
-    __slots__ = ("ws", "symbols", "pending", "view", "panels", "wake")
+    __slots__ = ("ws", "symbols", "pending", "view", "panels", "news_sent", "wake")
 
     def __init__(self, ws: WebSocket) -> None:
         self.ws = ws
         self.symbols: frozenset[str] = frozenset()
         self.pending: set[str] = set()  # symbols changed since the last send
+        #: the version of the header's news line this page was last sent (LiveUiServer.news_at);
+        #: None: none yet
+        self.news_sent: int | None = None
         #: the page's selected ticker (its key) and each panel it shows, with its parameters;
         #: None: no ticker selected, so no panel
         self.view: tuple[str, dict[str, dict[str, Any]]] | None = None
@@ -207,6 +219,10 @@ class LiveUiServer:
         )
         self.stats = stats
         self.clients: set[_Client] = set()
+        #: the version of the header's news line (mark_news), and the Central day its times were
+        #: last written on (beat_loop; None before the first beat)
+        self.news_at = 0
+        self.news_day: str | None = None
         stats.update(clients=0, rows_sent=0, beat_send_failures=0, page_refused=0)
 
     # -- plane side -------------------------------------------------------------------
@@ -232,6 +248,10 @@ class LiveUiServer:
             if names:
                 c.panels.update(names)
                 c.wake.set()
+
+    def mark_news(self) -> None:
+        """Mark the header's news line changed: every browser's next beat carries it."""
+        self.news_at += 1
 
     def beat(self) -> dict[str, Any]:
         """Return the daemon's whole status, recorded here and sent with every beat.
@@ -419,6 +439,10 @@ class LiveUiServer:
                 log.warning("live ui heartbeat: %s: %s", type(e).__name__, e, exc_info=True)
                 feed = None
             now = self.clock()
+            if (day := time_et.ct_day(now)) != self.news_day:
+                # the Central day turned: each story's time reads by the new day (ct_dated)
+                self.news_day = day
+                self.mark_news()
             for c in list(self.clients):
                 # one browser can neither stop the beat nor hold it past a beat: an error is
                 # logged and the next browser still gets its beat; a browser that does not take
@@ -426,7 +450,14 @@ class LiveUiServer:
                 # send
                 try:
                     rows = [live_price_rows.price_row(s, now) for s in sorted(c.symbols)]
-                    await self._send(c, {"type": "feed", "feed": feed, "rows": rows})
+                    frame: dict[str, Any] = {"type": "feed", "feed": feed, "rows": rows}
+                    news_at = self.news_at
+                    if c.news_sent != news_at:
+                        # the header's news line as it is now: a page's first beat, and the
+                        # first after a story came, changed or went, or the day turned
+                        frame["news"] = push_news.news(now)
+                    await self._send(c, frame)
+                    c.news_sent = news_at
                 except WebSocketDisconnect:  # its connection ended, now or since this beat took
                     # its copy of the pages (a drop is PageSocket's log line), and its handler
                     # ends with it (serve_client's)
@@ -456,6 +487,17 @@ def changed(state: State, ticker: str, *kinds: str) -> None:
         prices.mark_all(ticker, kinds)
     else:
         prices.loop.call_soon_threadsafe(prices.mark_all, ticker, kinds)
+
+
+def news_changed(state: State) -> None:
+    """Mark the header's news changed for every page, while the program serves the pages.
+
+    Called on the program's loop, where the daemon's follower takes each news message
+    (capture.Daemon._took_news).
+    """
+    prices = state.prices
+    if prices is not None:
+        prices.mark_news()
 
 
 def selected(state: State) -> set[str]:

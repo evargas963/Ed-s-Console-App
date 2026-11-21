@@ -60,9 +60,26 @@ def ct_clock(ts_utc: float) -> str:
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S.%f")[:-3] + " CT"
 
 
+def ct_time(ts_utc: float) -> str:
+    """Return an instant to the second as the header's clock shows it: "14:01:02 CT"."""
+    return datetime.fromtimestamp(float(ts_utc), CT).strftime("%H:%M:%S CT")
+
+
 def ct_day(ts_utc: float) -> str:
     """Return an instant's Central Time day as the header shows it: "Sat, Nov 14"."""
     return datetime.fromtimestamp(float(ts_utc), CT).strftime("%a, %b %d")
+
+
+def ct_dated(ts_utc: float, now: float) -> str:
+    """Return an instant as a line of dated items shows it at `now` (the header's news line).
+
+    Its time alone on `now`'s Central day ("10:52 AM CT"), the whole label (ct_label) on any
+    other day: an item of another day never reads as today's.
+    """
+    at = datetime.fromtimestamp(float(ts_utc), CT)
+    if at.date() == datetime.fromtimestamp(float(now), CT).date():
+        return at.strftime("%I:%M %p CT")
+    return ct_label(ts_utc)
 
 
 def now() -> float:

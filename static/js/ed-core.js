@@ -975,17 +975,22 @@
   }
 
   // ================= header live data (single coordinated poll; degrades honestly) =================
-  function setFeed(cls, label, age, ageTitle) {
-    var dot = document.getElementById("hFeedDot"),
-      f = document.getElementById("hFeed"),
+  // The header's feed word and the selected price's trade time. `age`: the header's own cell,
+  // under its Last trade label (the trade's time and age, or why there is none); `said`: the
+  // same as the page's other surfaces say it ("last trade <CT> · <age>"; none: as the cell).
+  function setFeed(cls, label, age, ageTitle, said) {
+    var f = document.getElementById("hFeed"),
       a = document.getElementById("hAge");
-    if (dot) dot.className = "dot" + (cls ? " " + cls : "");
+    _feedCls = cls;
     if (f) f.textContent = label;
+    paintFeedState();
     if (a && age != null) {
       a.textContent = age;
       a.title = ageTitle == null ? "" : ageTitle;
+      a.className = cls ? "v stale" : "v";
     }
-    var shown = age != null ? age : a ? a.textContent : "";
+    if (said == null) said = age;
+    var shown = said != null ? said : a ? a.textContent : "";
     var fresh = document.getElementById("aiCtxFresh");
     if (fresh) fresh.textContent = label + (shown && shown !== "-" ? " · " + shown : "");
     // Key Levels' Spot is this price: not live, it says so with the reason, the trade time and age
@@ -1014,53 +1019,161 @@
       ba.textContent = orDash(q.bidText) + " × " + orDash(q.askText); // served
       ba.title = q.quoteTime ? "quote " + q.quoteTime : "";
     }
-    // Schwab's two change percents, each labelled: the regular session's and the last price's
-    // (extended hours included), drawn as served (live_price_rows); absent reads "-".
+    // Schwab's two change percents, each under its label (Reg, Ext): the regular session's and
+    // the last price's (extended hours included), drawn as served (live_price_rows); absent
+    // reads "-".
     [
-      [document.getElementById("hChgReg"), "REG ", q.chgPctRegular, q.chgPctRegularText],
-      [chg, "EXT ", q.chgPct, q.chgPctText],
+      [document.getElementById("hChgReg"), q.chgPctRegular, q.chgPctRegularText],
+      [chg, q.chgPct, q.chgPctText],
     ].forEach(function (c) {
       if (!c[0]) return;
-      if (c[2] != null) {
-        c[0].textContent = c[1] + orDash(c[3]);
-        c[0].className = "chg mono " + window.EdDraw.bySign(c[2], "pos", "neg", "");
-      } else {
-        c[0].textContent = c[1] + "-";
-        c[0].className = "chg mono";
-      }
+      c[0].textContent = c[1] != null ? orDash(c[2]) : "-";
+      c[0].className = "chg mono " + window.EdDraw.bySign(c[1], "pos", "neg", "");
     });
-    setFeed(q.feedCls, q.feedLabel, q.ageLabel, q.ageTitle);
+    setFeed(q.feedCls, q.feedLabel, q.ageLabel, q.ageTitle, q.said);
     // paintQuote owns the header display only; watchlist rows are written by setWlRow from
     // the same quote_tick event (one producer, two surfaces).
   }
-  // A served row's trade time as the header says it, "last trade <CT>", with its served age
-  // while the push delivers one (`aged`); no trade time sent: null.
+  // A served row's trade time as the header's cells show it, "<CT>", with its served age while
+  // the push delivers one (`aged`); no trade time sent: null.
   function tradeWhen(q, aged) {
     if (q.trade_time_ct == null) return null;
-    return (
-      "last trade " +
-      q.trade_time_ct +
-      (aged && q.trade_age_text != null ? " · " + q.trade_age_text : "")
-    );
+    return q.trade_time_ct + (aged && q.trade_age_text != null ? " · " + q.trade_age_text : "");
   }
-  // The volatility index in the header of every page: its price row as served, the row the
-  // Desk's Volatility card draws (one producer, live_price_rows.price_row). Not live, the row's
-  // served word stands beside its served name, and why is its title, with its trade time and
-  // age. `down`: the header's word while the push is silent; it stands there instead, and the
-  // time has no age (the last age served is not the age now). No row served yet: "-", as loaded.
-  function paintVolatility(q, down) {
-    var cell = document.getElementById("hVolKv"),
-      chg = document.getElementById("hVolChg");
-    var word = down != null ? down : q.feed_live ? null : q.feed_label;
-    document.getElementById("hVolName").textContent =
-      VOLATILITY.display + (word != null ? " · " + word : "");
-    cell.className = word != null ? "hkv hvol stale" : "hkv hvol";
-    cell.title = [down == null ? q.outage : null, tradeWhen(q, down == null)]
-      .filter(Boolean)
-      .join(" · ");
-    document.getElementById("hVol").textContent = orDash(q.spot_disp);
-    chg.textContent = q.chg_pct != null ? orDash(q.chg_pct_text) : "";
-    chg.className = window.EdDraw.bySign(q.chg_pct, "pos", "neg", "");
+  // Row 2's market context, on every page: one cell for each symbol the server names (the meta
+  // ed-market-context, live_push.MARKET_CONTEXT), the volatility index's drawn first, each from
+  // its price row as served (one producer, live_price_rows.price_row; the Desk draws the same
+  // rows). Not live, the value stands dimmed with its trade time and age beside it, and why is
+  // the cell's title. `down`: the page's words while the push is silent; they are the title
+  // then, and the time has no age (the last age served is not the age now). No row served yet:
+  // "-", as built.
+  var _mk = {},
+    _mkRows = {};
+  function buildMarket() {
+    var host = document.getElementById("hMarket");
+    MARKET_CONTEXT.forEach(function (c) {
+      var cell = document.createElement("span");
+      cell.id = "hMk" + c.display;
+      cell.className = c.volatility ? "hmk vol" : "hmk";
+      cell.innerHTML =
+        '<span class="k">' +
+        esc(c.display) +
+        '</span><span class="mp">-</span><span class="mc"></span><span class="mt"></span>';
+      host.appendChild(cell);
+      _mk[c.key] = { cell: cell, base: cell.className };
+    });
+  }
+  function paintMarket(q, down) {
+    var m = _mk[q.ticker],
+      parts = m.cell.children,
+      live = down == null && q.feed_live;
+    m.cell.className = live ? m.base : m.base + " stale";
+    m.cell.title = down != null ? down : q.outage != null ? q.outage : "";
+    parts[1].textContent = orDash(q.spot_disp);
+    parts[2].textContent = q.chg_pct != null ? orDash(q.chg_pct_text) : "";
+    parts[2].className = "mc " + window.EdDraw.bySign(q.chg_pct, "pos", "neg", "");
+    var when = live ? null : tradeWhen(q, down == null);
+    parts[3].textContent = when != null ? when : "";
+  }
+  // What is wrong, for row 2's line and the feed word's colour: the program's own sentences from
+  // its last beat, in order (Schwab's connection, the recorder, the sign-in), or the page's own
+  // words while the push is silent and no row is on its way; then what the program left out
+  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence.
+  var PUSH_DOWN = "live push down";
+  var _beatAlerts = [],
+    _beatFeedDown = false,
+    _pushDown = false,
+    _leftOut = null,
+    _feedCls = "none";
+  function alertsOf(feed) {
+    var out = [];
+    if (feed.schwab_down != null) out.push(["Feed", feed.schwab_down]);
+    if (feed.writer && feed.writer.cls === "neg") out.push(["Record", feed.writer.line]);
+    if (feed.sign_in && feed.sign_in.cls === "neg")
+      out.push(["Schwab sign-in", feed.sign_in.line + " · " + feed.sign_in.why]);
+    return out;
+  }
+  // the feed word's state as drawn: down (Schwab's connection, or the push's silence) before
+  // the selected row's own
+  function paintFeedState() {
+    var f = document.getElementById("hFeed");
+    var down = _pushDown || _beatFeedDown;
+    if (f) f.className = "hword" + (down ? " neg" : _feedCls ? " " + _feedCls : "");
+  }
+  // Row 2's line: the alerts while there is one, each what it is about and its sentence; the
+  // news otherwise, each story's served time, symbols, headline and source, with what the line
+  // left out as its label's title; "-" while no story is held. A line longer than its room runs
+  // (two copies, the second out of the accessibility tree) at the drawing module's speed; one
+  // that fits stands. A news frame, or another set of alerts, draws it from its start; the same
+  // alerts with newer words are written in place, so a line in motion keeps its place.
+  // `_lineOf`: what the line drawn is of (the alerts' kinds, or the news frame; null: no news
+  // yet, "-" as loaded; false: to be drawn again, the window resized).
+  var _news = null,
+    _lineOf = null;
+  function paintLine() {
+    var alerts = _pushDown ? [["Feed", PUSH_DOWN]] : _beatAlerts,
+      tape = document.getElementById("hTape"),
+      label = document.getElementById("hLineLabel");
+    // a served sentence is always readable: what was left out joins the alerts where its cell
+    // has wrapped it out of sight
+    if (_leftOut && window.EdDraw.wrappedAway(document.getElementById("hLeftOut")))
+      alerts = alerts.concat([["Left out", _leftOut.line]]);
+    var about = alerts.length
+      ? alerts
+          .map(function (a) {
+            return a[0];
+          })
+          .join("|")
+      : null;
+    // what the line is of: the alerts' kinds, or the news frame
+    var shows = about != null ? about : _news;
+    if (shows === _lineOf) {
+      if (about != null)
+        tape.querySelectorAll(".h").forEach(function (el, i) {
+          el.textContent = alerts[i < alerts.length ? i : i - alerts.length][1];
+        });
+      return;
+    }
+    _lineOf = shows;
+    document.getElementById("hLine").className = about != null ? "hline alert" : "hline";
+    label.textContent = about != null ? "Alert" : "News";
+    label.title = about == null && _news ? _news.left_out : "";
+    var items =
+      about != null
+        ? alerts.map(function (a) {
+            return ["", a[0], a[1], ""];
+          })
+        : _news
+          ? _news.items.map(function (n) {
+              return [n.time_ct, n.symbols_text, n.headline, n.source];
+            })
+          : [];
+    var html = items
+      .map(function (it) {
+        return (
+          '<span class="hni">' +
+          (it[0] ? '<span class="t">' + esc(it[0]) + "</span>" : "") +
+          '<span class="g">' +
+          esc(it[1]) +
+          '</span><span class="h">' +
+          esc(it[2]) +
+          "</span>" +
+          (it[3] ? '<span class="s">' + esc(it[3]) + "</span>" : "") +
+          "</span>"
+        );
+      })
+      .join("");
+    tape.innerHTML = '<div class="htrack still">' + (html ? html : "-") + "</div>";
+    var track = tape.firstChild,
+      seconds = window.EdDraw.tapeSeconds(track.scrollWidth, tape.clientWidth);
+    if (seconds == null) return;
+    var again = document.createElement("span");
+    again.setAttribute("aria-hidden", "true");
+    again.style.display = "contents";
+    again.innerHTML = html;
+    track.appendChild(again);
+    track.className = "htrack";
+    track.style.animationDuration = seconds + "s";
   }
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
@@ -1108,26 +1221,23 @@
   var _priceConnecting = false,
     _priceConnectTimer = null;
   var _quoteShown = false;
-  // the shown price's served trade time ("last trade <CT>"), kept for a push outage, when no newer
-  // age is served and the page computes none
-  var _tradeShown = null;
-  // the volatility index's price row as last served, kept for a push outage (none yet: null)
-  var _volRow = null;
+  // the shown price's served trade time, kept for a push outage, when no newer age is served and
+  // the page computes none: as the header's cell shows it ("<CT>") and as the other surfaces say
+  // it ("last trade <CT>")
+  var _tradeCell = null,
+    _tradeShown = null;
   // the program's own address, the one the page was loaded from
   function priceSocketUrl() {
     return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
   }
   // The market context the server always streams, served in the page (meta ed-market-context,
-  // from live_push.MARKET_CONTEXT): [{key, display, volatility}]. The socket pushes only what a
-  // page subscribes to, so every page asks for it: the header shows its volatility index on
-  // every page, and the Trade Desk's Desk page all of it (the Volatility card, the foot strip).
+  // from live_push.MARKET_CONTEXT): [{key, display, volatility}], the volatility index marked
+  // (live_push.VOLATILITY_INDEX). The socket pushes only what a page subscribes to, so every
+  // page asks for it: the header shows all of it on every page (row 2), and so does the Trade
+  // Desk's Desk page (the Volatility card, the foot strip).
   var MARKET_CONTEXT = JSON.parse(
     document.querySelector('meta[name="ed-market-context"]').getAttribute("content"),
   );
-  // the volatility index: the entry the server marks (live_push.VOLATILITY_INDEX)
-  var VOLATILITY = MARKET_CONTEXT.filter(function (c) {
-    return c.volatility;
-  })[0];
   function priceSymbols() {
     var out = [];
     if (state.ticker) out.push(String(state.ticker).toUpperCase());
@@ -1187,34 +1297,39 @@
   function windowAtExpiry(pan) {
     return Object.assign(windowParams(pan), { expiry: state.expiryFilter });
   }
-  // The daemon's database writer, as each heartbeat carries it: the line and its class are the
-  // daemon's (stream_spine.WriterStatus line / cls). No writer status served: '-'.
+  // The daemon's database writer, as each heartbeat carries it: its one word, its whole line
+  // (the title; row 2's alert while its class is "neg") and its class are the daemon's
+  // (stream_spine.WriterStatus word / line / cls). No writer status served: '-'.
   function paintRecord(w) {
     var el = document.getElementById("hRecord");
     if (!el) return;
-    el.textContent = w ? w.line : "-";
-    el.className = w ? "v " + w.cls : "v";
+    el.textContent = w ? w.word : "-";
+    el.title = w ? w.line : "the capture daemon's database writer, from its heartbeat";
+    el.className = w ? "hword " + w.cls : "hword none";
   }
-  // The daemon's Schwab sign-in, as each heartbeat carries it: the line, its full reason and its
-  // class are the daemon's (capture.sign_in_line). None served: '-'.
+  // The daemon's Schwab sign-in, as each heartbeat carries it: its one word, its full reason
+  // (the title) and its class are the daemon's (capture.sign_in_line); its line is row 2's
+  // alert while it is refused. None served: '-'.
   function paintSignIn(s) {
     var el = document.getElementById("hSignIn");
     if (!el) return;
-    el.textContent = s ? s.line : "-";
+    el.textContent = s ? s.word : "-";
     el.title = s ? s.why : "the daemon's Schwab sign-in, from its heartbeat";
-    el.className = s ? "v " + s.cls : "v";
+    el.className = s ? "hword " + s.cls : "hword none";
   }
   // What the program left out since it started, as each heartbeat carries it: the line, its
-  // reason and its class are the program's (live_ui.left_out_line). None served: nothing was
-  // left out, and the cell is not shown.
+  // reason and its class are the program's (live_ui.left_out_line). The title says both: a
+  // window with no room for the line shows the cell's dot alone (index.html), and the line
+  // joins row 2's alerts (paintLine). None served: nothing was left out, and the cell is not
+  // shown.
   function paintLeftOut(s) {
     var el = document.getElementById("hLeftOut");
     if (!el) return;
+    _leftOut = s ? s : null;
     document.getElementById("hLeftOutKv").hidden = !s;
-    document.getElementById("hLeftOutSep").hidden = !s;
     el.textContent = s ? s.line : "-";
-    el.title = s ? s.why : "";
-    el.className = s ? "v " + s.cls : "v";
+    el.title = s ? s.line + " · " + s.why : "";
+    el.className = s ? "hword " + s.cls : "hword neg";
   }
   function openPriceSocket() {
     var ws;
@@ -1244,6 +1359,14 @@
         else paintSession(null, "session unknown: the daemon sent no status");
         ingestWatchlist(msg.feed);
         if (msg.feed) tickClock(msg.feed);
+        // row 2's line: the header's news as the beat carries it when it changed (push.news), on
+        // every page, a ticker chosen or not; and what the beat says is wrong, which takes its
+        // place and colours the feed word
+        if (msg.news) _news = msg.news;
+        _beatAlerts = msg.feed ? alertsOf(msg.feed) : [];
+        _beatFeedDown = !!msg.feed && msg.feed.schwab_down != null;
+        paintFeedState();
+        paintLine();
       }
       if (msg && msg.type !== "feed" && msg.type !== "quotes") {
         // a panel: one for a ticker the page has left, of a panel it no longer shows, or of a
@@ -1266,6 +1389,12 @@
         _priceFresh = false;
         checkPriceSilence();
       }, PRICE_SILENCE_MS);
+      if (_pushDown) {
+        // the push is back: the page's own alert goes, and the beat's stand
+        _pushDown = false;
+        paintFeedState();
+        paintLine();
+      }
       msg.rows.forEach(ingestPriceRow);
     };
     ws.onclose = function () {
@@ -1305,9 +1434,9 @@
   // verdict is the server's; the browser only picks the words.
   function ingestPriceRow(q) {
     if (!q || !q.ticker) return;
-    if (q.ticker === VOLATILITY.key) {
-      _volRow = q;
-      paintVolatility(q, null);
+    if (_mk[q.ticker]) {
+      _mkRows[q.ticker] = q;
+      paintMarket(q, null);
     }
     if (q.ticker === state.key) {
       // painted NOW, not on requestAnimationFrame: the browser slows or pauses rAF for a
@@ -1316,7 +1445,8 @@
       // throttle -- a few text writes per second. The price is Schwab's last trade with Schwab's
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       _quoteShown = true;
-      _tradeShown = tradeWhen(q, false);
+      _tradeCell = tradeWhen(q, false);
+      _tradeShown = _tradeCell != null ? "last trade " + _tradeCell : null;
       var trade = tradeWhen(q, true);
       paintQuote({
         spot_disp: q.spot_disp,
@@ -1331,6 +1461,7 @@
         feedLabel: q.feed_label,
         ageLabel: trade || q.outage || "no trade sent",
         ageTitle: q.outage,
+        said: trade != null ? "last trade " + trade : null,
       });
     }
     loadWL().forEach(function (wlSym) {
@@ -1346,7 +1477,16 @@
   // 1 s watchdog: a silent daemon withdraws every price within PRICE_SILENCE_MS + 1 s
   function checkPriceSilence() {
     if (pricePushHealthy()) return;
-    if (_volRow) paintVolatility(_volRow, "OFFLINE"); // on every page, a ticker chosen or not
+    // on every page, a ticker chosen or not: the market context stands marked, and unless a row
+    // is on its way row 2's line says the push is down
+    Object.keys(_mkRows).forEach(function (key) {
+      paintMarket(_mkRows[key], PUSH_DOWN);
+    });
+    if (!_priceConnecting && !_pushDown) {
+      _pushDown = true;
+      paintFeedState();
+      paintLine();
+    }
     if (!state.ticker) return;
     markHeaderPushDown();
     markWlDegraded();
@@ -1379,9 +1519,10 @@
     // last trade time and no age: the last served age is not the age now.
     var connecting = _priceConnecting;
     var label = connecting ? "WAITING" : "OFFLINE";
-    var age = connecting ? "no push yet" : "live push down";
+    var age = connecting ? "no push yet" : PUSH_DOWN;
     emit("ed:price_push_down", { label: label }); // every surface of this price says so (the desk map)
-    if (_quoteShown) setFeed("stale", label, _tradeShown != null ? _tradeShown : age);
+    if (_quoteShown)
+      setFeed("stale", label, _tradeCell != null ? _tradeCell : age, null, _tradeShown);
     else
       paintQuote({
         spot_disp: null,
@@ -1536,7 +1677,12 @@
       d.inert = true; // closed: out of the tab order and the accessibility tree
     });
     // initial ticker + header
-    document.getElementById("hVolName").textContent = VOLATILITY.display; // served
+    buildMarket();
+    // a line that stood may no longer fit, and one that ran may: it is drawn again
+    window.addEventListener("resize", function () {
+      _lineOf = false;
+      paintLine();
+    });
     if (state.ticker) setTicker(state.ticker);
     else paintNoTicker();
     _booting = false; // every REAL subsequent view/ticker change dispatches both events normally

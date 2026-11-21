@@ -392,7 +392,7 @@ def _with_page_settings(html: str) -> str:
 
     The market-context symbols it always asks for are live_push.MARKET_CONTEXT, each with its
     display name and whether it is the volatility index (live_push.VOLATILITY_INDEX), which the
-    header shows on every page and the Desk's Volatility card shows; the
+    header draws first of them on every page and the Desk's Volatility card shows; the
     scopes its strike windows take are calc.terrain_engine.SCOPES, each with its word; and the
     words for each streaming state are STREAM_WORDS. A page without a setting's empty meta is
     refused, never served without it.

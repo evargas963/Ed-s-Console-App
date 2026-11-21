@@ -425,9 +425,9 @@ def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_s
 def test_the_header_says_schwab_refused_the_sign_in_and_what_to_run(tmp_path):
     """The daemon's status carries its Schwab sign-in for the header (capture.sign_in_line).
 
-    While Schwab refuses it, the line says REFUSED and what to run, with Schwab's own reason in
-    full; once a new sign-in is saved and taken, it says accepted. Without a chain sweep the
-    daemon has asked nothing, and the header shows '-'.
+    While Schwab refuses it, its word is REFUSED and its line says what to run, with Schwab's
+    own reason in full; once a new sign-in is saved and taken, both say accepted. Without a
+    chain sweep the daemon has asked nothing, and the header shows '-'.
     """
     schwab = LocalSchwab()
     schwab.token = "refuses"
@@ -445,8 +445,14 @@ def test_the_header_says_schwab_refused_the_sign_in_and_what_to_run(tmp_path):
     finally:
         schwab.close()
     assert refused["line"] == "REFUSED: run python reauth_schwab.py" and refused["cls"] == "neg"
+    assert refused["word"] == "REFUSED"
     assert "Refresh token is invalid" in refused["why"]
-    assert accepted == {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
+    assert accepted == {
+        "word": "accepted",
+        "line": "accepted",
+        "why": "Schwab accepts the daemon's sign-in",
+        "cls": "",
+    }
 
 
 #: the daemon's waiting when Schwab refused its sign-in, as production logged it at 2026-11-19

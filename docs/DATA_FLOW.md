@@ -56,9 +56,12 @@ The rules for the data itself, at every hop from Schwab to the screen.
   newer value replaces the older at once; nothing old waits in a queue. A quote's record keeps one
   thing more, the quote its newest quote replaced (`quote_before`, whole as the record held it):
   Schwab sends a trade with the quote that followed it, so the tape reads a trade against the quote
-  in force when it was made (§3.4 Tape). Only the Recorder takes every message, and while the
-  database refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`; the
-  quote kept before, `tests/test_quote_in_force_v1.py` and `tests/test_stream_greeks_capture_v1.py`.
+  in force when it was made (§3.4 Tape). Three readers take every message: the Recorder, which holds
+  them while the database refuses writes (D4); the daemon's window (`capture.show_stream`); and the
+  header's news line, a headline being a story of its own and not a newer value of its symbol's last
+  (§3.4 News). Enforced by: `tests/test_data_path_rules_v1.py`; the quote kept before,
+  `tests/test_quote_in_force_v1.py` and `tests/test_stream_greeks_capture_v1.py`; every headline
+  taken, `tests/test_data_path_header_news_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record.** One writer, `stream_spine.CaptureWriter`,
   records every bus message but option quotes and option books, which it records for the kept
   contracts only (`capture.Daemon.saves`): each ticker's soonest unexpired expiration at the strike
@@ -77,7 +80,8 @@ The rules for the data itself, at every hop from Schwab to the screen.
   `stream_spine.HOLD_CAP_BYTES`, then in spill files beside the database (`<stem>.<ms>.<n>.spill`),
   and writes them back in order, recording progress in `stream_spill_progress`; files a stop or
   crash left are written back at the next start. Its state (`stream_spine.WriterStatus`) rides the
-  daemon's heartbeat to the header's Record line. Enforced by:
+  daemon's heartbeat to the header's Record cell: its one word, with the whole line as the title
+  and, while it is not recording, on the alert line (§6, decision 11). Enforced by:
   `tests/test_data_path_stream_kept_v1.py`, `tests/test_data_path_rules_v1.py`,
   `tests/test_data_path_writer_failures_v1.py`.
 - **D5. The last value stands, marked** (`AGENTS.md` rule 5). A value is LIVE while its feed
@@ -146,8 +150,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Program → page:** `/ws` (`live_ui.page_socket`, `live_ui.LiveUiServer`): each symbol's price row
   on every change, every panel the page shows of its ticker (`server.PAGE_PANELS`) at once and again
   when its producer marks it changed (`live_ui.changed`), and the daemon's status every second
-  (`live_ui.HEARTBEAT_SEC`). A client that stops reading is dropped (`live_ui.PageSocket`); the page
-  reconnects. A frame, symbol or panel a page sends that the server cannot take is logged and
+  (`live_ui.HEARTBEAT_SEC`), which carries the header's news line (`push.news.news`) on a page's
+  first beat and on the first beat after the line changed or the Central day turned
+  (`LiveUiServer.mark_news`). A client that stops reading is dropped (`live_ui.PageSocket`); the
+  page reconnects. A frame, symbol or panel a page sends that the server cannot take is logged and
   counted (`page_refused`), and the beat carries the socket's counts (`page_socket`). The header
   shows these with the records not applied and the reprices failed, while any is above 0
   (`live_ui.left_out_line`, the beat's `left_out`). Enforced by:
@@ -160,7 +166,8 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 
 - **Daemon memory:** the bus's current records and each ticker's newest whole chain; the watchlist
   (`capture.Daemon.watchlist`); the option rule's order and the Flow panel's contract; the price
-  rows (`live_market_plane`).
+  rows (`live_market_plane`); the header's news line, the newest `news_store.STORIES_HELD` stories
+  (`state/news_store.py`).
 - **Console memory:** each symbol's newest book per service and its newest
   `order_flow.state.MAX_TAPE_PRINTS` trade prints (`order_flow.state.OrderFlowState`); the books of
   the last 240 minutes (`order_flow.history.BOOKS`) and the order-imbalance readout, one value a
@@ -185,10 +192,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`push.spot.resolve_spot`); (c) the console's intake → the tape and the level-cross check. The
   last trade's price, size and time have one reader, `calc.l1_trade_observation.last_print`. Every
   page asks for the market context's rows with its own ticker's (`live_push.MARKET_CONTEXT`): the
-  header draws the volatility index's (`live_push.VOLATILITY_INDEX`) on every page, and the Trade
-  Desk's Desk page all three (§6, decision 11). Enforced by:
-  `tests/test_last_print_one_reader_v1.py`, `tests/test_data_path_quote_time_v1.py`,
-  `tests/e2e/console-header.spec.js`.
+  header's second row draws all three on every page, the volatility index
+  (`live_push.VOLATILITY_INDEX`) first, and the Trade Desk's Desk page draws the same rows (§6,
+  decision 11). Enforced by: `tests/test_last_print_one_reader_v1.py`,
+  `tests/test_data_path_quote_time_v1.py`, `tests/e2e/console-header.spec.js`.
 - **Order book.** NYSE_BOOK, NASDAQ_BOOK and OPTIONS_BOOK → the bus → the Recorder,
   `stream_book_raw` (D4) → the console (`order_flow.state.OrderFlowState`, one book per service,
   never combined) → the `book` and `bookmap` panels (`push.book.book`, `push/bookmap.py`), sent
@@ -364,6 +371,25 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`time_et.time_to_expiry_years`, to the second) come from these answers; no session table is typed
   by hand. Enforced by: `tests/test_markets_sessions_v1.py`,
   `tests/test_data_path_stored_sessions_v1.py`.
+- **News.** NEWS_HEADLINE, asked for every watchlist ticker and the market context's symbols
+  (`capture.MARKET_CONTEXT_SERVICES`) → the bus (`news.<symbol>`) → (a) the Recorder,
+  `stream_news_raw`, every message; (b) the daemon's follower, which takes every message in order
+  (`capture.Daemon._took_news`; the bus's one record of a symbol's news is its newest headline
+  alone, D3) → `state.news_store.take`, the one reader of the service's numbered fields, which no
+  Schwab document lists (`docs/SOURCES.md`, `schwab-news-headline-recorded`). A story is held once,
+  by its headline id, with the wording of its newest message by Schwab's frame time (D1) and every
+  symbol it was sent under; a message Schwab marks withdrawn (status D) removes its story; a message
+  in another language than English, by Schwab's own language field, is counted and left out, and so
+  is one with no headline, id or time; the newest `news_store.STORIES_HELD` by each story's own time
+  are held → `push.news.news` (each story's time, symbols, headline and source as texts, and the
+  count left out) → the beat (§3.2) → the header's second row on every page, a ticker chosen or not
+  (§6, decision 11). Its lifecycle owner is the daemon's market follower
+  (`capture.Daemon.follow_market`): a follower that ends ends the program with an error naming it
+  (`capture.run`). The store is empty at each start and the line reads "-" until Schwab sends a
+  headline; Schwab sends its recent stories again when the stream reconnects, and one already held
+  changes nothing. When NEWS_HEADLINE stops, the stories held stand, each with its own time. Nothing
+  reads the database. Registered in `docs/derived_register.md` "The header's news line". Enforced
+  by: `tests/test_data_path_header_news_v1.py`, `tests/e2e/console-header.spec.js`.
 - **Watchlist.** One list, the daemon's (`capture.Daemon.watchlist`), read at start from
   `stream_watchlist` (`capture.stored_watchlist`). An add or removal (`POST /api/watchlist`,
   `DELETE /api/watchlist/{ticker}`) goes to the daemon, which checks an added ticker with one
@@ -425,14 +451,34 @@ them".
   regular and same-day, then the price levels of the `levels:kl` panel. Enforced by:
   `tests/test_data_path_same_day_levels_v1.py`, `tests/test_level_names_one_list_v1.py`,
   `tests/test_data_path_charm_side_unknown_v1.py`.
-- **11. One header, the same on every page.** The page has one header, drawn by the shell alone
-  (`static/js/ed-core.js`); no style or script changes it by workspace or view. Each value in it is
-  drawn from its one served producer: the selected ticker's price row and the volatility index's
-  (`live_price_rows.price_row`; the index is the market-context entry the server marks,
-  `live_push.VOLATILITY_INDEX`, and the Desk's Volatility card draws the same row), and the
-  program's beat (`live_ui.LiveUiServer.beat`: the daemon's clock, session, writer's line and
-  sign-in, `capture.Daemon.status`, and what the program left out). The index's name is its served
-  display name. Not live, it stands with the served word beside its name, and why, its trade time
-  and its age are its title; while the push is silent the header's own OFFLINE stands there and the
-  time has no age (D5). Before its row arrives it reads "-". Enforced by:
-  `tests/e2e/console-header.spec.js`, `tests/test_data_path_header_volatility_v1.py`.
+- **11. One header, the same on every page, in two rows.** The page has one header, drawn by the
+  shell alone (`static/js/ed-core.js`); no style or script changes it by workspace or view, and each
+  value in it is drawn from its one served producer. Row 1, the instrument and the system: the
+  selected ticker's price row (`live_price_rows.price_row`), its last trade's time and age in the
+  stale colour while the row is not live; then the program's beat (`capture.Daemon.status`, sent by
+  `live_ui.LiveUiServer.beat`): the feed, the recorder and the Schwab sign-in, each a dot and the
+  program's one word for it (the row's `feed_label`, `stream_spine.WriterStatus` `word`,
+  `capture.sign_in_line` `word`) with its whole line as the title, the page never cutting a served
+  sentence into a word; what the program left out, shown only while the beat serves it
+  (`live_ui.left_out_line`); the session; and the clock to the second (`time_et.ct_time`;
+  `time_et.ct_clock`, to the millisecond, is the logs'). Row 2, the market and the line: the market
+  context's three price rows (`live_push.MARKET_CONTEXT`, the rows the Desk draws too), the
+  volatility index first (`live_push.VOLATILITY_INDEX`), each its served display name, price and
+  percent change, and, not live, its value dimmed with its trade time and age beside it and why as
+  its title; then the news line (§3.4 News): each story's time, symbols, headline and source as
+  served, newest first, the count left out its label's title. A line longer than its room runs at a
+  constant speed the drawing module sets from its width (`static/js/ed-draw.js` `tapeSeconds`),
+  rests under the pointer, stands still when the system asks for reduced motion and starts again
+  from the newest when a story arrives; no timer of the page moves it. The alert line takes the
+  news' place while something is wrong, each sentence the program's own, in this order: Schwab's
+  connection (the beat's `schwab_down`), the recorder's whole line while its class is "neg", the
+  sign-in's line and Schwab's reason while it is refused, and what was left out where its cell has
+  no room for the sentence, which draws its dot alone there, never a part of a count. While the push
+  itself is silent the page says so on that line in its own words, the feed word reads OFFLINE and
+  every time stands with no age (D5). A value not yet received reads "-". The header is 82 pixels
+  high (`--ed-header-h`); nothing in it wraps or leaves it at the window widths the browser tests
+  use, and a window under 1,500 pixels wide draws the search box as its icon, which opens while it
+  holds the focus. Enforced by: `tests/e2e/console-header.spec.js`,
+  `tests/e2e/console-sign-in.spec.js`, `tests/test_data_path_header_volatility_v1.py`,
+  `tests/test_data_path_header_news_v1.py`, `tests/test_data_path_sign_in_v1.py`,
+  `tests/test_live_ui_daemon_to_browser_v1.py`.
