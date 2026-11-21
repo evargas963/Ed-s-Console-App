@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- the market-context symbols the page always shows, [{key, display}]: filled in by the console -->
+    <!-- the market-context symbols every page subscribes to, [{key, display, volatility}]: filled in by the console -->
     <meta name="ed-market-context" content="" />
     <!-- the strike-window scopes, [{key, label}]: filled in by the console -->
     <meta name="ed-scopes" content="" />
@@ -187,7 +187,7 @@
         width: 1px;
         height: 22px;
         background: var(--ed-edge);
-        margin: 0 13px;
+        margin: 0 8px;
       }
       .hkv {
         display: flex;
@@ -209,6 +209,18 @@
         font-size: 13px;
         font-variant-numeric: tabular-nums;
         color: var(--ed-ink-2);
+      }
+      /* the volatility index: whole on one line, whatever stands beside it */
+      .hvol {
+        flex: none;
+        white-space: nowrap;
+      }
+      .hvol .v {
+        display: flex;
+        gap: 6px;
+      }
+      .hvol.stale .k {
+        color: var(--ed-stale);
       }
       .live {
         display: inline-flex;
@@ -260,10 +272,13 @@
         border-radius: var(--ed-r);
         padding: 6px 11px;
         width: 280px;
+        /* it narrows to its placeholder's width, so a value's cell is squeezed less */
+        min-width: 130px;
         color: var(--ed-ink-3);
       }
       .search input {
         flex: 1;
+        min-width: 0;
         background: none;
         border: none;
         outline: none;
@@ -3141,6 +3156,11 @@
         </div>
         <div class="hsep"></div>
         <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">-</span></div>
+        <div class="hsep"></div>
+        <div class="hkv hvol" id="hVolKv">
+          <span class="k" id="hVolName">-</span
+          ><span class="v"><span id="hVol">-</span><span id="hVolChg"></span></span>
+        </div>
         <div class="hsep"></div>
         <div class="hkv">
           <span class="k">Record</span

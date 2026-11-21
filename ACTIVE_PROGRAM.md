@@ -93,7 +93,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   header during an outage, no rounding or dropped contract in a calculation, each with a behavior
   test on captured data. Left from DASH: values still served with a reason instead of "-": levels
   with no price (`push.levels.NO_PRICE_LEVELS_REASON`), the outage words, and `calc.terrain_read`'s
-  sentences for a missing input.
+  sentences for a missing input. Decided: the header is one, the same on every page, each value from
+  its one producer, and carries the volatility index (`docs/DATA_FLOW.md` §6, decision 11,
+  `tests/e2e/console-header.spec.js`). Left from it: on the Desk, the Volatility card's index row
+  and the foot strip's three indexes show a stopped index with its trade time and no not-live word,
+  and stand unmarked while the push is silent (`static/js/ed-trade-desk-map.js` `vixText`,
+  `paintHeader`).
 - STAND-INS (QUEUED; also TEST-PATCHES, ENF-07): every test runs captured Schwab data through the
   real code. Left: each stand-in a test file names under STAND-INS replaced by a capture carrying
   its condition, at its own instant, fixed in `tests/fixtures/`; the induced conditions the operator
@@ -211,6 +216,21 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - LOCAL-SOCKETS (OPERATOR): the page's socket `/ws` binds every address of this PC
   (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
   read the price rows. Changing the bind is his setting.
+- HEADER-WIDTH (OPERATOR): the header's Record line runs to about 130 characters
+  (`stream_spine.WriterStatus` `line`). Measured with the writer's own line at the widths the
+  browser tests use: one line at 2,560 pixels, two at 1,920 and 1,672; at 1,500 the Bid × Ask cell
+  runs past the header's height, and at 1,280 the Record and Data age cells too, so their text is
+  cut. What the header shows of the writer's status at those widths is his.
+- INDEX-QUOTE-TIME (OPERATOR): Schwab sends `QUOTE_TIME_MILLIS` 0 for an index with no bid or ask
+  ($VIX, $NDX; Schwab Streamer API §3.1, field 34, "Last time a bid or ask updated"), and the price
+  row serves it as a time, "Wed 12/31 06:00 PM CT" (`live_price_rows.price_row` `quote_time_ct`, as
+  in `tests/e2e/fixtures/header_volatility.json`); the header's Bid × Ask title shows it when an
+  index is the selected ticker. Whether a time of 0 is Schwab's "none" and reads "-" is his
+  (AGENTS.md rule 2).
+- INDEX-CLOSED (OPERATOR): on 2026-11-20 Schwab sent `SECURITY_STATUS` Closed for $VIX at 16:00:03
+  ET and 46 more last-price messages after it; the live rule (`live_market_plane.live_state`) reads
+  NOT LIVE from that status, so the header's index says NOT LIVE while its number still moves. What
+  the rule reads for an index after the stock close is his.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
   tolerance; depth to 5 levels); a book side with no levels has no depth total.

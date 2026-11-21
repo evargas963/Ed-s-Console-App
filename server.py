@@ -390,8 +390,9 @@ app.add_api_websocket_route("/ws", live_ui.page_socket)
 def _with_page_settings(html: str) -> str:
     """Tell the page its market-context symbols, strike-window scopes and streaming-state words.
 
-    The market-context symbols it always shows are live_push.MARKET_CONTEXT, each with its
-    display name and whether it is the Volatility card's (live_push.VOLATILITY_INDEX); the
+    The market-context symbols it always asks for are live_push.MARKET_CONTEXT, each with its
+    display name and whether it is the volatility index (live_push.VOLATILITY_INDEX), which the
+    header shows on every page and the Desk's Volatility card shows; the
     scopes its strike windows take are calc.terrain_engine.SCOPES, each with its word; and the
     words for each streaming state are STREAM_WORDS. A page without a setting's empty meta is
     refused, never served without it.

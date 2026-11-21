@@ -16,7 +16,7 @@ every watchlist ticker, each in its turn in one rotation, a ticker on a page bef
              request's id and Schwab's answer back to the console.
 
   1. WANTED  What Schwab's stream is asked for (wanted): every watchlist ticker on each equity
-             service (with the market context the page header shows, MARKET_CONTEXT, on
+             service (with the market context every page asks for, MARKET_CONTEXT, on
              LEVELONE_EQUITIES, CHART_EQUITY and NEWS_HEADLINE), and the option contracts the
              option rule picks (pick_options: the contract selected on the Flow panel, then every
              ticker's contracts dealt in turn, each ticker's in shown_first's order of its newest
@@ -103,7 +103,7 @@ log = logging.getLogger("capture")
 
 #: every watchlist ticker is streamed on each of these
 EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
-#: the market context every page's header shows (live_push.MARKET_CONTEXT) is streamed on these,
+#: the market context every page asks for (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
 
