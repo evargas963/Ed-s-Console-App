@@ -434,10 +434,10 @@ def test_top_prices_and_sizes_are_carried_exactly():
     data = _read({"content": [], "top": StreamedTop(bid=0.58, ask=0.59, bid_size=11, ask_size=23)})
     bid, ask = ofe._resolve_bid_ask_prices(data)
     assert (bid, ask) == (0.58, 0.59)
-    assert ofe._extract_canonical_book(data)["mark"] is None
+    assert ofe._extract_canonical_book(data).mark is None
     assert ofe._compute_top_book_pressure(data) == (11 - 23) / (11 + 23)
     cb = ofe._extract_canonical_book(data)
-    assert (cb["bid_size"], cb["ask_size"]) == (11, 23)
+    assert (cb.bid_size, cb.ask_size) == (11, 23)
 
 
 def test_zero_size_is_a_real_value_not_a_fallback_trigger():
@@ -448,7 +448,7 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
     assert ofe._compute_top_book_pressure(_read(data)) == (0 - 5) / (0 + 5), (
         "a real BID_SIZE=0 is not missing"
     )
-    assert ofe._extract_canonical_book(_read(data))["bid_size"] == 0
+    assert ofe._extract_canonical_book(_read(data)).bid_size == 0
     assert _micro(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
 
 

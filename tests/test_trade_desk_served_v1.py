@@ -79,8 +79,8 @@ def test_the_book_side_is_served_from_the_real_book():
     # the book's lean, a word, is the Liquidity readout's (the one producer): this book's top five
     # (440 bid, 1,840 ask: -61.4%) is OFFER_HEAVY
     readout = book_readout({"NYSE_BOOK": book, "NASDAQ_BOOK": None})["NYSE_BOOK"]
-    assert readout["views"]["5"]["pct"] == pytest.approx((bid5 - ask5) / (bid5 + ask5) * 100)
-    assert _tilt(readout["views"]["5"]["pct"]) == "OFFER_HEAVY"
+    assert readout.views["5"].pct == pytest.approx((bid5 - ask5) / (bid5 + ask5) * 100)
+    assert _tilt(readout.views["5"].pct) == "OFFER_HEAVY"
 
 
 def _desk_events(tk, crosses, now, tf, limit=12000):
