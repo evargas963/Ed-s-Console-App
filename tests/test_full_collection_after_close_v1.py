@@ -158,7 +158,8 @@ def test_the_program_sets_its_collector_as_it_starts(tmp_path):
     ) in log, log
 
 
-def test_one_full_collection_runs_after_each_close_and_none_in_the_session(collector, caplog):
+@pytest.mark.usefixtures("collector")
+def test_one_full_collection_runs_after_each_close_and_none_in_the_session(caplog):
     """Wednesday 2026-10-07 15:00 ET to Saturday 10-10: one collection per close, logged.
 
     In the session nothing is collected from the oldest generation, however often the loop
@@ -210,7 +211,8 @@ def test_one_full_collection_runs_after_each_close_and_none_in_the_session(colle
     assert first[2] == second[2] == 0  # nothing it could not free
 
 
-def test_a_start_after_the_close_runs_no_collection_for_it(collector, caplog):
+@pytest.mark.usefixtures("collector")
+def test_a_start_after_the_close_runs_no_collection_for_it(caplog):
     """A program started after the day's close holds nothing a session left: no collection.
 
     Wednesday 2026-10-07 17:00 ET, after the 16:15 close, with Schwab's answer for the day held;
