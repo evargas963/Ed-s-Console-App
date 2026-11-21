@@ -226,7 +226,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   ask in force when it traded, never the quote that followed it
   (`calc.l1_trade_observation.quote_in_force`, `tests/test_quote_in_force_v1.py`); the page writes
   no reading of its own (a session volume of 0 is served with what it means,
-  `push.strikes._shown_migration`).
+  `push.strikes._shown_migration`); the Confluence Composite ranks sizes and says so on the screen
+  ("size, not direction", `tests/e2e/console-confluence.spec.js`): a reading of ours is called a
+  direction only once recorded data supports it (operator 2026-11-21).
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).

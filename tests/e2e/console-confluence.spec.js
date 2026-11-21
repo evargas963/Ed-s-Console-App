@@ -194,3 +194,18 @@ test("a chosen expiry that has passed is said, never another expiry's ranking", 
   await expect(page.locator("#cmBody")).toContainText(FX.front_passed.reason);
   await expect(page.locator("#cmRows tr")).toHaveCount(0);
 });
+
+test("the Composite column says what it measures: size, not direction", async ({ page }) => {
+  // the score ranks unsigned sizes (calc.confluence_composite.magnitudes), so the header says so,
+  // beside the served scale and preset
+  const body = served(FRONT);
+  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await openMatrix(page);
+  const head = page.locator("#cmFrame thead th", { hasText: "Composite" });
+  await expect(head.locator("small")).toHaveText([
+    "size, not direction",
+    body.scale_text,
+    body.preset,
+  ]);
+  await expect(head).toHaveAttribute("title", /It carries no direction\.$/);
+});
