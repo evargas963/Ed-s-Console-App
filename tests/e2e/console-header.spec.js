@@ -56,15 +56,22 @@ const marketContext = (page) => page.evaluate(() => window.EdShell.marketContext
 // row 2's cell of a market-context row
 const cellOf = (page, context, row) =>
   page.locator("#hMk" + context.filter((c) => c.key === row.ticker)[0].display);
-// row 2's line as drawn, its first copy: each item's time, symbols or kind, sentence and source
+// row 2's line as drawn, its first copy: each item's parts by their class, in the order drawn
+// (t the time, g the symbols or what an alert is about, h the sentence, s the source)
 const lineItems = (page) =>
   page
     .locator("#hTape .htrack > .hni")
     .evaluateAll((els) =>
-      els.map((el) => ["t", "g", "h", "s"].map((k) => el.querySelector("." + k)?.textContent)),
+      els.map((el) =>
+        Object.fromEntries(Array.from(el.children, (c) => [c.className, c.textContent])),
+      ),
     );
-// a news frame's items as the line draws them
-const drawn = (news) => news.items.map((n) => [n.time_ct, n.symbols_text, n.headline, n.source]);
+// a news frame's items as the line draws them: every story Schwab's headlines of 2026-11-20
+// gave the line has a time and a source
+const drawn = (news) =>
+  news.items.map((n) => ({ t: n.time_ct, g: n.symbols_text, h: n.headline, s: n.source }));
+// an alert as the line draws it: what it is about and the sentence, no time and no source
+const alert = (about, sentence) => ({ g: about, h: sentence });
 // INDUCED: what the program left out, as live_ui.left_out_line words it
 const LEFT_OUT = {
   line: "3 records not applied · 1 page frames refused",
@@ -165,7 +172,8 @@ test('row 2 draws the market context from its served rows, the volatility index 
     FX.live.spot_disp + " (" + FX.live.chg_pct_text + ") · last trade " + FX.live.trade_time_ct,
   );
   await expect(page.locator("#tdmIdx" + vol.display)).toContainText(FX.live.spot_disp);
-  // the index's next row, with no row of the selected ticker after it: all three draw it
+  // the index's next row, with no row of the selected ticker after it: all three draw it, and
+  // the Desk's two mark it as the header's cell does (tests/e2e/console-trade-desk.spec.js)
   sock.send({ type: "quotes", rows: FX.market_closed });
   await expect(cellOf(page, context, FX.closed).locator(".mp")).toHaveText(FX.closed.spot_disp);
   await expect(page.locator("#tdmIdx" + vol.display)).toContainText(FX.closed.spot_disp);
@@ -173,8 +181,12 @@ test('row 2 draws the market context from its served rows, the volatility index 
     FX.closed.spot_disp +
       " (" +
       FX.closed.chg_pct_text +
-      ") · last trade " +
-      FX.closed.trade_time_ct,
+      ") · " +
+      FX.closed.feed_label +
+      " · last trade " +
+      FX.closed.trade_time_ct +
+      " · " +
+      FX.closed.trade_age_text,
   );
   expect(errs).toEqual([]);
 });
@@ -250,7 +262,7 @@ test("a stopped index stands marked with its time and age; the push silent, the 
   }
   await expect(page.locator("#hLineLabel")).toHaveText("Alert");
   await expect(page.locator("#hLine")).toHaveClass(/alert/);
-  expect(await lineItems(page)).toEqual([[undefined, "Feed", "live push down", undefined]]);
+  expect(await lineItems(page)).toEqual([alert("Feed", "live push down")]);
   // the next beat ends it: the rows are live, and the news it held is back
   sock.send(beat(FX.beat, [...FX.market_live, SPY]));
   await expect(page.locator("#hFeed")).toHaveText(SPY.feed_label);
@@ -294,7 +306,7 @@ test("what is wrong takes the news' place on row 2, each the program's own sente
   await expect(page.locator("#hAge")).toHaveAttribute("title", spx(FX.market_down).outage);
   await expect(page.locator("#hLineLabel")).toHaveText("Alert");
   await expect(page.locator("#hLineLabel")).not.toHaveAttribute("title", /./);
-  expect(await lineItems(page)).toEqual([[undefined, "Feed", FX.beat_down.schwab_down, undefined]]);
+  expect(await lineItems(page)).toEqual([alert("Feed", FX.beat_down.schwab_down)]);
   for (const row of FX.market_down) {
     const cell = cellOf(page, context, row);
     await expect(cell).toHaveClass(/stale/);
@@ -311,9 +323,7 @@ test("what is wrong takes the news' place on row 2, each the program's own sente
     "title",
     FX.beat_not_recording.writer.line,
   );
-  expect(await lineItems(page)).toEqual([
-    [undefined, "Record", FX.beat_not_recording.writer.line, undefined],
-  ]);
+  expect(await lineItems(page)).toEqual([alert("Record", FX.beat_not_recording.writer.line)]);
   // Schwab refuses the sign-in: REFUSED in its cell, what to run and Schwab's reason on the line
   const refused = FX.beat_refused.sign_in;
   sock.send(beat(FX.beat_refused, FX.market_live));
@@ -323,7 +333,7 @@ test("what is wrong takes the news' place on row 2, each the program's own sente
   await expect(page.locator("#hSignIn")).toHaveClass(/neg/);
   await expect(page.locator("#hSignIn")).toHaveAttribute("title", refused.why);
   expect(await lineItems(page)).toEqual([
-    [undefined, "Schwab sign-in", refused.line + " · " + refused.why, undefined],
+    alert("Schwab sign-in", refused.line + " · " + refused.why),
   ]);
   // INDUCED: all three at once, and the longest left-out line: each on the line, in that order.
   // This window (1,280 wide) has no room in row 1 for that sentence in any face, so its cell
@@ -335,14 +345,9 @@ test("what is wrong takes the news' place on row 2, each the program's own sente
   });
   sock.send(beat(all, FX.market_down));
   await expect
-    .poll(async () => (await lineItems(page)).map((i) => i[1]))
+    .poll(async () => (await lineItems(page)).map((i) => i.g))
     .toEqual(["Feed", "Record", "Schwab sign-in", "Left out"]);
-  expect((await lineItems(page))[3]).toEqual([
-    undefined,
-    "Left out",
-    LEFT_OUT_LONGEST.line,
-    undefined,
-  ]);
+  expect((await lineItems(page))[3]).toEqual(alert("Left out", LEFT_OUT_LONGEST.line));
   await expect(page.locator("#hLeftOutKv")).toBeVisible();
   await expect(page.locator("#hLeftOut")).toHaveText(LEFT_OUT_LONGEST.line);
   await expect(page.locator("#hLeftOut")).toHaveAttribute(
@@ -350,12 +355,22 @@ test("what is wrong takes the news' place on row 2, each the program's own sente
     LEFT_OUT_LONGEST.line + " · " + LEFT_OUT_LONGEST.why,
   );
   await expect(page.locator("#hLeftOut")).toHaveClass(/\bneg\b/);
-  // INDUCED: the same alerts with a newer sentence are written in place; the line is not drawn
-  // again, so one in motion keeps its place
+  // INDUCED: the same alerts with a newer sentence are written in place, in both copies of the
+  // line (it is longer than its room here, so it runs); the line is not drawn again, so one in
+  // motion keeps its place
   const track = await page.locator("#hTape .htrack").elementHandle();
   const later = Object.assign({}, all.writer, { line: all.writer.line + " · and a second later" });
   sock.send(beat(Object.assign({}, all, { writer: later }), FX.market_down));
-  await expect(page.locator("#hTape .htrack > .hni .h").nth(1)).toHaveText(later.line);
+  const sentences = [
+    FX.beat_down.schwab_down,
+    later.line,
+    refused.line + " · " + refused.why,
+    LEFT_OUT_LONGEST.line,
+  ];
+  await expect(page.locator("#hTape .htrack > .hni .h")).toHaveText(sentences);
+  await expect(page.locator('#hTape .htrack > [aria-hidden="true"] > .hni .h')).toHaveText(
+    sentences,
+  );
   expect(await track.evaluate((el) => el.isConnected)).toBe(true);
   // all is well again: the news returns, and nothing is left out
   sock.send(beat(FX.beat, FX.market_live));
@@ -424,7 +439,7 @@ test("the news line draws each story's served time, symbols, headline and source
   await expect(page.locator("#hTape .htrack > .hni .h").first()).toHaveText(
     NEWS.withdrawn.items[0].headline,
   );
-  expect((await lineItems(page)).map((i) => i[2])).not.toContain(NEWS.story.items[0].headline);
+  expect((await lineItems(page)).map((i) => i.h)).not.toContain(NEWS.story.items[0].headline);
   // asked for less motion, it stands still
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect((await run()).name).toBe("none");
@@ -613,15 +628,10 @@ test("at every window width the browser tests use the header is 82 px tall, no v
         );
         if (wrong.length) {
           await expect
-            .poll(async () => (await lineItems(page)).map((i) => i[1]), where)
+            .poll(async () => (await lineItems(page)).map((i) => i.g), where)
             .toEqual(wrong);
           if (noRoom)
-            expect((await lineItems(page)).pop(), where).toEqual([
-              undefined,
-              "Left out",
-              LEFT_OUT.line,
-              undefined,
-            ]);
+            expect((await lineItems(page)).pop(), where).toEqual(alert("Left out", LEFT_OUT.line));
         } else expect(await lineItems(page), where).toEqual(drawn(NEWS.morning));
       }
     }
@@ -638,7 +648,7 @@ test("at every window width the browser tests use the header is 82 px tall, no v
       const where = face.name + ", the longest left-out line at " + width;
       await expect
         .poll(() => lineItems(page), where)
-        .toEqual([[undefined, "Left out", LEFT_OUT_LONGEST.line, undefined]]);
+        .toEqual([alert("Left out", LEFT_OUT_LONGEST.line)]);
       await expect(page.locator("#hLineLabel"), where).toHaveText("Alert");
       // its words are wrapped out of the cell's one line, whole
       expect(
@@ -715,7 +725,7 @@ function knownTexts(frame, alerting) {
     );
   const line = alerting
     ? wrong.concat(feed.left_out ? ["Left out"] : [])
-    : drawn(frame.news).flat();
+    : drawn(frame.news).flatMap((item) => Object.values(item));
   return row1.concat(market, ["Search symbol"], line);
 }
 

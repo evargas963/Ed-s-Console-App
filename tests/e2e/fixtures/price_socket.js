@@ -42,7 +42,8 @@ function panelFrame(name, ticker, body) {
 // send. Each panel a subscribe names ("<kind>" or "<kind>:<reader>") whose kind is here is sent
 // for the selected ticker on the subscribe, as live_ui does. Returns `changed(kind)`: the
 // program marking a kind changed, each page showing it sent its panels again; `subscribes`,
-// every subscribe the page sent; and `frame(name, ticker, body)`, one frame sent as it is.
+// every subscribe the page sent; `frame(name, ticker, body)`, one frame sent as it is; and
+// `quotes(rows)`, price rows pushed now ({type:'quotes'}), when the test says.
 async function mockPriceSocket(page, rows = [], later = [], expiries = undefined, panels = {}) {
   socketed.add(page);
   const open = new Set(); // [ws, its last subscribe]
@@ -95,6 +96,8 @@ async function mockPriceSocket(page, rows = [], later = [], expiries = undefined
     subscribes,
     // one frame as the program sent it, whatever the page last asked (a frame already on its way)
     frame: (name, ticker, body) => open.forEach((c) => c[0].send(panelFrame(name, ticker, body))),
+    quotes: (pushed) =>
+      open.forEach((c) => c[0].send(JSON.stringify({ type: "quotes", rows: pushed }))),
   };
 }
 // The chain panel's stand-in for `body`: the program answers each reader's expiry with that

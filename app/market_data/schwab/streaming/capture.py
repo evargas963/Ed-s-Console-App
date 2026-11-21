@@ -521,9 +521,11 @@ class Daemon:
 
         The bus hands this reader every news message, once, in the order published: a story is
         its own item, never a newer version of the last one sent for its symbol
-        (stream_spine.VERSIONED). The pages are sent the line when it changed.
+        (stream_spine.VERSIONED). The store takes Feed's read of Schwab's item, which the message
+        carries beside it (`headline`, feed.connection.news_headline). The pages are sent the
+        line when it changed.
         """
-        if news_store.take(sym, msg["content"], msg["schwab_ts"]):
+        if news_store.take(sym, msg["headline"], msg["schwab_ts"]):
             news_changed(server.app.state)
 
     async def follow_market(self, stop: asyncio.Event) -> None:

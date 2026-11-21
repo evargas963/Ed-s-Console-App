@@ -307,7 +307,11 @@ def verbatim_msg(
     ts_recv: float,
     schwab_ts: int | None = None,
 ) -> dict[str, Any]:
-    """optquote.* (LEVELONE_OPTIONS) and news.* (NEWS_HEADLINE), Schwab's item verbatim."""
+    """optquote.* (LEVELONE_OPTIONS) and news.* (NEWS_HEADLINE), Schwab's item verbatim.
+
+    A news message carries one thing more: Feed's read of the item's fields, `headline`
+    (feed.connection.news_headline), which the header's news line takes.
+    """
     return {
         "ts_recv": ts_recv,
         "schwab_ts": schwab_ts,

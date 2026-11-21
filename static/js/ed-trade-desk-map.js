@@ -96,6 +96,8 @@
     analytics: null,
     liq: null,
     quotes: {},
+    // each market context row with the shell's mark of it (ed:market_row): {row, mark}
+    market: {},
     queue: [],
     sel: null,
     // the Liquidity card's venue (COMPOSITE, or BOOK: the shell's book switch) and depth view
@@ -668,10 +670,6 @@
     // VOLATILITY
     c = $("tdmCardVol");
     if (c) {
-      var vixC = window.EdShell.marketContext().filter(function (c) {
-        return c.volatility; // served: the index this card shows
-      })[0];
-      var vix = vixC && S.quotes[vixC.key];
       state(
         c,
         t === undefined ? "LOADING" : !t || why(t) ? "UNAVAILABLE" : "",
@@ -682,9 +680,28 @@
         row("ATR daily", orDash(t && t.atr_daily_text)) +
         row("ATR weekly", orDash(t && t.atr_weekly_text)) +
         row("ATR monthly", orDash(t && t.atr_monthly_text)) +
-        row(vixC.display, vixText(vix, vixC.display));
+        '<span class="tdm-r" id="tdmVolIdx"></span>';
+      paintVolIndex();
     }
     paintCardCharts();
+  }
+  // The Volatility card's last row: the market context's volatility index (served: which one),
+  // as the shell marks it. Painted with the card, and when the index's own row arrives.
+  function paintVolIndex() {
+    var el = $("tdmVolIdx");
+    if (!el) return;
+    var vol = window.EdShell.marketContext().filter(function (ctx) {
+      return ctx.volatility;
+    })[0];
+    var m = S.market[vol.key];
+    el.title = m && m.mark ? m.mark.why : "";
+    el.innerHTML =
+      esc(vol.display) +
+      ' <b class="' +
+      (m && m.mark ? "tdm-stopped" : "") +
+      '">' +
+      vixText(m, vol.display) +
+      "</b>";
   }
   // ------------------------------------------------------------------ liquidity card
   // The served order-imbalance readout (the book panel's `readout`): every number,
@@ -1179,22 +1196,34 @@
   }
   // The shell header already carries the symbol, price, change, the market context and the CT
   // clock, on every page; this page draws the market context too, from the same served rows
-  // (its Volatility card, and this strip), with the data-trust row beside it.
-  function vixText(vix, name) {
-    if (!vix || vix.spot == null) return "waiting for the " + esc(name) + " stream";
-    var txt =
-      esc(vix.spot_disp) + (vix.chg_pct_text != null ? " (" + esc(vix.chg_pct_text) + ")" : ""); // served
-    return vix.trade_time_ct != null ? txt + " · last trade " + esc(vix.trade_time_ct) : txt;
+  // (its Volatility card, and this strip), with the data-trust row beside it. Each row comes
+  // with the shell's mark of it (ed-core.js paintMarket, S.market): none while the row is live;
+  // stopped, the served word (the shell's own while its push is silent), why, and the trade's
+  // time with its served age (no age while the push is silent). `idxTail`: what follows an
+  // index's value here, the mark's word and the trade's time.
+  function idxTail(m) {
+    var when = m.mark ? m.mark.when : m.row.trade_time_ct;
+    return (m.mark ? " · " + m.mark.word : "") + (when != null ? " · last trade " + when : "");
   }
-  function paintHeader() {
+  function vixText(m, name) {
+    if (!m || m.row.spot == null) return "waiting for the " + esc(name) + " stream";
+    return (
+      esc(m.row.spot_disp) +
+      (m.row.chg_pct_text != null ? " (" + esc(m.row.chg_pct_text) + ")" : "") + // served
+      esc(idxTail(m))
+    );
+  }
+  function paintIndexes() {
     window.EdShell.marketContext().forEach(function (c) {
       // the served context symbols
       var el = $("tdmIdx" + c.display);
       if (!el) return;
-      var r = S.quotes[c.key];
-      if (!r) el.title = "waiting for the " + c.display + " stream";
+      var m = S.market[c.key],
+        r = m && m.row,
+        tail = m ? idxTail(m) : "";
+      if (!m) el.title = "waiting for the " + c.display + " stream";
+      else if (m.mark) el.title = m.mark.why;
       else if (r.trade_time_ct != null) el.title = "last trade " + r.trade_time_ct;
-      else if (r.outage != null) el.title = r.outage;
       else el.title = "no trade sent";
       el.innerHTML =
         "<span>" +
@@ -1209,10 +1238,11 @@
             esc(orDash(r.chg_pct_text)) + // served: "+0.57%"
             "</em>"
           : "") +
-        (r && r.trade_time_ct != null
-          ? "<span> · last trade " + esc(r.trade_time_ct) + "</span>"
+        (tail
+          ? '<span class="' + (m.mark ? "tdm-stopped" : "") + '">' + esc(tail) + "</span>"
           : "");
     });
+    paintVolIndex();
   }
 
   // ------------------------------------------------------------------ lifecycle
@@ -1229,7 +1259,7 @@
       S.levels = S.terrain = S.micro = S.events = S.liq = S.optBook = S.flowBars = undefined;
       S.sel = null;
       clearChart();
-      paintHeader();
+      paintIndexes();
       paintQueue();
       paintCards();
       paintTrust();
@@ -1247,7 +1277,6 @@
     document.addEventListener("ed:panel", function (e) {
       if (onDesk()) takePanel(e.detail);
     });
-    // Every streamed price row: header + indices. The chart moves only on a completed bar.
     // the header's word while the daemon's push is down (WAITING, OFFLINE): the last row's
     // verdict is not the state now; the next row ends it
     document.addEventListener("ed:price_push_down", function (e) {
@@ -1257,13 +1286,20 @@
         paintCards();
       }
     });
+    // a market context row as the shell marks it: when its row arrives, and while the push is
+    // silent; the strip and the Volatility card's index row draw it at once
+    window.addEventListener("ed:market_row", function (e) {
+      S.market[e.detail.row.ticker] = e.detail;
+      if (onDesk()) paintIndexes();
+    });
+    // every streamed price row: the selected ticker's is drawn. The chart moves only on a
+    // completed bar.
     window.addEventListener("ed:quote_tick", function (e) {
       var q = e.detail;
       if (!q || !q.ticker) return;
       if (q.ticker === window.EdShell.getState().key) S.pushDown = null; // the selected price's own row ends it, as in the header
       S.quotes[q.ticker] = q;
       if (!onDesk()) return;
-      paintHeader();
       if (q.ticker === window.EdShell.getState().key) {
         paintTrust();
         if (S.chart)

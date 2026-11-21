@@ -105,10 +105,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   sentences for a missing input. Decided: the header is one, the same on every page, each value from
   its one producer, in two rows: the instrument and the system, then the market context's three
   indexes and the news line, which gives way to the alerts (`docs/DATA_FLOW.md` §6, decision 11,
-  `tests/e2e/console-header.spec.js`). Left from it: on the Desk, the Volatility card's index row
-  and the foot strip's three indexes show a stopped index with its trade time and no not-live word,
-  and stand unmarked while the push is silent (`static/js/ed-trade-desk-map.js` `vixText`,
-  `paintHeader`).
+  `tests/e2e/console-header.spec.js`).
 - STAND-INS (QUEUED; also TEST-PATCHES, ENF-07): every test runs captured Schwab data through the
   real code. Left: each stand-in a test file names under STAND-INS replaced by a capture carrying
   its condition, at its own instant, fixed in `tests/fixtures/`; the induced conditions the operator
@@ -233,11 +230,11 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
   read the price rows. Changing the bind is his setting.
 - DESK-INDEX-LINE (OPERATOR): the Trade Desk's foot strip repeats the three indexes the header's
-  second row now shows on every page (`static/js/ed-trade-desk-map.js` `paintHeader`), each with its
-  last trade's time, on a line of its own. Whether that line stays is his. With it, at the 1920×950
-  window, the Cross-Domain Read row's track is 27 pixels under its 36-pixel panel, and with every
-  line of the Liquidity card at once as well (INDUCED) the Desk needs 823 pixels of its 808 and
-  scrolls 15, as it needed 847 of 832 before the header changed; without that line both fit.
+  second row now shows on every page (`static/js/ed-trade-desk-map.js` `paintIndexes`), each with
+  its last trade's time, on a line of its own. Whether that line stays is his. With it, at the
+  1920×950 window, the Cross-Domain Read row's track is 27 pixels under its 36-pixel panel, and with
+  every line of the Liquidity card at once as well (INDUCED) the Desk needs 823 pixels of its 808
+  and scrolls 15, as it needed 847 of 832 before the header changed; without that line both fit.
 - INDEX-QUOTE-TIME (OPERATOR): Schwab sends `QUOTE_TIME_MILLIS` 0 for an index with no bid or ask
   ($VIX, $NDX; Schwab Streamer API §3.1, field 34, "Last time a bid or ask updated"), and the price
   row serves it as a time, "Wed 12/31 06:00 PM CT" (`live_price_rows.price_row` `quote_time_ct`, as

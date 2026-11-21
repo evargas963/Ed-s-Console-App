@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict
 
 from instrument_identity import display_symbol
 from numeric_contract import count_text
@@ -10,7 +10,23 @@ from state import news_store
 from time_et import ct_dated
 
 
-def news(now: float) -> dict[str, Any]:
+class NewsItem(TypedDict):
+    """One story as the line draws it: each part a text, the source None when Schwab sent none."""
+
+    time_ct: str
+    symbols_text: str
+    headline: str
+    source: str | None
+
+
+class NewsLine(TypedDict):
+    """The header's news frame: the stories held, newest first, and what the line left out."""
+
+    items: list[NewsItem]
+    left_out: str
+
+
+def news(now: float) -> NewsLine:
     """Return the header's news frame at `now`: the stories held, newest first.
 
     Each story of state.news_store (at most its STORIES_HELD): its own time as the line shows

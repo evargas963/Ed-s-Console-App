@@ -38,6 +38,8 @@ from schwab.streaming import UnparsableMessage
 import time_et
 from feed.schwab_client import Json
 from feed.stream import TimedStream, label
+from numeric_contract import schwab_number
+from state.news_store import NewsHeadline
 from stream_spine import (
     SERVICE_TOPIC,
     HealthRegistry,
@@ -137,12 +139,37 @@ def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> lis
     return chunks
 
 
+def news_headline(item: dict[str, Any]) -> NewsHeadline:
+    """Return one NEWS_HEADLINE item's fields as sent: the one reader of them.
+
+    No Schwab document lists the service and schwab-py names none of its fields, so they are read
+    by their numbers, as their values in Schwab's own messages show them (docs/SOURCES.md,
+    schwab-news-headline-recorded): 1 the story's time in milliseconds, a number as sent
+    (AGENTS.md rule 2); 2 the headline id, 3 the status, 4 the headline, 9 the source and 11 the
+    language, each text as sent. A field Schwab did not send, or sent as another kind, is None.
+    """
+
+    def text(field: str) -> str | None:
+        value = item.get(field)
+        return value if isinstance(value, str) else None
+
+    return NewsHeadline(
+        story_ms=schwab_number(item.get("1")),
+        headline_id=text("2"),
+        status=text("3"),
+        headline=text("4"),
+        source=text("9"),
+        language=text("11"),
+    )
+
+
 def _message(
     service: str, sym: str, item: dict[str, Any], schwab_ts: int | None, ts_recv: float
 ) -> tuple[str, dict[str, Any]]:
     """Return (topic kind, bus message) for one Schwab item.
 
-    The message carries the timestamp of Schwab's frame and the time it was received.
+    The message carries the timestamp of Schwab's frame and the time it was received; a news
+    message, beside Schwab's item, its fields read once (`headline`, news_headline).
     """
     kind, src = SERVICE_TOPIC[service]
     at: dict[str, Any] = {"src": src, "schwab_ts": schwab_ts, "ts_recv": ts_recv}
@@ -152,8 +179,11 @@ def _message(
     if service == "CHART_EQUITY":
         fields = {name: item.get(k) for k, name in CHART_FIELDS.items()}
         return kind, bar_msg(symbol=sym, native=item, **at, **fields)
-    if service in ("LEVELONE_OPTIONS", "NEWS_HEADLINE"):
+    if service == "LEVELONE_OPTIONS":
         return kind, verbatim_msg(symbol=sym, content=item, **at)
+    if service == "NEWS_HEADLINE":
+        news = verbatim_msg(symbol=sym, content=item, **at)
+        return kind, {**news, "headline": news_headline(item)}
     return kind, book_msg(symbol=sym, service=service, content=item, **at)
 
 

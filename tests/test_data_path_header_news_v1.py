@@ -27,6 +27,7 @@ import pytest
 
 import time_et
 from app.market_data.schwab.streaming import capture
+from feed import connection
 from push import news as push_news
 from state import news_store
 from stream_spine import HealthRegistry, MessageBus, held_key
@@ -55,9 +56,25 @@ def _no_news_before_or_after():
     forget_news()
 
 
+def _published(m: dict) -> dict:
+    """Return the bus message Feed makes of one captured item (feed.connection._message)."""
+    kind, msg = connection._message(
+        "NEWS_HEADLINE", m["symbol"], m["item"], m["schwab_ts"], m["ts_recv"]
+    )
+    assert kind == "news"
+    return msg
+
+
 def _take(messages: list[dict]) -> list[bool]:
-    """Give the store each message as the daemon's follower does; what each one changed."""
-    return [news_store.take(m["symbol"], m["item"], m["schwab_ts"]) for m in messages]
+    """Give the store each message as the daemon's follower does; what each one changed.
+
+    The store takes Feed's read of the item, as the bus message carries it.
+    """
+    taken = []
+    for m in messages:
+        msg = _published(m)
+        taken.append(news_store.take(m["symbol"], msg["headline"], msg["schwab_ts"]))
+    return taken
 
 
 def _english(messages: list[dict]) -> list[dict]:
@@ -70,6 +87,36 @@ def _expected_order(messages: list[dict]) -> list[str]:
     for m in _english(messages):
         newest[m["item"]["2"]] = m["item"]["1"]
     return sorted(newest, key=lambda i: -newest[i])
+
+
+def test_feed_reads_each_item_once_as_sent_and_the_bus_carries_it_beside_schwabs_item():
+    """Every captured item: Feed's record holds its six fields as sent, beside the item itself.
+
+    The record's time, id, status, headline, source and language are the item's fields 1, 2, 3,
+    4, 9 and 11, and the item the Recorder stores is Schwab's own, untouched. INDUCED, each made
+    of Schwab's first message: a field it is given without, or with a value of another kind (a
+    time in text, a headline as a number), is absent in the record, never a default.
+    """
+    for m in _MSGS:
+        msg, item = _published(m), m["item"]
+        assert msg["content"] is item and msg["schwab_ts"] == m["schwab_ts"]
+        assert msg["headline"] == news_store.NewsHeadline(
+            story_ms=item["1"],
+            headline_id=item["2"],
+            status=item["3"],
+            headline=item["4"],
+            source=item["9"],
+            language=item["11"],
+        )
+    sent = _OPEN[0]
+    bare = {k: v for k, v in sent["item"].items() if k in ("key", "seq")}
+    assert _published({**sent, "item": bare})["headline"] == news_store.NewsHeadline(
+        story_ms=None, headline_id=None, status=None, headline=None, source=None, language=None
+    )
+    other = {**sent["item"], "1": str(sent["item"]["1"]), "4": 7, "9": ["Reuters"]}
+    read = _published({**sent, "item": other})["headline"]
+    assert (read.story_ms, read.headline, read.source) == (None, None, None)
+    assert (read.headline_id, read.language) == (sent["item"]["2"], _ENGLISH)
 
 
 def test_each_story_is_held_once_with_its_newest_wording_and_every_symbol_it_came_under():
@@ -165,8 +212,10 @@ def test_only_english_is_shown_by_schwabs_own_field_and_the_rest_is_counted():
 
 
 def test_a_story_schwab_withdraws_leaves_the_line():
-    """Sent at 12:41:21 CT with status A, withdrawn at 12:47:22 with status D, a corrected story
-    in the same frame: the first story is the line's newest, then gone, the corrected one first.
+    """A story Schwab withdraws leaves the line, and the corrected one is its newest.
+
+    Sent at 12:41:21 CT with status A, withdrawn at 12:47:22 with status D, a corrected story in
+    the same frame: the first story is the line's newest, then gone, the corrected one first.
     """
     _take(_OPEN + _MORNING)
     first, last = _WITHDRAWN[0], _WITHDRAWN[-1]
@@ -222,19 +271,32 @@ def test_the_line_holds_the_newest_fifteen_and_lets_the_oldest_go():
 
 
 def test_no_story_received_serves_no_item_and_a_message_it_cannot_place_is_counted():
-    """Before any message: no item (the page draws "-"). INDUCED: an English message with no
-    headline (field 4 taken out of Schwab's own message) is counted and not held.
+    """Before any message the line serves no item, and the page draws "-".
+
+    INDUCED, each made of Schwab's own first message: an English message with no headline (field
+    4 taken out) is counted and not held; so is one with an empty headline, with no id, and with
+    a time that is no number (text, and NaN, which has no place in the line's order).
     """
-    now = _OPEN[0]["ts_recv"]
+    sent = _OPEN[0]
+    now = sent["ts_recv"]
     assert push_news.news(now) == {"items": [], "left_out": _LEFT_OUT.format(0, 0)}
-    item = {k: v for k, v in _OPEN[0]["item"].items() if k != "4"}
-    assert news_store.take("$SPX", item, _OPEN[0]["schwab_ts"]) is False
+    item = {k: v for k, v in sent["item"].items() if k != "4"}
+    assert _take([{**sent, "item": item}]) == [False]
     assert news_store.stories() == []
     assert news_store.left_out() == news_store.LeftOut(other_languages=0, unreadable=1)
+    cannot_place = [
+        {**sent["item"], "4": ""},
+        {k: v for k, v in sent["item"].items() if k != "2"},
+        {**sent["item"], "1": str(sent["item"]["1"])},
+        {**sent["item"], "1": float("nan")},
+    ]
+    assert _take([{**sent, "item": i} for i in cannot_place]) == [False] * 4
+    assert news_store.stories() == []
+    assert news_store.left_out() == news_store.LeftOut(other_languages=0, unreadable=5)
 
 
 def _frames(messages: list[dict]) -> list[dict]:
-    """The messages as Schwab framed them: one frame per frame time, its items in order."""
+    """Return the messages as Schwab framed them: one frame per frame time, its items in order."""
     return [
         {"timestamp": ts, "content": [m["item"] for m in group]}
         for ts, group in groupby(messages, key=lambda m: m["schwab_ts"])
