@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import defaultdict
 from pathlib import Path
 
 import time_et
@@ -93,7 +94,8 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
     """
     bus = MessageBus()
     over_held = greeks_over_held = quotes_replaced = 0
-    replaced: dict[str, dict] = {}
+    #: each symbol's quote before its newest, worked out here: none until a message changes one
+    replaced: defaultdict[str, dict] = defaultdict(dict)
     for m in _MIX:
         if m["service"] not in (OPT, EQ):
             continue
@@ -101,16 +103,13 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
         before = bus.current.get(key)
         was_held = before is not None
         held_before = streamed_record(before)
-        if before is None:
-            replaced[key] = {}
-        else:
-            held_fields = _fields(*before)
-            sent = m["item"]
+        topic, rec = on_the_bus(bus, m["service"], m["item"], m["ts_recv"], m["schwab_ts"])
+        assert rec["streamed"] is None  # nothing read on the message
+        if before is not None:  # the version before stands: its fields are what the record held
+            held_fields, sent = _fields(*before), m["item"]
             if any(f in sent and f in held_fields and sent[f] != held_fields[f] for f in _QUOTE):
                 replaced[key] = {f: held_fields[f] for f in _QUOTE if f in held_fields}
                 quotes_replaced += 1
-        topic, rec = on_the_bus(bus, m["service"], m["item"], m["ts_recv"], m["schwab_ts"])
-        assert rec["streamed"] is None  # nothing read on the message
         first = streamed_record((topic, rec))
         assert first == _read_as_sent(topic, rec, replaced[key]), m
         assert streamed_record((topic, rec)) is first  # read once per version
