@@ -257,19 +257,19 @@ def _strike_lists(body):
 
 
 def _spot_marked(body):
-    """The strike every list of the strikes panel marks as the price's."""
+    """Return the strike every list of the strikes panel marks as the price's."""
     (strike,) = {r["strike"] for r in _strike_lists(body) if SPOT_MARK in r["marks"]}
     return strike
 
 
 def _spot_cell(body):
-    """The strike the heatmap marks as the price's, by its cells' mark."""
+    """Return the strike the heatmap marks as the price's, by its cells' mark."""
     (strike,) = [c["strike"] for c in body["cells"] if c["spot"]]
     return strike
 
 
 def _spot_rung(body):
-    """The strike the chain ladder marks as the price's, by its row's mark."""
+    """Return the strike the chain ladder marks as the price's, by its row's mark."""
     (strike,) = [r["strike"] for r in body["ladder"] if r["spot"]]
     return strike
 

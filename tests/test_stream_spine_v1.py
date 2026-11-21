@@ -78,6 +78,100 @@ def test_latest_reader_gets_one_newest_record_per_topic():
     asyncio.run(go())
 
 
+_FX = Path(__file__).resolve().parent / "fixtures"
+
+
+def _own_items() -> list[tuple[str, dict]]:
+    """Return Schwab's messages that are each their own item, as the daemon publishes them.
+
+    In order: Schwab's two /quotes answers for SPY's 2026-11-20 contracts, 300 then the other 142
+    (fixtures/real_spy_2026_11_20_chain_and_quotes.json), each contract's `quote` as sent
+    (feed.chain_sweep.ChainSweep.take_quotes); the two NEWS_HEADLINE items Schwab sent for $SPX in
+    one frame on 2026-11-20 (fixtures/real_schwab_news_one_frame_spx_2026_11_20.json); two
+    consecutive 1-minute bars of SPY as the daemon recorded them
+    (fixtures/real_daemon_bars_spy_tsla_2026_10_01_02.json). STAND-IN: each answer's receive time.
+    """
+    quotes = json.loads(
+        (_FX / "real_spy_2026_11_20_chain_and_quotes.json").read_text(encoding="utf-8")
+    )["quotes"]
+    news = json.loads(
+        (_FX / "real_schwab_news_one_frame_spx_2026_11_20.json").read_text(encoding="utf-8")
+    )
+    bars = [
+        r
+        for r in json.loads(
+            (_FX / "real_daemon_bars_spy_tsla_2026_10_01_02.json").read_text(encoding="utf-8")
+        )["rows"]
+        if r["symbol"] == "SPY"
+    ][:2]
+    return [
+        *(
+            (
+                "optquotes",
+                {
+                    "src": "schwab_quotes",
+                    "ts_recv": 100.0 + n,
+                    "answer": {s: e["quote"] for s, e in q["reply"].items()},
+                },
+            )
+            for n, q in enumerate(quotes)
+        ),
+        *(
+            (
+                "news.$SPX",
+                verbatim_msg(
+                    symbol="$SPX",
+                    content=m["content"],
+                    src="schwab_news",
+                    ts_recv=news["ts_recv"],
+                    schwab_ts=m["schwab_ts"],
+                ),
+            )
+            for m in news["messages"]
+        ),
+        *(("bar1m.SPY", r) for r in bars),
+    ]
+
+
+def test_a_latest_reader_takes_every_message_that_is_its_own_item_once_and_in_order():
+    """A message that is no newer version of one thing replaces nothing on its way to a reader.
+
+    A /quotes answer carries its own contracts, a news item its own story, a bar its own minute.
+    Each one reaches a LATEST reader, once, in the order published (a topic that has versions
+    still hands over its newest record alone: the test above); the record's reader (LOG) takes
+    each as before. A reader that subscribes later starts with each topic's newest alone, as it
+    did.
+
+    INDUCED: the reader takes nothing while they are published. On 2026-11-20, 5,422 of Schwab's
+    78,791 /quotes answers were received within 5 ms of the one before, and 441 of 1,824 news
+    items in the same frame as the same symbol's item before.
+    """
+    items = _own_items()
+    assert [t for t, _m in items] == ["optquotes"] * 2 + ["news.$SPX"] * 2 + ["bar1m.SPY"] * 2
+    assert not set(items[0][1]["answer"]) & set(items[1][1]["answer"]), "different contracts"
+    assert items[2][1]["content"]["2"] != items[3][1]["content"]["2"], "two stories"
+    assert items[4][1]["bar_start_ms"] + 60000 == items[5][1]["bar_start_ms"], "two minutes"
+
+    async def go():
+        bus = MessageBus()
+        latest, log = bus.subscribe("", policy=LATEST), bus.subscribe("", policy=LOG)
+        for topic, msg in items:
+            bus.publish(topic, msg)
+        # as the console's reader takes them (order_flow.streaming._bus_loop): one, then the rest
+        taken = [await latest.get(), *latest.taken(100)]
+        logged = [log.queue.get_nowait() for _ in range(log.queue.qsize())]
+        left = dict(latest.changed)
+        late = bus.subscribe("", policy=LATEST)
+        return taken, left, logged, [await late.get(), *late.taken(100)]
+
+    taken, left, logged, late = asyncio.run(go())
+    assert [t for t, _r in taken] == [t for t, _m in items]
+    assert all(got is sent for (_t, got), (_topic, sent) in zip(taken, items, strict=True))
+    assert not left, "each taken once"
+    assert logged == items, "the record takes every message"
+    assert late == [items[1], items[3], items[5]], "a later reader starts with the newest of each"
+
+
 def test_writer_batches_into_stream_capture_db(tmp_path):
     db = tmp_path / "stream_capture.db"
     w = CaptureWriter(db, batch_rows=2, batch_sec=10.0)

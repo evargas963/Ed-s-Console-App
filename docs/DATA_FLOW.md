@@ -53,12 +53,20 @@ The rules for the data itself, at every hop from Schwab to the screen.
   field request, `tests/test_data_path_one_watchlist_v1.py`.
 - **D3. The live path holds only the newest.** The message bus (`stream_spine.MessageBus`) keeps one
   current record per topic: a quote merged field by field, a book, bar or chain replaced whole. A
-  newer value replaces the older at once; nothing old waits in a queue. A quote's record keeps one
-  thing more, the quote its newest quote replaced (`quote_before`, whole as the record held it):
-  Schwab sends a trade with the quote that followed it, so the tape reads a trade against the quote
-  in force when it was made (§3.4 Tape). Only the Recorder takes every message, and while the
-  database refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`; the
-  quote kept before, `tests/test_quote_in_force_v1.py` and `tests/test_stream_greeks_capture_v1.py`.
+  newer value replaces the older at once; nothing old waits in a queue. That is the rule of a topic
+  whose messages are versions of one thing (`stream_spine.VERSIONED`: a symbol's quote or book, a
+  ticker's chain, a series' candles, a date's sessions). A message that is its own item (a `/quotes`
+  answer for its own contracts, one minute's bar, a news story, the answer to one watchlist request)
+  is no newer value of the one before it: each live reader takes every one, once, in the order
+  published, and none replaces another before it is taken. A quote's record keeps one thing more,
+  the quote its newest quote replaced (`quote_before`, whole as the record held it): Schwab sends a
+  trade with the quote that followed it, so the tape reads a trade against the quote in force when
+  it was made (§3.4 Tape). Of a topic with versions only the Recorder takes every message, and while
+  the database refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`;
+  an item never replaced, `tests/test_stream_spine_v1.py`,
+  `tests/test_rest_quotes_reach_the_levels_v1.py` and `tests/test_data_path_one_watchlist_v1.py`;
+  the quote kept before, `tests/test_quote_in_force_v1.py` and
+  `tests/test_stream_greeks_capture_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record.** One writer, `stream_spine.CaptureWriter`,
   records every bus message but option quotes and option books, which it records for the kept
   contracts only (`capture.Daemon.saves`): each ticker's soonest unexpired expiration at the strike
@@ -152,10 +160,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Schwab → daemon, REST:** option chains, option quotes, price history and market hours, by the
   chain sweep (`feed/chain_sweep.py`); every request logged once (`schwab_client.log_request`).
 - **Daemon part → console part:** the bus in memory, a LATEST subscription
-  (`order_flow.streaming._bus_loop`): each topic's current record as it changes, a chain in parts. A
-  record that fails to apply is counted (`apply_failures` on the daemon's status beat, beside
-  `tick_failures`) and logged with its traceback, and the next is applied. Enforced by:
-  `tests/test_live_push_channel_v1.py`.
+  (`order_flow.streaming._bus_loop`): each topic's current record as it changes, a chain in parts,
+  and each message that is its own item (D3). A record that fails to apply is counted
+  (`apply_failures` on the daemon's status beat, beside `tick_failures`) and logged with its
+  traceback, and the next is applied. Enforced by: `tests/test_live_push_channel_v1.py`.
 - **Console part → daemon part:** a call (`capture.Daemon.console_frame`): the Flow panel's contract
   and each watchlist add or removal, answered by the daemon's `watchlist` record.
 - **Program → page:** `/ws` (`live_ui.page_socket`, `live_ui.LiveUiServer`): each symbol's price row
@@ -288,8 +296,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   sorted, a ticker a page shows before each other one (`ChainSweep.rotation`). Greeks are never the
   chain's (Schwab rounds them): a streamed contract takes the stream's, every other one its
   `/quotes` answer, `schwab_client.QUOTES_BATCH_MAX` symbols a request (`ChainSweep.send_quotes`),
-  each answer to the console at once (`order_flow.state.push_rest_quotes`). Each contract is read
-  once (`option_contract.read_chain`, in `chain_sweep.chain_messages`) → the bus in parts of
+  each answer to the console at once (`order_flow.state.push_rest_quotes`): every answer, since each
+  carries its own contracts (D3), and a contract keeps the answer received last. Each contract is
+  read once (`option_contract.read_chain`, in `chain_sweep.chain_messages`) → the bus in parts of
   `chain_sweep.CHAIN_PART_CONTRACTS` → the console (`order_flow.streaming.assemble_chain_part`; a
   chain missing a part is never priced) → `server._on_chain` → the pricing thread. The first chain
   begun at or after a ticker's option close each day (`chain_sweep.capture_slot`) is the close
@@ -382,8 +391,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Watchlist.** One list, the daemon's (`capture.Daemon.watchlist`), read at start from
   `stream_watchlist` (`capture.stored_watchlist`). An add or removal (`POST /api/watchlist`,
   `DELETE /api/watchlist/{ticker}`) goes to the daemon, which checks an added ticker with one
-  `/quotes` request and answers with a `watchlist` record, stored by the Recorder. It takes effect
-  at once on every stream service and REST request. The page draws the list each beat carries.
+  `/quotes` request and answers each request with a `watchlist` record of its own (D3), stored by
+  the Recorder. It takes effect at once on every stream service and REST request. The page draws the
+  list each beat carries.
 
 Not yet one State: the console part keeps its own parsed books and tape
 (`order_flow.state.OrderFlowState`) beside the bus's records; the work is `ACTIVE_PROGRAM.md`

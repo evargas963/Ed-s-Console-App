@@ -793,3 +793,43 @@ def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
     assert {m["request_id"] for m in got} == {"r1", "r2"}
     assert daemon.watchlist == ["SPY", "TSLA"]
     assert [q["symbols"] for q in schwab.asked(QUOTES)] == ["TSLA", "TSLA"], "each add checked"
+
+
+def test_two_requests_the_daemon_answers_in_one_turn_each_get_their_own_answer():
+    """A watchlist record answers one request: the next one never replaces it on the bus.
+
+    Through the console's own request path and reader (order_flow.streaming.watchlist_request,
+    _bus_loop), in the daemon's program: an add of SPY, already listed, and a removal of QQQ, not
+    listed, sent together. The daemon answers each at once, both in one turn of the loop, before
+    the console's reader takes either. Each caller gets its own record; before, the first waited
+    out WATCHLIST_ANSWER_SEC and was told nothing.
+    """
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+
+    async def go():
+        ofs.bind_daemon(daemon)
+        assert ofs.start_order_flow_stream()
+        try:
+            return await asyncio.wait_for(
+                asyncio.gather(
+                    ofs.watchlist_request("add", "spy"), ofs.watchlist_request("remove", "qqq")
+                ),
+                5.0,
+            )
+        finally:
+            ofs.stop_order_flow_stream()
+            ofs.bind_daemon(None)
+
+    listed, unlisted = asyncio.run(go())
+    assert (listed["op"], listed["ticker"], listed["text"]) == (
+        capture.ON_LIST,
+        "SPY",
+        "SPY is already on the watchlist",
+    )
+    assert (unlisted["op"], unlisted["ticker"], unlisted["text"]) == (
+        capture.NOT_ON_LIST,
+        "QQQ",
+        "QQQ is not on the watchlist",
+    )
+    assert listed["request_id"] != unlisted["request_id"]
+    assert daemon.watchlist == ["SPY"]

@@ -27,12 +27,16 @@ from contextlib import closing
 from dataclasses import replace
 from datetime import datetime
 
+import app.options.order_flow.state as ofls
+import app.options.order_flow.streaming as ofs
 from app.market_data.schwab.streaming import capture
 from calc.math_exposure_core import compute_exposures_by_strike, put_call_volume_ratio
 from calibration.complete_chain_capture import last_capture_per_day
 from feed import schwab_client as sc
 from feed.chain_sweep import ChainSweep
-from stream_spine import CaptureWriter, HealthRegistry, MessageBus, held_key, verbatim_msg
+from json_blob_codec import decode_text_blob
+from option_contract import quote_values
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, held_key, verbatim_msg
 from tests.schwab_rest_standin import (
     CHAIN,
     CHAINS,
@@ -60,10 +64,11 @@ HELD = "SPY   261120C00875000"
 GREEKS = ("gamma", "delta", "theta", "vega", "rho", "volatility")
 
 
-def _setup(tmp_path, schwab: LocalSchwab, now: float):
+def _setup(tmp_path, schwab: LocalSchwab, now: float, on_bus: bool = False):
     """Build the daemon's bus holding HELD's stream record, its sweep and the client.
 
-    The sweep runs on a fixed clock.
+    The sweep runs on a fixed clock. What it publishes is listed (`published`) and, `on_bus`, goes
+    on the daemon's bus as the daemon's own sweep puts it there.
     """
     client = schwab.client(tmp_path)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY", "TSLA"])
@@ -84,10 +89,16 @@ def _setup(tmp_path, schwab: LocalSchwab, now: float):
                 ),
             )
     published: list = []
+
+    def publish(topic: str, msg: dict) -> None:
+        published.append((topic, msg))
+        if on_bus:
+            daemon.bus.publish(topic, msg)
+
     sweep = ChainSweep(
         tmp_path / "ed_console.db",
         daemon.watchlist,
-        lambda topic, msg: published.append((topic, msg)),
+        publish,
         clock=lambda: now,
         failures=CaptureWriter(tmp_path / "ed_console.db"),  # the daemon's one database
         streamed=daemon.option_record,
@@ -252,6 +263,67 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     with closing(sqlite3.connect(tmp_path / "ed_console.db")) as conn, conn:
         rows = conn.execute("SELECT ticker FROM complete_chain_captures").fetchall()
     assert rows == [], "no ticker's chain is stored in the session"
+
+
+def test_every_quotes_answer_of_a_rotation_reaches_the_console_and_the_record(tmp_path):
+    """Schwab's /quotes answers of one rotation each reach the console, and the Recorder whole.
+
+    Schwab to the console and to the record, through the real code: the sweep's rotation on the
+    real client, the daemon's bus, the console's own reader (order_flow.streaming._bus_loop) and
+    the daemon's writer. The rotation asks three /quotes requests; SPY's 441 unheld contracts are
+    quoted in the first two (TSLA's quotes were not captured). INDUCED: the console takes nothing
+    while the rotation runs (it runs on the loop's own thread here, so the reader gets no turn),
+    as when the program's loop runs late. Each answer carries its own contracts: every one of
+    them is at the console with its answer's values and receive time, and rest_quotes_raw holds
+    each answer's body as Schwab sent it.
+    """
+    schwab = LocalSchwab()
+    now = et_ts("2026-10-01 10:15")
+    daemon, sweep, client, published = _setup(tmp_path, schwab, now, on_bus=True)
+    db = tmp_path / "stream_capture.db"
+
+    async def go():
+        stop = asyncio.Event()
+        writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+        record = asyncio.create_task(writer.run(daemon.bus.subscribe("", policy=LOG), stop=stop))
+        ofs.FEED.running = True
+        reader = asyncio.create_task(ofs._bus_loop(daemon.bus))
+        try:
+            await asyncio.sleep(0)  # the reader has subscribed and waits
+            assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
+            for _turn in range(50):
+                await asyncio.sleep(0)
+            return ofls.rest_quotes([ct["symbol"] for ct in SPY["chain"]], 0.0)
+        finally:
+            ofs.FEED.running = False
+            reader.cancel()
+            stop.set()
+            await asyncio.gather(reader, record, return_exceptions=True)
+            with ofls._rest_lock:
+                ofls._REST_QUOTES.clear()
+
+    failures = ofs.FEED.apply_failures
+    try:
+        held = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert ofs.FEED.apply_failures == failures, "every record applied"
+    answers = [msg["answer"] for topic, msg in published if topic == "optquotes"]
+    assert [len(a) for a in answers] == [300, 141, 0], "SPY's unheld contracts, in two answers"
+    assert not set(answers[0]) & set(answers[1])
+    assert held == {
+        sym: (now, quote_values(quote)) for answer in answers for sym, quote in answer.items()
+    }
+    assert set(held) == {ct["symbol"] for ct in SPY["chain"]} - {HELD}
+    with closing(sqlite3.connect(db)) as conn:
+        stored = [
+            json.loads(decode_text_blob(body))
+            for (body,) in conn.execute("SELECT body FROM rest_quotes_raw ORDER BY rowid")
+        ]
+    assert [{s: e["quote"] for s, e in body.items()} for body in stored] == answers
+    assert stored == [
+        json.loads(msg["body"]) for topic, msg in published if topic == "quotesanswer"
+    ], "each answer's body, as received"
 
 
 def test_the_one_connection_stands_through_a_pause(tmp_path):

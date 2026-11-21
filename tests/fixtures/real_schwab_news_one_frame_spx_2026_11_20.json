@@ -1,0 +1,62 @@
+{
+ "source": "data/ed.db stream_news_raw, read with mode=ro on 2026-11-21: every NEWS_HEADLINE item Schwab sent for $SPX in one frame at the regular open of 2026-11-20 (received 2026-11-20 09:30:57.666 ET), each item as stored (native_json), in the order received.",
+ "symbol": "$SPX",
+ "src": "schwab_news",
+ "ts_recv": 1795185057.666138,
+ "messages": [
+  {
+   "rowid": 50053,
+   "schwab_ts": 1795185054496,
+   "content": {
+    "seq": 170,
+    "key": "$SPX",
+    "1": 1795185030000,
+    "2": "tag_reuters_com_2026-11-20_newsml_AQN2MUO1R",
+    "3": "A",
+    "4": "NASDAQ <.IXIC> DOWN 285.23 POINTS, OR 1.19 PERCENT, AT 23,593.97 AFTER MARKET OPEN",
+    "5": "tag_reuters_com_2026-11-20_newsml_AQN2MUO1R",
+    "6": [
+     "Equity Indices",
+     "*ALL*",
+     "Equities Markets"
+    ],
+    "7": [
+     "$DJI",
+     "$COMPX",
+     "$SPX"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "NASDAQ <.IXIC> DOWN 285.23 POINTS, OR 1.19 PERCENT, AT 23,593.97 AFTER MARKET OPEN",
+    "11": "en-US"
+   }
+  },
+  {
+   "rowid": 50054,
+   "schwab_ts": 1795185054496,
+   "content": {
+    "seq": 171,
+    "key": "$SPX",
+    "1": 1795185030000,
+    "2": "tag_reuters_com_2026-11-20_newsml_AQN2MUNW7",
+    "3": "A",
+    "4": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 %, AT 49,040.94 AFTER MARKET OPEN",
+    "5": "tag_reuters_com_2026-11-20_newsml_AQN2MUNW7",
+    "6": [
+     "Equity Indices",
+     "*ALL*",
+     "Equities Markets"
+    ],
+    "7": [
+     "$DJI",
+     "$COMPX",
+     "$SPX"
+    ],
+    "8": false,
+    "9": "Reuters",
+    "10": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 %, AT 49,040.94 AFTER MARKET OPEN",
+    "11": "en-US"
+   }
+  }
+ ]
+}
