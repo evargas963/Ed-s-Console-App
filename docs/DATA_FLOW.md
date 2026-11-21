@@ -222,7 +222,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   ticker's chain in `capture.shown_first` order, dealt across tickers. No number of ours caps it:
   when Schwab refuses with its symbol limit (code 19), the order is cut at the limit it stated
   (`feed.connection.Connection.ask`). An expired contract is never streamed. A contract no longer
-  held keeps its last quote, marked NOT STREAMED. Enforced by:
+  held keeps its last quote, marked NOT STREAMED. Its lifecycle owner is the daemon's market
+  follower (`capture.Daemon.follow_market`): each chain the sweep delivers is laid out and ordered
+  as it arrives, or at its ticker's first price, on the ordering thread (§4), behind no pricing.
+  While a chain waits its turn there, or its ticker has no price, the contracts held stand; a
+  follower that ends ends the program with an error naming it (`capture.run`). Enforced by:
   `tests/test_option_contract_rule_v1.py`, `tests/test_data_path_one_watchlist_v1.py`,
   `tests/test_data_path_released_contract_v1.py`.
 - **1-minute bars and price history.** CHART_EQUITY → the bus → the Recorder (`stream_bars_raw`) and
@@ -369,10 +373,13 @@ ENF-23.
 ## 4. Where each part runs
 
 - **Feed:** the event loop reads Schwab's stream; the chain sweep runs on its own thread.
-- **Calculators:** one pricing thread (`server.chain_pricing`), never the event loop, so the loop
-  always reads Schwab's next frame: the levels, the heatmap's restamp
-  (`server.restamp_off_the_loop`) and the option rule's order of a chain (`capture.shown_first`).
-  Enforced by: `tests/test_stream_reader_keeps_up_v1.py`.
+- **Calculators:** never the event loop, so the loop always reads Schwab's next frame. One pricing
+  thread (`server.chain_pricing`): the levels and the heatmap's restamp
+  (`server.restamp_off_the_loop`). One ordering thread (`capture.chain_ordering`): a chain's layout
+  and its order for the option rule (`capture.strike_ladders`, `capture.shown_first`), one chain at
+  a time in the order asked, so Schwab is asked for a chain's contracts behind no pricing and a
+  ticker's newest chain is ordered last. Enforced by: `tests/test_stream_reader_keeps_up_v1.py`,
+  `tests/test_option_contract_rule_v1.py`.
 - **State and Push:** the event loop. Each panel's frame is built on a worker thread
   (`live_ui.LiveUiServer._frame`).
 - **Recorder:** its own thread (`stream_spine.CaptureWriter`), so a slow disk never stalls the

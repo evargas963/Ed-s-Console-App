@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
+from collections.abc import Callable
 from datetime import datetime
 from itertools import zip_longest
 from pathlib import Path
@@ -468,6 +470,176 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
     )
     assert held["then_recorded"] != held["recorded"][0]  # at the next price it moves
     assert expired & before[L1] and not expired & then[L1]  # the next chain moved what is held
+
+
+def test_a_chains_contracts_are_asked_while_the_levels_are_being_priced(tmp_path):
+    """MRVL's and SPY's chains arrive while the levels' pricing thread is busy.
+
+    INDUCED: the pricing thread (server.chain_pricing) is held by the test's own job, as it is
+    behind every ticker's pricing after a start. Schwab is asked for the rule's contracts and
+    holds them all the same: the rule's order waits for no pricing.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    gate = threading.Event()
+    pricing = server.chain_pricing.submit(gate.wait, 60)
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(want))
+
+    try:
+        market.run(steps)
+        assert not pricing.done(), "the pricing thread was held throughout"
+    finally:
+        gate.set()
+        server.chain_pricing.submit(lambda: None).result(timeout=60)
+
+
+def test_a_chain_ordered_at_its_first_price_holds_no_price_row_back(tmp_path):
+    """MRVL's chain arrives before its price, and its price while the pricing thread is busy.
+
+    INDUCED: the pricing thread held by the test's own job, from the moment the chain waits for
+    its price. The price orders the chain, Schwab holds the rule's contracts, and the next price
+    row (the mark's) is taken: the follower that takes every ticker's price row waits for no
+    pricing.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    gate = threading.Event()
+    pricing: list = []
+
+    async def steps(m):
+        m.chain("MRVL")
+        await _until(lambda: "MRVL" in m.daemon._chains)  # it waits for its price
+        pricing.append(server.chain_pricing.submit(gate.wait, 60))
+        m.price("MRVL", PRICES["MRVL"])
+        await m.taken()
+        await _until(lambda: m.holds(want))
+
+    try:
+        market.run(steps)
+        assert not pricing[0].done(), "the pricing thread was held throughout"
+    finally:
+        gate.set()
+        server.chain_pricing.submit(lambda: None).result(timeout=60)
+
+
+def _read_clock(at: list[float]) -> tuple[list[float], Callable[[], float]]:
+    """Return a daemon's clock that reads `at[0]`, and the list of every time it was read."""
+    reads: list[float] = []
+
+    def clock() -> float:
+        reads.append(at[0])
+        return at[0]
+
+    return reads, clock
+
+
+def test_a_tickers_newest_chain_is_ordered_last_and_its_order_stands(tmp_path):
+    """MRVL's chain waits for its price; the price comes, and MRVL's next chain right behind it.
+
+    INDUCED: the ordering thread (capture.chain_ordering) is held by the test's own job, as while
+    another ticker's chain is ordered, until both are asked of it: the first chain's order, by
+    the price row's follower, and the next chain's layout, by the chain's follower (its read of
+    the clock shows it took the chain). Released, the thread takes them in the order asked, so
+    the order that stands is the newer chain's at the newer time: Schwab holds none of the
+    2026-09-25 contracts, expired by then.
+    """
+    at = [CAPTURED]
+    reads, clock = _read_clock(at)
+    expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
+    after = _expires(next(c for c in CHAINS["MRVL"] if c["symbol"] in expired)) + 60
+    then = _rule(CHAINS, PRICES, after, ["MRVL"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], clock)
+    gate = threading.Event()
+    seen: dict = {}
+
+    async def steps(m):
+        m.chain("MRVL")
+        await _until(lambda: "MRVL" in m.daemon._chains)  # it waits for its price
+        capture.chain_ordering.submit(gate.wait, 60)
+        m.price("MRVL", PRICES["MRVL"])
+        await _until(lambda: "MRVL" not in m.daemon._chains)  # the price asked for its order
+        at[0] = after
+        m.chain("MRVL", after)
+        await _until(lambda: after in reads)  # the next chain is taken: its layout is asked
+        seen["held"] = {s: set(m.daemon.connection.held[s]) for s in (L1, BOOK)}
+        gate.set()
+        await _until(lambda: m.holds(then))
+        await m.taken()
+        seen["stands"] = m.holds(then)
+
+    try:
+        market.run(steps)
+    finally:
+        gate.set()
+        capture.chain_ordering.submit(lambda: None).result(timeout=60)
+    assert seen["held"] == {L1: set(), BOOK: set()}, "nothing is asked before a chain is ordered"
+    assert seen["stands"], "the newer chain's order stands"
+    assert expired and not expired & then[L1]
+
+
+def test_a_chain_delivered_twice_is_ordered_again_and_asks_schwab_for_nothing(tmp_path):
+    """MRVL's chain is delivered a second time: the same contracts, price and time.
+
+    It is ordered again, to the same order, and Schwab is asked for nothing: no contract left
+    the order and none came.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    seen: dict = {}
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(want))
+        first = m.daemon._ranked["MRVL"]
+        seen["asked"] = {s: len(m.streamer.asked(s)) for s in (L1, BOOK)}
+        m.chain("MRVL")
+        await _until(lambda: m.daemon._ranked["MRVL"] is not first)
+        await m.taken()
+        seen["again"] = (m.daemon._ranked["MRVL"] == first, m.holds(want))
+        seen["asked_again"] = {s: len(m.streamer.asked(s)) for s in (L1, BOOK)}
+
+    market.run(steps)
+    assert seen["again"] == (True, True), "the same order, and Schwab holds the same contracts"
+    assert seen["asked_again"] == seen["asked"], "a chain delivered twice asks Schwab for nothing"
+
+
+def test_a_stop_while_a_chain_waits_to_be_ordered_ends_the_follower(tmp_path):
+    """The program stops while MRVL's chain waits its turn on the ordering thread.
+
+    INDUCED: the ordering thread held by the test's own job, as while another ticker's chain is
+    ordered, from before the chain arrives until after the stop. While it waits, the price rows
+    that follow are taken (SPY's, the mark's). At the stop the market follower ends without its
+    turn (the harness gives it 10 s), and nothing of the chain is laid out or ordered after.
+    """
+    at = [CAPTURED]
+    reads, clock = _read_clock(at)
+    market = _Market(tmp_path, ["MRVL", "SPY"], clock)
+    gate = threading.Event()
+
+    async def steps(m):
+        m.price("MRVL", PRICES["MRVL"])
+        await m.taken()
+        capture.chain_ordering.submit(gate.wait, 60)
+        at[0] = CAPTURED + 1
+        m.chain("MRVL", CAPTURED + 1)
+        await _until(lambda: CAPTURED + 1 in reads)  # the chain is taken: its layout is asked
+        m.price("SPY", PRICES["SPY"])
+        await m.taken()
+
+    try:
+        market.run(steps)  # the stop
+    finally:
+        gate.set()
+        capture.chain_ordering.submit(lambda: None).result(timeout=60)
+    daemon = market.daemon
+    assert (daemon._ladders, daemon._ranked, daemon.option_order) == ({}, {}, ())
 
 
 def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
