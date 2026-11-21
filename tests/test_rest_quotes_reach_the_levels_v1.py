@@ -6,11 +6,18 @@ Schwab streams part of a ticker's contracts. The others get their bid, ask, volu
 only when the answer was received after that chain began: an earlier answer is older than the
 chain's own values.
 
+Each answer carries its own contracts, so each one reaches the console: the daemon's bus hands its
+reader every answer, none replaced by the next before it is taken, and a contract keeps the answer
+received last (docs/DATA_FLOW.md §2 D3).
+
 Through the real code: the console's feed (streaming._ingest_pushed), its tick and the pricing
-thread (server._on_stream_tick), the one producer of the levels (server._publish_levels). Real
+thread (server._on_stream_tick), the one producer of the levels (server._publish_levels); and for
+the hand-over, the daemon's bus and the console's own reader of it (streaming._bus_loop). Real
 data: SPY's 2026-11-20 chain captured 2026-09-30 15:31:57 ET and Schwab's two /quotes answers for
-its 442 contracts (tests/schwab_rest_standin.SPY), and the LEVELONE_OPTIONS messages Schwab pushed
-for SPY 260904C00772000 (fixtures/real_options_stream_history_samples.json).
+its 442 contracts (tests/schwab_rest_standin.SPY), the LEVELONE_OPTIONS messages Schwab pushed
+for SPY 260904C00772000 (fixtures/real_options_stream_history_samples.json), and Schwab's /quotes
+answers for the same 68 QQQ contracts from two passes of the chain sweep on 2026-11-20
+(fixtures/real_qqq_quotes_two_passes_2026_11_20.json).
 STAND-INS (named): each answer's receive time (Schwab's answers were captured 2026-10-01 04:52 ET,
 with the market closed, when nothing is laid over a chain); the chain as /chains sent it, without
 the quotes the sweep puts on a chain it delivers (the one capture of them is the answers under
@@ -20,6 +27,7 @@ receive time (no captured stream of a 2026-11-20 contract carries its Greeks); t
 
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 from dataclasses import replace
@@ -33,9 +41,9 @@ import live_market_plane as lmp
 import server
 import time_et
 from calc.terrain_engine import compute_terrain
-from option_contract import read_chain
+from option_contract import quote_values, read_chain
 from state import level_store
-from stream_spine import verbatim_msg
+from stream_spine import MessageBus, verbatim_msg
 from tests.feed_live_helper import daemon_status, pushed
 from tests.page_on_socket import pages
 from tests.schwab_rest_standin import FX, SPY
@@ -242,3 +250,101 @@ def test_a_contract_the_stream_holds_takes_the_streams_values_and_time_not_the_a
     assert {g: getattr(got, g) for g in _GREEKS} == {g: newest[g.upper()] for g in _GREEKS}
     assert (got.volume, got.bid, got.ask) == (newest["TOTAL_VOLUME"], None, None)
     assert c.levels_ts_utc == _PUSHED
+
+
+#: Schwab's /quotes answers for the same 68 QQQ contracts from two passes of the chain sweep on
+#: 2026-11-20, 10:35:55 and 10:40:06 ET (fixtures/real_qqq_quotes_two_passes_2026_11_20.json):
+#: each contract's `quote` as sent and the answer's own receive time, the older first
+_PASSES = [
+    ({s: e["quote"] for s, e in a["answer"].items()}, a["ts_recv"])
+    for a in json.loads(
+        (FX / "real_qqq_quotes_two_passes_2026_11_20.json").read_text(encoding="utf-8")
+    )["answers"]
+]
+
+
+def _console_took(*answers: tuple[dict, float]) -> None:
+    """Run the console's own bus reader (streaming._bus_loop) over /quotes answers on a bus.
+
+    Each is published as the chain sweep publishes it (`answer`, received at `ts_recv`), in the
+    order given. INDUCED: the reader takes nothing until the last is published, as when the
+    program's loop runs late or the sweep hands over answers back to back; then it takes its turns.
+    """
+
+    async def go():
+        bus = MessageBus()
+        ofs.FEED.running = True
+        reader = asyncio.create_task(ofs._bus_loop(bus))
+        try:
+            await asyncio.sleep(0)  # the reader has subscribed and waits
+            for answer, received in answers:
+                bus.publish(
+                    "optquotes", {"src": "schwab_quotes", "ts_recv": received, "answer": answer}
+                )
+            for _turn in range(20):
+                await asyncio.sleep(0)
+        finally:
+            ofs.FEED.running = False
+            reader.cancel()
+            await asyncio.gather(reader, return_exceptions=True)
+
+    failures = ofs.FEED.apply_failures
+    asyncio.run(go())
+    assert ofs.FEED.apply_failures == failures, "every record applied"
+
+
+def _held(symbols) -> dict:
+    """Return what the console holds of each contract's /quotes answer: (receive time, values)."""
+    return ofls.rest_quotes(symbols, 0.0)
+
+
+def test_two_answers_for_different_contracts_are_both_applied_when_none_is_taken_in_between():
+    """Each /quotes answer carries its own contracts: one never replaces another on the bus.
+
+    Schwab's two answers for SPY's 442 contracts, 300 then the other 142, the second received 4 ms
+    after the first (STAND-IN times). Every contract of both reaches the console with its own
+    answer's values and receive time.
+    """
+    assert len(_FIRST) == 300 and len(_SECOND) == 142 and not set(_FIRST) & set(_SECOND)
+    _console_took((_FIRST, _RECEIVED), (_SECOND, _RECEIVED + 0.004))
+    assert _held([*_FIRST, *_SECOND]) == {
+        **{s: (_RECEIVED, quote_values(q)) for s, q in _FIRST.items()},
+        **{s: (_RECEIVED + 0.004, quote_values(q)) for s, q in _SECOND.items()},
+    }
+
+
+def test_the_same_answer_taken_twice_changes_nothing():
+    """An answer that arrives twice leaves each contract as the first left it."""
+    _console_took((_FIRST, _RECEIVED))
+    once = _held(_FIRST)
+    _console_took((_FIRST, _RECEIVED), (_FIRST, _RECEIVED))
+    assert _held(_FIRST) == once == {s: (_RECEIVED, quote_values(q)) for s, q in _FIRST.items()}
+
+
+def test_an_older_answer_that_arrives_late_does_not_replace_a_contracts_newer_value():
+    """The newest answer of a contract stands: one received before it never replaces it.
+
+    Schwab's two answers for the same 68 QQQ contracts, four minutes apart, every contract's bid or
+    ask changed between them. INDUCED: the older reaches the console after the newer.
+    """
+    (older, at_older), (newer, at_newer) = _PASSES
+    assert at_older < at_newer and set(older) == set(newer) and len(older) == 68
+    assert all(quote_values(older[s]) != quote_values(newer[s]) for s in older)
+    _console_took((newer, at_newer), (older, at_older))
+    assert _held(newer) == {s: (at_newer, quote_values(q)) for s, q in newer.items()}
+
+
+def test_a_console_that_takes_nothing_through_two_passes_ends_with_each_contracts_newest_value():
+    """Answers wait in the order received; taken at last, each contract ends at its newest.
+
+    A pass's answer for the 68 QQQ contracts, an answer for other contracts (SPY's 300), then the
+    next pass's answer for the same 68. INDUCED: the console takes none of them until all three
+    are on the bus. No answer is dropped and no older value is left standing.
+    """
+    (older, at_older), (newer, at_newer) = _PASSES
+    between = (at_older + at_newer) / 2
+    _console_took((older, at_older), (_FIRST, between), (newer, at_newer))
+    assert _held([*newer, *_FIRST]) == {
+        **{s: (at_newer, quote_values(q)) for s, q in newer.items()},
+        **{s: (between, quote_values(q)) for s, q in _FIRST.items()},
+    }

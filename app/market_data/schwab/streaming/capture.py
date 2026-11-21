@@ -519,9 +519,9 @@ class Daemon:
     async def _took_news(self, sym: str, msg: dict[str, Any]) -> None:
         """Take one news message Schwab sent for `sym` into the header's news line.
 
-        Every message, in order (state.news_store.take): a headline is a story of its own, not a
-        newer value of the last one sent for its symbol. The pages are sent the line when it
-        changed.
+        The bus hands this reader every news message, once, in the order published: a story is
+        its own item, never a newer version of the last one sent for its symbol
+        (stream_spine.VERSIONED). The pages are sent the line when it changed.
         """
         if news_store.take(sym, msg["content"], msg["schwab_ts"]):
             news_changed(server.app.state)
@@ -534,10 +534,8 @@ class Daemon:
         every news message into the header's news line (_took_news).
         """
 
-        async def follow(
-            prefix: str, take: Callable[[str, Any], Awaitable[None]], policy: str = LATEST
-        ) -> None:
-            sub = self.bus.subscribe(prefix, policy=policy)
+        async def follow(prefix: str, take: Callable[[str, Any], Awaitable[None]]) -> None:
+            sub = self.bus.subscribe(prefix, policy=LATEST)
             try:
                 while True:
                     topic, record = await sub.get()
@@ -548,7 +546,7 @@ class Daemon:
         tasks: set[asyncio.Task[object]] = {
             asyncio.create_task(follow("quote.", self._took_quote)),
             asyncio.create_task(follow("chain.", self._took_chain)),
-            asyncio.create_task(follow("news.", self._took_news, LOG)),
+            asyncio.create_task(follow("news.", self._took_news)),
             asyncio.ensure_future(stop.wait()),
         }
         try:
