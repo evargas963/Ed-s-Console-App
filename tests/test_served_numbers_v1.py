@@ -14,7 +14,9 @@ operator's formats, apart from the formatters.
 
 from __future__ import annotations
 
+import gzip
 import json
+import re
 from pathlib import Path
 
 from calc.terrain_engine import OPTION_LEVELS
@@ -89,14 +91,22 @@ def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_mak
 
 
 def test_the_chains_counts_are_whole_and_its_iv_two_decimals():
-    """The chain screens and Strike Detail draw each contract's served texts (AMZN)."""
+    """The chain screens and Strike Detail draw each contract's served texts (AMZN).
+
+    The open interest is the chain's, as Schwab sent it in the capture the panel was made of
+    (real_amzn_two_day_captures_2026_11_12.json.gz, its second capture). The volume is the
+    contract's quote's or the stream's, so its text is read by its form.
+    """
     chain = json.loads((E2E / "panels_amzn_two_day.json").read_text(encoding="utf-8"))["chain"]
     sides = [c for r in chain["ladder"] for c in (r["call"], r["put"]) if c is not None]
     assert sides
+    capture = json.loads(
+        gzip.decompress((FX / "real_amzn_two_day_captures_2026_11_12.json.gz").read_bytes())
+    )["captures"][-1]
+    sent = {c["symbol"]: c for row in capture["rows"] for c in row["contracts"]}
     for c in sides:
-        for key, text in (("openInterest", "oi_text"), ("totalVolume", "volume_text")):
-            value = c.get(key)
-            assert c[text] == (None if value is None else f"{round(value):,}"), key
+        assert c["oi_text"] == screen_text(sent[c["symbol"]]["openInterest"], "count")
+        assert re.fullmatch(r"\d{1,3}(,\d{3})*", c["volume_text"]), c["volume_text"]
         iv = c.get("volatility")
         assert c["iv_text"] == (None if iv is None else f"{iv:.2f}")
 

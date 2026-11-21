@@ -1391,7 +1391,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
             tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
         )
         shown = {
-            c["symbol"]: c.get("totalVolume")
+            c["symbol"]: c["volume_text"]
             for r in panel["ladder"]
             for c in (r["call"], r["put"])
             if c
@@ -1403,7 +1403,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
     assert all(m["native"]["TOTAL_VOLUME"] == 0 for m in messages)
     assert all(traded[s] > 0 and kept[s] == traded[s] for s in symbols)
     # the chain panel shows the contracts as the levels priced them
-    assert all(shown[s] == traded[s] for s in symbols)
+    assert all(shown[s] == f"{traded[s]:,.0f}" for s in symbols)
 
 
 def _drop_counts(chain):

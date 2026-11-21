@@ -682,10 +682,10 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   }) => {
     // induced: the real chain with the volume of the call at the price changed, in its ladder row
     // (push.chain serves each contract once, there)
-    // the server serves the volume with its text (numeric_contract.count_text)
+    // the server serves the volume as its text (numeric_contract.count_text)
     const withVol = (c, vol) =>
       c && c.symbol === CALL_K.symbol
-        ? Object.assign({}, c, { totalVolume: vol, volume_text: vol.toLocaleString("en-US") })
+        ? Object.assign({}, c, { volume_text: vol.toLocaleString("en-US") })
         : c;
     const withCallVolume = (vol) =>
       Object.assign({}, CHAIN, {

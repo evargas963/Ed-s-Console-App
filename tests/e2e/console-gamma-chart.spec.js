@@ -80,9 +80,6 @@ const CHAIN = {
       call: {
         symbol: CALL_SYM,
         putCall: "CALL",
-        strikePrice: K,
-        openInterest: 1200,
-        totalVolume: 540,
         gamma: 0.021,
         delta: 0.5,
         volatility: 12,
@@ -93,9 +90,6 @@ const CHAIN = {
       put: {
         symbol: PUT_SYM,
         putCall: "PUT",
-        strikePrice: K,
-        openInterest: 980,
-        totalVolume: 410,
         gamma: 0.019,
         delta: -0.5,
         volatility: 12,
