@@ -15,7 +15,7 @@ from typing import Any
 import live_market_plane as lmp
 from app.options.order_flow.state import rest_quotes, streamed_values
 from calc.math_exposure_core import overlay_streamed_contract_fields
-from calc.terrain_engine import LadderRow, chain_ladder, nearest_strike
+from calc.terrain_engine import LadderRow, chain_ladder
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
 from option_contract import OptionContract, chain_row
 from push.spot import resolve_spot
@@ -212,7 +212,6 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     if asked.reason is not None or held is None or resolved_expiry is None:
         return {
             "ticker": t,
-            "spot": None,
             "expiry": resolved_expiry,
             "ladder": [],
             "status": "unavailable",
@@ -234,13 +233,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     served = _served_ladder(ladder, _net_gex_column(held.gamma_surface, resolved_expiry))
     return {
         "ticker": t,
-        "spot": live_spot,
         "spot_text": price_text(live_spot),
         "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
-        "spot_strike": nearest_strike(
-            {c.strike for c in response_contracts if c.strike is not None}, live_spot
-        ),
         **_listing(response_contracts),
         **verdict,
         "status": "ok",

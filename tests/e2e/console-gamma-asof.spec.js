@@ -27,31 +27,11 @@ const BARS = {
   last_bar: { t: 1757000180, label: "Thu 09/04 10:36 AM CT" },
 };
 const CONTRACTS = [
-  {
-    putCall: "CALL",
-    strikePrice: 100,
-    openInterest: 1200,
-    totalVolume: 540,
-    gamma: 0.021,
-    delta: 0.52,
-    volatility: 12.3,
-    expirationDate: "2026-09-11",
-  },
-  {
-    putCall: "PUT",
-    strikePrice: 100,
-    openInterest: 980,
-    totalVolume: 410,
-    gamma: 0.019,
-    delta: -0.48,
-    volatility: 12.6,
-    expirationDate: "2026-09-11",
-  },
+  { gamma: 0.021, delta: 0.52 },
+  { gamma: 0.019, delta: -0.48 },
 ];
 const CHAIN = {
   ticker: "SPY",
-  spot: 100,
-  spot_strike: 100,
   expiry: "2026-09-11",
   status: "ok",
   scope: { kind: "complete_single_expiry" },

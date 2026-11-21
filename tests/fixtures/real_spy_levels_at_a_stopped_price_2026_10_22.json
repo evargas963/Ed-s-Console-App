@@ -36,8 +36,7 @@
    "short": "Net call \u0393 peak",
    "side": "ABOVE",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -57,8 +56,7 @@
    "short": "Key \u0394 strike",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -78,8 +76,7 @@
    "short": "Put \u0394 wall",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -99,8 +96,7 @@
    "short": "Max pain",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -120,8 +116,7 @@
    "short": "Call wall",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -141,8 +136,7 @@
    "short": "Abs \u0393",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -162,8 +156,7 @@
    "short": "Put wall",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -183,8 +176,7 @@
    "short": "Net put \u0393 peak",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -204,8 +196,7 @@
    "short": "Call \u0394 wall",
    "side": "BELOW",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   }
  ],
@@ -218,7 +209,6 @@
  "snapshot_age_text": null,
  "snapshot_time_ct": null,
  "spot": 773.1269,
- "spot_as_of_ts_utc": 1792701541.652,
  "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
  "spot_source": "streaming_plane",
  "spot_text": "773.13",
@@ -238,8 +228,7 @@
    "price": 765.0,
    "price_text": "765.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -251,8 +240,7 @@
    "price": 764.0,
    "price_text": "764.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -264,8 +252,7 @@
    "price": null,
    "price_text": null,
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -277,8 +264,7 @@
    "price": 765.0,
    "price_text": "765.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -290,8 +276,7 @@
    "price": null,
    "price_text": null,
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -303,8 +288,7 @@
    "price": null,
    "price_text": null,
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -316,8 +300,7 @@
    "price": 764.0,
    "price_text": "764.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -329,8 +312,7 @@
    "price": 776.0,
    "price_text": "776.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -342,8 +324,7 @@
    "price": 772.0,
    "price_text": "772.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -355,8 +336,7 @@
    "price": 763.0,
    "price_text": "763.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -368,8 +348,7 @@
    "price": 772.0,
    "price_text": "772.00",
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -381,8 +360,7 @@
    "price": null,
    "price_text": null,
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   },
   {
@@ -394,8 +372,7 @@
    "price": null,
    "price_text": null,
    "staleness": {
-    "as_of_time_ct": "Thu 10/22 03:17 PM CT",
-    "as_of_ts_utc": 1792700224.362402
+    "as_of_time_ct": "Thu 10/22 03:17 PM CT"
    }
   }
  ]

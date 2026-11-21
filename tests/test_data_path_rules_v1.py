@@ -1044,8 +1044,10 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
             lmp._by_ticker.pop("SPY", None)
             lmp._fields_by_ticker.pop("SPY", None)
             lmp.record_feed_down()
-        served[live] = (body["spot"], body["spot_source"], body["spot_as_of_ts_utc"])
-    assert served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, at)
+        served[live] = (body["spot"], body["spot_source"], body["spot_time_ct"])
+    assert (
+        served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, "Fri 10/02 10:00 AM CT")
+    )
 
 
 #: Schwab's SPY and TSLA bars as the capture daemon recorded them, Thu 2026-10-01 and Fri 10-02

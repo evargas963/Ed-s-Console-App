@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from datetime import datetime
@@ -19,6 +20,28 @@ from tests.feed_live_helper import spy_minutes
 from time_et import ET
 
 ROOT = Path(__file__).resolve().parents[1]
+#: Schwab's own AMD candles of one thin half hour, each series as sent (its `source` says where
+#: they were read)
+_THIN = json.loads(
+    (
+        ROOT / "tests" / "fixtures" / "real_amd_pricehistory_thin_half_hour_2026_11_11.json"
+    ).read_text(encoding="utf-8")
+)["candles"]
+
+
+def _thin_bars(series: str) -> list[dict]:
+    """Schwab's candles of `series` in that half hour, each as the chart holds a bar."""
+    return [
+        {
+            "t": c["datetime"] / 1000,
+            "o": c["open"],
+            "h": c["high"],
+            "l": c["low"],
+            "c": c["close"],
+            "v": c["volume"],
+        }
+        for c in _THIN[series]
+    ]
 
 
 def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
@@ -37,6 +60,27 @@ def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
     assert (second["o"], second["c"]) == (next_half[0]["o"], next_half[-1]["c"])
     assert second["t"] - first["t"] == 1800
     assert datetime.fromtimestamp(first["t"], ET).isoformat() == "2026-09-24T09:30:00-04:00"
+
+
+@pytest.mark.parametrize("tf", ["5", "15", "30"])
+def test_a_rolled_up_bar_carries_its_steps_start_as_schwabs_own_bar_does(tf):
+    """A bar rolled up from 1-minute bars is stamped as Schwab stamps its own bar of that step.
+
+    AMD, Wednesday 2026-11-11, the half hour from 05:30 ET (real_amd_pricehistory_thin_half_hour):
+    no trade printed in the minute of 05:30, so Schwab's first 1-minute candle is 05:31, and its
+    own 5-, 15- and 30-minute bars of that step are stamped 05:30. The roll-up of the 1-minute
+    candles has Schwab's bars at Schwab's times, with its open, high, low and close; the VWAP
+    curve's rows are stamped the same (here each minute's close stands for its value: only the
+    times are read).
+    """
+    minutes, own = _thin_bars("1m"), _thin_bars(push_bars.SCHWAB_SERIES[tf])
+    assert datetime.fromtimestamp(own[0]["t"], ET).strftime("%H:%M") == "05:30"
+    assert minutes[0]["t"] - own[0]["t"] == 60  # the step's first minute has no candle
+    rolled = push_bars.aggregate_bars(minutes, tf)
+    assert [b["t"] for b in rolled] == [b["t"] for b in own]
+    assert [[b[k] for k in "ohlc"] for b in rolled] == [[b[k] for k in "ohlc"] for b in own]
+    curve = push_bars.aggregate_vwap([[m["t"], m["c"]] for m in minutes], tf)
+    assert [row[0] for row in curve] == [b["t"] for b in own]
 
 
 def test_the_bars_panel_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():

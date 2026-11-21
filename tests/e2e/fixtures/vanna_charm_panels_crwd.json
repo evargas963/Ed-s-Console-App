@@ -2,7 +2,6 @@
   "vanna": {
     "ticker": "CRWD",
     "available": true,
-    "spot": 269.395,
     "expiry": null,
     "rows": [
       {
@@ -101,7 +100,6 @@
   "charm": {
     "ticker": "CRWD",
     "available": true,
-    "spot": 269.395,
     "expiry": null,
     "rows": [
       {
@@ -7490,9 +7488,6 @@
     ],
     "contracts_total": 244,
     "contracts_used": 244,
-    "spot": 269.395,
-    "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1791383880.289,
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1791383920.598783,
@@ -7523,8 +7518,7 @@
         "volume": 651.0
       },
       "missing_expiry": null
-    },
-    "spot_strike": 270.0
+    }
   },
   "tape": {
     "ticker": "CRWD",

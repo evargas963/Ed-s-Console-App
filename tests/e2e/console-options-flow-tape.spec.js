@@ -66,7 +66,6 @@ async function intercept(page, tapeBody) {
     surface: SURFACE,
     chain: {
       ticker: "SPY",
-      spot: 100,
       expiry: null,
       ladder: [],
       status: "unavailable",

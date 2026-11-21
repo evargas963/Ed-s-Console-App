@@ -90,8 +90,8 @@ def _age(as_of: float | None, served_ts: float) -> str | None:
 
 
 def _stamp(as_of: float | None) -> dict[str, Any]:
-    """Return a level's time as served: the instant and its label."""
-    return {"as_of_ts_utc": as_of, "as_of_time_ct": _ct(as_of)}
+    """Return a level's time as served: the label the page shows."""
+    return {"as_of_time_ct": _ct(as_of)}
 
 
 def _distance(level: float | None, price: float | None) -> float | None:
@@ -261,7 +261,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         "spot": spot,
         "spot_text": price_text(spot),
         "spot_source": spot_source,
-        "spot_as_of_ts_utc": spot_ts,
         **mark,  # each level's distance and side are from that price
         "snapshot_time_ct": session["snapshot_time_ct"],
         "snapshot_age_text": session["snapshot_age_text"],

@@ -861,19 +861,14 @@ def _published_surface(
     tk: str,
     p: _Priced,
     snap: TerrainSnapshot,
-    at: tuple[float, str, float | None],
     now: datetime,
 ) -> tuple[dict[str, Any], frozenset[str]]:
-    """Return the gamma surface of the priced chain at the spot `at`, its cells stamped.
+    """Return the gamma surface of the priced chain (`snap`'s books), its cells stamped.
 
     With it, every contract its cells name (_surface_symbols), read once here.
     """
-    spot, spot_source, spot_ts = at
     projected = project_gamma_surface(p.priced, snap.books)
     projected.update(
-        spot=spot,
-        spot_source=spot_source,
-        spot_as_of_ts_utc=spot_ts,
         stream_overlay_contracts=p.n_live,
         stream_overlay_symbols=p.live_syms,
         stream_overlay_computed_ts_utc=now.timestamp(),
@@ -941,9 +936,7 @@ def _publish_levels(
     captures_key, prior = _prior(tk, previous, kept, captures, fetched_ts)
     surface, surface_symbols = None, frozenset[str]()
     if spot is not None and snap.books:
-        surface, surface_symbols = _published_surface(
-            tk, p, snap, (float(spot), spot_source, spot_ts), now
-        )
+        surface, surface_symbols = _published_surface(tk, p, snap, now)
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,

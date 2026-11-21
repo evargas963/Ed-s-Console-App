@@ -66,8 +66,6 @@ const BARS = {
 const CALL_SYM = "CRWD  260918C00272500";
 const PUT_SYM = "CRWD  260918P00272500";
 const CHAIN = {
-  spot: SPOT,
-  spot_strike: K,
   expiry: "2026-09-18",
   status: "ok",
   scope: { kind: "complete_single_expiry" },
@@ -79,26 +77,16 @@ const CHAIN = {
       net_gex: null,
       call: {
         symbol: CALL_SYM,
-        putCall: "CALL",
-        strikePrice: K,
-        openInterest: 1200,
-        totalVolume: 540,
         gamma: 0.021,
         delta: 0.5,
-        volatility: 12,
         oi_text: "1,200",
         volume_text: "540",
         iv_text: "12.00",
       },
       put: {
         symbol: PUT_SYM,
-        putCall: "PUT",
-        strikePrice: K,
-        openInterest: 980,
-        totalVolume: 410,
         gamma: 0.019,
         delta: -0.5,
-        volatility: 12,
         oi_text: "980",
         volume_text: "410",
         iv_text: "12.00",

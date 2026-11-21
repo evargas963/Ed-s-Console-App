@@ -104,7 +104,8 @@ def test_a_streamed_contract_takes_the_streams_money_intrinsic_value():
     assert held == 1 and streamed.money_intrinsic == -1.645
     rows, _ = _chain_ladder([streamed], SPY["spot"], [chain_row(streamed)])
     assert rows[0]["call_itm"] is False
-    assert rows[0]["call"]["moneyIntrinsicValue"] == -1.645
+    # the flag is the value's one use on the screen: the row carries no copy of the number
+    assert "moneyIntrinsicValue" not in rows[0]["call"]
 
 
 def test_a_second_contract_at_one_strike_and_side_gets_its_own_row():
@@ -127,10 +128,13 @@ def test_a_number_schwab_did_not_send_is_absent_and_an_unknown_side_is_not_a_cal
     first = dict(FX["chain"][0], delta=-999.0)
     odd = dict(FX["chain"][1], putCall="X", symbol="CRWD-ODD")
     rows, unplaced = chain_ladder([first, odd] + FX["chain"][2:], FX["spot"])
-    shown = next(
-        r[s] for r in rows for s in ("call", "put") if r[s] and r[s]["symbol"] == first["symbol"]
+    row, shown = next(
+        (r, r[s])
+        for r in rows
+        for s in ("call", "put")
+        if r[s] and r[s]["symbol"] == first["symbol"]
     )
-    assert shown["delta"] is None and shown["strikePrice"] == first["strikePrice"]
+    assert shown["delta"] is None and row["strike"] == first["strikePrice"]
     assert unplaced == 1 and all(
         r[s]["symbol"] != "CRWD-ODD" for r in rows for s in ("call", "put") if r[s]
     )

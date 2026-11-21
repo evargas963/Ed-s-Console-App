@@ -57,12 +57,6 @@
     return window.EdShell.getState();
   }
 
-  function text(value) {
-    if (value == null) return "-";
-    if (value === "") return "-";
-    return String(value);
-  }
-
   function regimeWords(code) {
     var table = window.EdGammaRegime;
     if (!table || code == null) return "-";
@@ -71,7 +65,8 @@
     return row.t;
   }
 
-  var esc = window.EdShell.esc;
+  var esc = window.EdShell.esc,
+    orDash = window.EdShell.orDash;
 
   function isMatrix() {
     var st = state();
@@ -237,7 +232,9 @@
     var factors = Array.isArray(row.factors) ? row.factors : [];
     var ceiling = lastBody && lastBody.ceiling != null ? lastBody.ceiling : null;
     var scoreLine =
-      row.score == null ? text(missing.join(", ")) : text(row.score_text) + " / " + text(ceiling);
+      row.score == null
+        ? orDash(missing.join(", "))
+        : orDash(row.score_text) + " / " + orDash(ceiling);
     var facts = [
       ["Net GEX", row.net_gex_text, row.net_reason, "$ per 1% move", "M"],
       ["Open interest", row.oi_text, row.oi_reason, "contracts", ""],
@@ -273,11 +270,11 @@
         " " +
         p.text +
         "  raw " +
-        text(p.raw_text) +
+        orDash(p.raw_text) +
         "  norm " +
-        text(p.normalized_text) +
+        orDash(p.normalized_text) +
         "  weight " +
-        text(p.weight_text)
+        orDash(p.weight_text)
       );
     });
     var note = why;
@@ -285,7 +282,7 @@
     if (missing.length && row.score == null) note += (note ? "\n" : "") + missing.join(", ");
     detail.innerHTML =
       '<div class="eyebrow">Selected strike</div><h2>' +
-      esc(text(row.strike_text) + " · " + text(row.distance_text) + " points from spot") +
+      esc(orDash(row.strike_text) + " · " + orDash(row.distance_text) + " points from spot") +
       "</h2><p>Composite " +
       esc(scoreLine) +
       '</p><div class="cards">' +
@@ -338,7 +335,7 @@
     }
     line.style.display = "";
     line.style.top = top + "px";
-    line.innerHTML = "<span>SPOT " + esc(text(lastSpotText)) + "</span>";
+    line.innerHTML = "<span>SPOT " + esc(orDash(lastSpotText)) + "</span>";
   }
 
   function onClick(e) {
@@ -453,20 +450,20 @@
           "><label>" +
           esc(cell[0]) +
           "</label><strong>" +
-          esc(text(cell[1])) +
+          esc(orDash(cell[1])) +
           "</strong>" +
           small +
           "</div>"
         );
       })
       .join("");
-    var status = body.available ? text(body.status_text) : text(body.reason);
+    var status = body.available ? orDash(body.status_text) : orDash(body.reason);
     var heads =
       '<tr><th class="group edge" colspan="5">Price context</th><th class="group edge" colspan="4">Positioning</th><th class="group edge" colspan="5">Activity</th><th class="group" colspan="4">Sensitivity</th></tr><tr>';
     HEADS.forEach(function (col, index) {
       var secondary = "<small>" + esc(col[1]) + "</small>";
       if (index === 4) {
-        secondary += "<small>" + esc(text(body.scale_text)) + "</small>";
+        secondary += "<small>" + esc(orDash(body.scale_text)) + "</small>";
         if (body.preset) secondary += "<small>" + esc(body.preset) + "</small>";
       }
       heads +=
@@ -486,7 +483,7 @@
         row.score_text == null
           ? ""
           : '<button type="button" class="score" aria-label="Inspect strike ' +
-            esc(text(row.strike_text)) +
+            esc(orDash(row.strike_text)) +
             '">' +
             esc(row.score_text) +
             " ›</button>";
@@ -505,8 +502,8 @@
           rails(rows, body.rail_lines, body.rail_lanes) +
           "</td>";
       }
-      bodyRows += '<td class="strike">' + esc(text(row.strike_text)) + "</td>";
-      bodyRows += "<td>" + esc(text(row.distance_text)) + "</td>";
+      bodyRows += '<td class="strike">' + esc(orDash(row.strike_text)) + "</td>";
+      bodyRows += "<td>" + esc(orDash(row.distance_text)) + "</td>";
       if (row.score_text == null) {
         bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">-</td>';
       } else {
@@ -570,7 +567,7 @@
         '</thead><tbody id="cmRows">' +
         bodyRows +
         '</tbody></table><div id="spotline"></div></div></div>'
-      : '<div class="status">' + esc(text(body.reason)) + "</div>";
+      : '<div class="status">' + esc(orDash(body.reason)) + "</div>";
     var kept = null;
     rows.forEach(function (row) {
       if (row.strike === selectedStrike) kept = row;
