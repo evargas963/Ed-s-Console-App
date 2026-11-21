@@ -345,7 +345,8 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
     """Return the contract as the chain screens show it, under Schwab's field names.
 
     Each field Schwab
-    sent, and each value the record holds (a streamed count or Greek), and no other.
+    sent, and each value the record holds (a streamed count or Greek), and no other. Of its
+    Greeks, the two the Chain ladder draws: gamma and delta.
     """
     read = {
         "symbol": c.symbol,
@@ -362,6 +363,7 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
         "multiplier": c.multiplier,
         "volatility": c.volatility,
         "nonStandard": c.non_standard,
-        **{g: getattr(c, g) for g in GREEKS},
+        "gamma": c.gamma,
+        "delta": c.delta,
     }
     return {**c.listing, **{k: v for k, v in read.items() if k in c.sent or v is not None}}
