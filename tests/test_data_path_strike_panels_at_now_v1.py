@@ -71,6 +71,9 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         assert strikes["view"]["centre"] is not None and strikes["view"]["note"] is None
         for key in push_strike_bars.STRIKE_BAR_METHODS:
             bars = push_strike_bars.strike_bar_payload(tk, key, "auto", None, 0, None, at)
-            assert bars["available"] and bars["spot"] == last and bars["view"]["note"] is None, key
+            own = [r["strike"] for r in bars["rows"]]
+            at_price = [r["strike"] for r in bars["rows"] if spot in r["marks"]]
+            assert bars["available"] and bars["view"]["note"] is None, key
+            assert at_price == [min(own, key=lambda k: abs(k - last))] and "spot" not in bars, key
     finally:
         _clear(tk)

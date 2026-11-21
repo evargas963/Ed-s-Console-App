@@ -420,13 +420,13 @@ def test_a_reprice_is_at_the_live_price_and_a_new_chain_at_its_own_spot():
         server.SPOT_SOURCE_PLANE,
         int(_T * 1000) / 1000,  # Schwab's TRADE_TIME_MILLIS
     )
-    assert moved.gamma_surface["spot"] == _SPOT * 1.02
+    assert "spot" not in moved.gamma_surface  # the price it is computed at is the levels' own
     assert moved.gamma_surface["cells"] != before["cells"]  # GEX scales with spot
     _publish(
         _RECORDS, _T + 60.0, chain_spot=(_SPOT * 1.01, _T + 55.0)
     )  # the next chain, at its spot
     after = _cached()
-    assert after.gamma_surface["spot"] == _SPOT * 1.01 and after.snap.spot == _SPOT * 1.01
+    assert after.snap.spot == _SPOT * 1.01
     assert after.spot_as_of_ts_utc == _T + 55.0
     assert (
         after.gamma_surface["surface_seq"] == before["surface_seq"] + 2
@@ -488,7 +488,9 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     _daemon(at=time_et.now())  # live now, as the routes read it
     every = {"scope": "all", "centre": None, "shift": 0, "expiry": None}
     charm = push_strike_bars.strike_bars("charm", TK, time_et.now(), every)
-    assert charm["available"] and charm["spot"] == snap.spot
+    own = [r["strike"] for r in charm["rows"]]
+    at_price = [r["strike"] for r in charm["rows"] if r["marks"]]
+    assert charm["available"] and at_price == [min(own, key=lambda k: abs(k - snap.spot))]
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )

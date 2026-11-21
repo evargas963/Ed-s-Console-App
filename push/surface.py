@@ -209,14 +209,14 @@ def gamma_surface_payload(
     """Return the heatmap's answer for ticker `tk` at `now` (the `surface` panel).
 
     With no live surface the answer is "unavailable" with the reason; there is no second source.
-    Served with the levels' verdict (terrain_staleness) and the chain's and price's times.
+    Served with the levels' verdict (terrain_staleness), which carries the chain's time.
     """
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live, verdict = terrain_cache_get(tk, now.timestamp())
     surf = None if live is None else live.gamma_surface
-    _surface_live_spot = resolve_spot(tk, now=now.timestamp())
     if live is not None and surf is not None:
-        spot_strike = nearest_strike(surf["strikes"], _surface_live_spot[0])
+        # the row at the price: the listed strike nearest the live price, the header's own rule
+        spot_strike = nearest_strike(surf["strikes"], resolve_spot(tk, now=now.timestamp())[0])
         # the surface's state is the levels' (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE);
         # whether the cells on screen are streaming is the view's coverage
         shown, view = _surface_view(
@@ -233,12 +233,6 @@ def gamma_surface_payload(
             "chain_basis": live.chain_basis,
             **shown,
             "view": view,
-            # one spot on every screen: the live price, the header's own rule, after the surface's
-            # own keys so its stamp cannot overwrite it.
-            "spot": _surface_live_spot[0],
-            "spot_source": _surface_live_spot[1],
-            "spot_as_of_ts_utc": _surface_live_spot[2],
-            "spot_strike": spot_strike,
         }
 
     # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----

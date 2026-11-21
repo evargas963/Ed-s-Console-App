@@ -18,7 +18,7 @@ const LEVELS = {
   schema_version: 1,
   spot: 100.0,
   spot_text: "100.00",
-  spot_source: "schwab_quote_last",
+  spot_source: "streaming_plane", // push.spot.SPOT_SOURCE_PLANE, as the program serves it
   bar_source: "price_bars_1m",
   // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
@@ -31,7 +31,7 @@ const LEVELS = {
       evidence_tier: "MEASURED",
       distance: 1.5,
       provenance: { producer: "session_levels" },
-      staleness: { as_of_ts_utc: 1757000000 },
+      staleness: { as_of_time_ct: null },
     },
     {
       id: "VWAP",
@@ -42,7 +42,7 @@ const LEVELS = {
       evidence_tier: "MEASURED",
       distance: 0.02,
       provenance: { producer: "liquidity_value_engine" },
-      staleness: { as_of_ts_utc: 1757000000 },
+      staleness: { as_of_time_ct: null },
     },
     {
       id: "POC",
@@ -53,7 +53,7 @@ const LEVELS = {
       evidence_tier: "DERIVED",
       distance: -0.6,
       provenance: { producer: "value_area" },
-      staleness: { as_of_ts_utc: 1757000000 },
+      staleness: { as_of_time_ct: null },
     },
   ],
   by_distance: ["VWAP", "POC", "PDH"],
@@ -102,7 +102,7 @@ test.describe("D — Gamma Levels view", () => {
     panels.levels = Object.assign({}, LEVELS, { spot_time_ct: "Fri 10/02 10:00 AM CT" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#levelsBody .lv-spot")).toHaveText(
-      "spot 100.00 · schwab_quote_last · last trade Fri 10/02 10:00 AM CT",
+      "spot 100.00 · streaming_plane · last trade Fri 10/02 10:00 AM CT",
     );
   });
 

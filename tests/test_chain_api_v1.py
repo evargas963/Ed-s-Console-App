@@ -90,15 +90,8 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
 #: the chain fields the screens show, each as Schwab sent it (option_contract.chain_row)
 _SHOWN = (
     "symbol",
-    "putCall",
-    "strikePrice",
-    "expirationDate",
-    "daysToExpiration",
     "settlementType",
-    "openInterest",
-    "totalVolume",
     "multiplier",
-    "volatility",
     "nonStandard",
     # the two Greeks the Chain ladder draws; theta, vega and rho are on no screen and not served
     "gamma",
@@ -121,8 +114,6 @@ def _as_shown(contracts):
     return [
         {
             **{k: c[k] for k in _SHOWN if k in c},
-            "bid": None,
-            "ask": None,
             "oi_text": text(c.get("openInterest"), ",.0f"),
             "volume_text": text(c.get("totalVolume"), ",.0f"),
             "iv_text": text(c.get("volatility"), ".2f"),
@@ -162,7 +153,12 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     # the expiry is served once (`expiry`), and no label of ours rides with the chain
     assert body["scope"] == {"kind": "complete_single_expiry"}
     assert _served(body) == _by_symbol(_as_shown(_TSLA_CONTRACTS))
-    fractional = [c for c in _served(body).values() if c["strikePrice"] != int(c["strikePrice"])]
+    fractional = [
+        c
+        for r in body["ladder"]
+        for c in (r["call"], r["put"])
+        if c and r["strike"] != int(r["strike"])
+    ]
     assert len(fractional) == _TSLA["n_fractional_strikes"]
 
 
@@ -218,14 +214,9 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     )
     body = _get(ticker="TSLA")
     overlaid = _served(body)[target["symbol"]]
-    assert overlaid["totalVolume"] == streamed
     assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
     assert overlaid["volume_text"] == f"{streamed:,.0f}"  # the streamed volume, as shown
-    assert all(
-        overlaid[k] == v
-        for k, v in _as_shown([target])[0].items()
-        if k not in ("totalVolume", "volume_text")
-    )
+    assert all(overlaid[k] == v for k, v in _as_shown([target])[0].items() if k != "volume_text")
     others = {s: c for s, c in _served(body).items() if s != target["symbol"]}
     assert others == _by_symbol(_as_shown(_TSLA_CONTRACTS[1:]))
 
@@ -249,8 +240,9 @@ def test_a_streamed_contracts_bid_and_ask_are_the_streams_never_the_chains():
         ],
     )
     shown = _served(_get(ticker="TSLA"))
-    assert (shown[pushed["symbol"]]["bid"], shown[pushed["symbol"]]["ask"]) == (bid, ask)
-    assert (shown[silent["symbol"]]["bid"], shown[silent["symbol"]]["ask"]) == (None, None)
+    sent, quiet = shown[pushed["symbol"]], shown[silent["symbol"]]
+    assert (sent["bid_text"], sent["ask_text"]) == (f"{bid:.2f}", f"{ask:.2f}")
+    assert (quiet["bid_text"], quiet["ask_text"]) == (None, None)
 
 
 def test_a_later_streamed_gamma_does_not_replace_the_quote():
@@ -274,9 +266,9 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     )
     body = _get(ticker="TSLA")
     overlaid = _served(body)[target["symbol"]]
-    assert overlaid["totalVolume"] == volume and overlaid["gamma"] == target["gamma"]
+    assert overlaid["volume_text"] == f"{volume:,.0f}" and overlaid["gamma"] == target["gamma"]
     assert overlaid["gamma"] != gamma
-    assert overlaid["openInterest"] == target["openInterest"]  # the chain's
+    assert overlaid["oi_text"] == f"{target['openInterest']:,.0f}"  # the chain's
     assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
 
 
@@ -321,9 +313,9 @@ def test_a_quote_streamed_after_the_last_pricing_is_shown_when_it_arrives():
     shown = _stream_after_pricing(
         target, {"BID_PRICE": bid, "ASK_PRICE": ask, "TOTAL_VOLUME": volume}
     )
-    assert (shown["bid"], shown["ask"], shown["totalVolume"]) == (bid, ask, volume)
-    assert shown["volume_text"] == f"{volume:,.0f}" and shown["bid_text"] == f"{bid:.2f}"
-    assert shown["openInterest"] == target["openInterest"]  # the chain's (rule 3)
+    assert (shown["bid_text"], shown["ask_text"]) == (f"{bid:.2f}", f"{ask:.2f}")
+    assert shown["volume_text"] == f"{volume:,.0f}"
+    assert shown["oi_text"] == f"{target['openInterest']:,.0f}"  # the chain's (rule 3)
 
 
 def test_a_contract_not_live_keeps_the_values_last_priced():
@@ -332,10 +324,10 @@ def test_a_contract_not_live_keeps_the_values_last_priced():
     shown = _stream_after_pricing(
         target, {"BID_PRICE": target["bid"] + 0.07, "TOTAL_VOLUME": 5}, socket_open=False
     )
-    assert (shown["bid"], shown["ask"], shown["totalVolume"]) == (
-        target["bid"],
-        target["ask"],
-        1,
+    assert (shown["bid_text"], shown["ask_text"], shown["volume_text"]) == (
+        f"{target['bid']:.2f}",
+        f"{target['ask']:.2f}",
+        "1",
     )
 
 

@@ -8,6 +8,7 @@ import pytest
 
 import server
 from push import levels as push_levels
+from state import price_level_store
 from tests.feed_live_helper import (
     daemon_bars,
     forget_bars,
@@ -32,9 +33,10 @@ def test_the_levels_page_carries_each_levels_time():
         server._publish_price_levels("SPY", closed)
         body = push_levels.levels_payload("SPY", "1", closed)
         vwap = next(r for r in body["levels"] if r["id"] == "VWAP")
-        as_of = vwap["staleness"]["as_of_ts_utc"]
+        held = price_level_store.canonical_price_level_snapshot("SPY", closed).levels["VWAP"]
         assert vwap["price"] is not None
-        assert vwap["staleness"]["as_of_time_ct"] == ct_label(as_of)
+        # the level's time is served once, as the text the page shows: no second, raw copy
+        assert vwap["staleness"] == {"as_of_time_ct": ct_label(held.as_of_ts_utc)}
     finally:
         forget_bars("SPY", "TSLA")
 

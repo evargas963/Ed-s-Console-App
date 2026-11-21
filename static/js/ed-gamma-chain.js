@@ -81,7 +81,6 @@
       return;
     }
     var dup = d.has_duplicate_contracts === true; // served
-    // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'
     var desired = window.EdFlow.selected();
     // B: the chain panel is a COMPLETE SINGLE-EXPIRY surface — say so, name the exact expiry returned, and
     // flag when the workspace filter was null (the server chose the default expiry).
@@ -97,7 +96,6 @@
       "</span>" +
       "<span>spot " +
       orDash(d.spot_text) +
-      (d.spot_source ? " · " + esc(d.spot_source) : "") +
       (d.spot_time_ct ? " · last trade " + esc(d.spot_time_ct) : "") +
       "</span></div>";
     // a served text, or every digit Schwab sent (its Greeks)

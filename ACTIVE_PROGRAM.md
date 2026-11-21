@@ -128,6 +128,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   (`server.py`, including the gamma surface's served record, `calc/liquidity_value_engine.py`,
   `app/options/order_flow/streaming.py`, `calc/order_flow.py`, `calc/math_exposure_core.py`,
   `ed-core.js`, `ed-gamma.js`), with no folder moves.
+- LEG-TERMS (QUEUED): every served chain leg carries the contract terms Structures shows
+  (`settlementType`, `multiplier`, `nonStandard`, `pennyPilot`, `exerciseType`, `expirationType`,
+  `lastTradingDay`), and no page reads them there: Structures draws the row's `series`, which
+  `push.chain._series` builds by reading them off the leg. Next: `_series` reads the contract's
+  record and the leg drops them; `calc.terrain_engine.chain_ladder` hands on only the served rows,
+  so the ladder then carries the records.
 - ENF-13 (QUEUED; also GUARD-SHRINK): the command guards (`tools/operator_yes_guard.py`,
   `tools/operator_law_guard.py`, `tools/process_lock_guard.py`, `tools/shell_parse.py`) cut to the
   least code that keeps every verdict their tests check. This is the one list of their known open

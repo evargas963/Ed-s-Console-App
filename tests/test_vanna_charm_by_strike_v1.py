@@ -116,8 +116,11 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
 
     body = push_strike_bars.strike_bars("vanna", TK, time_et.now(), ALL)
     assert body["available"] is True
-    # spot is the live price (the header's own), not the price the rows were computed at
-    assert body["spot"] == _QUOTE["native"]["LAST_PRICE"] and "priced_at_spot" not in body
+    # the row marked is the live price's (the header's own); the panel serves no price beside it
+    live = _QUOTE["native"]["LAST_PRICE"]
+    marked = [r["strike"] for r in body["rows"] if r["marks"]]
+    assert marked == [min((r["strike"] for r in body["rows"]), key=lambda k: abs(k - live))]
+    assert not {"spot", "priced_at_spot"} & set(body)
     rows = {r["strike"]: r["value"] for r in body["rows"]}
     assert rows, "a real chain must yield at least one vanna row"
 
