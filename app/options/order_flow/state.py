@@ -198,17 +198,27 @@ def bind_bus(current: dict[str, tuple[str, Any]]) -> None:
 
 
 #: each option contract's newest /quotes answer: symbol -> (the time it was received, its values
-#: as option_contract.quote_values reads them). The sweep asks one request at a time, so each
-#: answer is the newest.
+#: as option_contract.quote_values reads them). Newest by the answer's receive time: Schwab's
+#: /quotes answer carries no time of its own.
 _REST_QUOTES: dict[str, tuple[float, dict[str, Any]]] = {}
 _rest_lock = threading.Lock()
 
 
 def push_rest_quotes(answer: dict[str, Any], received: float) -> None:
-    """Keep one /quotes answer (symbol -> Schwab's `quote`), received at `received`."""
+    """Keep one /quotes answer (symbol -> Schwab's `quote`), received at `received`.
+
+    A contract whose held answer was received later keeps it: an older answer never replaces a
+    newer value.
+    """
     read = {sym: (received, quote_values(quote)) for sym, quote in answer.items()}
     with _rest_lock:
-        _REST_QUOTES.update(read)
+        _REST_QUOTES.update(
+            {
+                sym: values
+                for sym, values in read.items()
+                if sym not in _REST_QUOTES or _REST_QUOTES[sym][0] <= received
+            }
+        )
 
 
 def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, dict[str, Any]]]:

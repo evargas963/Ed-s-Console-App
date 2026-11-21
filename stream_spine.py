@@ -4,8 +4,8 @@ They are the stream database path and schema, the message shapes, the in-process
 feed health, and the database writer.
 
   - Every Schwab message is published once on the MessageBus and becomes its topic's current
-    record (the newest by Schwab's time); the writer reads every message (LOG), the console
-    socket and the browser socket read each changed topic's current record (LATEST).
+    record (the newest by Schwab's time); the writer reads every message (LOG), the live readers
+    each changed topic's current record and every message that is its own item (LATEST).
   - Every message goes to the one database (db_authority.canonical_db_path).
   - The writer runs on its own thread with its own SQLite connection, so a slow disk can
     never stall the Schwab socket.
@@ -370,11 +370,18 @@ def subscription_msg(
 # ---------------------------------------------------------------------------- the bus
 
 #: How a reader takes the bus. LOG: every message, in order -- the database writer, the record of
-#: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST: for each topic that changed since
-#: its last read, that topic's current record -- every live reader: a newer value replaces an
-#: older one at once, nothing old waits, and what a reader holds is bounded by the number of
-#: topics, never by how fast Schwab sends (D3).
+#: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST, every live reader: for each topic
+#: with versions (VERSIONED) that changed since its last read, that topic's current record -- a
+#: newer value replaces an older one at once and nothing old waits -- and every message that is
+#: its own item, once, in the order published. What a reader holds is bounded by the number of
+#: topics and the items it has not yet taken, never by how fast Schwab sends a value (D3).
 LOG, LATEST = "log", "latest"
+#: the topics whose messages are versions of one thing, by their kind: a symbol's quote or book, a
+#: ticker's chain, a series' candles, a date's sessions. A message of any other topic is its own
+#: item -- a /quotes answer for its own contracts, one minute's bar, a news story, the answer to
+#: one watchlist request, a raw answer or a status for the record -- and replaces nothing a reader
+#: has not yet taken
+VERSIONED = frozenset({"quote", "optquote", "book", "chain", "pricehistory", "markets"})
 #: the end of a LOG reader's messages, put in its queue once the stop is set (_end_at): no topic
 LOG_END: tuple[str, Any] = ("", None)
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
@@ -527,6 +534,11 @@ def _older(t: float | None, than: float | None) -> bool:
     return t is not None and than is not None and t < than
 
 
+def _own(topic: str) -> bool:
+    """Tell whether a topic's message is its own item, no version of the one before (VERSIONED)."""
+    return topic.split(".", 1)[0] not in VERSIONED
+
+
 @dataclass
 class Subscription:
     prefix: str
@@ -534,39 +546,54 @@ class Subscription:
     current: dict[str, tuple[str, Any]]  # the bus's current state
     #: LOG: every message, then LOG_END at the stop (_end_at)
     queue: asyncio.Queue[tuple[str, Any]] = field(default_factory=asyncio.Queue[tuple[str, Any]])
-    changed: dict[str, None] = field(default_factory=dict[str, None])  # LATEST: keys, in order
+    #: LATEST, in the order each came: a changed topic's key (its current record is read when it
+    #: is taken, so a newer version replaces one that still waits), or a message that is its own
+    #: item, under a key of its own (`items`), with the message
+    changed: dict[str, tuple[str, Any] | None] = field(
+        default_factory=dict[str, tuple[str, Any] | None]
+    )
     wake: asyncio.Event = field(default_factory=asyncio.Event)
+    items: itertools.count[int] = field(default_factory=itertools.count)
 
-    def deliver(self, key: str, topic: str, msg: Any) -> None:
+    def deliver(self, key: str, topic: str, msg: Any, own: bool) -> None:
+        """Hand over a message: its topic's record at `key`, or `own`, the message itself."""
         if self.policy == LOG:
             self.queue.put_nowait((topic, msg))
+            return
+        if own:
+            self.changed[f"#{next(self.items)}"] = (topic, msg)
         else:
             self.changed[key] = None
-            self.wake.set()
+        self.wake.set()
+
+    def _take(self, key: str) -> tuple[str, Any] | None:
+        """Take what waits at `key`: an item itself, or its topic's current record."""
+        item = self.changed.pop(key)
+        return self.current.get(key) if item is None else item
 
     async def get(self) -> tuple[str, Any]:
-        """LOG: the next message. LATEST: (topic, current record) of the next changed topic.
+        """Return the next message (LOG), or the next of what waits (LATEST).
 
-        A chain's record is its parts, in order.
+        LATEST: a changed topic's (topic, current record), or an item's (topic, message). A
+        chain's record is its parts, in order.
         """
         if self.policy == LOG:
             return await self.queue.get()
         while True:
             while self.changed:
-                key = next(iter(self.changed))
-                del self.changed[key]
-                entry = self.current.get(key)
+                entry = self._take(next(iter(self.changed)))
                 if entry is not None:
                     return entry
             self.wake.clear()
             await self.wake.wait()
 
     def taken(self, most: int) -> list[tuple[str, Any]]:
-        """LATEST: up to `most` changed topics' current records, in the order they changed, now."""
+        """Return up to `most` of what waits for a LATEST reader, now, in the order each came.
+
+        A changed topic's current record, or an item's message.
+        """
         keys = list(itertools.islice(self.changed, most))
-        for key in keys:
-            del self.changed[key]
-        return [entry for key in keys if (entry := self.current.get(key)) is not None]
+        return [entry for key in keys if (entry := self._take(key)) is not None]
 
 
 async def _end_at(stop: asyncio.Event, sub: Subscription) -> None:
@@ -585,7 +612,10 @@ class MessageBus:
     frame's timestamp; a chain by its fetch time): a LEVELONE message merged field by field, its
     fields read on the first read of each version (streamed_record), a book, bar or news item whole,
     a chain whole once all its parts are in -- and each reader takes it by its policy (LOG or
-    LATEST). A LEVELONE record also keeps the quote its newest quote replaced (`quote_before`):
+    LATEST). A message that is its own item (a topic not VERSIONED) is also handed to each LATEST
+    reader itself: the one after it never replaces it before it is taken, and a reader that
+    subscribes later starts with the newest alone. A LEVELONE record also keeps the quote its
+    newest quote replaced (`quote_before`):
     Schwab sends a trade with the quote that followed it, so a trade is read against the quote
     in force when it was made (calc.l1_trade_observation.quote_in_force).
     """
@@ -602,11 +632,9 @@ class MessageBus:
         """Subscribe a reader; a LATEST one starts with every current record under `prefix`."""
         sub = Subscription(prefix=prefix, policy=policy, current=self.current)
         if policy == LATEST:
-            sub.changed.update(
-                (k, None) for k, (t, _r) in self.current.items() if t.startswith(prefix)
-            )
-            if sub.changed:
-                sub.wake.set()
+            for key, (topic, record) in self.current.items():
+                if topic.startswith(prefix):
+                    sub.deliver(key, topic, record, _own(topic))
         self._subs.append(sub)
         return sub
 
@@ -618,12 +646,15 @@ class MessageBus:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
         changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
+        # a message that is its own item reaches every live reader itself: the next one of its
+        # topic is another answer, bar or story, never a newer version of this one
+        own = _own(topic)
         for sub in self._subs:
             if not topic.startswith(sub.prefix):
                 continue
             # a chain's record is its own history (the chain sweep writes it), never the log's
-            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and changed):
-                sub.deliver(key, topic, msg)
+            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and (changed or own)):
+                sub.deliver(key, topic, msg, own)
 
     def _newest(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's time.
