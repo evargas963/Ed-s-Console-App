@@ -593,6 +593,35 @@ def test_d5_at_a_start_the_shown_tickers_chain_is_asked_before_the_others_price_
     assert swept.chains[:2] == ["TSLA", "SPY"]
 
 
+def test_d5_a_ticker_selected_while_the_price_history_is_asked_has_its_own_next(tmp_path):
+    """The ticker on the screen first (AGENTS.md rule 7), inside the price history's round too.
+
+    A start with no page: the first chain's turn asks every ticker's price history, SPY's then
+    TSLA's by the watchlist's order. INDUCED: a page selects TSLA as that round begins (the
+    pages' tickers are read before each ticker's history, as before each chain): TSLA's history
+    is asked first, whole, then SPY's, each still once.
+    """
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY", "TSLA"])
+    reads: list[int] = []
+
+    def shown() -> list[str]:
+        reads.append(len(swept.schwab.requests))
+        return [] if len(reads) == 1 else ["TSLA"]  # no page at the rotation's first read
+
+    swept.sweep.shown = shown
+    try:
+        assert swept.sweep.step(lambda: swept.client, swept.stop)
+        history = [
+            query["symbol"]
+            for path, query, *_ in swept.schwab.requests
+            if path.endswith("/pricehistory")
+        ]
+    finally:
+        swept.close()
+    each = len(PRICE_HISTORY)
+    assert history == ["TSLA"] * each + ["SPY"] * each
+
+
 def test_d5_the_quotes_of_the_ticker_a_page_shows_are_asked_two_requests_together(tmp_path):
     """Operator 2026-11-12: "lets go up in step": the shown ticker's quotes, two requests at once.
 
