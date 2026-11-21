@@ -139,6 +139,22 @@ def newest_bars(rows: list[dict], tk: str) -> list[dict]:
     return [out[ms] for ms in sorted(out)]
 
 
+def keep_candles(tk: str, candles: list[dict]) -> None:
+    """Hold Schwab's /pricehistory `candles` as `tk`'s 1-minute bars, as the bar writer does."""
+    for b in candles:
+        bar_store.keep_bar(
+            tk,
+            Candle(
+                ts=b["timestamp"] / 1000,
+                open=b["open"],
+                high=b["high"],
+                low=b["low"],
+                close=b["close"],
+                volume=b["volume"],
+            ),
+        )
+
+
 def forget_bars(*tickers: str) -> None:
     """No bar in memory or published level of `tickers` is left behind."""
     for tk in tickers:

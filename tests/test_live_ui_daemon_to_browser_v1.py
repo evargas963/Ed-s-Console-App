@@ -64,15 +64,13 @@ import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
-from calibration.complete_chain_capture import StoredCapture
 from instrument_identity import ticker_storage_key
 from numeric_contract import compact_text, count_text, dollars_text, strike_text
-from option_contract import read_chain
 from push import chain as push_chain
 from push import verdict as push_verdict
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-from tests.feed_live_helper import clock_from, forget_news, news_on_the_bus
+from tests.feed_live_helper import clock_from, forget_news, news_on_the_bus, publish_capture
 from tests.real_chains import CRWD, MRVL
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
@@ -702,19 +700,13 @@ def _expected(chain) -> tuple[list[str], dict]:
 
 def _publish(real) -> None:
     """Price `real`'s chain as the stored capture it is, at the price Schwab sent with it."""
-    server._publish_levels(
+    publish_capture(
         ticker_storage_key(real.ticker),
-        captures=[
-            StoredCapture(
-                contracts=read_chain([dict(c) for c in real.chain]),
-                ts_utc=real.now.timestamp(),
-                spot=real.spot,
-                et_date=real.now.date().isoformat(),
-                basis=server.CAPTURE_BASIS,
-                spot_ts=None,
-            )
-        ],
-        now=real.now,
+        [dict(c) for c in real.chain],
+        real.now.timestamp(),
+        real.spot,
+        real.now.date().isoformat(),
+        real.now,
     )
 
 

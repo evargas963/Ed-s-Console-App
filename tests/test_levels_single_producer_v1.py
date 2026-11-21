@@ -12,7 +12,6 @@ from calc.math_exposure_core import (
     compute_exposures_by_strike,
     strike_total_volume,
 )
-from calc.micro_structure import Candle
 from option_contract import read_chain
 from push import levels as push_levels
 from push import strikes as push_strikes
@@ -22,6 +21,7 @@ from tests.feed_live_helper import (
     daemon_status,
     forget_bars,
     hold_schwab_daily,
+    keep_candles,
     newest_bars,
     price_history,
     stream_daemon_bars,
@@ -34,17 +34,6 @@ from time_et import ET, ct_label
 #: (sessions Schwab's /markets answers; tests/conftest.py)
 _DAEMON_BARS = daemon_bars("real_daemon_bars_spy_tsla_2026_10_01_02.json")
 _PAIR = ("SPY", "TSLA")
-
-
-def _candle(b: dict) -> Candle:
-    return Candle(
-        ts=b["timestamp"] / 1000.0,
-        open=b["open"],
-        high=b["high"],
-        low=b["low"],
-        close=b["close"],
-        volume=b["volume"],
-    )
 
 
 def _sent_daily(tk: str, day: str) -> dict:
@@ -107,8 +96,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
     ]
     forget_bars(tk)
     try:
-        for b in tape:
-            bar_store.keep_bar(tk, _candle(b))
+        keep_candles(tk, tape)
         srv._write_price_history({"symbol": tk, "series": "1d", "answer": {"candles": daily}})
         srv._publish_price_levels(tk, now)  # as the bar writer does
         payload = push_levels.levels_payload(tk, "1", now)

@@ -44,13 +44,12 @@ import pytest
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server as srv
-from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import chain as push_chain
 from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import daemon_status, pushed
+from tests.feed_live_helper import daemon_status, publish_capture, pushed
 from time_et import ET
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
@@ -133,19 +132,8 @@ def build_side_e2e_fixture_response() -> dict:
     # SPY's 2026-10-22 close capture lists both, so each is judged by SPY's option market
     close = json.loads(_SPY_CLOSE.read_text(encoding="utf-8"))["newer"]
     at_close = datetime.fromtimestamp(close["ts_utc"], ET)
-    srv._publish_levels(
-        "SPY",
-        captures=[
-            StoredCapture(
-                contracts=read_chain(close["chain"]),
-                ts_utc=close["ts_utc"],
-                spot=close["spot"],
-                spot_ts=None,
-                et_date=at_close.date().isoformat(),
-                basis=srv.CAPTURE_BASIS,
-            )
-        ],
-        now=at_close,
+    publish_capture(
+        "SPY", close["chain"], close["ts_utc"], close["spot"], at_close.date().isoformat(), at_close
     )
     chains = {}
     try:

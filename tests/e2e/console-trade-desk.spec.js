@@ -155,12 +155,7 @@ test("Liquidity map: the live price keeps its last trade time", async ({ page })
   deskPanels().levels = levelsAt(
     Object.assign({}, LEVELS, { spot_time_ct: "Fri 10/02 10:00 AM CT" }),
   );
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "liquidity");
-    localStorage.setItem("ed_sub", "map");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "liquidity", "map");
   await expect
     .poll(() =>
       page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().liveTitle),
@@ -184,12 +179,7 @@ test("a level at 0 draws as a price: the map lists its zone, the desk its value 
   const errs = watchErrors(page);
   await intercept(page);
   deskPanels().liquidity = AT_ZERO;
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "liquidity");
-    localStorage.setItem("ed_sub", "map");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "liquidity", "map");
   const atZero = AT_ZERO.zones.find((z) => z.zone_low === 0); // the zone the 0 prices made
   await expect(page.locator(".liqm-zones")).toContainText(atZero.zone_label + " 0.00");
   await expect
@@ -229,12 +219,7 @@ test("Liquidity map: a failed request is named, and an empty snapshot shows the 
   await intercept(page);
   deskPanels().liquidity = { ticker: "SPY", zones: [], reason: REASON };
   deskPanels().bars = { failed: barsWords };
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "liquidity");
-    localStorage.setItem("ed_sub", "map");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "liquidity", "map");
   await expect(page.locator(".liqm-zones")).toContainText(REASON);
   await expect(page.locator(".liqm-empty")).toHaveText(barsWords);
   deskPanels().liquidity = { failed: liqWords };
@@ -258,12 +243,7 @@ test("the liquidity map fits its price scale to the candles; a far zone does not
     { zone_low: 800, zone_high: 801 },
   );
   deskPanels().liquidity = Object.assign({}, LIQ, { zones: LIQ.zones.concat([far]) });
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "liquidity");
-    localStorage.setItem("ed_sub", "map");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "liquidity", "map");
   await expect
     .poll(() =>
       page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones),
@@ -333,12 +313,7 @@ test("Desk: an offline price keeps its last trade time on the map", async ({ pag
       total_volume: 1000,
     }),
   ]);
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "trade-desk");
-    localStorage.setItem("ed_sub", "desk");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "trade-desk", "desk");
   await expect(page.locator("#tdmIdxSPX")).toContainText("OFFLINE · last trade 14:00:01 CT");
   await expect(page.locator("#tdmIdxSPX")).toHaveAttribute(
     "title",
@@ -469,12 +444,7 @@ test("Desk: a price push that stops reads OFFLINE on the map, not its last row's
       { afterMs: 12000, row: ROWS.SPY },
     ],
   );
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "trade-desk");
-    localStorage.setItem("ed_sub", "desk");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "trade-desk", "desk");
   await expect(page.locator("#tdmTrust")).toContainText("PRICE LIVE");
   await expect(page.locator("#hFeed")).toHaveText("OFFLINE", { timeout: 6000 }); // the socket sends nothing more
   await expect(page.locator("#tdmTrust")).toContainText("PRICE OFFLINE");
@@ -555,12 +525,7 @@ test("Desk: the book age keeps Schwab's book time", async ({ page }) => {
   const BOOK_TIME = "Fri 09/25 06:59 PM CT";
   await intercept(page);
   deskPanels().book = Object.assign({}, MICRO, { book_time_ct: BOOK_TIME });
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "trade-desk");
-    localStorage.setItem("ed_sub", "desk");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "trade-desk", "desk");
   // the card's footnote keeps the served composite's book time; its side word and totals are served
   await expect(page.locator("#tdmCardLiq")).toContainText("Book " + COMP.book_time_ct);
   await expect(page.locator("#tdmCardLiq .liq-word")).toHaveText(COMP.views["5"].side_word);
@@ -580,12 +545,7 @@ test("Desk: the chain age keeps the chain's time", async ({ page }) => {
     levels_state: "LIVE",
     levels_time_ct: CHAIN_TIME,
   });
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "trade-desk");
-    localStorage.setItem("ed_sub", "desk");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "trade-desk", "desk");
   await expect(page.locator("#tdmCardOpt .tdm-src")).toContainText(
     "Schwab option chain · " + CHAIN_TIME + " · LIVE · 4s",
   );
@@ -609,12 +569,7 @@ test("Desk: the levels pill keeps the snapshot time", async ({ page }) => {
       snapshot_age_text: "2d",
     }),
   );
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "trade-desk");
-    localStorage.setItem("ed_sub", "desk");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "trade-desk", "desk");
   await expect(page.locator("#tdmTrust")).toContainText("LEVELS " + SNAP_TIME + " · 2d"); // the served age, not the page's clock
   expect(errs).toEqual([]);
 });
@@ -624,12 +579,7 @@ test("Right Now: the spot keeps its last trade time", async ({ page }) => {
   deskPanels().levels = levelsAt(
     Object.assign({}, LEVELS, { spot_time_ct: "Fri 10/02 10:00 AM CT" }),
   );
-  await page.addInitScript(() => {
-    localStorage.setItem("ed_ticker", "SPY");
-    localStorage.setItem("ed_ws", "trade-desk");
-    localStorage.setItem("ed_sub", "right-now");
-  });
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openView(page, "trade-desk", "right-now");
   await expect(page.locator("#tdBody .fl-meta")).toHaveText(
     "spot " + SPOT.toFixed(2) + " · last trade Fri 10/02 10:00 AM CT",
   );
@@ -646,12 +596,7 @@ test.describe("Trade Desk renders served values", () => {
     deskPanels().desk = tfAt(
       Object.assign({}, EVENTS, { items: [], cross_counts: { up: 0, down: 0 } }),
     );
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(
       "dark",
     );
@@ -685,12 +630,7 @@ test.describe("Trade Desk renders served values", () => {
     deskPanels().terrain = { failed: words };
     deskPanels().bars = (key, params, name) =>
       name === "bars:flow" ? { failed: words } : REAL.bars[params.tf];
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect(page.locator("#tdmCardOpt .tdm-plot-none")).toHaveText(words);
     await expect(page.locator("#tdmCardVol .tdm-plot-none")).toHaveText(words);
     await expect(page.locator("#tdmTrust")).toContainText("GAMMA DOWN");
@@ -708,12 +648,7 @@ test.describe("Trade Desk renders served values", () => {
     const errs = watchErrors(page);
     await intercept(page); // every panel sent in its real shape, but the event queue
     deskPanels().desk = () => undefined; // the event queue has not been sent
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
       .toBeGreaterThan(0);
@@ -728,12 +663,7 @@ test.describe("Trade Desk renders served values", () => {
     // and wrote "VA … – …" and "POC est …" itself; it draws the levels panel's fields
     const errs = watchErrors(page);
     await intercept(page); // every panel sent in its real shape
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     const pva = LEVELS.prior_value_area;
     const chart = () => page.evaluate(() => window.EdTradeDeskMap.state().chart);
     await expect.poll(async () => (await chart()).valueArea).toEqual([pva.low, pva.high]);
@@ -748,12 +678,7 @@ test.describe("Trade Desk renders served values", () => {
     // from everywhere; SPY's real panels, as served
     const errs = watchErrors(page);
     await intercept(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
       .toBeGreaterThan(0);
@@ -781,12 +706,7 @@ test.describe("Trade Desk renders served values", () => {
         ]),
       }),
     );
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
       .toBeGreaterThan(0);
@@ -849,12 +769,7 @@ test.describe("Trade Desk renders served values", () => {
     deskPanels().terrain = Object.assign({}, TERRAIN, {
       pcr_by_expiry: Object.assign({}, TERRAIN.pcr_by_expiry, { [second]: null }),
     });
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     // the queue as served: the day's recorded crosses in the window, the put wall
     await expect(page.locator("#tdmQueue .tdm-q")).toHaveCount(EVENTS.items.length);
     await expect(page.locator("#tdmQueueCount")).toHaveText(String(EVENTS.items.length));
@@ -995,12 +910,7 @@ test.describe("Trade Desk renders served values", () => {
       bars: (key, params) =>
         Object.assign({}, key === "SPY" ? BARS : { bars: [] }, { tf: params.tf }),
     });
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     const bars = page.locator("#tdmFoot span", { hasText: "Bars:" }).locator("b");
     await expect(bars).toHaveText("streamed 1m bars");
     await page.evaluate(() => window.EdShell.setTicker("MU"));
@@ -1013,12 +923,7 @@ test.describe("Trade Desk renders served values", () => {
     // the ticker of each subscribe that asks for the desk's book
     const opened = () =>
       sock.subscribes.filter((s) => s.panels["book:deskmap"]).map((s) => s.ticker);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect.poll(opened).toContain("SPY");
     await page.evaluate(() => window.EdShell.setTicker("MU"));
     await expect.poll(opened).toContain("MU");
@@ -1182,12 +1087,7 @@ test.describe("Trade Desk renders served values", () => {
       .slice(-60)
       .map((b) => Object.assign({}, b, { chg: 0.25, chg_pct: 0.0325, chg_text: "+0.25 (+0.03%)" })); // as live_price_rows serves it
     deskPanels().bars = tfAt(Object.assign({}, BARS, { bars: bars }));
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect(page.locator("#tdmChart .tvc-legend")).toContainText("Last completed bar");
     const box = await page.locator("#tdmChart .tvc-plot").boundingBox();
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
@@ -1248,12 +1148,7 @@ test.describe("Trade Desk renders served values", () => {
   }) => {
     const errs = watchErrors(page);
     await routeStopped(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     const row = (id) => STOPPED.levels.find((r) => r.id === id);
     const nearest = row(STOPPED.by_distance[0]);
     const body = page.locator("#tdBody");
@@ -1275,12 +1170,7 @@ test.describe("Trade Desk renders served values", () => {
   }) => {
     const errs = watchErrors(page);
     await routeStopped(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     // the flip side is the terrain's (SPY's real one: below the flip), marked with the stopped price's words
     await expect(page.locator("#tdmAgree")).toContainText(
       "Below Γ flip · " + STOPPED.spot_not_live_text,
@@ -1302,12 +1192,7 @@ test.describe("Trade Desk renders served values", () => {
     deskPanels().strikes = { failed: words };
     deskPanels().levels = { failed: levelsWords };
     deskPanels().book = { failed: bookWords };
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     await expect(page.locator("#tdBody")).toContainText(bookWords);
     await expect(page.locator("#tdBody")).toContainText(levelsWords);
     await expect(page.locator("#tdMigration")).toContainText(words);
@@ -1319,12 +1204,7 @@ test.describe("Trade Desk renders served values", () => {
   }) => {
     const errs = watchErrors(page);
     await intercept(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
     // the book's lean is the Liquidity readout's, served (one producer for the desk)
     const nq5 = MICRO.readout.venues.NASDAQ_BOOK.views["5"];
@@ -1370,12 +1250,7 @@ test.describe("Trade Desk renders served values", () => {
       top_outage: "Schwab NASDAQ_BOOK feed down during RTH",
       top_feed_label: "OFFLINE",
     });
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
     await expect(body).toContainText("OFFLINE");
     await expect(body).toContainText(BOOK_TIME + " · 1s");
@@ -1391,12 +1266,7 @@ test.describe("Trade Desk renders served values", () => {
     page,
   }) => {
     const sock = await intercept(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
     await expect(body).toContainText("Max pain 757.00");
     // Schwab's SPY set: both walls are above the price, so the line names each wall's own side
@@ -1582,12 +1452,7 @@ test.describe("Trade Desk renders served values", () => {
         ),
       }),
     });
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     await expect(page.locator("#tdMigration .gbs-k")).toHaveText(listed(STRIKES));
     const row = page
       .locator("#tdMigration .mig-row")
@@ -1604,12 +1469,7 @@ test.describe("Trade Desk renders served values", () => {
     page,
   }) => {
     await intercept(page);
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     await expect(page.locator("#tdMigration .gbs-k")).toHaveText(listed(STRIKES));
     // SPY's real rows, high strikes on top: 757 the price's strike, 760 the put wall
     const served = STRIKES.today.slice().reverse();
@@ -1643,12 +1503,7 @@ test.describe("Trade Desk renders served values", () => {
         .slice()
         .reverse()
         .map((r) => (r[key] == null ? "-" : r[key]));
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "right-now");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "right-now");
     const panel = page.locator("#tdMigration");
     await expect(panel.locator(".mig-exp")).toHaveText("All Expirations");
     // the one expiry dropdown stands on the Trade Desk too; the Options grid's measure does not
@@ -1762,12 +1617,7 @@ test.describe("Trade Desk renders served values", () => {
         }),
       ),
     });
-    await page.addInitScript(() => {
-      localStorage.setItem("ed_ticker", "SPY");
-      localStorage.setItem("ed_ws", "trade-desk");
-      localStorage.setItem("ed_sub", "desk");
-    });
-    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await openView(page, "trade-desk", "desk");
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText("3m");
     await expect(page.locator("#tdmChart .tvc-edge-top")).toContainText("GRC 837.58");
     await expect(page.locator("#tdmCardOpt")).toContainText(
