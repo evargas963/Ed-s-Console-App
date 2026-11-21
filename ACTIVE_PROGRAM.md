@@ -245,6 +245,18 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   ET and 46 more last-price messages after it; the live rule (`live_market_plane.live_state`) reads
   NOT LIVE from that status, so the header's index cells say NOT LIVE while their numbers still
   move. What the rule reads for an index after the stock close is his.
+- START-ASKS-AGAIN (OPERATOR): a start asks Schwab again for what the run before it was answered the
+  same ET date, because the sweep remembers what it asked in memory only (`feed/chain_sweep.py`
+  `_markets_day`, `_expiries`, `_candled`): each market date's sessions, each ticker's expiration
+  chain and its ten price-history series. Measured on the start of 2026-11-21 17:06 CT (the market
+  closed, nine tickers): $SPX's 52 expiry dates' sessions took 16 s before its chain was asked, the
+  other eight tickers' price history 43 s, and the first rotation delivered 9 of 9 tickers in 129 s.
+  The record holds every one of those answers (`stream_markets_raw`, `stream_pricehistory_raw`).
+  Whether a start reads the day's answers from the record instead of asking again is his: it changes
+  what Schwab is asked and how fresh a start's first values are. Since
+  `tests/test_data_path_rules_v1.py`
+  `test_d5_a_ticker_selected_while_the_price_history_is_asked_has_its_own_next` the ticker on a page
+  no longer waits for the others' price history.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
   tolerance; depth to 5 levels); a book side with no levels has no depth total.

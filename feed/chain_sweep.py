@@ -394,11 +394,11 @@ class ChainSweep:
         On the daemon's client (`schwab_client()`), the market's sessions for today and the days
         before it, then a rotation of the watchlist tickers whose chain is due, with their due
         price history (the ticker on a page first: its own candles, then its chain, before the
-        other tickers' candles), and the price history of those whose chain is not due; with
-        none due, it looks again each second. With the watchlist empty, or no
-        sign-in held (waits), it asks Schwab for nothing and looks again each second: a sign-in
-        Schwab refused fails every request at once, and a round of them would only log each
-        failure.
+        other tickers' candles), and the price history of those whose chain is not due, a
+        ticker on a page before each other one; with none due, it looks again each second. With
+        the watchlist empty, or no sign-in held (waits), it asks Schwab for nothing and looks
+        again each second: a sign-in Schwab refused fails every request at once, and a round of
+        them would only log each failure.
         """
         while not stop.is_set():
             if not self.step(schwab_client, stop):
@@ -605,11 +605,13 @@ class ChainSweep:
     ) -> None:
         """Each ticker's due series of its price history (`due`), ticker by ticker.
 
-        One removed from the watchlist meanwhile is not asked for.
+        A ticker a page has selected (`shown`, read before each ticker: the ticker on the screen
+        first, AGENTS.md rule 7) has its own next, the others in `due`'s order. One removed from
+        the watchlist meanwhile is not asked for.
         """
-        for ticker, series in due.items():
-            if stop.is_set():
-                break
+        while due and not stop.is_set():
+            ticker = next((t for t in self.shown() if t in due), next(iter(due)))
+            series = due.pop(ticker)
             if ticker in self.watchlist:
                 self.fetch_price_history(schwab_client, ticker, series)
 

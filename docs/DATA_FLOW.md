@@ -263,11 +263,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **1-minute bars and price history.** CHART_EQUITY → the bus → the Recorder (`stream_bars_raw`) and
   the console's bar writer (`server._bar_writer`) → `state/bar_store.py`. The chain sweep asks
   `/pricehistory` for the 10 series of `chain_sweep.PRICE_HISTORY`, each when due
-  (`ChainSweep.series_due`), before the chains → the bus (`pricehistory.<ticker>.<series>`) → the
-  Recorder (`stream_pricehistory_raw`) and the bar writer. A bar is checked once
-  (`server._schwab_bar`); no bar built from quotes enters the bar store. → the `bars`, `liquidity`
-  and `desk` panels (`server.BARS_PANELS`). Enforced by: `tests/test_data_path_pricehistory_v1.py`,
-  `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`.
+  (`ChainSweep.series_due`), before the chains, ticker by ticker, a ticker a page shows before each
+  other one (`ChainSweep.candles`, which reads the pages' tickers before each ticker's history, so
+  one selected while the round is asked has its own next) → the bus
+  (`pricehistory.<ticker>.<series>`) → the Recorder (`stream_pricehistory_raw`) and the bar writer.
+  A bar is checked once (`server._schwab_bar`); no bar built from quotes enters the bar store. → the
+  `bars`, `liquidity` and `desk` panels (`server.BARS_PANELS`). Enforced by:
+  `tests/test_data_path_pricehistory_v1.py`,
+  `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`,
+  `tests/test_data_path_rules_v1.py::test_d5_a_ticker_selected_while_the_price_history_is_asked_has_its_own_next`.
 - **The forming bar.** Each price row (the equity quote, above) → `calc.forming_bar.next_built`,
   called as the row is written (`live_market_plane.record_from_level_one_equity`), the plane holding
   each ticker's built minutes (`live_market_plane.built_minutes`, the newest `forming_bar.KEPT`) →
