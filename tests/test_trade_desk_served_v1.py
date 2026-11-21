@@ -186,14 +186,15 @@ def test_a_marker_before_the_charts_first_bar_is_counted_and_worded():
         )
     finally:
         bar_store._bars.pop(tk, None)
-    first = friday[0]["timestamp"] / 1000  # the 60-minute chart's first bar starts there
+    # the 60-minute chart's first bar: the hour of the clock Friday's first minute (09:30 ET) is in
+    first = friday[0]["timestamp"] / 1000 // 3600 * 3600
     marked = [it for it in body["items"] if it["dom"] == "LEVELS" and it["marker"]]
     off = [it for it in marked if it["ts"] < first]
     assert 0 < len(off) < len(marked)
     assert body["markers_off_chart"] == len(off)
     assert body["markers_off_chart_text"] == (
         f"{len(off)} of {len(marked)} chart markers not drawn: their crosses are before the "
-        "chart's first bar, Fri 09/25 08:30 AM CT"
+        "chart's first bar, Fri 09/25 08:00 AM CT"
     )
 
 
@@ -552,9 +553,9 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
     one = serve("1")["vwap_series"]
     fifteen = serve("15")["vwap_series"]
     buckets = {}
-    for r in one:  # first minute stamps, last minute's value
+    for r in one:  # stamped with the bar's start, the last minute's value
         k = int(r[0] // 900)
-        buckets[k] = [buckets[k][0] if k in buckets else r[0]] + list(r[1:])
+        buckets[k] = [k * 900] + list(r[1:])
     assert len(one) > 100 and fifteen == [buckets[k] for k in sorted(buckets)]
 
 

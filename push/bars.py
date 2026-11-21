@@ -148,19 +148,23 @@ def held_minutes(ticker: str, limit: object) -> list[dict[str, Any]]:
     return [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
 
 
-def _tf_bucket_key(t: float, tf: str) -> date | int:
+def _tf_bucket_key(t: float, tf: str) -> date | float:
     """Return the chart bar a timestamp belongs to.
 
-    Its ET trading date ("D") or its tf-minute bucket.
+    Its ET trading date ("D"), or the start of its tf-minute step of the clock (epoch seconds):
+    the time of that bar, as Schwab stamps its own.
     """
-    return datetime.fromtimestamp(t, ET).date() if tf == "D" else int(t // (int(tf) * 60))
+    if tf == "D":
+        return datetime.fromtimestamp(t, ET).date()
+    step = int(tf) * 60
+    return float(t // step * step)
 
 
 def aggregate_vwap(rows: Sequence[Sequence[float]], tf: str) -> list[list[float]]:
     """VWAP rows [t, vwap] rolled up to the chart timeframe.
 
     Exactly as aggregate_bars rolls the bars: each bar takes the value as of its last minute,
-    stamped with the bar's first minute (the bar's own `t`).
+    stamped with the bar's own `t`.
     """
     if tf == "1":
         return [list(r) for r in rows]
@@ -169,7 +173,7 @@ def aggregate_vwap(rows: Sequence[Sequence[float]], tf: str) -> list[list[float]
     for r in rows:
         k = _tf_bucket_key(float(r[0]), tf)
         if k != cur_key:
-            out.append([r[0]] + list(r[1:]))
+            out.append([k if isinstance(k, float) else r[0], *r[1:]])
             cur_key = k
         else:
             out[-1] = [out[-1][0]] + list(r[1:])
@@ -209,23 +213,23 @@ def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
 
     The timeframe is "1", "3", "5", "15", "30", "60" minutes, or "D" = the ET trading date: first
     open, max high, min low, last close. Volume is the sum only when every minute in the bucket
-    reported one -- otherwise None (unknown), never a partial sum or a 0.
+    reported one -- otherwise None (unknown), never a partial sum or a 0. A minute timeframe's
+    bar is stamped with its step's start, whichever of its minutes traded first, as Schwab stamps
+    its own; the daily bar with its first minute.
     """
     if tf == "1":
         return list(bars)
-
-    def key(t: float) -> date | int:
-        return _tf_bucket_key(t, tf)
-
     out: list[dict[str, Any]] = []
     cur: dict[str, Any] | None = None
     cur_key = None
     for b in bars:
-        k = key(float(b["t"]))
+        k = _tf_bucket_key(float(b["t"]), tf)
         if cur is None or k != cur_key:
             if cur is not None:
                 out.append(cur)
             cur = dict(b)
+            if isinstance(k, float):
+                cur["t"] = k
             cur_key = k
             continue
         cur["h"] = max(cur["h"], b["h"])
