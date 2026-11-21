@@ -17,12 +17,10 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import server
-from calibration.complete_chain_capture import StoredCapture
-from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from state import level_store
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, publish_capture
 from tests.real_chains import CRWD
 
 _QUOTE = json.loads(
@@ -48,20 +46,7 @@ def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():
         lmp.record_feed_heartbeat(
             daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
         )
-        server._publish_levels(
-            tk,
-            captures=[
-                StoredCapture(
-                    contracts=read_chain(CRWD.chain),
-                    ts_utc=at,
-                    spot=CRWD.spot,
-                    et_date=CRWD.now.date().isoformat(),
-                    basis=server.CAPTURE_BASIS,
-                    spot_ts=None,
-                )
-            ],
-            now=CRWD.now,
-        )
+        publish_capture(tk, CRWD.chain, at, CRWD.spot, CRWD.now.date().isoformat(), CRWD.now)
         last = _QUOTE["native"]["LAST_PRICE"]
         strikes = push_strikes.terrain_strikes_payload(tk, "auto", None, 0, None, at)
         listed = [r["strike"] for r in strikes["today"]]

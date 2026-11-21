@@ -18,14 +18,13 @@ from pathlib import Path
 
 import pytest
 
-import server
 import time_et
 from app.market_data.schwab.streaming.capture import shown_first
-from calibration.complete_chain_capture import StoredCapture
 from option_contract import read_chain
 from push import chain as push_chain
 from push import surface as push_surface
 from state import level_store
+from tests.feed_live_helper import publish_capture
 from tests.real_chains import NFLX
 from time_et import ET, record_markets
 
@@ -49,19 +48,8 @@ def _sessions():
 @pytest.fixture
 def published():
     at = datetime.fromtimestamp(NVDA["ts_utc"], tz=ET)
-    server._publish_levels(
-        "NVDA",
-        captures=[
-            StoredCapture(
-                contracts=read_chain(NVDA["contracts"]),
-                ts_utc=NVDA["ts_utc"],
-                spot=NVDA["spot"],
-                et_date=at.date().isoformat(),
-                basis=server.CAPTURE_BASIS,
-                spot_ts=None,
-            )
-        ],
-        now=at,
+    publish_capture(
+        "NVDA", NVDA["contracts"], NVDA["ts_utc"], NVDA["spot"], at.date().isoformat(), at
     )
     yield
     with level_store._lock:
@@ -131,19 +119,8 @@ def test_the_option_rule_ranks_the_largest_gamma_schwab_sent_first_of_those_equa
 
 def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
     tk, expiry = "NFLX", "2027-12-17"
-    server._publish_levels(
-        tk,
-        captures=[
-            StoredCapture(
-                contracts=read_chain(NFLX.chain),
-                ts_utc=NFLX.now.timestamp(),
-                spot=NFLX.spot,
-                et_date=NFLX.now.date().isoformat(),
-                basis=server.CAPTURE_BASIS,
-                spot_ts=None,
-            )
-        ],
-        now=NFLX.now,
+    publish_capture(
+        tk, NFLX.chain, NFLX.now.timestamp(), NFLX.spot, NFLX.now.date().isoformat(), NFLX.now
     )
     try:
         body = push_chain.chain(tk, time_et.now(), {"expiry": expiry})

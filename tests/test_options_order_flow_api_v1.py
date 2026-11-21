@@ -16,15 +16,12 @@ from pathlib import Path
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
-import server
 import time_et
 from app.options.order_flow import streaming as ofs
-from calibration.complete_chain_capture import StoredCapture
-from option_contract import read_chain
 from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, publish_capture
 from tests.real_chains import SPY_0DTE
 
 CONTRACT = "SPY   261005C00774000"
@@ -113,19 +110,13 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         level_store._levels.pop("SPY", None)
     try:
         holds("LEVELONE_OPTIONS", "OPTIONS_BOOK")
-        server._publish_levels(
+        publish_capture(
             "SPY",
-            captures=[
-                StoredCapture(
-                    contracts=read_chain(SPY_0DTE.chain),
-                    ts_utc=at,
-                    spot=SPY_0DTE.spot,
-                    spot_ts=None,
-                    et_date=SPY_0DTE.now.date().isoformat(),
-                    basis=server.CAPTURE_BASIS,
-                )
-            ],
-            now=SPY_0DTE.now,
+            SPY_0DTE.chain,
+            at,
+            SPY_0DTE.spot,
+            SPY_0DTE.now.date().isoformat(),
+            SPY_0DTE.now,
         )
         held = served()["streaming_plane"]
         holds()

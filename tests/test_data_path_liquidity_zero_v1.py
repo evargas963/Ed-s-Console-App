@@ -20,11 +20,9 @@ import server as srv
 from calc import liquidity_value_engine
 from calc.liquidity_models import ZoneType
 from calc.micro_structure import Candle
-from calibration.complete_chain_capture import StoredCapture
-from option_contract import read_chain
 from push import liquidity as push_liquidity
 from state import bar_store, level_store
-from tests.feed_live_helper import daemon_status, price_history
+from tests.feed_live_helper import daemon_status, price_history, publish_capture
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 from tests.page_on_socket import pages
 from tests.real_chains import SPY_CLOSE
@@ -99,19 +97,13 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     by its side of the price alone (above: resistance, below: support, around it: pivot), never by
     the names of the levels in it.
     """
-    srv._publish_levels(
+    publish_capture(
         TK,
-        captures=[
-            StoredCapture(
-                contracts=read_chain(SPY_CLOSE.chain),
-                ts_utc=SPY_CLOSE.now.timestamp(),
-                spot=SPY_CLOSE.spot,
-                et_date=SPY_CLOSE.now.date().isoformat(),
-                basis=srv.CAPTURE_BASIS,
-                spot_ts=None,
-            )
-        ],
-        now=SPY_CLOSE.now,
+        SPY_CLOSE.chain,
+        SPY_CLOSE.now.timestamp(),
+        SPY_CLOSE.spot,
+        SPY_CLOSE.now.date().isoformat(),
+        SPY_CLOSE.now,
     )
     try:
         snap = level_store.published_levels(TK).snap
