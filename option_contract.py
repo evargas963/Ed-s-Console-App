@@ -125,6 +125,9 @@ STREAMED_TOP = (
     ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number),
     ("MONEY_INTRINSIC_VALUE", "money_intrinsic", schwab_number),
 )
+#: the quote among them: its bid and ask, their sizes and Schwab's time of it. A message that
+#: changes one of these replaces the quote (stream_spine.MessageBus keeps the one it replaced)
+QUOTE_FIELDS = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
 
 
 @dataclass(frozen=True)
@@ -206,10 +209,16 @@ NO_GREEKS = StreamedGreeks()
 
 @dataclass(frozen=True)
 class Streamed:
-    """What the stream holds of one contract: its top of book and its Greeks."""
+    """What the stream holds of one contract: its top of book and its Greeks.
+
+    `before` is the quote its newest quote replaced (QUOTE_FIELDS, as Schwab sent them), NO_TOP
+    until a message changes the quote: a trade Schwab timed before the newest quote is read
+    against it (calc.l1_trade_observation.quote_in_force).
+    """
 
     top: StreamedTop
     greeks: StreamedGreeks
+    before: StreamedTop = NO_TOP
 
 
 def streamed_quote(sent: Streamed) -> dict[str, float | None]:

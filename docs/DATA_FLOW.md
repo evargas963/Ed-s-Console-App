@@ -53,9 +53,12 @@ The rules for the data itself, at every hop from Schwab to the screen.
   field request, `tests/test_data_path_one_watchlist_v1.py`.
 - **D3. The live path holds only the newest.** The message bus (`stream_spine.MessageBus`) keeps one
   current record per topic: a quote merged field by field, a book, bar or chain replaced whole. A
-  newer value replaces the older at once; nothing old waits in a queue. Only the Recorder takes
-  every message, and while the database refuses writes it holds them (D4). Enforced by:
-  `tests/test_data_path_rules_v1.py`.
+  newer value replaces the older at once; nothing old waits in a queue. A quote's record keeps one
+  thing more, the quote its newest quote replaced (`quote_before`, whole as the record held it):
+  Schwab sends a trade with the quote that followed it, so the tape reads a trade against the quote
+  in force when it was made (§3.4 Tape). Only the Recorder takes every message, and while the
+  database refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`; the
+  quote kept before, `tests/test_quote_in_force_v1.py` and `tests/test_stream_greeks_capture_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record.** One writer, `stream_spine.CaptureWriter`,
   records every bus message but option quotes and option books, which it records for the kept
   contracts only (`capture.Daemon.saves`): each ticker's soonest unexpired expiration at the strike
@@ -321,11 +324,21 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
 - **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept
-  before it (derived register, "A print on the tape"). Each print is signed by Lee and Ready against
-  the bid and ask its record held (`calc.l1_trade_observation.trade_sign`), marked estimated; an
-  unsigned print is no value, with its share served beside each sum. The options tape
-  (`push.tape.tape`) lists the newest trade first by Schwab's trade time. Enforced by:
-  `tests/test_tape_lee_ready_v1.py`, `tests/test_options_flow_tape_v1.py`.
+  before it (derived register, "A print on the tape"). Each print is kept with the quote in force
+  when it traded (`calc.l1_trade_observation.quote_in_force`, taken once, in
+  `state.OrderFlowState.push_level_one`): the newest bid and ask Schwab timed (QUOTE_TIME_MILLIS) at
+  or before the trade (TRADE_TIME_MILLIS) and on its ET date. Schwab's update carries a trade with
+  the quote that followed it ("quotes may be recorded ahead of trades that triggered them", Lee and
+  Ready 1991), so that quote is the update's own only when Schwab timed it no later than the trade;
+  otherwise it is the quote the update replaced, which the bus keeps (D3). A quote of an earlier ET
+  date is not in force: the market closed between them (no window Schwab's /markets sends crosses
+  midnight ET). A print with no such quote has no bid and ask: where it landed is unknown and it is
+  unsigned, never read against a later quote. Each print is signed by Lee and Ready against that bid
+  and ask (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned print is no value,
+  with its share served beside each sum. The options tape (`push.tape.tape`) lists the newest trade
+  first by Schwab's trade time, each with that bid and ask and where its price landed against them.
+  Enforced by: `tests/test_tape_lee_ready_v1.py`, `tests/test_options_flow_tape_v1.py`,
+  `tests/test_quote_in_force_v1.py`, `tests/test_l1_trade_observation_v1.py`.
 - **Level crosses.** On each streamed equity quote (`server._on_stream_tick`) the four levels of
   `server.CROSS_LEVELS` (gamma flip, call wall, put wall, largest gamma strike) are checked for a
   cross between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses
@@ -391,8 +404,9 @@ them".
 - **8. A panel scales its bars to what is visible.** Fitting bar lengths to the visible window is
   drawing; the values drawn are the server's, unchanged. Enforced by: no machine check — ENF-16.
 - **9. The trade side is estimated, and says so.** Schwab sends no aggressor side, so each print is
-  signed by Lee and Ready and marked estimated (§3.4 Tape). Enforced by:
-  `tests/test_tape_lee_ready_v1.py`.
+  signed by Lee and Ready against the bid and ask in force when it traded, never a later quote, and
+  marked estimated (§3.4 Tape). Enforced by: `tests/test_tape_lee_ready_v1.py`,
+  `tests/test_quote_in_force_v1.py`.
 - **10. Same-day levels, every ticker.** One producer, `calc.terrain_engine.same_day_levels`,
   defined in `docs/derived_register.md` "Same-day levels (0DTE)". Each level has one name, from
   `calc.terrain_engine.OPTION_LEVELS`, on every screen. The key levels rail draws the gamma flip,

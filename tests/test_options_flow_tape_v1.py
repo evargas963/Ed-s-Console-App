@@ -6,15 +6,18 @@ Size/Trade/Size/Premium/Volume/OI/IV/Delta, with Trade/Size/Time/Bid/Ask/BidSize
 IV/Delta the stream's as sent, Expiry/Type/Strike/OI the contract's chain record's (the one
 reader of them, option_contract.read_contract) and Premium = Trade x Size x that record's
 multiplier. No aggressor-side (buy/sell) classification is ever produced -- `classification`
-states only where a print landed relative to that SAME tick's own bid/ask.
+states only where a print landed relative to the bid and ask in force when it traded: the newest
+quote Schwab timed (QUOTE_TIME_MILLIS) at or before the trade (TRADE_TIME_MILLIS), never the quote
+that followed it in the same update.
 
 Every record is Schwab's own, as the capture daemon stored it (tests/fixtures):
 real_spy_option_contract_type_2026_10_23.json (a call's and a put's first four records, the first
 one whole, and the two contracts' /chains rows of the stored capture before them),
 real_options_stream_history_samples.json (twelve records in a row of one contract),
-real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json (whole first records) and
+real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json (whole first records),
 real_spy_2026_10_23_expiry_two_closes_2026_10_21_22.json (SPY's 2026-10-22 close capture, the
-chain that lists the call and the put).
+chain that lists the call and the put) and real_spy_option_levelone_2026_11_20_1200et.json (45
+records in a row of one contract in a fast market).
 """
 
 from __future__ import annotations
@@ -61,8 +64,8 @@ def _fed(contract: str, rows: list[tuple[float, dict]]) -> OrderFlowState:
     """Return a fresh live state fed each (ts_recv, LEVELONE_OPTIONS item) as the console is.
 
     Each item goes on a bus as the daemon puts it, and its record to the state as the intake
-    (streaming._ingest_pushed) applies it, so a print is kept with the bid and ask its record
-    then holds.
+    (streaming._ingest_pushed) applies it, so a print is kept with the bid and ask in force when
+    it traded.
     """
     bus, live = MessageBus(), OrderFlowState()
     live.current = bus.current
@@ -80,27 +83,32 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     """The print is the stream's; the contract's terms and open interest are its chain record's.
 
     The stream's own message carries OPEN_INTEREST 1888 where the chain record holds 843: the
-    tape shows the chain's, as every other screen does. This is the contract's first streamed
-    message: its trade was made before the message was received, and it is a tape row.
+    tape shows the chain's, as every other screen does. The contract's first streamed message is
+    a tape row: its trade was made before the message was received. The row read here is the
+    fourth message's trade, 2.03 x 1 at ...337329: that message's own quote (2.02 x 16, 2.03 x 79)
+    is timed ...338021, after the trade, so the print is kept with the quote in force when it
+    traded, the third message's 2.03 x 56 and 2.04 x 34 timed ...336980, and it landed at the bid.
+    Its volume is the fourth message's; its volatility and delta are the third's, the newest sent.
     """
-    sent = _sent(CALL)[:1]
+    sent = _sent(CALL)
     rows = _tape(CALL, sent)
-    assert len(rows) == 1
+    assert len(rows) == 4 and len(_tape(CALL, sent[:1])) == 1
     assert sent[0][1]["TRADE_TIME_MILLIS"] < sent[0][0] * 1000
     assert sent[0][1]["OPEN_INTEREST"] == 1888
     r = tape_row(rows[0], LISTED[CALL])
     assert r["symbol"] == CALL
     assert r["expiry"] == "2026-10-23" and r["type"] == "CALL" and r["strike"] == 761
-    assert r["bid"] == 2.03 and r["bid_size"] == 65
-    assert r["ask"] == 2.04 and r["ask_size"] == 74
-    assert r["trade"] == 2.04 and r["size"] == 1
-    assert r["premium"] == 2.04 * 1 * 100
-    assert r["volume"] == 4391 and r["oi"] == 843
-    assert r["iv"] == 27.10704925 and r["delta"] == 0.45935825
-    assert r["classification"] == "at_ask"
-    assert r["trade_time_ms"] == sent[0][1]["TRADE_TIME_MILLIS"] == 1792762334664  # Schwab's own
-    # 13:32:14.664 UTC on 2026-10-23 is 08:32:14.664 in Chicago (CDT, UTC-5)
-    assert r["trade_time_ct"] == "08:32:14.664 CT"
+    assert r["bid"] == 2.03 and r["bid_size"] == 56
+    assert r["ask"] == 2.04 and r["ask_size"] == 34
+    assert r["trade"] == 2.03 and r["size"] == 1
+    assert r["premium"] == 2.03 * 1 * 100
+    assert r["volume"] == 4423 and r["oi"] == 843
+    assert r["iv"] == 27.03127864 and r["delta"] == 0.4662257
+    assert r["classification"] == "at_bid"
+    assert sent[3][1]["QUOTE_TIME_MILLIS"] > sent[3][1]["TRADE_TIME_MILLIS"]
+    assert r["trade_time_ms"] == sent[3][1]["TRADE_TIME_MILLIS"] == 1792762337329  # Schwab's own
+    # 13:32:17.329 UTC on 2026-10-23 is 08:32:17.329 in Chicago (CDT, UTC-5)
+    assert r["trade_time_ct"] == "08:32:17.329 CT"
     assert set(r) == {"trade_time_ms", "symbol", "expiry", "type", "strike", "bid", "bid_size"} | {
         "trade_time_ct",
         "ask",
@@ -128,17 +136,17 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     }
     # the premium in dollars; the sizes, the day's volume and open interest whole; the IV two
     # decimals, as the screen shows them (operator 2026-11-16)
-    assert (r["premium_text"], r["volume_text"], r["iv_text"]) == ("$204", "4,391", "27.11")
-    assert (r["bid_size_text"], r["ask_size_text"], r["size_text"]) == ("65", "74", "1")
+    assert (r["premium_text"], r["volume_text"], r["iv_text"]) == ("$203", "4,423", "27.03")
+    assert (r["bid_size_text"], r["ask_size_text"], r["size_text"]) == ("56", "34", "1")
     assert r["oi_text"] == "843"
     # the strike as listed, the prices two decimals, the delta three
     assert (r["strike_text"], r["bid_text"], r["ask_text"], r["trade_text"]) == (
         "761",
         "2.03",
         "2.04",
-        "2.04",
+        "2.03",
     )
-    assert r["delta_text"] == "0.459"
+    assert r["delta_text"] == "0.466"
 
 
 def test_a_re_emitted_duplicate_of_the_same_trade_is_not_counted_twice():
@@ -297,6 +305,16 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
 
 
 def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggressor():
+    """Each print's label, keyed by the (bid, trade, ask) it is kept with: the quote in force.
+
+    Worked out from the messages. A contract's first message has no quote before it, and its own
+    quote is timed after its trade (the call's, the put's and the whole record of 261019C00764000,
+    whose own bid 2.50 and ask 2.52 came 3 s after its 2.51 trade): no quote in force, "unknown".
+    The call's second trade, 2.07, is read against the first message's 2.03 and 2.04 (its own
+    update's 2.08 and 2.09 followed it): above the ask. Its third, 2.02, against the second's 2.08
+    and 2.09: below the bid. Its fourth, 2.03, against the third's 2.03 and 2.04: at the bid. The
+    put's second, 3.00, against its first message's 3.04 and 3.05: below the bid.
+    """
     whole = next(
         m
         for m in fixture_json("real_spy_2026_10_19_close_capture_and_premarket_zero_volume.json")[
@@ -310,12 +328,90 @@ def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggr
         + _tape(INSIDE, [(whole["ts_recv"], whole["native"])])
     )
     landed = {(r["bid"], r["trade"], r["ask"]): r["classification"] for r in prints}
-    assert landed[(3.04, 3.04, 3.05)] == "at_bid"
-    assert landed[(2.03, 2.04, 2.04)] == landed[(2.02, 2.03, 2.03)] == "at_ask"
-    assert landed[(2.97, 3, 2.99)] == "outside_spread_high"
-    assert landed[(2.03, 2.02, 2.04)] == landed[(2.08, 2.07, 2.09)] == "outside_spread_low"
-    assert landed[(2.5, 2.51, 2.52)] == "inside_spread"
+    assert landed[(2.03, 2.03, 2.04)] == "at_bid"
+    assert landed[(2.03, 2.07, 2.04)] == "outside_spread_high"
+    assert landed[(2.08, 2.02, 2.09)] == landed[(3.04, 3, 3.05)] == "outside_spread_low"
+    assert landed[(None, 2.04, None)] == landed[(None, 3.04, None)] == "unknown"
+    assert landed[(None, 2.51, None)] == "unknown"
     assert len(landed) == 7
+
+
+#: SPY 261120P00703000's 45 LEVELONE_OPTIONS messages in a row, 2026-11-20 from 12:00:00 ET
+FAST = fixture_json("real_spy_option_levelone_2026_11_20_1200et.json")["option"]
+#: the quote's fields: a message that changes one replaces the quote the record held
+_QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
+
+
+def _label(trade: float, bid: float | None, ask: float | None) -> str:
+    """Where `trade` sits against `bid` and `ask`, as the derived register defines the labels."""
+    if bid is None or ask is None:
+        return "unknown"
+    if trade <= bid:
+        return "at_bid" if trade == bid else "outside_spread_low"
+    if trade >= ask:
+        return "at_ask" if trade == ask else "outside_spread_high"
+    return "inside_spread"
+
+
+def _placed(rows: list[dict]) -> list[tuple]:
+    """Each print of `rows`, oldest first, placed here from Schwab's own fields.
+
+    (trade, size, bid, ask, label, label against its own update's quote). The bid and ask are the
+    quote in force when it traded: the newest Schwab timed (QUOTE_TIME_MILLIS) at or before the
+    trade (TRADE_TIME_MILLIS), the update's own or the one the update replaced; none, no bid and
+    no ask.
+    """
+    held: dict = {}
+    before: dict = {}
+    out, last = [], None
+    for row in rows:
+        item = row["item"]
+        if any(f in item and f in held and item[f] != held[f] for f in _QUOTE):
+            before = {f: held[f] for f in _QUOTE if f in held}
+        held.update(item)
+        triple = (held["TRADE_TIME_MILLIS"], held["LAST_PRICE"], held.get("LAST_SIZE"))
+        if triple == last:
+            continue
+        last = triple
+        bid = ask = None
+        for quote in (held, before):
+            if "QUOTE_TIME_MILLIS" in quote and quote["QUOTE_TIME_MILLIS"] <= triple[0]:
+                bid, ask = quote.get("BID_PRICE"), quote.get("ASK_PRICE")
+                break
+        own = _label(triple[1], held.get("BID_PRICE"), held.get("ASK_PRICE"))
+        out.append((triple[1], triple[2], bid, ask, _label(triple[1], bid, ask), own))
+    return out
+
+
+def test_a_print_is_placed_against_the_quote_in_force_when_it_traded():
+    """45 messages in a row of SPY 261120P00703000 in a fast market, as Schwab sent them.
+
+    Schwab's update carries a trade with the quote that followed it: in 44 of the 45 the update's
+    QUOTE_TIME_MILLIS is after its TRADE_TIME_MILLIS. Each print is kept with the bid and ask in
+    force when it traded, worked out here from Schwab's times: the quote its update replaced (43),
+    its own when timed no later than the trade (one: 3.10 and 3.11, both timed ...41192), or none
+    (the first message, with no quote before it). Read against its own update's quote, as the tape
+    read it before, 36 of the 45 would carry another label.
+    """
+    rows = FAST["rows"]
+    want = _placed(rows)
+    tape = _tape(FAST["symbol"], [(r["ts_recv"], r["item"]) for r in rows])[::-1]  # oldest first
+    assert len(want) == 45
+    assert sum(r["item"]["QUOTE_TIME_MILLIS"] > r["item"]["TRADE_TIME_MILLIS"] for r in rows) == 44
+    got = [(r["trade"], r["size"], r["bid"], r["ask"], r["classification"]) for r in tape]
+    assert got == [w[:5] for w in want]
+    # placed by hand from the messages: no quote before the first; the second's 2.50 against the
+    # first message's 2.46 and 2.47; a trade at the ask its update's own quote calls at the bid;
+    # one inside; one at the bid; the one whose own quote is in force; the last, below the bid
+    assert want[0] == (2.46, 1, None, None, "unknown", "at_bid")
+    assert want[1] == (2.5, 4, 2.46, 2.47, "outside_spread_high", "at_ask")
+    assert want[7] == (2.62, 1, 2.6, 2.62, "at_ask", "at_bid")
+    assert want[22] == (2.6, 1, 2.59, 2.61, "inside_spread", "at_bid")
+    assert want[24] == (2.64, 20, 2.64, 2.65, "at_bid", "outside_spread_low")
+    assert want[39] == (3.11, 1, 3.1, 3.11, "at_ask", "at_ask")
+    assert want[44] == (3.1, 1, 3.13, 3.14, "outside_spread_low", "inside_spread")
+    assert (tape[1]["bid_size"], tape[1]["ask_size"]) == (77, 8)  # the first message's sizes
+    assert sum(w[4] != w[5] for w in want) == 36
 
 
 def test_newest_first_ordering_and_limit_bound():

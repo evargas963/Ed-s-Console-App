@@ -53,7 +53,7 @@ class Cell(TypedDict):
 
 
 class Quoted(TypedDict):
-    """What the live state held as a print was received (quoted): top of book, streamed values."""
+    """What a print is kept with (quoted): the quote in force when it traded, streamed values."""
 
     bid: Any
     bid_size: Any
@@ -145,10 +145,12 @@ class BookHeatmap(TypedDict):
 
 
 def quoted(trade: float, top: StreamedTop, streamed: StreamedGreeks) -> Quoted:
-    """Return what the live state held as a print at `trade` was received, kept with the print.
+    """Return what a print at `trade` is kept with.
 
-    Its top of book (`top`), its streamed volume, volatility and delta (`streamed`), and
-    `landed`: only where the trade landed against that bid and ask (no aggressor side).
+    The quote in force when it traded (`top`: calc.l1_trade_observation.quote_in_force, never
+    the quote that followed the trade), the record's streamed volume, volatility and delta
+    (`streamed`), and `landed`: only where the trade landed against that bid and ask (no
+    aggressor side); "unknown" when no quote in force is known.
     """
     bid, ask = top.bid, top.ask
     landed = "unknown"

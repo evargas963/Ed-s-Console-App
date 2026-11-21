@@ -44,6 +44,7 @@ from numeric_contract import schwab_count, schwab_number
 from option_contract import (
     NO_GREEKS,
     NO_TOP,
+    QUOTE_FIELDS,
     Received,
     Streamed,
     StreamedGreeks,
@@ -379,17 +380,22 @@ LOG_END: tuple[str, Any] = ("", None)
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
 #: by the key of the Schwab item in the message: their current record merges field by field
 FIELD_DELTA = {"quote": "native", "optquote": "content"}
+#: the quote's fields (option_contract.QUOTE_FIELDS): a message that changes one replaces the quote
+QUOTE_SET = frozenset(QUOTE_FIELDS)
 #: what the stream holds of a symbol it has sent nothing of
 NOT_STREAMED = Streamed(NO_TOP, NO_GREEKS)
 
 
-def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -> Streamed:
+def read_streamed(
+    content: dict[str, Any], stamps: dict[str, tuple[Any, Any]], before: dict[str, Any]
+) -> Streamed:
     """Read a LEVELONE record's fields (`content`, each received at its `stamps` time).
 
     Its top of book, and its Greeks, volatility and volume, each with the time its own field was
     received (a message carries only the fields that changed); a Greek Schwab sends as -999 is no
-    value, and TOTAL_VOLUME is a count as sent (a reported 0 is 0, AGENTS.md rule 2). Read once
-    per version of the record, on its first read (streamed_record).
+    value, and TOTAL_VOLUME is a count as sent (a reported 0 is 0, AGENTS.md rule 2). `before` is
+    the quote its newest quote replaced (the record's `quote_before`), read the same way. Read
+    once per version of the record, on its first read (streamed_record).
     """
     sent = {
         name: Received(v, stamps[name.upper()][1]) for name, v in streamed_greeks(content).items()
@@ -397,7 +403,11 @@ def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -
     volume = schwab_count(content.get("TOTAL_VOLUME"))
     if volume is not None:
         sent["total_volume"] = Received(volume, stamps["TOTAL_VOLUME"][1])
-    return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
+    return Streamed(
+        StreamedTop(**streamed_top(content)),
+        StreamedGreeks(**sent),
+        StreamedTop(**streamed_top(before)),
+    )
 
 
 def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
@@ -413,7 +423,9 @@ def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
     topic, rec = record
     held: Streamed | None = rec["streamed"]
     if held is None:
-        held = read_streamed(rec[FIELD_DELTA[topic.split(".", 1)[0]]], rec["field_ts"])
+        held = read_streamed(
+            rec[FIELD_DELTA[topic.split(".", 1)[0]]], rec["field_ts"], rec["quote_before"]
+        )
         rec["streamed"] = held
     return held
 
@@ -572,7 +584,9 @@ class MessageBus:
     frame's timestamp; a chain by its fetch time): a LEVELONE message merged field by field, its
     fields read on the first read of each version (streamed_record), a book, bar or news item whole,
     a chain whole once all its parts are in -- and each reader takes it by its policy (LOG or
-    LATEST).
+    LATEST). A LEVELONE record also keeps the quote its newest quote replaced (`quote_before`):
+    Schwab sends a trade with the quote that followed it, so a trade is read against the quote
+    in force when it was made (calc.l1_trade_observation.quote_in_force).
     """
 
     def __init__(self) -> None:
@@ -625,6 +639,7 @@ class MessageBus:
             self.current[key] = (topic, msg)
             return True
         stamp = (t, msg.get("ts_recv"))
+        before: dict[str, Any] = {}
         if held is None:
             merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
         else:
@@ -633,11 +648,20 @@ class MessageBus:
             took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
             if not took:
                 return False
+            # the quote this message replaces, whole as the record held it: a message that changes
+            # a quote field the record holds. One that brings no quote field, restates the quote
+            # held, or only fills in a field never sent, leaves the one kept before
+            before = rec["quote_before"]
+            if any(f in QUOTE_SET and f in merged and body[f] != merged[f] for f in took):
+                before = {f: merged[f] for f in QUOTE_FIELDS if f in merged}
             for f in took:
                 merged[f], stamps[f] = body[f], stamp
             top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time
         # a new version of the record, whose fields are read on its first read (streamed_record)
-        self.current[key] = (topic, {**top, body_key: merged, "field_ts": stamps, "streamed": None})
+        self.current[key] = (
+            topic,
+            {**top, body_key: merged, "field_ts": stamps, "streamed": None, "quote_before": before},
+        )
         return True
 
     def _chain(self, key: str, topic: str, msg: dict[str, Any]) -> bool:

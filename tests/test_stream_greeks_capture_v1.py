@@ -40,6 +40,8 @@ _TOP = {
     "MONEY_INTRINSIC_VALUE": ("money_intrinsic", False),
 }
 _GREEKS = ("GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
+#: the quote's fields: a message that changes one replaces the quote the record held
+_QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
 
 
 def _as_sent(v, count: bool = False) -> float | None:
@@ -54,16 +56,27 @@ def _as_sent(v, count: bool = False) -> float | None:
     return float(v)
 
 
-def _read_as_sent(topic: str, rec: dict) -> Streamed:
-    """The record's merged fields as sent, each Greek and the volume at its own receive time."""
-    content = rec["content" if topic.startswith("optquote.") else "native"]
+def _fields(topic: str, rec: dict) -> dict:
+    """A record's merged Schwab fields: an option's `content`, an equity's `native`."""
+    return rec["content" if topic.startswith("optquote.") else "native"]
+
+
+def _read_as_sent(topic: str, rec: dict, replaced: dict) -> Streamed:
+    """The record's merged fields as sent, each Greek and the volume at its own receive time.
+
+    `replaced` is the quote its newest quote replaced, as sent (worked out by the caller).
+    """
+    content = _fields(topic, rec)
     at = rec["field_ts"]
     top = {name: _as_sent(content[f], count) for f, (name, count) in _TOP.items() if f in content}
     greeks = {f.lower(): Received(_as_sent(content[f]), at[f][1]) for f in _GREEKS if f in content}
     volume = _as_sent(content.get("TOTAL_VOLUME"), count=True)
     if volume is not None:
         greeks["total_volume"] = Received(volume, at["TOTAL_VOLUME"][1])
-    return Streamed(StreamedTop(**top), StreamedGreeks(**greeks))
+    before = {
+        name: _as_sent(replaced[f], count) for f, (name, count) in _TOP.items() if f in replaced
+    }
+    return Streamed(StreamedTop(**top), StreamedGreeks(**greeks), StreamedTop(**before))
 
 
 def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it():
@@ -74,20 +87,32 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
     changed, a few of them Greeks or volume over a held record, and the rest stand. A message
     reads nothing: it makes a new version of the record, read on its first read and held, so a
     second read with no message between is the same reading, and the version before stands as it
-    was read.
+    was read. The reading also holds the quote the newest quote replaced, worked out here: the
+    record's quote fields as held before the last message that changed one of them (none before
+    a symbol's first message).
     """
     bus = MessageBus()
-    over_held = greeks_over_held = 0
+    over_held = greeks_over_held = quotes_replaced = 0
+    replaced: dict[str, dict] = {}
     for m in _MIX:
         if m["service"] not in (OPT, EQ):
             continue
-        before = bus.current.get(held_key(m["service"], m["item"]["key"].upper()))
+        key = held_key(m["service"], m["item"]["key"].upper())
+        before = bus.current.get(key)
         was_held = before is not None
         held_before = streamed_record(before)
+        if before is None:
+            replaced[key] = {}
+        else:
+            held_fields = _fields(*before)
+            sent = m["item"]
+            if any(f in sent and f in held_fields and sent[f] != held_fields[f] for f in _QUOTE):
+                replaced[key] = {f: held_fields[f] for f in _QUOTE if f in held_fields}
+                quotes_replaced += 1
         topic, rec = on_the_bus(bus, m["service"], m["item"], m["ts_recv"], m["schwab_ts"])
         assert rec["streamed"] is None  # nothing read on the message
         first = streamed_record((topic, rec))
-        assert first == _read_as_sent(topic, rec), m
+        assert first == _read_as_sent(topic, rec, replaced[key]), m
         assert streamed_record((topic, rec)) is first  # read once per version
         if before is not None:
             assert before[1] is not rec and before[1]["streamed"] is held_before
@@ -95,6 +120,7 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
         greeks_over_held += was_held and any(f in m["item"] for f in (*_GREEKS, "TOTAL_VOLUME"))
     assert over_held == 4777  # each merged into a record it changes only in part
     assert greeks_over_held == 110  # of them, those that change a held record's Greeks or volume
+    assert quotes_replaced == 4741  # and those that change a held record's quote
 
 
 def _sent(bus: MessageBus, fields: dict, ts_recv: float, sym: str = SYM) -> None:

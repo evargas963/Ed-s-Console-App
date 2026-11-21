@@ -229,8 +229,11 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   API), so a field missing from a message is unchanged, its held value current. The option book's
   resting size (OPTIONS_BOOK, up to 300 contracts) is the confluence matrix revamp's input. Decided:
   the tape's buyer/seller signing (Lee-Ready) stays, marked estimated on screen ("Flow observations
-  (estimated)", `tests/e2e/console-gamma-flow.spec.js`); the page writes no reading of its own (a
-  session volume of 0 is served with what it means, `push.strikes._shown_migration`).
+  (estimated)", `tests/e2e/console-gamma-flow.spec.js`); a print is read against Schwab's bid and
+  ask in force when it traded, never the quote that followed it
+  (`calc.l1_trade_observation.quote_in_force`, `tests/test_quote_in_force_v1.py`); the page writes
+  no reading of its own (a session volume of 0 is served with what it means,
+  `push.strikes._shown_migration`).
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).

@@ -25,6 +25,7 @@ from calc.l1_trade_observation import (
     VENDOR_TRADE_TIME,
     extract_vendor_print,
     is_adjacent_restatement,
+    quote_in_force,
     vendor_triple,
 )
 from calc.order_flow import Book
@@ -92,10 +93,12 @@ class OrderFlowState:
         ts_recv: float | None = None,
         field_received: dict[str, Any] | None = None,
     ) -> None:
-        """Keep the print one Schwab L1 record of `service` carries, with its quote then.
+        """Keep the print one Schwab L1 record of `service` carries, with the quote in force then.
 
-        A current record merged from several messages (the daemon's bus) carries each field's own
-        receive time in `field_received`; the print is stamped with the newest of its fields'.
+        That quote is the newest Schwab timed at or before the trade (quote_in_force): Schwab
+        sends a trade with the quote that followed it. A current record merged from several
+        messages (the daemon's bus) carries each field's own receive time in `field_received`;
+        the print is stamped with the newest of its fields'.
         """
         if not content_item:
             return
@@ -134,8 +137,13 @@ class OrderFlowState:
                     ),
                     "classification": TAPE_CLASSIFICATION,
                     "completeness": TAPE_COMPLETENESS,
-                    # the bid, ask and Greeks the record held when the print was taken
-                    **history.quoted(trade.price, sent.top, sent.greeks),
+                    # the bid and ask in force when the trade was made, by Schwab's own quote and
+                    # trade times (never the quote that followed it), and the record's Greeks
+                    **history.quoted(
+                        trade.price,
+                        quote_in_force(trade.time_millis, sent.top, sent.before),
+                        sent.greeks,
+                    ),
                 }
             )
 

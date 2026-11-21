@@ -7,8 +7,8 @@ the restatement rule) in receive order; the engine reads what the state recorded
 Real data: SPY's LEVELONE_EQUITIES message of 2026-11-11 as Schwab sent it
 (tests/fixtures/real_premarket_first_prints_2026_11_11.json). INDUCED CONDITIONS: each case's
 prints are that message with its LAST_PRICE (`P`, its own last price, and a tick or two from it),
-LAST_SIZE and TRADE_TIME_MILLIS set to the case's. The window's boundary is that file's messages
-of SPY, TSLA and IWM as sent, unchanged.
+LAST_SIZE and TRADE_TIME_MILLIS set to the case's, and its quote timed at the trade. The window's
+boundary is that file's messages of SPY, TSLA and IWM as sent, unchanged.
 """
 
 from __future__ import annotations
@@ -39,7 +39,11 @@ P = _SENT["LAST_PRICE"]
 
 
 def _sent(sym: str, price: float | None, size: float | None, trade_ms: int) -> dict:
-    """SPY's real message, keyed `sym`, with the case's print: its bid and ask at that price."""
+    """SPY's real message, keyed `sym`, with the case's print: its bid and ask at that price.
+
+    The quote is timed at the trade (QUOTE_TIME_MILLIS = the trade's time), so it is the quote in
+    force when the print traded (l1.quote_in_force).
+    """
     return {
         **_SENT,
         "key": sym,
@@ -48,6 +52,7 @@ def _sent(sym: str, price: float | None, size: float | None, trade_ms: int) -> d
         "TRADE_TIME_MILLIS": trade_ms,
         "BID_PRICE": price,
         "ASK_PRICE": price,
+        "QUOTE_TIME_MILLIS": trade_ms,
     }
 
 
@@ -188,11 +193,15 @@ def test_a_zero_tick_before_any_price_change_is_unsigned():
 def test_the_days_first_print_is_its_windows_whole_pressure():
     """Each ticker's first print of 2026-11-11 alone in a 30 s window that begins at its trade.
 
-    The evening's print traded hours before it. Pressure is the first print's Lee and Ready sign
-    (worked out here from its bid and ask) whatever its size (SPY's and TSLA's were one share),
-    and none of its size is unsigned. A window that begins one millisecond after it holds no
-    print: no value.
+    The evening's print traded hours before it. The first print is signed by Lee and Ready against
+    the quote in force when it traded, worked out here from Schwab's own times. TSLA's own quote
+    was timed before its trade: pressure is its sign whatever its size (one share), and none of
+    its size is unsigned. SPY's and IWM's own quotes were timed after their trades, and the quote
+    before each is the evening's, of the ET date before: no quote in force is known, so the print
+    is unsigned, the window has no pressure and all of its size is unsigned. A window that begins
+    one millisecond after the print holds no print: no value.
     """
+    own: dict[str, bool] = {}
     for ticker in ("SPY", "TSLA", "IWM"):
         msgs = [m for m in _MESSAGES if m["ticker"] == ticker]
         bus, state = MessageBus(), OrderFlowState()
@@ -200,16 +209,21 @@ def test_the_days_first_print_is_its_windows_whole_pressure():
         for m in msgs:
             apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
         tape = state.prints(ticker)
-        first = msgs[-1]["item"]
+        evening, first = msgs[0]["item"], msgs[-1]["item"]
         t = first["TRADE_TIME_MILLIS"]
-        assert msgs[0]["item"]["TRADE_TIME_MILLIS"] < t - 30_000
+        assert evening["TRADE_TIME_MILLIS"] < t - 30_000
         mid = (first["BID_PRICE"] + first["ASK_PRICE"]) / 2
         assert first["LAST_PRICE"] != mid
-        sign = 1 if first["LAST_PRICE"] > mid else -1
+        # the evening's quote is the one before the first print's own, and of the date before
+        assert time_et.et_date_str_from_ts_utc(evening["QUOTE_TIME_MILLIS"] / 1000) == "2026-11-10"
+        assert time_et.et_date_str_from_ts_utc(t / 1000) == "2026-11-11"
+        own[ticker] = first["QUOTE_TIME_MILLIS"] <= t
+        sign = (1 if first["LAST_PRICE"] > mid else -1) if own[ticker] else None
         assert l1.compute_tape_pressure(tape, 30.0, t + 30_000) == sign
-        assert l1.unsigned_share(tape, t) == 0.0
+        assert l1.unsigned_share(tape, t) == (0.0 if own[ticker] else 1.0)
         assert l1.compute_tape_pressure(tape, 30.0, t + 30_001) is None
         assert l1.unsigned_share(tape, t + 1) is None
+    assert own == {"SPY": False, "TSLA": True, "IWM": False}
 
 
 def test_missing_size_remains_unavailable():
