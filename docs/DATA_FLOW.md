@@ -128,6 +128,21 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   its lock (`program_lock.record_ports`).
 - Its log is one file a day, `logs/stream_capture.<date>.log` (`capture.DailyLog`), the newest
   `capture.LOG_DAYS_KEPT` kept, and the same lines show in its window.
+- Its memory is collected without a full collection during the session. A full collection stops
+  every thread for as long as it takes to visit every long-lived object ("proportional to the total
+  number of long-lived objects", `docs/SOURCES.md` cpython-gc-design), and the program replaces
+  long-lived objects all session, which is what sets one off. Owner: the program's start
+  (`capture.set_collector`, called by `capture.main` before anything large is held) sets Python's
+  collector once, the oldest generation never reached (`capture.NO_FULL_COLLECTION`), the young and
+  middle generations at Python's own thresholds, and its log line carries the thresholds read back;
+  nothing changes them after. One full collection runs after each close of the last option market
+  the program was running for (`capture.collect_after_close`, the task `collection`), and its log
+  line says how long it took, how many objects it freed and how many it could not free. A close
+  before the program's start, a day with no session and a stop have none: a new process holds
+  nothing a session left, and a stopped one gives its memory back. When it fails: an unreachable
+  reference cycle that reached the oldest generation holds its memory until that collection or the
+  next start; the count in the log line is where it shows. Enforced by:
+  `tests/test_full_collection_after_close_v1.py`.
 - Two parts in one process: the daemon part (Schwab, the bus, the Recorder) and the console part
   (pricing and the page's panels), which reads the daemon's bus in memory
   (`order_flow.streaming._bus_loop`). A crash of either ends both, and the window restarts the

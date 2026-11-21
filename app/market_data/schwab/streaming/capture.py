@@ -35,6 +35,7 @@ import asyncio
 import atexit
 import bisect
 import contextlib
+import gc
 import json
 import logging
 import logging.handlers
@@ -830,6 +831,29 @@ def _start_log() -> None:
     logging.getLogger("httpx").setLevel(logging.WARNING)  # each request's line is log_request's
 
 
+#: the count of middle-generation collections gc.set_threshold takes before the oldest generation
+#: is looked at, at the largest it takes (a C int): no session reaches it
+NO_FULL_COLLECTION = 2**31 - 1
+
+
+def set_collector() -> None:
+    """Set Python's collector so its full collection does not run by itself in the session.
+
+    A full collection stops every thread while it visits every long-lived object the program
+    holds, and the program replaces long-lived objects all session, which is what sets one off
+    (docs/SOURCES.md: cpython-gc-design, python-gc-module). The young and middle generations
+    keep Python's own thresholds; the oldest is collected once after each close
+    (collect_after_close). The log's line carries the thresholds read back from the collector.
+    """
+    young, middle, _oldest = gc.get_threshold()
+    gc.set_threshold(young, middle, NO_FULL_COLLECTION)
+    log.info(
+        "garbage collection: thresholds %d, %d, %d: no full collection in the session, one "
+        "after each close",
+        *gc.get_threshold(),
+    )
+
+
 FEED_STATUS_EVERY_SEC = 60.0
 
 
@@ -995,9 +1019,18 @@ async def show_stream(bus: MessageBus, stop: asyncio.Event, every: float = 1.0) 
 
 
 #: trading sessions the stream's tables keep (the operator's setting), and how often keep_sessions
-#: looks
+#: and collect_after_close look
 SESSIONS_KEPT = 5
 KEEP_EVERY_SEC = 60.0
+
+
+def _last_option_close(now: datetime) -> datetime | None:
+    """Return the last option market's newest close, while every option market is closed.
+
+    None while one is open at `now`, while today's market is unknown (Schwab's /markets answer
+    for today is not held), and when no window held has ended.
+    """
+    return options_closed_at(now) if option_market_open(now) is False else None
 
 
 async def keep_sessions(
@@ -1016,7 +1049,7 @@ async def keep_sessions(
     try:
         while not stopped.done():
             now = datetime.fromtimestamp(clock(), ET)
-            closed = options_closed_at(now) if option_market_open(now) is False else None
+            closed = _last_option_close(now)
             if closed is not None and closed != kept_for:
                 since = sessions_since(now, SESSIONS_KEPT)
                 if since is not None:
@@ -1036,6 +1069,44 @@ async def keep_sessions(
             await asyncio.wait({stopped}, timeout=KEEP_EVERY_SEC)
     finally:
         stopped.cancel()
+
+
+def collect_garbage(clock: Callable[[], float]) -> None:
+    """Run one full garbage collection and log how long it took and what it found.
+
+    Freed: the unreachable objects it collected. Not freed: those it found and could not free
+    (Python keeps them in gc.garbage). Both are the oldest generation's own counts
+    (gc.get_stats), which a full collection adds to.
+    """
+    before, began = gc.get_stats()[-1], clock()
+    gc.collect()
+    after = gc.get_stats()[-1]
+    log.info(
+        "garbage collection after the close: %.2f s, %d objects freed, %d it could not free",
+        clock() - began,
+        after["collected"] - before["collected"],
+        after["uncollectable"] - before["uncollectable"],
+    )
+
+
+async def collect_after_close(
+    clock: Callable[[], float], stop: asyncio.Event, every: float = KEEP_EVERY_SEC
+) -> None:
+    """Run one full garbage collection after each close of the last option market.
+
+    The session runs with none (set_collector), so what only a full collection frees waits for
+    this one. A close the program was not running for needs none: a program that has just
+    started holds nothing a session left. Nor does a day with no session, or a stop: the
+    process's memory goes back with it.
+    """
+    collected = clock()  # nothing is left to collect up to here: the start, then each close
+    while True:
+        closed = _last_option_close(datetime.fromtimestamp(clock(), ET))
+        if closed is not None and closed.timestamp() > collected:
+            collect_garbage(clock)
+            collected = closed.timestamp()
+        if await time_et.set_within(stop, every):
+            return
 
 
 def _worker_ended(worker: asyncio.Future[None]) -> None:
@@ -1161,6 +1232,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
         asyncio.create_task(record_feed_status(daemon, stop), name="feed status"),
         asyncio.create_task(show_stream(bus, stop), name="stream window"),
         asyncio.create_task(keep_sessions(writer, daemon.clock, stop), name="keep"),
+        asyncio.create_task(collect_after_close(daemon.clock, stop), name="collection"),
         asyncio.create_task(daemon.follow_market(stop), name="market follower"),
         asyncio.create_task(
             serve_live_ui(
@@ -1201,6 +1273,7 @@ def main() -> int:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
         return 2
     _start_log()
+    set_collector()  # before the program holds anything large
     request = StopRequest()  # before the lock: a program the lock names can always be asked
     try:
         fd, lock = acquire_owner_lock()

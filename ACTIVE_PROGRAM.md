@@ -77,6 +77,15 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Queued
 
+- REPRICE-ROWS (QUEUED): the once-a-second reprice (`server._publish_levels`, queued by
+  `server._reprice_from_tick`, `server.REPRICE_EVERY_SEC`) publishes a whole new set of long-lived
+  objects each time: about 36,000 for QQQ, 25,822 of them per-strike rows (`calc/terrain_engine.py`
+  `StrikeValue`, `StrikeRow`), and its thread used 51 of 90 seconds of one core in the replay of
+  2026-11-20 10:35 ET. It is what set off the full collections the session now runs without
+  (`docs/DATA_FLOW.md` §3.1). Next: the confirming measurement on the live program at the next
+  regular-hours open (the lock's holder by py-spy, each thread's CPU time read from outside, the
+  day's `garbage collection after the close` line); then the reprice publishes only what changed, in
+  records the collector does not track.
 - HTTPX2 (QUEUED, on upgrade): authlib 1.9.1 warns that its httpx fallback is deprecated ("please
   use httpx2"); schwab-py 1.5.1 is built on httpx. Left as is (operator 2026-11-19): authlib, httpx
   and schwab-py stay pinned in `requirements.txt`, and are upgraded together, with the sign-in
