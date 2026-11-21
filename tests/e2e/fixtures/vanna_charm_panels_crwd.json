@@ -7492,7 +7492,6 @@
     "contracts_used": 244,
     "spot": 269.395,
     "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1791383880.289,
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1791383920.598783,

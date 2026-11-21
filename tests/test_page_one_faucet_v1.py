@@ -110,16 +110,21 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
 
     A panel that serves a price serves `spot`, the live price, and not the price the payload was
     computed at, which no page reads (operator 2026-11-12: "Yes, remove it"). The strikes panel
-    serves neither: its pages take the price from the header row.
+    serves neither: its pages take the price from the header row. The price's trade time is the
+    text the page shows (`spot_time_ct`); its instant is on the terrain alone, where the desk's
+    Right Now takes it (push.desk), and no page reads one.
     """
     now = time_et.now()
-    served = {}
+    served, instant = {}, set()
     for kind, panel in server.PAGE_PANELS.items():
         contract = next(iter(held.contracts))
         body = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
             served[kind] = (body.get("spot"), "priced_at_spot" in body)
+        if "spot_as_of_ts_utc" in body:
+            instant.add(kind)
     assert {"terrain", "surface", "chain", "levels"} <= set(served) and "strikes" not in served
+    assert instant == {"terrain"}
     routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]
     assert [r.path for r in routes if "ticker" in inspect.signature(r.endpoint).parameters] == []
     assert {p: s for p, s in served.items() if s != (LIVE, False)} == {}

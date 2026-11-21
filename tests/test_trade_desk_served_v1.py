@@ -706,7 +706,8 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade():
     )
     body = push_levels.levels_payload(DESK, "1", FRIDAY_CLOSE)
     priced = [r for r in body["levels"] if r["price"] is not None]
-    assert len(priced) > 5 and body["spot"] == 769.5 and body["spot_as_of_ts_utc"] == 1790983830.151
+    assert len(priced) > 5 and body["spot"] == 769.5
+    assert body["spot_time_ct"] == "Fri 10/02 06:30 PM CT"  # Schwab's TRADE_TIME_MILLIS
     assert body["by_distance"] == [
         r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 769.5))
     ]

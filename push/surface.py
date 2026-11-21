@@ -209,7 +209,7 @@ def gamma_surface_payload(
     """Return the heatmap's answer for ticker `tk` at `now` (the `surface` panel).
 
     With no live surface the answer is "unavailable" with the reason; there is no second source.
-    Served with the levels' verdict (terrain_staleness) and the chain's and price's times.
+    Served with the levels' verdict (terrain_staleness), which carries the chain's time.
     """
     # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
     live, verdict = terrain_cache_get(tk, now.timestamp())
@@ -237,7 +237,6 @@ def gamma_surface_payload(
             # own keys so its stamp cannot overwrite it.
             "spot": _surface_live_spot[0],
             "spot_source": _surface_live_spot[1],
-            "spot_as_of_ts_utc": _surface_live_spot[2],
             "spot_strike": spot_strike,
         }
 

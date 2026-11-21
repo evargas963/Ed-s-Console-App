@@ -31,7 +31,7 @@ const LEVELS = {
       evidence_tier: "MEASURED",
       distance: 1.5,
       provenance: { producer: "session_levels" },
-      staleness: { as_of_ts_utc: 1757000000 },
+      staleness: { as_of_time_ct: null },
     },
     {
       id: "VWAP",
@@ -42,7 +42,7 @@ const LEVELS = {
       evidence_tier: "MEASURED",
       distance: 0.02,
       provenance: { producer: "liquidity_value_engine" },
-      staleness: { as_of_ts_utc: 1757000000 },
+      staleness: { as_of_time_ct: null },
     },
     {
       id: "POC",
@@ -53,7 +53,7 @@ const LEVELS = {
       evidence_tier: "DERIVED",
       distance: -0.6,
       provenance: { producer: "value_area" },
-      staleness: { as_of_ts_utc: 1757000000 },
+      staleness: { as_of_time_ct: null },
     },
   ],
   by_distance: ["VWAP", "POC", "PDH"],

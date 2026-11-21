@@ -129,7 +129,7 @@ def test_api_levels_b1_contract_single_session_prior_day():
     assert by_id["PDC"]["price"] == 102
     for lv in payload["levels"]:
         assert lv["price"] not in (110, 90), "multi-session union value served — RC-213 reopened"
-        assert "as_of_ts_utc" in lv["staleness"] and "as_of_time_ct" in lv["staleness"]
+        assert set(lv["staleness"]) == {"as_of_time_ct"}, "a level's time is served as its label"
         if lv["family"] == "prior_day":
             assert lv["provenance"]["session_scope"] == "RTH"
             assert "2026-10-02" in lv["provenance"]["window"], (

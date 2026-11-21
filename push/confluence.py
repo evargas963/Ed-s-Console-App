@@ -270,7 +270,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             "available": True,
             "reason": None,
             "expiry": chosen,
-            "spot_as_of_ts_utc": live_ts,
             # the distances and the spot line are from the live price: its mark
             **price_mark(tk, live_ts, now.timestamp()),
             # the levels' one verdict (terrain_staleness): its word, the chain's time and age,

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import live_market_plane as lmp
 from push import levels as push_levels
-from time_et import ET
+from time_et import ET, ct_label
 
 _SENT = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_spy_level_one_2026_10_23.json").read_text(
@@ -39,5 +39,6 @@ def test_the_desk_spot_carries_schwabs_trade_time_when_the_feed_is_down():
         lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_down()
     assert body["spot"] == item["LAST_PRICE"] == 760.07
-    assert body["spot_time_ct"] == "Fri 10/23 02:59 PM CT"
-    assert body["spot_as_of_ts_utc"] == at
+    # Schwab's trade time is served once, as the text the page shows: no second, raw copy
+    assert body["spot_time_ct"] == ct_label(at) == "Fri 10/23 02:59 PM CT"
+    assert "spot_as_of_ts_utc" not in body

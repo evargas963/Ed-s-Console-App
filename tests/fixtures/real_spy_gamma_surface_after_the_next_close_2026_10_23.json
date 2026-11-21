@@ -724,7 +724,6 @@
  "reason": null,
  "source": "terrain_live_cache",
  "spot": 773.1269,
- "spot_as_of_ts_utc": 1792701541.652,
  "spot_source": "streaming_plane",
  "spot_strike": 773.0,
  "stream_by_expiry": {

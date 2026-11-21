@@ -10640,7 +10640,6 @@
     "contracts_used": 2440,
     "spot": 269.425,
     "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1794497956.43,
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -10914,7 +10913,6 @@
     "contracts_used": 2440,
     "spot": 269.425,
     "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1794497956.43,
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -11547,7 +11545,6 @@
     "contracts_used": 2440,
     "spot": 269.425,
     "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1794497956.43,
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -68703,7 +68700,6 @@
     "contracts_used": 2440,
     "spot": 269.425,
     "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1794497956.43,
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -80668,7 +80664,6 @@
       "spot": 269.425,
       "spot_text": "269.43",
       "spot_source": "streaming_plane",
-      "spot_as_of_ts_utc": 1794497956.43,
       "spot_time_ct": "Thu 11/12 09:39 AM CT",
       "spot_not_live_text": null,
       "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
@@ -80691,7 +80686,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -80712,7 +80706,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -80733,7 +80726,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -80760,7 +80752,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 5.444999999999993,
@@ -80785,7 +80776,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 4.014999999999986,
@@ -80810,7 +80800,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 3.055000000000007,
@@ -80835,7 +80824,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 2.3149999999999977,
@@ -80860,7 +80848,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 1.5968056391883465,
@@ -80885,7 +80872,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 1.4572000000000003,
@@ -80910,7 +80896,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 0.7325000000000159,
@@ -80929,7 +80914,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -80950,7 +80934,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -80971,7 +80954,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -80992,7 +80974,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81019,7 +81000,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 0.4049999999999727,
@@ -81044,7 +81024,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -1.5900000000000318,
@@ -81069,7 +81048,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -2.055000000000007,
@@ -81094,7 +81072,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -2.884999999999991,
@@ -81119,7 +81096,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.2549999999999955,
@@ -81144,7 +81120,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.6550000000000296,
@@ -81169,7 +81144,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.805000000000007,
@@ -81194,7 +81168,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -6.264999999999986,
@@ -81213,7 +81186,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81234,7 +81206,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81255,7 +81226,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81276,7 +81246,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81297,7 +81266,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81318,7 +81286,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81339,7 +81306,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -81390,7 +81356,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81403,7 +81368,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81416,7 +81380,6 @@
           "price_text": "258.49",
           "carried_text": "243.91",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81429,7 +81392,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81442,7 +81404,6 @@
           "price_text": "265.50",
           "carried_text": "259.33",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81455,7 +81416,6 @@
           "price_text": "292.11",
           "carried_text": "380.60",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81468,7 +81428,6 @@
           "price_text": "262.50",
           "carried_text": "240.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81481,7 +81440,6 @@
           "price_text": "270.00",
           "carried_text": "275.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81494,7 +81452,6 @@
           "price_text": "260.00",
           "carried_text": "250.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81507,7 +81464,6 @@
           "price_text": "260.00",
           "carried_text": "250.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81520,7 +81476,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81533,7 +81488,6 @@
           "price_text": "267.50",
           "carried_text": "275.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -81546,7 +81500,6 @@
           "price_text": "265.00",
           "carried_text": "260.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         }
@@ -82229,7 +82182,6 @@
       "spot": 269.425,
       "spot_text": "269.43",
       "spot_source": "streaming_plane",
-      "spot_as_of_ts_utc": 1794497956.43,
       "spot_time_ct": "Thu 11/12 09:39 AM CT",
       "spot_not_live_text": null,
       "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
@@ -82252,7 +82204,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82273,7 +82224,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82294,7 +82244,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82321,7 +82270,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 5.444999999999993,
@@ -82346,7 +82294,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 4.014999999999986,
@@ -82371,7 +82318,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 3.055000000000007,
@@ -82396,7 +82342,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 2.3149999999999977,
@@ -82421,7 +82366,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 1.5968056391883465,
@@ -82446,7 +82390,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 1.4572000000000003,
@@ -82471,7 +82414,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 0.7325000000000159,
@@ -82490,7 +82432,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82511,7 +82452,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82532,7 +82472,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82553,7 +82492,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82580,7 +82518,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 0.4049999999999727,
@@ -82605,7 +82542,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -1.5900000000000318,
@@ -82630,7 +82566,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -2.055000000000007,
@@ -82655,7 +82590,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -2.884999999999991,
@@ -82680,7 +82614,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.2549999999999955,
@@ -82705,7 +82638,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.6550000000000296,
@@ -82730,7 +82662,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.805000000000007,
@@ -82755,7 +82686,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -6.264999999999986,
@@ -82774,7 +82704,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82795,7 +82724,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82816,7 +82744,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82837,7 +82764,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82858,7 +82784,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82879,7 +82804,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82900,7 +82824,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -82951,7 +82874,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -82964,7 +82886,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -82977,7 +82898,6 @@
           "price_text": "258.49",
           "carried_text": "243.91",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -82990,7 +82910,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83003,7 +82922,6 @@
           "price_text": "265.50",
           "carried_text": "259.33",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83016,7 +82934,6 @@
           "price_text": "292.11",
           "carried_text": "380.60",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83029,7 +82946,6 @@
           "price_text": "262.50",
           "carried_text": "240.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83042,7 +82958,6 @@
           "price_text": "270.00",
           "carried_text": "275.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83055,7 +82970,6 @@
           "price_text": "260.00",
           "carried_text": "250.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83068,7 +82982,6 @@
           "price_text": "260.00",
           "carried_text": "250.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83081,7 +82994,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83094,7 +83006,6 @@
           "price_text": "267.50",
           "carried_text": "275.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -83107,7 +83018,6 @@
           "price_text": "265.00",
           "carried_text": "260.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         }
@@ -83735,7 +83645,6 @@
       "spot": 269.425,
       "spot_text": "269.43",
       "spot_source": "streaming_plane",
-      "spot_as_of_ts_utc": 1794497956.43,
       "spot_time_ct": "Thu 11/12 09:39 AM CT",
       "spot_not_live_text": null,
       "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
@@ -83758,7 +83667,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -83779,7 +83687,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -83800,7 +83707,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -83827,7 +83733,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 5.444999999999993,
@@ -83852,7 +83757,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 4.014999999999986,
@@ -83877,7 +83781,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 3.055000000000007,
@@ -83902,7 +83805,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 2.3149999999999977,
@@ -83927,7 +83829,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 1.5968056391883465,
@@ -83952,7 +83853,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 1.4572000000000003,
@@ -83977,7 +83877,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 0.7325000000000159,
@@ -83996,7 +83895,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84017,7 +83915,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84038,7 +83935,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84059,7 +83955,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84086,7 +83981,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": 0.4049999999999727,
@@ -84111,7 +84005,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -1.5900000000000318,
@@ -84136,7 +84029,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -2.055000000000007,
@@ -84161,7 +84053,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -2.884999999999991,
@@ -84186,7 +84077,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.2549999999999955,
@@ -84211,7 +84101,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.6550000000000296,
@@ -84236,7 +84125,6 @@
             "vendor_basis": "Schwab's daily candle (/pricehistory, frequencyType daily), as sent"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -3.805000000000007,
@@ -84261,7 +84149,6 @@
             "vendor_basis": "1m bars (Schwab /pricehistory 1-minute bars and CHART_EQUITY); Schwab streamed bars"
           },
           "staleness": {
-            "as_of_ts_utc": 1794497880.0,
             "as_of_time_ct": "Thu 11/12 09:38 AM CT"
           },
           "distance": -6.264999999999986,
@@ -84280,7 +84167,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84301,7 +84187,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84322,7 +84207,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84343,7 +84227,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84364,7 +84247,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84385,7 +84267,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84406,7 +84287,6 @@
             "carried": true
           },
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           },
           "note": null,
@@ -84457,7 +84337,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84470,7 +84349,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84483,7 +84361,6 @@
           "price_text": "258.49",
           "carried_text": "243.91",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84496,7 +84373,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84509,7 +84385,6 @@
           "price_text": "265.50",
           "carried_text": "259.33",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84522,7 +84397,6 @@
           "price_text": "292.11",
           "carried_text": "380.60",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84535,7 +84409,6 @@
           "price_text": "262.50",
           "carried_text": "240.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84548,7 +84421,6 @@
           "price_text": "270.00",
           "carried_text": "275.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84561,7 +84433,6 @@
           "price_text": "260.00",
           "carried_text": "250.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84574,7 +84445,6 @@
           "price_text": "260.00",
           "carried_text": "250.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84587,7 +84457,6 @@
           "price_text": "270.00",
           "carried_text": "270.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84600,7 +84469,6 @@
           "price_text": "267.50",
           "carried_text": "275.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         },
@@ -84613,7 +84481,6 @@
           "price_text": "265.00",
           "carried_text": "260.00",
           "staleness": {
-            "as_of_ts_utc": 1794497958.2236412,
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
           }
         }

@@ -1625,6 +1625,8 @@ def test_the_matrix_shows_the_live_price():
     assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)
     assert (body["spot"], body["spot_text"]) == (live, f"{live:.2f}")
     assert "priced_at_spot" not in body
+    # Schwab's trade time is served once, as the text the page shows: no second, raw copy
+    assert "spot_as_of_ts_utc" not in body
     assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
     assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in body["rows"])
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [
