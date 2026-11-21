@@ -146,23 +146,52 @@
         grid-template-columns: var(--ed-rail-w-open) 1fr;
       }
 
-      /* ===== header ===== */
+      /* ===== header: two rows, the same on every page. Row 1: the instrument and the system.
+         Row 2: the market context and the news line, which gives way to the alert line. Nothing
+         in it wraps: a narrow window takes the room from the filler, then draws the search box
+         as its icon. ===== */
+      /* The header's layout is fitted to the console's own faces (--ed-faces). A machine with
+         none of them (Linux) draws it in this face: a wide system face scaled to the width of
+         Bahnschrift's, one weight, so every value still fits its cell. */
+      @font-face {
+        font-family: "Ed Header Fallback";
+        src: local("DejaVu Sans"), local("Verdana"), local("Liberation Sans"), local("Arial");
+        font-weight: 100 900;
+        size-adjust: 80%;
+      }
       header {
+        --ed-sans: var(--ed-faces), "Ed Header Fallback", sans-serif;
+        --ed-mono: var(--ed-sans);
+        font-family: var(--ed-sans);
         grid-area: header;
         display: flex;
-        align-items: center;
-        gap: 0;
+        flex-direction: column;
+        min-width: 0;
         background: var(--ed-header);
         border-bottom: 1px solid var(--ed-edge);
-        padding: 0 14px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .hrow1 {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        padding: 0 12px 0 18px;
+      }
+      .hrow2 {
+        flex: none;
+        display: flex;
+        align-items: stretch;
+        min-width: 0;
+        height: 28px;
+        border-top: 1px solid var(--ed-edge-soft);
       }
       .hx {
         display: flex;
-        align-items: center;
-        gap: 7px;
-      }
-      .hx {
-        gap: 9px;
+        align-items: baseline;
+        gap: 12px;
+        flex: none;
       }
       .hx .sym {
         font-weight: 700;
@@ -172,86 +201,126 @@
       }
       .hx .px {
         font-family: var(--ed-sans);
-        font-size: 26px;
+        font-size: 28px;
         font-weight: 700;
-        font-variant-numeric: tabular-nums;
         color: var(--ed-ink);
       }
-      .hx .chg {
-        font-family: var(--ed-sans);
-        font-size: 15px;
+      /* two labelled lines: on each, a label and its value */
+      .hpair {
+        display: grid;
+        grid-template-columns: auto auto;
+        column-gap: 10px;
+        row-gap: 6px;
+        align-items: baseline;
+        flex: none;
+        line-height: 1;
+      }
+      .hpair.chgs {
+        column-gap: 8px;
+        margin-left: 18px;
+      }
+      .hpair .chg {
+        font-size: 14px;
         font-weight: 600;
-        font-variant-numeric: tabular-nums;
       }
       .hsep {
+        flex: none;
         width: 1px;
-        height: 22px;
+        height: 30px;
         background: var(--ed-edge);
-        margin: 0 8px;
+        margin: 0 18px;
       }
-      .hkv {
-        display: flex;
-        flex-direction: column;
-        line-height: 1.12;
+      .hfill {
+        flex: 1 1 0;
+        min-width: 8px;
       }
-      .hkv[hidden],
-      .hsep[hidden] {
-        display: none;
-      }
-      .hkv .k {
-        font-size: 9px;
+      header .k {
+        font-size: 9.5px;
         letter-spacing: 0.11em;
         text-transform: uppercase;
         color: var(--ed-ink-3);
       }
-      .hkv .v {
-        font-family: var(--ed-sans);
+      header .v {
         font-size: 13px;
-        font-variant-numeric: tabular-nums;
         color: var(--ed-ink-2);
       }
-      /* the volatility index: whole on one line, whatever stands beside it */
-      .hvol {
-        flex: none;
-        white-space: nowrap;
+      header .v.stale {
+        color: var(--ed-stale-ink);
       }
-      .hvol .v {
+      /* a label over its value */
+      .hkv {
         display: flex;
-        gap: 6px;
+        flex-direction: column;
+        gap: 7px;
+        flex: none;
+        line-height: 1;
+        margin-left: 22px;
       }
-      .hvol.stale .k {
-        color: var(--ed-stale);
+      .hkv[hidden] {
+        display: none;
       }
-      .live {
+      .hsep + .hkv,
+      .hfill + .hkv {
+        margin-left: 0;
+      }
+      /* a status: a dot and the program's one word for it; its whole line is its title */
+      .hword {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-family: var(--ed-mono);
-        font-size: 11px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--ed-ink);
       }
-      .live .dot {
+      .hword::before {
+        content: "";
+        flex: none;
         width: 8px;
         height: 8px;
         border-radius: 50%;
         background: var(--ed-live);
       }
-      .live .dot.warn {
-        background: var(--ed-warn);
+      .hword.none::before {
+        background: var(--ed-quiet);
       }
-      .live .dot.stale {
+      .hword.stale::before {
         background: var(--ed-stale);
+      }
+      .hword.neg {
+        color: var(--ed-neg-ink);
+      }
+      .hword.neg::before {
+        background: var(--ed-alert);
+      }
+      /* what was left out is the program's own sentence, drawn whole or not at all: its cell
+         takes the room row 1 has left, down to its label's width, and where that is less than
+         the sentence the sentence wraps under its dot, out of sight, so no count is ever cut;
+         the dot stands, the title says it, and the sentence joins row 2's alerts (ed-core.js
+         paintLine) */
+      #hLeftOutKv {
+        flex: 0 1 auto;
+        min-width: 58px;
+      }
+      #hLeftOut {
+        flex-wrap: wrap;
+        row-gap: 12px;
+        height: 12px;
+        overflow: hidden;
+        text-transform: none;
       }
       .sess {
         font-family: var(--ed-mono);
-        font-size: 11px;
-        font-weight: 600;
+        font-size: 12px;
+        font-weight: 700;
         letter-spacing: 0.06em;
       }
       .sess.rth {
-        color: var(--ed-live);
+        color: var(--ed-live-ink);
       }
       .sess.pre {
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
       }
       .sess.ah {
         color: var(--ed-accent-2);
@@ -260,20 +329,22 @@
         color: var(--ed-ink-3);
       }
       .sess.unknown {
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
       }
       .search {
-        margin-left: auto;
+        position: relative;
         display: flex;
         align-items: center;
         gap: 7px;
+        flex: none;
+        box-sizing: border-box;
+        width: 200px;
+        height: 30px;
+        margin-left: 22px;
+        padding: 0 11px;
         background: var(--ed-panel);
         border: 1px solid var(--ed-edge);
         border-radius: var(--ed-r);
-        padding: 6px 11px;
-        width: 280px;
-        /* it narrows to its placeholder's width, so a value's cell is squeezed less */
-        min-width: 130px;
         color: var(--ed-ink-3);
       }
       .search input {
@@ -286,7 +357,11 @@
         font-family: var(--ed-sans);
         font-size: 12px;
       }
+      .search input::placeholder {
+        color: var(--ed-ink-3);
+      }
       .hbtn {
+        flex: none;
         width: 30px;
         height: 30px;
         display: flex;
@@ -294,11 +369,219 @@
         justify-content: center;
         border-radius: var(--ed-r);
         color: var(--ed-ink-2);
-        margin-left: 8px;
+        margin-left: 6px;
       }
       .hbtn:hover {
         background: var(--ed-panel-2);
         color: var(--ed-ink);
+      }
+      /* a narrow window: tighter gaps, and the search box draws as its icon; its input lies
+         over the icon and opens leftward while it holds the focus */
+      @media (max-width: 1500px) {
+        .hrow1 {
+          padding-left: 14px;
+        }
+        .hsep {
+          margin: 0 12px;
+        }
+        .hkv {
+          margin-left: 16px;
+        }
+        .search {
+          justify-content: center;
+          width: 30px;
+          margin-left: 14px;
+          padding: 0;
+        }
+        .search input {
+          position: absolute;
+          top: -1px;
+          right: -1px;
+          box-sizing: border-box;
+          width: 30px;
+          height: 30px;
+          padding: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+        .search input:focus {
+          z-index: 5;
+          width: 240px;
+          padding: 0 11px;
+          opacity: 1;
+          cursor: text;
+          background: var(--ed-panel);
+          border: 1px solid var(--ed-accent-edge);
+          border-radius: var(--ed-r);
+        }
+      }
+      /* a narrower one still (1,280 wide with the rail open leaves the header about 1,050
+         pixels): the gaps closer, the symbol and price smaller */
+      @media (max-width: 1300px) {
+        .hrow1 {
+          padding: 0 8px 0 10px;
+        }
+        .hx {
+          gap: 8px;
+        }
+        .hx .sym {
+          font-size: 19px;
+        }
+        .hx .px {
+          font-size: 23px;
+        }
+        .hpair.chgs {
+          margin-left: 12px;
+        }
+        .hsep {
+          margin: 0 8px;
+        }
+        .hkv {
+          margin-left: 10px;
+        }
+        .search {
+          margin-left: 8px;
+        }
+      }
+      /* row 2: the market context, the volatility index first */
+      .hmkt {
+        display: flex;
+        flex: none;
+      }
+      .hmk {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 7px;
+        padding: 0 16px 0 18px;
+        border-right: 1px solid var(--ed-edge);
+        line-height: 27px;
+      }
+      .hmk.vol {
+        order: -1;
+      }
+      .hmk .k {
+        font-weight: 700;
+      }
+      .hmk .mp {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ed-ink);
+      }
+      .hmk .mc {
+        font-size: 12.5px;
+        font-weight: 600;
+      }
+      .hmk .mt {
+        font-size: 11px;
+        color: var(--ed-stale-ink);
+      }
+      .hmk.stale .mp {
+        color: var(--ed-ink-2);
+      }
+      /* row 2: the line. The news, or the alerts while something is wrong. A line longer than
+         its room runs leftward at a steady speed and rests under the pointer; a shorter one
+         stands still */
+      .hline {
+        --hline-bg: var(--ed-header);
+        display: flex;
+        flex: 1 1 0;
+        min-width: 0;
+        background: var(--hline-bg);
+      }
+      .hline > .k {
+        display: flex;
+        align-items: center;
+        flex: none;
+        padding: 0 12px 0 14px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+      }
+      .htape {
+        position: relative;
+        flex: 1 1 0;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .htape::before,
+      .htape::after {
+        content: "";
+        position: absolute;
+        z-index: 1;
+        top: 0;
+        bottom: 0;
+        pointer-events: none;
+      }
+      .htape::before {
+        left: 0;
+        width: 10px;
+        background: linear-gradient(90deg, var(--hline-bg), transparent);
+      }
+      .htape::after {
+        right: 0;
+        width: 40px;
+        background: linear-gradient(270deg, var(--hline-bg), transparent);
+      }
+      .htrack {
+        display: flex;
+        align-items: center;
+        width: max-content;
+        height: 27px;
+        animation: htape linear infinite;
+      }
+      .htrack.still {
+        animation: none;
+      }
+      .htape:hover .htrack {
+        animation-play-state: paused;
+      }
+      @keyframes htape {
+        from {
+          transform: translateX(0);
+        }
+        to {
+          transform: translateX(-50%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .htrack {
+          animation: none;
+        }
+      }
+      .hni {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 0 18px;
+        border-right: 1px solid var(--ed-edge-strong);
+        font-size: 12.5px;
+        line-height: 14px;
+        color: var(--ed-ink);
+      }
+      .hni .t,
+      .hni .s {
+        font-size: 11px;
+        color: var(--ed-ink-3);
+      }
+      .hni .g {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--ed-accent-2);
+      }
+      /* the alerts, in the news' place: what each is about, then the program's own sentence */
+      .hline.alert {
+        --hline-bg: color-mix(in srgb, var(--ed-alert) 8%, var(--ed-header));
+      }
+      .hline.alert > .k,
+      .hline.alert .hni {
+        color: var(--ed-neg-ink);
+      }
+      .hline.alert .hni .g {
+        padding: 2px 6px;
+        border-radius: 3px;
+        letter-spacing: 0.14em;
+        color: var(--ed-header);
+        background: var(--ed-neg-ink);
       }
 
       /* ===== left rail ===== */
@@ -3132,87 +3415,101 @@
 
       <!-- ===== HEADER ===== -->
       <header>
-        <div class="hx">
-          <span class="sym" id="hSym">-</span>
-          <span class="px mono" id="hPx">-</span>
-          <span
-            class="chg mono"
-            id="hChgReg"
-            title="Schwab REGULAR_MARKET_CHANGE_PERCENT: regular session vs prior close"
-            >-</span
+        <div class="hrow1">
+          <div class="hx">
+            <span class="sym" id="hSym">-</span>
+            <span class="px mono" id="hPx">-</span>
+          </div>
+          <div class="hpair chgs">
+            <span
+              class="k"
+              title="Schwab REGULAR_MARKET_CHANGE_PERCENT: regular session vs prior close"
+              >Reg</span
+            >
+            <span class="chg mono" id="hChgReg">-</span>
+            <span
+              class="k"
+              title="Schwab NET_CHANGE_PERCENT: last price vs prior close, extended hours included"
+              >Ext</span
+            >
+            <span class="chg mono" id="hChg">-</span>
+          </div>
+          <div class="hsep"></div>
+          <div class="hpair">
+            <span class="k">Bid × Ask</span><span class="v" id="hBidAsk">-</span>
+            <span class="k">Last trade</span><span class="v" id="hAge">-</span>
+          </div>
+          <div class="hfill"></div>
+          <div class="hkv">
+            <span class="k">Feed</span><span class="hword none" id="hFeed">-</span>
+          </div>
+          <div class="hkv">
+            <span class="k">Record</span
+            ><span
+              class="hword none"
+              id="hRecord"
+              title="the capture daemon's database writer, from its heartbeat"
+              >-</span
+            >
+          </div>
+          <div class="hkv">
+            <span class="k">Schwab sign-in</span
+            ><span
+              class="hword none"
+              id="hSignIn"
+              title="the daemon's Schwab sign-in, from its heartbeat"
+              >-</span
+            >
+          </div>
+          <div class="hkv" id="hLeftOutKv" hidden>
+            <span class="k">Left out</span><span class="hword neg" id="hLeftOut">-</span>
+          </div>
+          <div class="hsep"></div>
+          <div class="hkv">
+            <span class="k">Session</span><span class="sess" id="hSession">-</span>
+          </div>
+          <div class="hkv">
+            <span class="k" id="hClockDate">-</span><span class="v" id="hClock">--:--:-- CT</span>
+          </div>
+          <label class="search">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4-4" />
+            </svg>
+            <input
+              type="text"
+              id="symSearch"
+              placeholder="Search symbol"
+              aria-label="Search symbol"
+              autocomplete="off"
+            />
+          </label>
+          <button
+            type="button"
+            class="hbtn"
+            id="themeBtn"
+            title="Theme"
+            aria-label="Toggle theme (system / light / dark)"
           >
-          <span
-            class="chg mono"
-            id="hChg"
-            title="Schwab NET_CHANGE_PERCENT: last price vs prior close, extended hours included"
-            >-</span
-          >
+            <span id="themeIcon" aria-hidden="true">◐</span>
+          </button>
         </div>
-        <div class="hsep"></div>
-        <div class="hkv"><span class="k">Bid × Ask</span><span class="v" id="hBidAsk">-</span></div>
-        <div class="hsep"></div>
-        <div class="live">
-          <span class="dot" id="hFeedDot"></span><span id="hFeed">FEED -</span>
+        <div class="hrow2">
+          <!-- the market context's cells, one for each symbol the server names (ed-core.js) -->
+          <div class="hmkt" id="hMarket"></div>
+          <div class="hline" id="hLine">
+            <span class="k" id="hLineLabel">News</span>
+            <div class="htape" id="hTape"><div class="htrack still">-</div></div>
+          </div>
         </div>
-        <div class="hsep"></div>
-        <div class="hkv"><span class="k">Data age</span><span class="v" id="hAge">-</span></div>
-        <div class="hsep"></div>
-        <div class="hkv hvol" id="hVolKv">
-          <span class="k" id="hVolName">-</span
-          ><span class="v"><span id="hVol">-</span><span id="hVolChg"></span></span>
-        </div>
-        <div class="hsep"></div>
-        <div class="hkv">
-          <span class="k">Record</span
-          ><span
-            class="v"
-            id="hRecord"
-            title="the capture daemon's database writer, from its heartbeat"
-            >-</span
-          >
-        </div>
-        <div class="hsep"></div>
-        <div class="hkv">
-          <span class="k">Schwab sign-in</span
-          ><span class="v" id="hSignIn" title="the daemon's Schwab sign-in, from its heartbeat"
-            >-</span
-          >
-        </div>
-        <div class="hsep"></div>
-        <div class="hkv" id="hLeftOutKv" hidden>
-          <span class="k">Left out</span><span class="v" id="hLeftOut">-</span>
-        </div>
-        <div class="hsep" id="hLeftOutSep" hidden></div>
-        <div class="hkv">
-          <span class="k">Session</span><span class="sess" id="hSession">-</span>
-        </div>
-        <div class="hsep"></div>
-        <div class="hkv">
-          <span class="k" id="hClockDate">-</span><span class="v" id="hClock">--:--:-- CT</span>
-        </div>
-        <div class="search">
-          <svg
-            width="15"
-            height="15"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4-4" />
-          </svg>
-          <input type="text" id="symSearch" placeholder="Search symbol" autocomplete="off" />
-        </div>
-        <button
-          type="button"
-          class="hbtn"
-          id="themeBtn"
-          title="Theme"
-          aria-label="Toggle theme (system / light / dark)"
-        >
-          <span id="themeIcon" aria-hidden="true">◐</span>
-        </button>
       </header>
 
       <!-- ===== MAIN ===== -->

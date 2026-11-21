@@ -1,7 +1,8 @@
 /*
  * The header says whether Schwab accepts the daemon's sign-in, as the daemon's heartbeat serves
- * it (capture.sign_in_line): REFUSED and what to run, with Schwab's own reason on hover, then
- * accepted once a new sign-in is taken. The lines are the daemon's own
+ * it (capture.sign_in_line): REFUSED in its cell with Schwab's own reason on hover, and what to
+ * run with that reason on row 2's alert line; then accepted once a new sign-in is taken, and the
+ * alert gone. The lines are the daemon's own
  * (tests/e2e/fixtures/sign_in_lines.json, held by tests/test_data_path_sign_in_v1.py; the
  * refusal is production's of 2026-11-19 13:00:13 CT). Any page error fails the test.
  */
@@ -26,12 +27,20 @@ test("the header shows Schwab's refusal of the sign-in, then its acceptance", as
   await expect.poll(() => program !== null).toBe(true);
   const cell = page.locator("#hSignIn");
   beat(LINES.refused);
-  await expect(cell).toHaveText(LINES.refused.line);
+  await expect(cell).toHaveText(LINES.refused.word);
   await expect(cell).toHaveAttribute("title", LINES.refused.why);
   await expect(cell).toHaveClass(/\bneg\b/);
+  // what to run, and why, on the alert line, where the news was
+  await expect(page.locator("#hLineLabel")).toHaveText("Alert");
+  await expect(page.locator("#hTape .htrack > .hni .g")).toHaveText("Schwab sign-in");
+  await expect(page.locator("#hTape .htrack > .hni .h")).toHaveText(
+    LINES.refused.line + " · " + LINES.refused.why,
+  );
   beat(LINES.accepted);
   await expect(cell).toHaveText("accepted");
   await expect(cell).not.toHaveClass(/\bneg\b/);
+  await expect(page.locator("#hLineLabel")).toHaveText("News");
+  await expect(page.locator("#hTape .hni")).toHaveCount(0);
   expect(errs).toEqual([]);
 });
 
@@ -67,7 +76,8 @@ test("the header shows what the program left out, and nothing when nothing was",
   beat(line);
   await expect(kv).toBeVisible();
   await expect(page.locator("#hLeftOut")).toHaveText(line.line);
-  await expect(page.locator("#hLeftOut")).toHaveAttribute("title", line.why);
+  // the title says the line too: a window with no room for it draws the cell's dot alone
+  await expect(page.locator("#hLeftOut")).toHaveAttribute("title", line.line + " · " + line.why);
   await expect(page.locator("#hLeftOut")).toHaveClass(/\bneg\b/);
   beat(null);
   await expect(kv).toBeHidden();

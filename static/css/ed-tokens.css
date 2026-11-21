@@ -5,15 +5,17 @@
    in index.html, which ed-core only consumes —
    so the CSS needs exactly two palette blocks and there is no duplicated light/dark definition.
    Financial semantics never invert: --ed-pos/--ed-heat-pos are GREEN and --ed-neg/--ed-heat-neg
-   are RED in BOTH themes; blue is interaction; amber is warning/stale. */
+   are RED in BOTH themes; blue is interaction; amber is warning/stale. A colour drawn as text
+   takes its -ink grade (pos, neg, live, warn, stale), which reads at 4.5 to 1 or better on the
+   header in both themes (tests/e2e/console-header.spec.js). */
 :root {
   /* ---- shared, theme-independent ---- */
 
   /* the Trade Desk reference is set in one DIN-style face everywhere, with tabular
      figures for numeric columns; Bahnschrift is Windows' own DIN, so no font is fetched. Panel and
      card titles are the same face condensed, in capitals. */
-  --ed-sans: "Bahnschrift", "DIN Alternate", "Barlow", "Inter", system-ui, -apple-system,
-    "Segoe UI", roboto, arial, sans-serif;
+  --ed-faces: "Bahnschrift", "DIN Alternate", "Barlow", "Inter";
+  --ed-sans: var(--ed-faces), system-ui, -apple-system, "Segoe UI", roboto, arial, sans-serif;
   --ed-mono: var(--ed-sans);
   --ed-title-stretch: 87.5%;
   --ed-title-spacing: 0.06em;
@@ -21,7 +23,7 @@
   --ed-r-lg: 6px;
   --ed-rail-w: 56px;
   --ed-rail-w-open: 234px;
-  --ed-header-h: 58px;
+  --ed-header-h: 82px;
   --ed-subnav-h: 44px;
   --ed-viewbar-h: 42px;
 }
@@ -52,6 +54,9 @@
   --ed-live: #22c55e;
   --ed-warn: #f2c230;
   --ed-stale: #f08c21;
+  --ed-live-ink: #22c55e;
+  --ed-warn-ink: #f2c230;
+  --ed-stale-ink: #f08c21;
   --ed-alert: #ff4d4f;
   --ed-quiet: #5f6f84;
   --ed-native: #22c55e;
@@ -89,12 +94,15 @@
   --ed-accent-bg: #dce7fb;
   --ed-accent-edge: #a6c2f0;
   --ed-pos: #1a9e5c;
-  --ed-pos-ink: #0f7a45;
+  --ed-pos-ink: #0d7040;
   --ed-neg: #d63b3b;
   --ed-neg-ink: #b21e1e;
   --ed-live: #16a34a;
   --ed-warn: #a9750a;
   --ed-stale: #b45309;
+  --ed-live-ink: #0d7040;
+  --ed-warn-ink: #7a5200;
+  --ed-stale-ink: #9a4407;
   --ed-alert: #cf2e2e;
   --ed-quiet: #8a94a4;
   --ed-native: #0f7a45;

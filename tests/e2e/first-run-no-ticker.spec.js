@@ -2,6 +2,7 @@
 // nothing chosen asks for a symbol and asks the server for nothing about any ticker.
 const { test, expect } = require("@playwright/test");
 const { watchRequests, holdClock } = require("./fixtures/settled");
+const { eachPage } = require("./fixtures/pages");
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -38,32 +39,19 @@ test("no symbol chosen: no view asks for a ticker on a view change, a resize, a 
   const requests = watchRequests(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#hPx")).toHaveText("CHOOSE A SYMBOL");
-  for (const ws of await page
-    .locator(".navitem[data-ws]")
-    .evaluateAll((ns) => ns.map((n) => n.dataset.ws))) {
-    await page.locator(`.navitem[data-ws="${ws}"]`).click();
-    for (const sub of await page
-      .locator("#subnav button[data-sub]:not(.na)")
-      .evaluateAll((bs) => bs.map((b) => b.dataset.sub))) {
-      await page.locator(`#subnav button[data-sub="${sub}"]`).click();
-      const views = await page
-        .locator("#viewbar .vtab:not(.na)")
-        .evaluateAll((bs) => bs.map((b) => b.dataset.view));
-      for (const view of views.length ? views : [null]) {
-        if (view) await page.locator(`#viewbar .vtab[data-view="${view}"]`).click();
-        await page.setViewportSize({ width: 1500, height: 900 });
-        await page.setViewportSize({ width: 1280, height: 800 });
-        await page.evaluate(() => {
-          window.EdShell.setTheme("dark");
-          window.EdShell.setTheme("light");
-        });
-        for (const control of await page.locator(".cmode:visible, .scbtn:visible").all())
-          await control.click();
-        await requests.settled(); // every read those made has gone out and landed
-        if (tickerCalls.length)
-          asked.push(`${ws} > ${sub} > ${view}: ${tickerCalls.splice(0).join(", ")}`);
-      }
-    }
-  }
+  await eachPage(page, async ({ ws, sub, view }) => {
+    if (sub === null) return; // a workspace as it opens: its sub-views are the stops here
+    await page.setViewportSize({ width: 1500, height: 900 });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => {
+      window.EdShell.setTheme("dark");
+      window.EdShell.setTheme("light");
+    });
+    for (const control of await page.locator(".cmode:visible, .scbtn:visible").all())
+      await control.click();
+    await requests.settled(); // every read those made has gone out and landed
+    if (tickerCalls.length)
+      asked.push(`${ws} > ${sub} > ${view}: ${tickerCalls.splice(0).join(", ")}`);
+  });
   expect(asked, "nothing may be fetched for an unchosen ticker").toEqual([]);
 });

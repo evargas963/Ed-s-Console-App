@@ -52,6 +52,18 @@
     });
     return d;
   }
+  // how long, in seconds, the header's line takes to run its own width (`linePx`) at the tape's
+  // steady speed, so every line moves alike whatever it holds; null when it fits its window
+  // (`windowPx`) and stands still
+  var TAPE_PX_PER_SEC = 50;
+  function tapeSeconds(linePx, windowPx) {
+    return linePx <= windowPx ? null : linePx / TAPE_PX_PER_SEC;
+  }
+  // whether an element one line high has wrapped its words out of sight (the header's left-out
+  // cell, where row 1 has no room for its sentence: index.html)
+  function wrappedAway(el) {
+    return el.scrollHeight > el.clientHeight;
+  }
   // the text colour that reads on a heat cell's colour: light on dark, dark on light
   function heatInk(c) {
     return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 140 ? "#f4f7fb" : "#0a0e17";
@@ -303,5 +315,7 @@
     middleY: middleY,
     stackLabels: stackLabels,
     sparkline: sparkline,
+    tapeSeconds: tapeSeconds,
+    wrappedAway: wrappedAway,
   };
 })();

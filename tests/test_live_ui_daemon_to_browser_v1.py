@@ -52,6 +52,7 @@ import socket
 import threading
 from dataclasses import replace
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import psutil
@@ -71,7 +72,7 @@ from push import chain as push_chain
 from push import verdict as push_verdict
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
-from tests.feed_live_helper import clock_from
+from tests.feed_live_helper import clock_from, forget_news, news_on_the_bus
 from tests.real_chains import CRWD, MRVL
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
@@ -417,9 +418,90 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
     assert live["feed"]["watchlist"] == ["SPY", "TSLA"] and live["feed"]["ts"] is not None
     # the header's time and day: the beat's own instant, in Central Time
     at = datetime.fromtimestamp(live["feed"]["ts"], ZoneInfo("America/Chicago"))
-    assert live["feed"]["clock_ct"] == f"{at:%H:%M:%S}.{at.microsecond // 1000:03d} CT"
+    assert live["feed"]["clock_ct"] == f"{at:%H:%M:%S} CT"
     assert live["feed"]["day_ct"] == f"{at:%a, %b %d}"
     assert down["feed"] is None
+
+
+def test_every_page_is_sent_the_news_line_on_its_first_beat_then_only_when_it_changes():
+    """The daemon's follower and the page's socket, a real WebSocket client, no ticker selected.
+
+    Real data: Schwab's five headlines of the 2026-11-20 open
+    (tests/fixtures/real_schwab_news_headlines_2026_11_20.json). The page's first beat carries
+    the header's news line, empty; the five reach it on the next beat; the beats after carry no
+    line until it changes, and a message given again changes nothing (INDUCED: the second
+    arrival); when the Central day turns the line is sent again with yesterday's times written
+    whole (INDUCED: the server's clock is the test's, moved past midnight).
+    """
+    sent = json.loads(
+        (
+            Path(__file__).resolve().parent
+            / "fixtures"
+            / "real_schwab_news_headlines_2026_11_20.json"
+        ).read_text(encoding="utf-8")
+    )["messages"][:5]
+    central = ZoneInfo("America/Chicago")
+    next_day = datetime.fromtimestamp(sent[0]["ts_recv"], central).date().toordinal() + 1
+    midnight = datetime.fromordinal(next_day).replace(tzinfo=central).timestamp()
+    at = [midnight - 10.0]
+
+    def status(now: float) -> dict:
+        return {"ts": now, "schwab_socket_open": True, "held": {}, "health": {}} | {
+            "apply_failures": 0,
+            "tick_failures": 0,
+        }
+
+    async def beat(ws) -> dict:
+        while (msg := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "feed":
+            pass
+        return msg
+
+    async def go() -> list[dict]:
+        sock, url = listener()
+        bus, stop, stats = MessageBus(), asyncio.Event(), {}
+        prices = {"heartbeat_fn": status, "stats": stats, "clock": lambda: at[0]}
+        served = asyncio.create_task(serve_page_socket(stop, sock, prices))
+        follower = asyncio.create_task(
+            capture.Daemon(bus, HealthRegistry(), []).follow_market(stop)
+        )
+        try:
+            while "clients" not in stats:
+                await asyncio.sleep(0.01)
+            async with connect(f"{url}/ws") as ws:
+                await ws.send(json.dumps({"op": "subscribe", "symbols": []}))
+                got = [await beat(ws)]
+                news_on_the_bus(bus, sent)
+                news_on_the_bus(bus, sent[:1])
+                got += [await beat(ws), await beat(ws), await beat(ws)]
+                at[0] = midnight + 1.0
+                got += [await beat(ws), await beat(ws)]
+        finally:
+            stop.set()
+            await asyncio.wait_for(asyncio.gather(served, follower, return_exceptions=True), 5)
+        return got
+
+    forget_news()
+    try:
+        first, today, quiet, still_quiet, tomorrow, after = asyncio.run(asyncio.wait_for(go(), 30))
+    finally:
+        forget_news()
+    assert first["news"] == {
+        "items": [],
+        "left_out": (
+            "English only, by Schwab's language field: 0 messages in other languages and 0 "
+            "unreadable left out since the program started"
+        ),
+    }
+    assert [i["time_ct"] for i in today["news"]["items"]] == ["08:30 AM CT"] * 5
+    assert sorted(i["headline"] for i in today["news"]["items"]) == sorted(
+        m["item"]["4"] for m in sent
+    )
+    assert "news" not in quiet and "news" not in still_quiet, "the unchanged line is not sent again"
+    assert [i["time_ct"] for i in tomorrow["news"]["items"]] == ["Fri 11/20 08:30 AM CT"] * 5
+    assert [i["headline"] for i in tomorrow["news"]["items"]] == [
+        i["headline"] for i in today["news"]["items"]
+    ]
+    assert "news" not in after
 
 
 def test_a_burst_is_conflated_to_the_newest_row_per_symbol():

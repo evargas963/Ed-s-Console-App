@@ -1,10 +1,12 @@
 {
   "refused": {
+    "word": "REFUSED",
     "line": "REFUSED: run python reauth_schwab.py",
     "why": "Schwab refused the sign-in (unsupported_token_type: 400 Bad Request: \"{\"error_description\":\"Refresh token is invalid, expired or revoked\",\"error\":\"invalid_grant\"}\"); nothing is sent to Schwab until a new sign-in is saved: python reauth_schwab.py",
     "cls": "neg"
   },
   "accepted": {
+    "word": "accepted",
     "line": "accepted",
     "why": "Schwab accepts the daemon's sign-in",
     "cls": ""

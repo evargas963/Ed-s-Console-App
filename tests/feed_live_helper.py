@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from datetime import datetime
+from itertools import groupby
 from pathlib import Path
 
 import live_market_plane as lmp
@@ -22,7 +23,7 @@ from calibration.complete_chain_capture import StoredCapture
 from db import LevelCrossEvent, StoredCross
 from feed import connection
 from option_contract import read_chain
-from state import bar_store, price_level_store
+from state import bar_store, news_store, price_level_store
 from stream_spine import (
     CAPTURE_STORED,
     FIELD_DELTA,
@@ -144,6 +145,25 @@ def forget_bars(*tickers: str) -> None:
         bar_store._series.pop((tk, "1d"), None)
         for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
             del price_level_store._MATERIALIZED_SNAPSHOTS[key]
+
+
+def forget_news() -> None:
+    """No story and no count of the header's news line is left behind (state.news_store)."""
+    news_store._stories.clear()
+    news_store._left_out.update(other_languages=0, unreadable=0)
+
+
+def news_on_the_bus(bus: MessageBus, messages: list[dict]) -> None:
+    """Put captured NEWS_HEADLINE `messages` on `bus` as the daemon's stream handler does.
+
+    Each of Schwab's frames (the messages of one frame time, in the order sent) goes through
+    feed.connection._publisher, received at its first message's receive time.
+    """
+    for schwab_ts, group in groupby(messages, key=lambda m: m["schwab_ts"]):
+        sent = list(group)
+        frame = {"timestamp": schwab_ts, "content": [m["item"] for m in sent]}
+        at = sent[0]["ts_recv"]
+        connection._publisher("NEWS_HEADLINE", bus, HealthRegistry(), lambda at=at: at)(frame)
 
 
 def spy_minutes() -> list[dict]:

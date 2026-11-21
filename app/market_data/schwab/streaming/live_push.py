@@ -22,10 +22,10 @@ from __future__ import annotations
 from stream_spine import Payload
 
 #: The market context: the daemon streams it whatever the watchlist holds, and every page asks
-#: for its price rows. The Trade Desk's Desk page shows all of it (the Volatility card, the foot
-#: strip).
+#: for its price rows. The header shows all of it on every page, and so does the Trade Desk's
+#: Desk page (the Volatility card, the foot strip).
 MARKET_CONTEXT = ("$SPX", "$NDX", "$VIX")
-#: the market-context index the header shows on every page, and the Desk's Volatility card
+#: the market-context index the header draws first, and the Desk's Volatility card shows
 VOLATILITY_INDEX = "$VIX"
 
 #: topic prefix -> the only `src` forwarded for it

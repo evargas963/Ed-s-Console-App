@@ -1182,9 +1182,10 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#hPx")).toHaveText("601.23");
     await expect(page.locator("#hFeed")).toContainText("LIVE");
     await expect(page.locator("#hBidAsk")).toHaveText("601.20 × 601.25");
-    // Schwab's two change percents, each under its own label
-    await expect(page.locator("#hChgReg")).toHaveText("REG +0.40%");
-    await expect(page.locator("#hChg")).toHaveText("EXT +0.50%");
+    // Schwab's two change percents, each beside its own label
+    await expect(page.locator(".hpair.chgs .k")).toHaveText(["Reg", "Ext"]);
+    await expect(page.locator("#hChgReg")).toHaveText("+0.40%");
+    await expect(page.locator("#hChg")).toHaveText("+0.50%");
   });
 
   test("before the session the regular-session percent reads absent, the extended one live", async ({
@@ -1199,8 +1200,8 @@ test.describe("Ed Console shell + gamma heatmap", () => {
       }),
     ]);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("#hChg")).toHaveText("EXT -0.50%");
-    await expect(page.locator("#hChgReg")).toHaveText("REG -");
+    await expect(page.locator("#hChg")).toHaveText("-0.50%");
+    await expect(page.locator("#hChgReg")).toHaveText("-");
   });
 
   test("a price that stops arriving stays, and the chip says OFFLINE", async ({ page }) => {
@@ -1213,13 +1214,13 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     ]);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#hPx")).toHaveText("601.23");
-    await expect(page.locator("#hAge")).toHaveText("last trade 14:00:01 CT · 4s");
+    await expect(page.locator("#hAge")).toHaveText("14:00:01 CT · 4s"); // under its Last trade label
     await expect(page.locator("#hBidAsk")).toHaveAttribute("title", "quote 14:00:02 CT");
     await expect(page.locator("#klSpot")).toHaveText("601.23");
     await expect(page.locator("#klSpot")).toHaveAttribute("title", "last trade 14:00:01 CT · 4s");
     await expect(page.locator("#hFeed")).toHaveText("OFFLINE", { timeout: 6000 });
     await expect(page.locator("#hPx")).toHaveText("601.23");
-    await expect(page.locator("#hAge")).toHaveText("last trade 14:00:01 CT"); // the 4s age is not the age now
+    await expect(page.locator("#hAge")).toHaveText("14:00:01 CT"); // the 4s age is not the age now
     await expect(page.locator("#klSpot")).toHaveText("601.23");
     await expect(page.locator("#klSpot")).toHaveAttribute(
       "title",

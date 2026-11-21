@@ -65,6 +65,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.market_data.schwab.streaming.live_ui import (
     CONSOLE_HOST,
     PageSocket,
+    news_changed,
     selected,
     serve_live_ui,
 )
@@ -83,6 +84,7 @@ from feed.connection import SERVICES, Connection
 from feed.schwab_client import Client, SchwabClientState, build_client_from_token, check_ticker
 from instrument_identity import ticker_storage_key
 from option_contract import GREEK_FIELDS, OptionContract
+from state import news_store
 from stream_spine import (
     LATEST,
     LOG,
@@ -278,15 +280,26 @@ def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[s
 def sign_in_line(waiting: str | None) -> dict[str, str]:
     """Return the header's Schwab sign-in from the chain sweep's `waiting` (ChainSweep.waits).
 
-    Its `line`, `why` (the full reason) and `cls` ("neg" while Schwab refuses it or none is
-    held: nothing is asked of Schwab's REST endpoints, so chains, /quotes answers and price
-    history stop where they are).
+    Its `word` (the header's cell), `line` (what to do, the header's alert while refused), `why`
+    (the full reason) and `cls` ("neg" while Schwab refuses it or none is held: nothing is asked
+    of Schwab's REST endpoints, so chains, /quotes answers and price history stop where they
+    are).
     """
     match waiting:
         case str(why):
-            return {"line": "REFUSED: run python reauth_schwab.py", "why": why, "cls": "neg"}
+            return {
+                "word": "REFUSED",
+                "line": "REFUSED: run python reauth_schwab.py",
+                "why": why,
+                "cls": "neg",
+            }
         case None:
-            return {"line": "accepted", "why": "Schwab accepts the daemon's sign-in", "cls": ""}
+            return {
+                "word": "accepted",
+                "line": "accepted",
+                "why": "Schwab accepts the daemon's sign-in",
+                "cls": "",
+            }
 
 
 def _not_started() -> NoReturn:
@@ -503,11 +516,22 @@ class Daemon:
                 self._place(ticker, now)
                 await self._rank(ticker, now)
 
+    async def _took_news(self, sym: str, msg: dict[str, Any]) -> None:
+        """Take one news message Schwab sent for `sym` into the header's news line.
+
+        The bus hands this reader every news message, once, in the order published: a story is
+        its own item, never a newer version of the last one sent for its symbol
+        (stream_spine.VERSIONED). The pages are sent the line when it changed.
+        """
+        if news_store.take(sym, msg["content"], msg["schwab_ts"]):
+            news_changed(server.app.state)
+
     async def follow_market(self, stop: asyncio.Event) -> None:
         """Follow the market until `stop`, or a follower's end.
 
         Each equity quote goes into the plane, whose rows the browsers and the option rule read
-        (_took_quote), and each ticker's newest whole chain into the option rule (_took_chain).
+        (_took_quote), each ticker's newest whole chain into the option rule (_took_chain), and
+        every news message into the header's news line (_took_news).
         """
 
         async def follow(prefix: str, take: Callable[[str, Any], Awaitable[None]]) -> None:
@@ -522,6 +546,7 @@ class Daemon:
         tasks: set[asyncio.Task[object]] = {
             asyncio.create_task(follow("quote.", self._took_quote)),
             asyncio.create_task(follow("chain.", self._took_chain)),
+            asyncio.create_task(follow("news.", self._took_news)),
             asyncio.ensure_future(stop.wait()),
         }
         try:
@@ -634,15 +659,15 @@ class Daemon:
     def status(self, now: float) -> dict[str, Any]:
         """Return what the console and browsers are told every second (live_ui's beat).
 
-        It is taken at `now`, which the header shows as `clock_ct` and `day_ct`. It carries the
-        console's counts of the bus records it failed to apply and of its tick callback's
-        failures (console_feed.Feed).
+        It is taken at `now`, which the header shows as `clock_ct` (to the second) and `day_ct`.
+        It carries the console's counts of the bus records it failed to apply and of its tick
+        callback's failures (console_feed.Feed).
         """
         # open while a stream exists and Schwab sent a frame within DEAD_SEC; why not, only when not
         socket_open = self.connection.socket_open(now)
         return {
             "ts": now,
-            "clock_ct": time_et.ct_clock(now),
+            "clock_ct": time_et.ct_time(now),
             "day_ct": time_et.ct_day(now),
             "session": session_label(datetime.fromtimestamp(now, ET)),
             "schwab_socket_open": socket_open,
