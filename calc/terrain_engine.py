@@ -699,7 +699,7 @@ def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelati
 
 
 def wall_lean(wall: float | None, price: float | None, side: str) -> str | None:
-    """The wall's label on the chart at `price`: "BREACHED — spot above", "at" or "below".
+    """Return the wall's label on the chart at `price`: "BREACHED — spot above", "at" or "below".
 
     Only a breached wall (wall_geometry_state) has one, saying where the price is; a containing
     wall has none (its side of the price is its state), nor does an unknown wall or price.

@@ -115,6 +115,16 @@ def norm_pdf[Num: (float, NDArray[np.float64])](
     return exp(-0.5 * x * x) / SQRT_2PI
 
 
+def drift_vt[Num: (float, NDArray[np.float64])](
+    t_years: Num, sigma: Num, carry: Num | float, sqrt: Callable[[Num], Num]
+) -> tuple[Num, Num]:
+    """Return a contract's own terms of d1: its drift (carry + sigma^2 / 2) * T, and sigma*sqrt(T).
+
+    At any price S, d1 = (ln(S / K) + drift) / (sigma*sqrt(T)).
+    """
+    return (carry + 0.5 * sigma * sigma) * t_years, sigma * sqrt(t_years)
+
+
 def d1_vt[Num: (float, NDArray[np.float64])](
     spot: Num | float,
     strike: Num,
@@ -130,8 +140,8 @@ def d1_vt[Num: (float, NDArray[np.float64])](
     Numbers, or numpy arrays with log=np.log and sqrt=np.sqrt (`carry` then a number or an
     array).
     """
-    vt = sigma * sqrt(t_years)
-    return (log(spot / strike) + (carry + 0.5 * sigma * sigma) * t_years) / vt, vt
+    drift, vt = drift_vt(t_years, sigma, carry, sqrt)
+    return (log(spot / strike) + drift) / vt, vt
 
 
 #: prices evaluated per numpy block in bsm_gamma_sums: a block of a 13,000-contract chain fits
@@ -149,13 +159,12 @@ def bsm_gamma_sums(
 ) -> list[float]:
     """Return, at each of `prices`, the sum over contracts of `weight` times the BSM gamma.
 
-    gamma = norm_pdf(d1) / (S * vt), d1 and vt as d1_vt gives them (`carry` = r - q): their
-    formulas, operation for operation, so every value is theirs to the last bit, evaluated over
-    a block of prices in place. A contract's own terms (vt, the drift) are computed once, not
-    once per block; the block's arrays are reused, not made again at each step.
+    gamma = norm_pdf(d1) / (S * vt), d1 and vt as d1_vt gives them (`carry` = r - q), operation
+    for operation, so every value is theirs to the last bit, evaluated over a block of prices
+    in place. A contract's own terms (drift_vt) are computed once, not once per block; the
+    block's arrays are reused, not made again at each step.
     """
-    vt = sigma * np.sqrt(t_years)
-    drift = (carry + 0.5 * sigma * sigma) * t_years
+    drift, vt = drift_vt(t_years, sigma, carry, np.sqrt)
     out: list[float] = []
     for start in range(0, len(prices), _GAMMA_BLOCK):
         s = prices[start : start + _GAMMA_BLOCK, None]

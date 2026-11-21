@@ -407,8 +407,7 @@ def cluster_price_levels_into_zones(
 
 
 #: every level the zones cluster, at every hour (the option levels follow them); one the snapshot
-#: does not hold yet (the session's own before its open) is left out (operator 2026-11-20: "i
-#: want to see all the levels")
+#: does not hold yet (the session's own before its open) is left out
 ZONE_LEVELS = (
     "PDH",
     "PD_VAH",

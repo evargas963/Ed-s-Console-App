@@ -15,7 +15,7 @@ from option_contract import NO_TOP, Received, Streamed, StreamedGreeks, read_con
 
 
 def _streamed(**sent: float | None) -> Streamed:
-    """What the stream holds of one contract: each named Greek, volatility or volume as sent."""
+    """Return one streamed contract: each named Greek, volatility or volume as sent."""
     return Streamed(NO_TOP, StreamedGreeks(**{n: Received(v, 1.0) for n, v in sent.items()}))
 
 

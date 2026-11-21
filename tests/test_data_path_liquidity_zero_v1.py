@@ -255,9 +255,11 @@ def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value():
 
 
 def test_a_page_showing_the_zones_is_told_again_with_each_price_row_of_its_ticker():
-    """Each zone's side of the price, and the zones nearest it, move with the live price, not only
-    with a new bar: a page showing them is sent them again with each of its ticker's price rows
-    (live_ui.on_row), as the levels are, and a page on another ticker is not."""
+    """Each zone's side of the price, and the zones nearest it, move with the live price.
+
+    Not only with a new bar: a page showing them is sent them again with each of its ticker's
+    price rows (live_ui.on_row), as the levels are, and a page on another ticker is not.
+    """
     with pages() as on_socket:
         page = on_socket.open("SPY", "liquidity")
         other = on_socket.open("QQQ", "liquidity")

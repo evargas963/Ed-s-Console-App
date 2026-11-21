@@ -178,11 +178,10 @@ class EdDB:
         return conn
 
     def get_recent_crosses(self, ticker: str, within_sec: float) -> list[StoredCross]:
-        """Return the level crosses within `within_sec` of the ticker's newest, newest first,
-        each the row the Recorder stored.
+        """Return the level crosses within `within_sec` of the ticker's newest, newest first.
 
-        None stored yet (no database, or no level_crosses table before the Recorder's first
-        start) is no cross.
+        Each is the row the Recorder stored. None stored yet (no database, or no level_crosses
+        table before the Recorder's first start) is no cross.
         """
         if not self.db_path.is_file():
             return []

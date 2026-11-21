@@ -73,8 +73,11 @@ def test_the_bars_hold_the_sessions_the_hold_rates_read_and_schwabs_extended_hou
 
 
 def test_the_crosses_held_cover_the_trade_desks_longest_window():
-    """Every Trade Desk window of crosses is within the time the crosses are held: a window in
-    seconds no longer, and a session window (one regular session) shorter than a day."""
+    """Every Trade Desk window of crosses is within the time the crosses are held.
+
+    A window in seconds is no longer, and a session window (one regular session) is shorter than
+    a day.
+    """
     seconds = [lb for lb, _words in DESK_LOOKBACK.values() if lb != "session"]
     assert max(seconds) <= cross_store.CROSSES_HELD_SEC
     assert any(lb == "session" for lb, _words in DESK_LOOKBACK.values())

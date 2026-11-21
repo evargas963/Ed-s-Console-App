@@ -119,10 +119,11 @@ ZERO_VOLUME = (
 def _shown_migration(
     m: PositioningMigration, note: str | None, levels_state: str
 ) -> dict[str, Any]:
-    """The migration as the screen shows it, with `note`: why it compares nothing (None: it does).
+    """Return the migration as the screen shows it, with `note`: why it compares nothing.
 
-    Each row with its change's text (_served_migration), the strikes that grew, shrank and traded
-    most, each list as the screen shows it, and what a session volume of 0 means (None unless 0).
+    `note` is None when it compares. Each row with its change's text (_served_migration), the
+    strikes that grew, shrank and traded most, each list as the screen shows it, and what a
+    session volume of 0 means (None unless 0).
     """
     zero = None
     if m["volume_total"] == 0:

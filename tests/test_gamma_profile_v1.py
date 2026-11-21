@@ -13,9 +13,11 @@ import math
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import time_et
+from calc.math_exposure_core import bsm_gamma_sums, d1_vt, norm_pdf
 from calc.math_levels import (
     _gamma_profile_totals,
     compute_gamma_profile,
@@ -64,30 +66,73 @@ def _crossings(prof: list[tuple[float, float]], sign: int) -> list[tuple[float, 
     return [(p0, p1) for (p0, v0), (p1, v1) in zip(prof, prof[1:]) if v0 * sign > 0 > v1 * sign]
 
 
-def _tsla() -> tuple[list[tuple[float, float]], float]:
-    """Schwab's whole TSLA chain of 2026-10-07 as its profile, with the spot it came with."""
+def _spy_priced():
+    """Return the real same-day SPY chain's priced rows, valued at its capture time."""
+    chain, _spot = spy_0dte_book()
+    priced, _unpriced = contract_inputs(
+        chain, NOW, sessions=time_et.sessions(), product=time_et.option_close_product("SPY")
+    )
+    return priced
+
+
+def _tsla_chain() -> dict:
+    """Return Schwab's whole TSLA chain of 2026-10-07 as captured, with its spot and time."""
     name = "real_tsla_complete_chain_2026_10_07.json"
-    data = json.loads((_REAL_CHAIN.parent / name).read_text(encoding="utf-8"))
+    return json.loads((_REAL_CHAIN.parent / name).read_text(encoding="utf-8"))
+
+
+def _tsla_priced():
+    """Return that TSLA chain's priced rows, valued at its capture time."""
+    data = _tsla_chain()
     at = datetime.fromtimestamp(data["ts_utc"], time_et.ET)
     product = time_et.option_close_product("TSLA")
     priced, _unpriced = contract_inputs(
         read_chain(data["chain"]), at, sessions=time_et.sessions(), product=product
     )
-    return compute_gamma_profile(priced, float(data["spot"])), float(data["spot"])
+    return priced
+
+
+def _tsla() -> tuple[list[tuple[float, float]], float]:
+    """Schwab's whole TSLA chain of 2026-10-07 as its profile, with the spot it came with."""
+    spot = float(_tsla_chain()["spot"])
+    return compute_gamma_profile(_tsla_priced(), spot), spot
 
 
 def test_profile_on_real_chain_is_finite_and_spans_spot() -> None:
     """The candidate prices are Schwab's: every strike holding a priced contract, and the price."""
     chain, spot = spy_0dte_book()
     prof = _profile(chain, spot)
-    priced, _unpriced = contract_inputs(
-        chain, NOW, sessions=time_et.sessions(), product=time_et.option_close_product("SPY")
-    )
+    priced = _spy_priced()
     prices = [p for p, _ in prof]
     assert prices == sorted(prices) and {row[0] for row in priced} <= set(prices)
     assert all(math.isfinite(v) for _, v in prof)
     assert prices[0] < spot < prices[-1]
     assert spot in prices, "the curve is computed at the price itself, not read between strikes"
+
+
+@pytest.mark.parametrize(
+    "priced_rows", [_spy_priced, _tsla_priced], ids=["SPY, the same day", "TSLA, every expiry"]
+)
+def test_a_contracts_gamma_in_the_block_sums_is_the_one_formulas_to_the_last_bit(
+    priced_rows,
+) -> None:
+    """The sums evaluate gamma over blocks of prices in place; each value is the one formula's.
+
+    Each priced contract of a real chain alone, at every strike of that chain: what the sums give
+    is norm_pdf(d1) / (S * vt), d1 and vt from d1_vt, numpy's functions in both.
+    """
+    rows = np.asarray(priced_rows(), dtype=float)
+    prices = np.unique(rows[:, 0])
+    alone = np.ones(1)
+    above_zero = 0
+    for row in rows:
+        strike, t_years, sigma, rate, dividend = (row[i : i + 1] for i in (0, 3, 4, 6, 7))
+        carry = rate - dividend
+        d1, vt = d1_vt(prices, strike, t_years, sigma, carry, log=np.log, sqrt=np.sqrt)
+        want = (norm_pdf(d1, exp=np.exp) / (prices * vt)).tolist()
+        assert bsm_gamma_sums(prices, strike, t_years, sigma, carry, alone) == want, row
+        above_zero += sum(g > 0 for g in want)
+    assert above_zero > len(rows), "the chain's gammas are numbers above 0, not all 0"
 
 
 def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
