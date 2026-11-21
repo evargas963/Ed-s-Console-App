@@ -488,7 +488,9 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     _daemon(at=time_et.now())  # live now, as the routes read it
     every = {"scope": "all", "centre": None, "shift": 0, "expiry": None}
     charm = push_strike_bars.strike_bars("charm", TK, time_et.now(), every)
-    assert charm["available"] and charm["spot"] == snap.spot
+    own = [r["strike"] for r in charm["rows"]]
+    at_price = [r["strike"] for r in charm["rows"] if r["marks"]]
+    assert charm["available"] and at_price == [min(own, key=lambda k: abs(k - snap.spot))]
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )
