@@ -15,7 +15,6 @@ multiplier x spot^2 x 1% less the puts', with Schwab's gamma as sent.
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +29,7 @@ from option_contract import read_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from state import level_store
+from tests.real_chains import number
 
 TK = "PCG"
 _FX = json.loads(
@@ -75,13 +75,6 @@ def _strikes(expiry: str | None) -> dict:
     return push_strikes.strikes(TK, FRIDAY["ts_utc"], {**EVERY, "expiry": expiry})
 
 
-def _number(x) -> float | None:
-    """A value Schwab sent as a number, else None (absent, -999, not finite)."""
-    if isinstance(x, bool) or not isinstance(x, (int, float)):
-        return None
-    return None if not math.isfinite(x) or x == -999 else float(x)
-
-
 def _net_gex(contracts: list[dict], spot: float) -> dict[float, float | None]:
     """Each strike's net GEX per 1% over `contracts`, worked out from the raw chain.
 
@@ -91,7 +84,7 @@ def _net_gex(contracts: list[dict], spot: float) -> dict[float, float | None]:
     out: dict[float, float | None] = {}
     for c in contracts:
         k = float(c["strikePrice"])
-        oi, gamma = _number(c.get("openInterest")), _number(c.get("gamma"))
+        oi, gamma = number(c.get("openInterest")), number(c.get("gamma"))
         if k in out and out[k] is None:
             continue
         if oi is None or (oi > 0 and gamma is None):

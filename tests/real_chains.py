@@ -86,7 +86,7 @@ def _bsm_delta(s, k, t, sigma, sign, r, q):
     return np.exp(-q * t) * np.where(sign > 0, n, n - 1.0)
 
 
-def _number(x):
+def number(x):
     """Return a value Schwab sent as a number, else None (rule 2: -999, text, NaN)."""
     if isinstance(x, bool) or not isinstance(x, (int, float)):
         return None
@@ -96,7 +96,7 @@ def _number(x):
 def _schwab_inputs(book: RealChain):
     """Each contract that can be priced: K, T, sigma, sign, r, q, OI x multiplier.
 
-    Read here from Schwab's own fields as numbers (_number), with open interest above 0, the rate
+    Read here from Schwab's own fields as numbers (number), with open interest above 0, the rate
     and yield the chain's interestRate and dividendYield (percents), T the program's one time to
     expiry (tested on its own).
     """
@@ -105,9 +105,9 @@ def _schwab_inputs(book: RealChain):
     rows = []
     for c in book.chain:
         oi, k, iv, mult = (
-            _number(c.get(f)) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
+            number(c.get(f)) for f in ("openInterest", "strikePrice", "volatility", "multiplier")
         )
-        r, q = _number(c.get("interestRate")), _number(c.get("dividendYield"))
+        r, q = number(c.get("interestRate")), number(c.get("dividendYield"))
         if not oi or None in (k, iv, mult, r, q) or iv <= 0 or c["putCall"] not in ("CALL", "PUT"):
             continue
         t = time_to_expiry_years(
