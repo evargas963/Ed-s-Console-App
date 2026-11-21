@@ -185,6 +185,11 @@ def watchlist_message(
 
 # ---------------------------------------------------------------------------- the option rule
 
+#: lays out and orders every ticker's chain for the option rule (strike_ladders, shown_first), off
+#: the event loop, one at a time in the order asked. A thread of its own: in the levels' pricing
+#: queue (server.chain_pricing) a chain's contracts would wait for every pricing ahead of them
+chain_ordering = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-ordering")
+
 
 def shown_first(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`.
@@ -436,15 +441,17 @@ class Daemon:
     async def _rank(self, ticker: str, now: float) -> None:
         """Put `ticker`'s waiting chain in the rule's order (shown_first) and redo the pick.
 
-        The order is taken at its live price and `now`, on the program's pricing thread, never on
-        the event loop; while its row has no price, the chain waits and the order stands. A
-        ticker removed meanwhile takes nothing.
+        The order is taken at its live price and `now`, on the ordering thread (chain_ordering),
+        never on the event loop and behind no pricing; while its row has no price, the chain
+        waits and the order stands. That thread takes one chain at a time in the order asked, so
+        a ticker's newest chain is ordered last and its order is the one that stands. A ticker
+        removed meanwhile takes nothing.
         """
         price = live_price_rows.spot(ticker)
         if price is not None:
             chain = self._chains.pop(ticker)
             ranked = await asyncio.get_running_loop().run_in_executor(
-                server.chain_pricing, shown_first, chain, price, now
+                chain_ordering, shown_first, chain, price, now
             )
             if ticker in self.watchlist:
                 self._ranked[ticker] = ranked
@@ -479,16 +486,16 @@ class Daemon:
     async def _took_chain(self, ticker: str, record: list[dict[str, Any]]) -> None:
         """Order a watchlist ticker's newest whole chain on the bus (its parts) at its live price.
 
-        The chain is the sweep's one read of it (chain_sweep.chain_messages); its
-        ladders are laid out on the program's pricing thread (server.chain_pricing), never on the
-        event loop, whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4); a ticker
-        removed meanwhile takes nothing. A failed fetch carries no contracts and changes nothing.
+        The chain is the sweep's one read of it (chain_sweep.chain_messages); its ladders are
+        laid out on the ordering thread (chain_ordering), never on the event loop, whose one
+        reader takes Schwab's stream (docs/DATA_FLOW.md §4); a ticker removed meanwhile takes
+        nothing. A failed fetch carries no contracts and changes nothing.
         """
         if ticker in self.watchlist and all("contracts" in part for part in record):
             now = self.clock()
             chain: list[OptionContract] = [ct for part in record for ct in part["contracts"]]
             ladders = await asyncio.get_running_loop().run_in_executor(
-                server.chain_pricing, strike_ladders, chain
+                chain_ordering, strike_ladders, chain
             )
             if ticker in self.watchlist:
                 self._chains[ticker], self._ladders[ticker] = chain, ladders
