@@ -160,6 +160,17 @@ test('row 2 draws the market context from its served rows, the volatility index 
     FX.live.spot_disp + " (" + FX.live.chg_pct_text + ") · last trade " + FX.live.trade_time_ct,
   );
   await expect(page.locator("#tdmIdx" + vol.display)).toContainText(FX.live.spot_disp);
+  // the index's next row, with no row of the selected ticker after it: all three draw it
+  sock.send({ type: "quotes", rows: FX.market_closed });
+  await expect(cellOf(page, context, FX.closed).locator(".mp")).toHaveText(FX.closed.spot_disp);
+  await expect(page.locator("#tdmIdx" + vol.display)).toContainText(FX.closed.spot_disp);
+  await expect(page.locator("#tdmCardVol")).toContainText(
+    FX.closed.spot_disp +
+      " (" +
+      FX.closed.chg_pct_text +
+      ") · last trade " +
+      FX.closed.trade_time_ct,
+  );
   expect(errs).toEqual([]);
 });
 
