@@ -88,7 +88,7 @@ def _baseline(days: dict[date, list[dict]], d: date, minutes: int) -> tuple[int,
 
 
 def _expected(symbol: str, level_of, minutes: int, after_open: int = 0) -> HoldCount:
-    """A level's counts over the closed sessions, from the raw candles by the stated rule.
+    """Count a level over the closed sessions, from the raw candles by the stated rule.
 
     Its baseline is counted over the sessions the level existed.
     """

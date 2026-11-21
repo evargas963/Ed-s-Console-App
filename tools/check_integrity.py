@@ -83,8 +83,11 @@ def _test_functions(source: str):
 
 
 def _held(node: ast.AST, loops: tuple[ast.For | ast.AsyncFor, ...]):
-    """Each assertion under `node`, read with the loops it runs in, innermost first: one inside
-    `for w in rows: assert w` reads `(w for w in rows)`, so what it iterates is what it names."""
+    """Yield each assertion under `node`, read with the loops it runs in, innermost first.
+
+    One inside `for w in rows: assert w` reads `(w for w in rows)`, so what it iterates is what
+    it names.
+    """
     for inner in ast.iter_child_nodes(node):
         text = None
         if isinstance(inner, ast.Assert):
@@ -179,8 +182,10 @@ def _definitions(root: Path, rev: str, names: list[str]) -> set[str]:
 
 
 def _names(assertion: str) -> set[str]:
-    """What an assertion names: a function it calls, a value by its key or its attribute, and, in
-    Python, every name it reads (the parser's own reading, never a guess from the text)."""
+    """Return what an assertion names: a function it calls, a value by its key or its attribute.
+
+    In Python also every name it reads (the parser's own reading, never a guess from the text).
+    """
     named = {name for pair in NAMED.findall(assertion) for name in pair if name}
     try:
         tree = ast.parse(assertion, mode="eval")

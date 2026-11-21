@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 #: the built minutes held: the forming one and the one before it, which stands until Schwab's bar
-#: for it arrives (about 3 s after the minute, measured on SPY 2026-11-19)
+#: for it arrives (about 3 s after the minute)
 KEPT = 2
 
 

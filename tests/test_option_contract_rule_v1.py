@@ -250,7 +250,7 @@ def _answers(streamer, service: str) -> list[int]:
 
 
 def _both_arrive(want):
-    """Steps for a market: MRVL's and SPY's chains and prices arrive; Schwab then holds `want`."""
+    """Give a market its steps: MRVL's and SPY's chains and prices arrive; Schwab holds `want`."""
 
     async def steps(m):
         for tk in ("MRVL", "SPY"):

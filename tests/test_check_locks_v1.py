@@ -158,8 +158,11 @@ def test_a_module_in_a_package_is_inside_them(tmp_path):
 
 
 def test_a_type_stub_python_never_loads_is_not_counted(tmp_path):
-    """A `.pyi` is read by type checkers alone: no loader of Python's takes it
-    (importlib.machinery.all_suffixes), so it imports nothing when the program runs."""
+    """A `.pyi` is read by type checkers alone.
+
+    No loader of Python's takes it (importlib.machinery.all_suffixes), so it imports nothing
+    when the program runs.
+    """
     repo = _repo(tmp_path)
     write(repo, "typings/lib/__init__.pyi", "VALUE: int\n")
     write(repo, "typings/lib/Part.PYI", "VALUE: int\n")

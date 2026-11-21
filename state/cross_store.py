@@ -63,12 +63,12 @@ def add(tk: str, logged: list[StoredCross]) -> None:
 
 
 def merged_since(ticker: str, start: float) -> list[MergedCross]:
-    """Return the level crosses at or after `start` (epoch seconds), newest first, each (time,
-    value, direction) one event.
+    """Return the level crosses at or after `start` (epoch seconds), newest first.
 
-    Each event names every level there (`level_names`). The one reader of level crosses for every
-    route. Price crossing one strike writes one stored row per named level sitting there; they
-    are merged here, at the read, so the stored history keeps its per-level rows.
+    Each (time, value, direction) is one event, naming every level there (`level_names`). The
+    one reader of level crosses for every route. Price crossing one strike writes one stored row
+    per named level sitting there; they are merged here, at the read, so the stored history
+    keeps its per-level rows.
     """
     with _lock:
         held = _crosses[ticker] if ticker in _crosses else []

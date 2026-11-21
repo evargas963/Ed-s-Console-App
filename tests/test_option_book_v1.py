@@ -154,12 +154,12 @@ def write_option_book_panels() -> None:
 
 
 def _resting(symbol: str, side: str) -> float:
-    """A contract's resting size on `side` ("BIDS", "ASKS"): its book's levels' TOTAL_VOLUME."""
+    """Sum a contract's resting size on `side` ("BIDS", "ASKS"): its book's levels' TOTAL_VOLUME."""
     return float(sum(level["TOTAL_VOLUME"] for level in BOOKS[symbol][side]))
 
 
 def _volume(symbol: str) -> float:
-    """A contract's volume today: its newest streamed TOTAL_VOLUME, else its chain's."""
+    """Return a contract's volume today: its newest streamed TOTAL_VOLUME, else its chain's."""
     if symbol in QUOTES:
         return float(QUOTES[symbol]["TOTAL_VOLUME"])
     return float(next(c["totalVolume"] for c in LISTED if c["symbol"] == symbol))

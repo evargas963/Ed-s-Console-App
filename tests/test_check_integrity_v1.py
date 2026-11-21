@@ -165,8 +165,11 @@ def test_an_assertion_lost_while_the_constant_it_names_lives_is_refused(repo):
 
 
 def test_a_deleted_local_name_excuses_no_assertion(repo):
-    """Only a name defined at a module's top is the product's: a function's own `result`
-    deleted with it does not excuse a test's assertion on its own `result`."""
+    """Only a name defined at a module's top is the product's.
+
+    A function's own `result` deleted with it does not excuse a test's assertion on its own
+    `result`.
+    """
     write(repo, "product.py", "def f():\n    result = 1\n    return result\n")
     write(repo, "tests/test_a.py", SURVIVES + "    assert result == 1\n")
     _commit(repo)
