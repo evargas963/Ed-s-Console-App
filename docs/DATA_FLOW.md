@@ -500,11 +500,13 @@ them".
   every time stands with no age (D5). A value not yet received reads "-". The header is 82 pixels
   high (`--ed-header-h`); nothing in it wraps or leaves it at the window widths the browser tests
   use, and a window under 1,500 pixels wide draws the search box as its icon, which opens while it
-  holds the focus. Under it, at a 1920×950 window, the Trade Desk's Desk page does not scroll, with
-  every line of its Liquidity card drawn and with the market context's rows arriving: its Market
-  Map's floor is 356 pixels, and 380 in a window 1,400 pixels wide or narrower, which wraps the
-  map's toolbar and legend (`static/css/ed-trade-desk.css` `.tdm`). Enforced by:
-  `tests/e2e/console-header.spec.js`, `tests/e2e/console-sign-in.spec.js`,
+  holds the focus. Its layout is fitted to the console's own faces (`--ed-faces`); a machine with
+  none of them draws the header in a wide system face scaled to their width (`static/index.html`,
+  `Ed Header Fallback`), and the layout holds in both. Under it, at a 1920×950 window, the Trade
+  Desk's Desk page does not scroll, with every line of its Liquidity card drawn and with the market
+  context's rows arriving: its Market Map's floor is 356 pixels, and 380 in a window 1,400 pixels
+  wide or narrower, which wraps the map's toolbar and legend (`static/css/ed-trade-desk.css`
+  `.tdm`). Enforced by: `tests/e2e/console-header.spec.js`, `tests/e2e/console-sign-in.spec.js`,
   `tests/e2e/console-liquidity-card.spec.js`, `tests/test_data_path_header_volatility_v1.py`,
   `tests/test_data_path_header_news_v1.py`, `tests/test_data_path_sign_in_v1.py`,
   `tests/test_live_ui_daemon_to_browser_v1.py`.

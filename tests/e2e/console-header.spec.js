@@ -71,6 +71,11 @@ const LEFT_OUT = {
   why: "counted since the program started; each is in the daemon's log with what arrived",
   cls: "neg",
 };
+// INDUCED: the longest line it words, all three counts: no face leaves row 1 the room for it in
+// a 1,280 or a 1,440-wide window
+const LEFT_OUT_LONGEST = Object.assign({}, LEFT_OUT, {
+  line: "12 records not applied · 4 reprices failed · 2 page frames refused",
+});
 
 test("row 1 draws the selected ticker's row and the beat's status words, each from its served field; \"-\" before they arrive", async ({
   page,
@@ -320,24 +325,29 @@ test("what is wrong takes the news' place on row 2, each the program's own sente
   expect(await lineItems(page)).toEqual([
     [undefined, "Schwab sign-in", refused.line + " · " + refused.why, undefined],
   ]);
-  // INDUCED: all three at once, and something left out: each on the line, in that order. This
-  // window (1,280 wide) has no room in row 1 for the left-out sentence, so its cell draws its
-  // dot and the sentence stands last on the line
+  // INDUCED: all three at once, and the longest left-out line: each on the line, in that order.
+  // This window (1,280 wide) has no room in row 1 for that sentence in any face, so its cell
+  // draws its dot and the sentence stands last on the line
   const all = Object.assign({}, FX.beat_down, {
     writer: FX.beat_not_recording.writer,
     sign_in: refused,
-    left_out: LEFT_OUT,
+    left_out: LEFT_OUT_LONGEST,
   });
   sock.send(beat(all, FX.market_down));
   await expect
     .poll(async () => (await lineItems(page)).map((i) => i[1]))
     .toEqual(["Feed", "Record", "Schwab sign-in", "Left out"]);
-  expect((await lineItems(page))[3]).toEqual([undefined, "Left out", LEFT_OUT.line, undefined]);
+  expect((await lineItems(page))[3]).toEqual([
+    undefined,
+    "Left out",
+    LEFT_OUT_LONGEST.line,
+    undefined,
+  ]);
   await expect(page.locator("#hLeftOutKv")).toBeVisible();
-  await expect(page.locator("#hLeftOut")).toHaveText(LEFT_OUT.line);
+  await expect(page.locator("#hLeftOut")).toHaveText(LEFT_OUT_LONGEST.line);
   await expect(page.locator("#hLeftOut")).toHaveAttribute(
     "title",
-    LEFT_OUT.line + " · " + LEFT_OUT.why,
+    LEFT_OUT_LONGEST.line + " · " + LEFT_OUT_LONGEST.why,
   );
   await expect(page.locator("#hLeftOut")).toHaveClass(/\bneg\b/);
   // INDUCED: the same alerts with a newer sentence are written in place; the line is not drawn
@@ -473,6 +483,9 @@ async function onSpx(page) {
 // state differs from the one before it in one of them).
 async function drawState(page, sock, frame) {
   sock.send(frame);
+  if (frame.feed.left_out)
+    await expect(page.locator("#hLeftOut")).toHaveText(frame.feed.left_out.line);
+  else await expect(page.locator("#hLeftOutKv")).toBeHidden();
   await expect(page.locator("#hClock")).toHaveText(frame.feed.clock_ct);
   await expect(page.locator("#hRecord")).toHaveText(frame.feed.writer.word);
   await expect(page.locator("#hPx")).toHaveText(
@@ -480,110 +493,163 @@ async function drawState(page, sock, frame) {
   );
 }
 
+// The faces the header is drawn in: the console's own, and its fallback. INDUCED: a machine with
+// none of the console's own faces, as the Linux runner is, draws the header in the fallback, a
+// wide system face scaled to their width (index.html), so the layout is held on both.
+const FACES = [
+  { name: "the console's own face", draw: async () => {} },
+  {
+    name: "the fallback face",
+    draw: async (page) => {
+      await page.addStyleTag({ content: ':root{--ed-faces:"a face no machine has"}' });
+      // the header's text is drawn in the fallback: the browser loads a face only to draw with it
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Array.from(document.fonts)
+              .filter((f) => f.family.includes("Ed Header Fallback"))
+              .map((f) => f.status),
+          ),
+        )
+        .toContain("loaded");
+    },
+  },
+];
+
 test("at every window width the browser tests use the header is 82 px tall, no value in it wraps and nothing leaves it; at a narrow one the search box is its icon and still takes a symbol", async ({
   page,
 }) => {
   const errs = pageErrors(page);
   await holdClock(page);
   const sock = await onSpx(page);
-  for (const [state, frame] of Object.entries(STATES)) {
-    await drawState(page, sock, frame);
-    for (const width of [1280, 1440, 1500, 1672, 1920, 2560]) {
-      await page.setViewportSize({ width: width, height: 900 });
-      const m = await page.evaluate(() => {
-        const head = document.querySelector("header").getBoundingClientRect();
-        const outside = [],
-          over = [],
-          wrapped = [],
-          undrawn = [];
-        const cells = (row) =>
-          Array.from(document.querySelectorAll(row)).filter((el) => el.getClientRects().length);
-        // each cell of both rows lies inside the header, and none lies over the next
-        for (const row of [".hrow1 > *", ".hrow2 > *", "#hMarket > *"]) {
-          const boxes = cells(row)
-            .map((el) => [el.id || el.className, el.getBoundingClientRect()])
-            .sort((a, b) => a[1].left - b[1].left);
-          boxes.forEach(([name, b], i) => {
-            if (
-              b.left < head.left - 0.5 ||
-              b.right > head.right + 0.5 ||
-              b.top < head.top - 0.5 ||
-              b.bottom > head.bottom + 0.5
-            )
-              outside.push(name);
-            if (i && b.left < boxes[i - 1][1].right - 0.5) over.push(name);
-          });
-        }
-        // each text of rows 1 and 2 (the line apart, which runs) is drawn, on one line: a
-        // text that wrapped lies in line boxes at more than one height
-        const range = document.createRange();
-        document.querySelectorAll(".hrow1 *, #hMarket *, #hLineLabel").forEach((el) => {
-          const texts = Array.from(el.childNodes).filter(
-            (n) => n.nodeType === 3 && n.textContent.trim(),
-          );
-          if (!texts.length || el.closest("[hidden]")) return;
-          const name = el.id || el.textContent;
-          if (!el.getClientRects().length) return undrawn.push(name);
-          for (const text of texts) {
-            range.selectNodeContents(text);
-            const tops = Array.from(range.getClientRects()).map((r) => Math.round(r.top));
-            if (new Set(tops).size > 1) wrapped.push(name);
+  for (const face of FACES) {
+    await face.draw(page);
+    for (const [state, frame] of Object.entries(STATES)) {
+      await drawState(page, sock, frame);
+      for (const width of [1280, 1440, 1500, 1672, 1920, 2560]) {
+        await page.setViewportSize({ width: width, height: 900 });
+        const m = await page.evaluate(() => {
+          const head = document.querySelector("header").getBoundingClientRect();
+          const outside = [],
+            over = [],
+            wrapped = [],
+            undrawn = [];
+          const cells = (row) =>
+            Array.from(document.querySelectorAll(row)).filter((el) => el.getClientRects().length);
+          // each cell of both rows lies inside the header, and none lies over the next
+          for (const row of [".hrow1 > *", ".hrow2 > *", "#hMarket > *"]) {
+            const boxes = cells(row)
+              .map((el) => [el.id || el.className, el.getBoundingClientRect()])
+              .sort((a, b) => a[1].left - b[1].left);
+            boxes.forEach(([name, b], i) => {
+              if (
+                b.left < head.left - 0.5 ||
+                b.right > head.right + 0.5 ||
+                b.top < head.top - 0.5 ||
+                b.bottom > head.bottom + 0.5
+              )
+                outside.push(name);
+              if (i && b.left < boxes[i - 1][1].right - 0.5) over.push(name);
+            });
           }
+          // each text of rows 1 and 2 (the line apart, which runs) is drawn, on one line: a
+          // text that wrapped lies in line boxes at more than one height
+          const range = document.createRange();
+          document.querySelectorAll(".hrow1 *, #hMarket *, #hLineLabel").forEach((el) => {
+            const texts = Array.from(el.childNodes).filter(
+              (n) => n.nodeType === 3 && n.textContent.trim(),
+            );
+            if (!texts.length || el.closest("[hidden]")) return;
+            const name = el.id || el.textContent;
+            if (!el.getClientRects().length) return undrawn.push(name);
+            for (const text of texts) {
+              range.selectNodeContents(text);
+              const tops = Array.from(range.getClientRects()).map((r) => Math.round(r.top));
+              if (new Set(tops).size > 1) wrapped.push(name);
+            }
+          });
+          // what was left out: its sentence whole beside its dot, or not at all
+          const lo = document.getElementById("hLeftOut");
+          range.selectNodeContents(lo);
+          const box = lo.getBoundingClientRect(),
+            words = range.getBoundingClientRect();
+          return {
+            height: head.height,
+            outside: outside,
+            over: over,
+            wrapped: wrapped,
+            undrawn: undrawn,
+            leftOut: !box.width
+              ? "not shown"
+              : words.top >= box.bottom - 0.5
+                ? "its dot alone"
+                : words.top >= box.top - 0.5 &&
+                    words.bottom <= box.bottom + 0.5 &&
+                    words.right <= box.right + 0.5
+                  ? "whole"
+                  : "cut",
+          };
         });
-        // what was left out: its sentence whole beside its dot, or not at all
-        const lo = document.getElementById("hLeftOut");
-        range.selectNodeContents(lo);
-        const box = lo.getBoundingClientRect(),
-          words = range.getBoundingClientRect();
-        return {
-          height: head.height,
-          outside: outside,
-          over: over,
-          wrapped: wrapped,
-          undrawn: undrawn,
-          leftOut: !box.width
-            ? "not shown"
-            : words.top >= box.bottom - 0.5
-              ? "its dot alone"
-              : words.top >= box.top - 0.5 &&
-                  words.bottom <= box.bottom + 0.5 &&
-                  words.right <= box.right + 0.5
-                ? "whole"
-                : "cut",
-        };
-      });
-      const where = state + " at " + width;
-      expect(m.height, where).toBe(82);
-      expect(m.outside, where).toEqual([]);
-      expect(m.over, where).toEqual([]);
-      expect(m.wrapped, where).toEqual([]);
-      expect(m.undrawn, where).toEqual([]);
-      // what was left out is readable at every width: whole in its cell, or, in a window with
-      // no room for it there (1,280 and 1,440 among them), its dot alone in the cell, never a
-      // part of a count, and the sentence on the alert line after the others
-      const noRoom = !!frame.feed.left_out && width < 1920;
-      expect(m.leftOut, where).toBe(
-        !frame.feed.left_out ? "not shown" : noRoom ? "its dot alone" : "whole",
-      );
-      const wrong = WRONG[state].concat(noRoom ? ["Left out"] : []);
-      await expect(page.locator("#hLineLabel"), where).toHaveText(wrong.length ? "Alert" : "News");
-      if (wrong.length) {
-        await expect
-          .poll(async () => (await lineItems(page)).map((i) => i[1]), where)
-          .toEqual(wrong);
-        if (noRoom)
-          expect((await lineItems(page)).pop(), where).toEqual([
-            undefined,
-            "Left out",
-            LEFT_OUT.line,
-            undefined,
-          ]);
-      } else expect(await lineItems(page), where).toEqual(drawn(NEWS.morning));
+        const where = face.name + ", " + state + " at " + width;
+        expect(m.height, where).toBe(82);
+        expect(m.outside, where).toEqual([]);
+        expect(m.over, where).toEqual([]);
+        expect(m.wrapped, where).toEqual([]);
+        expect(m.undrawn, where).toEqual([]);
+        // what was left out is readable at every width, in either face: whole in its cell, or,
+        // where row 1 has no room for it, its dot alone in the cell, never a part of a count,
+        // and the sentence on the alert line after the others. Which it is depends on the room
+        // the face leaves; the widest window has it in any face
+        const forms = !frame.feed.left_out
+          ? ["not shown"]
+          : width === 2560
+            ? ["whole"]
+            : ["whole", "its dot alone"];
+        expect(forms, where).toContain(m.leftOut);
+        const noRoom = m.leftOut === "its dot alone";
+        const wrong = WRONG[state].concat(noRoom ? ["Left out"] : []);
+        await expect(page.locator("#hLineLabel"), where).toHaveText(
+          wrong.length ? "Alert" : "News",
+        );
+        if (wrong.length) {
+          await expect
+            .poll(async () => (await lineItems(page)).map((i) => i[1]), where)
+            .toEqual(wrong);
+          if (noRoom)
+            expect((await lineItems(page)).pop(), where).toEqual([
+              undefined,
+              "Left out",
+              LEFT_OUT.line,
+              undefined,
+            ]);
+        } else expect(await lineItems(page), where).toEqual(drawn(NEWS.morning));
+      }
+    }
+    // INDUCED: the longest line the producer words, all three counts, all else well. A 1,280
+    // and a 1,440-wide window have no room for it in row 1 in either face: the cell draws its
+    // dot alone and the alert line carries the sentence whole, in the news' place
+    await drawState(
+      page,
+      sock,
+      beat(Object.assign({}, FX.beat, { left_out: LEFT_OUT_LONGEST }), FX.market_live),
+    );
+    for (const width of [1280, 1440]) {
+      await page.setViewportSize({ width: width, height: 900 });
+      const where = face.name + ", the longest left-out line at " + width;
+      await expect
+        .poll(() => lineItems(page), where)
+        .toEqual([[undefined, "Left out", LEFT_OUT_LONGEST.line, undefined]]);
+      await expect(page.locator("#hLineLabel"), where).toHaveText("Alert");
+      // its words are wrapped out of the cell's one line, whole
+      expect(
+        await page.locator("#hLeftOut").evaluate((el) => el.scrollHeight > el.clientHeight),
+        where,
+      ).toBe(true);
     }
   }
   await expect(page.locator("#hLeftOut")).toHaveAttribute(
     "title",
-    LEFT_OUT.line + " · " + LEFT_OUT.why,
+    LEFT_OUT_LONGEST.line + " · " + LEFT_OUT_LONGEST.why,
   );
   // a narrow window: the search box draws as its icon, and opens to take a symbol
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -611,6 +677,46 @@ function contrast(a, b) {
       .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
   const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
+}
+
+// Every text a state is known to draw, from what was served: row 1's values of SPX's row and the
+// beat, each market cell's name, price, change and, not live, its time and age, the search box's
+// placeholder, and the line's sentences: what is wrong while it is `alerting`, the news otherwise.
+function knownTexts(frame, alerting) {
+  const feed = frame.feed,
+    spx = frame.rows.filter((r) => r.ticker === "$SPX")[0];
+  const when = (row) => row.trade_time_ct + " · " + row.trade_age_text;
+  const row1 = [
+    "SPX",
+    spx.spot_disp,
+    spx.chg_pct_regular_text,
+    spx.chg_pct_text,
+    spx.bid_text + " × " + spx.ask_text,
+    when(spx),
+    spx.feed_label,
+    feed.writer.word,
+    feed.sign_in.word,
+    { RTH: "RTH", "After-Hours": "AH" }[feed.session],
+    feed.day_ct,
+    feed.clock_ct,
+  ].concat(feed.left_out ? [feed.left_out.line] : []);
+  const market = frame.rows.flatMap((row) =>
+    [row.ticker.replace(/^\$/, ""), row.spot_disp, row.chg_pct_text].concat(
+      row.feed_live ? [] : [when(row)],
+    ),
+  );
+  const wrong = []
+    .concat(feed.schwab_down != null ? ["Feed", feed.schwab_down] : [])
+    .concat(feed.writer.cls === "neg" ? ["Record", feed.writer.line] : [])
+    .concat(
+      feed.sign_in.cls === "neg"
+        ? ["Schwab sign-in", feed.sign_in.line + " · " + feed.sign_in.why]
+        : [],
+    );
+  const line = alerting
+    ? wrong.concat(feed.left_out ? ["Left out"] : [])
+    : drawn(frame.news).flat();
+  return row1.concat(market, ["Search symbol"], line);
 }
 
 test("in both themes every text in the header reads against its background at 4.5 to 1 or better, in regular hours, with the indexes closed and with everything wrong", async ({
@@ -645,7 +751,7 @@ test("in both themes every text in the header reads against its background at 4.
           return null;
         };
         const read = (text, ink, ground) => ({
-          text: text.trim().slice(0, 40),
+          text: text.trim(),
           ink: painted(ground, ink).slice(0, 3),
           ground: painted(ground).slice(0, 3),
         });
@@ -661,12 +767,17 @@ test("in both themes every text in the header reads against its background at 4.
         out.push(read(box.placeholder, getComputedStyle(box, "::placeholder").color, behind(box)));
         return out;
       });
-      expect(texts.length).toBeGreaterThan(40);
-      expect(texts.map((t) => t.text)).toContain("Search symbol");
+      // every text the state is known to draw is among those measured: row 1's values, each
+      // market cell's, the search box's placeholder, and the line's alerts or news
+      const measured = texts.map((t) => t.text);
+      expect(measured).toContain("Search symbol");
+      const alerting = (await page.locator("#hLineLabel").textContent()) === "Alert";
+      for (const known of knownTexts(frame, alerting))
+        expect(measured, theme + ", " + state).toContain(known);
       const faint = texts
         .map((t) => Object.assign(t, { ratio: contrast(t.ink, t.ground) }))
         .filter((t) => t.ratio < 4.5)
-        .map((t) => theme + ", " + state + ": " + t.text + " " + t.ratio.toFixed(2));
+        .map((t) => theme + ", " + state + ": " + t.text.slice(0, 40) + " " + t.ratio.toFixed(2));
       expect(faint).toEqual([]);
     }
   }

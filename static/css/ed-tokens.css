@@ -14,8 +14,8 @@
   /* the Trade Desk reference is set in one DIN-style face everywhere, with tabular
      figures for numeric columns; Bahnschrift is Windows' own DIN, so no font is fetched. Panel and
      card titles are the same face condensed, in capitals. */
-  --ed-sans: "Bahnschrift", "DIN Alternate", "Barlow", "Inter", system-ui, -apple-system,
-    "Segoe UI", roboto, arial, sans-serif;
+  --ed-faces: "Bahnschrift", "DIN Alternate", "Barlow", "Inter";
+  --ed-sans: var(--ed-faces), system-ui, -apple-system, "Segoe UI", roboto, arial, sans-serif;
   --ed-mono: var(--ed-sans);
   --ed-title-stretch: 87.5%;
   --ed-title-spacing: 0.06em;

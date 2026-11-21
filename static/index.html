@@ -150,7 +150,19 @@
          Row 2: the market context and the news line, which gives way to the alert line. Nothing
          in it wraps: a narrow window takes the room from the filler, then draws the search box
          as its icon. ===== */
+      /* The header's layout is fitted to the console's own faces (--ed-faces). A machine with
+         none of them (Linux) draws it in this face: a wide system face scaled to the width of
+         Bahnschrift's, one weight, so every value still fits its cell. */
+      @font-face {
+        font-family: "Ed Header Fallback";
+        src: local("DejaVu Sans"), local("Verdana"), local("Liberation Sans"), local("Arial");
+        font-weight: 100 900;
+        size-adjust: 80%;
+      }
       header {
+        --ed-sans: var(--ed-faces), "Ed Header Fallback", sans-serif;
+        --ed-mono: var(--ed-sans);
+        font-family: var(--ed-sans);
         grid-area: header;
         display: flex;
         flex-direction: column;
