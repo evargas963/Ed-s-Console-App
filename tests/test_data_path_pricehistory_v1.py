@@ -32,6 +32,7 @@ import live_market_plane as lmp
 import server
 from app.market_data.schwab.streaming import capture, live_push
 from app.options.order_flow import streaming as ofs
+from calc.micro_structure import Candle
 from feed.chain_sweep import PRICE_HISTORY, ChainSweep, price_history_message
 from push import bars as push_bars
 from push import terrain as push_terrain
@@ -279,21 +280,21 @@ def test_today_s_candle_is_the_one_schwab_pushes():
         assert today.ts == opened.timestamp()
         assert push_terrain.atr(tk, after).daily == _wilder_atr(sent)
         drawn = push_bars.chart_bars(tk, "D", [], after)[-1]
-        assert (drawn["o"], drawn["h"], drawn["l"], drawn["c"]) == (
+        assert (drawn.open, drawn.high, drawn.low, drawn.close) == (
             today.open,
             today.high,
             today.low,
             today.close,
         )
         series(sent)
-        assert push_bars.chart_bars(tk, "D", [], after)[-1] == {
-            "t": schwabs["datetime"] / 1000,
-            "o": schwabs["open"],
-            "h": schwabs["high"],
-            "l": schwabs["low"],
-            "c": schwabs["close"],
-            "v": schwabs["volume"],
-        }
+        assert push_bars.chart_bars(tk, "D", [], after)[-1] == Candle(
+            schwabs["datetime"] / 1000,
+            schwabs["open"],
+            schwabs["high"],
+            schwabs["low"],
+            schwabs["close"],
+            schwabs["volume"],
+        )
     finally:
         bar_store._series.pop((tk, "1d"), None)
         lmp._by_ticker.pop(tk, None)
@@ -331,10 +332,10 @@ def test_the_atr_and_the_daily_chart_read_one_candle_for_today():
             lmp.record_from_level_one_equity(tk, q["native"], received_ts=q["ts_recv"])
         series(sent[:-1])
         pushed = dict(sent[-1], low=495)
-        assert push_bars.chart_bars(tk, "D", [], after)[-1]["l"] == 495 != sent[-1]["low"]
+        assert push_bars.chart_bars(tk, "D", [], after)[-1].low == 495 != sent[-1]["low"]
         assert push_terrain.atr(tk, after).daily == _wilder_atr([*sent[:-1], pushed])
         series(sent)
-        assert push_bars.chart_bars(tk, "D", [], after)[-1]["l"] == sent[-1]["low"] == 500.25
+        assert push_bars.chart_bars(tk, "D", [], after)[-1].low == sent[-1]["low"] == 500.25
         assert push_terrain.atr(tk, after).daily == _wilder_atr(sent)
     finally:
         bar_store._series.pop((tk, "1d"), None)

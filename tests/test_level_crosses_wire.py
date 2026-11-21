@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -284,7 +285,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     _forget()
     _publish_close(now=clock())
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    trade_ts = ofs.price_row("SPY", clock())["trade_ts"]
+    trade_ts = live_price_rows.price_row("SPY", clock())["trade_ts"]
     try:
         live = push_terrain.terrain("SPY", clock())
         lmp.record_feed_down()

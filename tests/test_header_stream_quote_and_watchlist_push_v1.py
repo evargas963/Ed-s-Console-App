@@ -59,7 +59,7 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
         assert lmp.get_quote(tk) is lmp.NO_QUOTE and srv.resolve_spot(tk, now=now)[0] is None
         # the daemon puts the same message in its plane; the console reads the daemon's one row
         lmp.record_from_level_one_equity(tk, native, received_ts=now)
-        row = ofs.price_row(tk, now)
+        row = live_price_rows.price_row(tk, now)
         assert row == live_price_rows.price_row(tk, now)
         assert row["spot"] == native["LAST_PRICE"]
         assert srv.resolve_spot(tk, now=now) == (

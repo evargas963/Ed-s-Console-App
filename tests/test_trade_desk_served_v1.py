@@ -709,7 +709,7 @@ def test_the_desk_window_is_schwabs_last_session_open_and_its_words_are_served()
 
 def test_every_bar_carries_its_change():
     for b in _load("real_spy_1m_bars_2026_09_24_25.json")["bars"][:50]:
-        bar = live_price_rows.with_change({"o": b["open"], "c": b["close"]})
+        bar = live_price_rows.bar_change(b["open"], b["close"])
         assert bar["chg"] == pytest.approx(b["close"] - b["open"])
         assert bar["chg_pct"] == pytest.approx((b["close"] - b["open"]) / b["open"] * 100)
         # as the pinned readout shows it: signed, two decimals, the percent beside it
@@ -721,5 +721,5 @@ def test_every_bar_carries_its_change():
 
 def test_a_bar_with_an_open_of_zero_shows_its_change_alone():
     """A percent of an open of 0 is not a number: the text is the change alone."""
-    bar = live_price_rows.with_change({"o": 0.0, "c": 1.5})
+    bar = live_price_rows.bar_change(0.0, 1.5)
     assert (bar["chg_pct"], bar["chg_text"]) == (None, "+1.50")

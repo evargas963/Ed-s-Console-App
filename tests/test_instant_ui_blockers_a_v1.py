@@ -13,6 +13,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import live_market_plane as lmp
@@ -118,38 +119,39 @@ def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path)
 
 def test_bars_roll_up_server_side_and_unknown_volume_stays_unknown():
     m = spy_minutes()[-10:]
-    assert m[-1]["v"] is None and all(b["v"] is not None for b in m[:-1])
+    sent = [replace(b) for b in m]  # the minutes as Schwab sent them, apart from the roll-up's
+    assert m[-1].volume is None and all(b.volume is not None for b in m[:-1])
     out = push_bars.aggregate_bars(m, "5")
-    assert [b["t"] for b in out] == [m[0]["t"], m[5]["t"]]
+    assert [b.ts for b in out] == [m[0].ts, m[5].ts]
     first, second = out
     head, tail = m[:5], m[5:]
-    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (
-        head[0]["o"],
-        max(b["h"] for b in head),
-        min(b["l"] for b in head),
-        head[-1]["c"],
-        sum(b["v"] for b in head),
+    assert (first.open, first.high, first.low, first.close, first.volume) == (
+        head[0].open,
+        max(b.high for b in head),
+        min(b.low for b in head),
+        head[-1].close,
+        sum(b.volume for b in head),
     )
-    assert (second["o"], second["h"], second["l"], second["c"]) == (
-        tail[0]["o"],
-        max(b["h"] for b in tail),
-        min(b["l"] for b in tail),
-        tail[-1]["c"],
+    assert (second.open, second.high, second.low, second.close) == (
+        tail[0].open,
+        max(b.high for b in tail),
+        min(b.low for b in tail),
+        tail[-1].close,
     )
-    assert second["v"] is None, (
+    assert second.volume is None, (
         "a bucket with an unreported minute has unknown volume, not a partial sum"
     )
-    assert push_bars.aggregate_bars(m, "1") == m
+    assert push_bars.aggregate_bars(m, "1") == m == sent, "a rolled-up minute stands as sent"
 
 
 def test_daily_roll_up_is_keyed_on_the_et_trading_date():
     m = spy_minutes()
     thursday, friday = m[:390], m[390:]
     out = push_bars.aggregate_bars(m, "D")
-    assert len(out) == 2 and out[0]["h"] == max(b["h"] for b in thursday)
-    assert out[0]["v"] == sum(b["v"] for b in thursday)
-    assert [b["t"] for b in out] == [thursday[0]["t"], friday[0]["t"]]
-    assert (out[1]["o"], out[1]["c"], out[1]["v"]) == (friday[0]["o"], friday[-1]["c"], None)
+    assert len(out) == 2 and out[0].high == max(b.high for b in thursday)
+    assert out[0].volume == sum(b.volume for b in thursday)
+    assert [b.ts for b in out] == [thursday[0].ts, friday[0].ts]
+    assert (out[1].open, out[1].close, out[1].volume) == (friday[0].open, friday[-1].close, None)
 
 
 def test_the_price_row_carries_feed_state_and_trade_age_and_no_bar():

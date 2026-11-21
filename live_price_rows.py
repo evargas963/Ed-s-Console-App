@@ -15,7 +15,7 @@ them; the last values Schwab sent stay (docs/DATA_FLOW.md §2 D5).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
@@ -25,22 +25,69 @@ from time_et import age_text, ct_label
 SPOT_SOURCE = "streaming_plane"
 
 
-def with_change(bar: dict[str, Any]) -> dict[str, Any]:
-    """`bar` with its change over the bar (close - open) and that change as a percent of open.
+class BarChange(TypedDict):
+    """A bar's change over the bar, that change as a percent of its open, and the screen's text."""
+
+    chg: float
+    chg_pct: float | None
+    chg_text: str
+
+
+class PriceRow(TypedDict):
+    """The finished row the screen paints for one symbol (price_row), each key as served.
+
+    A value is None until Schwab sends it, and when the one it sent is not a number; a text is
+    None with its value. The times are epoch seconds.
+    """
+
+    ticker: str
+    spot: float | None
+    spot_disp: str | None
+    spot_source: str | None
+    feed_live: bool
+    feed_label: str
+    outage: str | None
+    bid: float | None
+    ask: float | None
+    bid_text: str | None
+    ask_text: str | None
+    bid_size: float | None
+    ask_size: float | None
+    mark: float | None
+    quote_ts: float | None
+    quote_time_ct: str | None
+    last_size: float | None
+    total_volume: float | None
+    last_size_text: str | None
+    total_volume_text: str | None
+    chg_pct: float | None
+    chg_pct_regular: float | None
+    chg_pct_text: str | None
+    chg_pct_regular_text: str | None
+    net_change: float | None
+    open_price: float | None
+    high_price: float | None
+    low_price: float | None
+    trade_ts: float | None
+    trade_time_ct: str | None
+    trade_age_text: str | None
+    ts_recv: float | None
+
+
+def bar_change(bar_open: float, bar_close: float) -> BarChange:
+    """Return a bar's change over the bar (close - open) and that change as a percent of its open.
 
     THE bar-change computation for every bar served, with its text as the screen shows it
     (`chg_text`: signed, two decimals, the percent beside it, "+1.25 (+0.18%)"). Every bar holds
     its open and close (a Candle's); a percent of an open of 0 is not a number: None, and the
     text shows the change alone.
     """
-    chg = bar["c"] - bar["o"]
-    pct = chg / bar["o"] * 100 if bar["o"] else None
-    bar["chg"], bar["chg_pct"] = chg, pct
+    chg = bar_close - bar_open
+    pct = chg / bar_open * 100 if bar_open else None
     text = f"{chg:+.2f}"
     if pct is not None:  # its percent beside it, when it is a number
         text += f" ({pct:+.2f}%)"
-    bar["chg_text"] = text
-    return bar
+    return {"chg": chg, "chg_pct": pct, "chg_text": text}
 
 
 def _trade_age_text(trade_ts: float | None, now: float) -> str | None:
@@ -60,7 +107,7 @@ def spot(ticker: str) -> float | None:
     return lmp.get_quote(ticker_storage_key(ticker)).spot
 
 
-def price_row(ticker: str, now: float) -> dict[str, Any]:
+def price_row(ticker: str, now: float) -> PriceRow:
     """Return the finished row the screen paints for one symbol, as it is at `now`.
 
     Each field is the last value Schwab sent. Not live, it sets `feed_live` false, `feed_label`

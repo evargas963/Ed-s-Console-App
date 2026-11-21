@@ -31,7 +31,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import live_market_plane as _lmp
-import live_price_rows
 import time_et
 from app.market_data.schwab.streaming.live_push import is_forwarded
 from app.market_data.schwab.streaming.live_ui import HEARTBEAT_SEC
@@ -53,14 +52,6 @@ if TYPE_CHECKING:
     from app.market_data.schwab.streaming.capture import Daemon
 
 log = logging.getLogger(__name__)
-
-
-def price_row(ticker: str, now: float) -> dict[str, Any]:
-    """Return `ticker`'s price row at `now`.
-
-    It is the daemon's one row (live_price_rows.price_row), the one the browser reads.
-    """
-    return live_price_rows.price_row(ticker, now)
 
 
 def price_state(

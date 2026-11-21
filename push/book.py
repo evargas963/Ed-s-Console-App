@@ -12,7 +12,7 @@ from typing import Any
 import live_market_plane as lmp
 from app.options.order_flow.history import LEAN
 from app.options.order_flow.state import newest_book
-from app.options.order_flow.streaming import price_row, price_state
+from app.options.order_flow.streaming import price_state
 from calc.order_flow import (
     BOOK_VENUES,
     COMPOSITE,
@@ -23,6 +23,7 @@ from calc.order_flow import (
     readout_card,
 )
 from instrument_identity import ticker_storage_key
+from live_price_rows import price_row
 from option_contract import NO_TOP, StreamedTop
 from push.asked import venue_asked
 from time_et import CLOSE_AUCTION, ET, OPEN_AUCTION, age_text, auction, ct_label

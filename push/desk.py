@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
+from calc.micro_structure import Candle
 from numeric_contract import count_text, price_text
 from push.bars import chart_bars, held_minutes
 from push.terrain import terrain
@@ -71,7 +72,7 @@ def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[
     cross_items = _cross_items(in_window)
     marked = [it for it in cross_items if it["marker"]]
     chart = chart_bars(tk, tf, held_minutes(tk, limit), now)
-    off_chart = [it for it in marked if not chart or it["ts"] < chart[0]["t"]]
+    off_chart = [it for it in marked if not chart or it["ts"] < chart[0].ts]
     items = [
         *cross_items,
         *_terrain_items(tk, now),
@@ -96,12 +97,12 @@ def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[
     }
 
 
-def _off_chart_text(off: int, marked: int, chart: list[dict[str, Any]]) -> str:
+def _off_chart_text(off: int, marked: int, chart: list[Candle]) -> str:
     """Return the words for the chart's markers with no bar: empty when every marker has one."""
     if not off:
         return ""
     where = (
-        f"their crosses are before the chart's first bar, {ct_label(chart[0]['t'])}"
+        f"their crosses are before the chart's first bar, {ct_label(chart[0].ts)}"
         if chart
         else "the chart holds no bars"
     )

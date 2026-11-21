@@ -7,12 +7,13 @@ Read from State: the bars and candles the bar writer holds (state.bar_store) and
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import date, datetime
-from typing import Any
+from typing import Any, TypedDict
 
 import live_market_plane as lmp
-import live_price_rows as _lpr  # with_change: the bar-change computation
 from calc.micro_structure import Candle
+from live_price_rows import bar_change
 from numeric_contract import count_text, price_text
 from push.asked import tf_asked
 from state import bar_store
@@ -25,9 +26,34 @@ BARS_LIMIT_MAX = 12000
 #: PRICE_HISTORY): chart timeframe -> series
 SCHWAB_SERIES = {"5": "5m", "15": "15m", "30": "30m", "D": "1d"}
 
+#: a chart bar as served (_served), by the chart's own keys: its start `t` (epoch seconds), its
+#: open, high, low, close and volume (`o`, `h`, `l`, `c`, `v`), its change (live_price_rows
+#: BarChange), and each as the screen shows it. A mapping by those keys, built once at the frame:
+#: a record cannot declare a field named `l` (pycodestyle E741). A bar is a Candle until then.
+ServedBar = dict[str, float | str | list[str] | None]
 
-def _bar_dict(c: Candle) -> dict[str, Any]:
-    return {"t": float(c.ts), "o": c.open, "h": c.high, "l": c.low, "c": c.close, "v": c.volume}
+
+class LastBar(TypedDict):
+    """The newest completed minute a `bars` panel holds: its start and its label."""
+
+    t: float
+    label: str
+
+
+class BarsPanel(TypedDict):
+    """The `bars` panel (bars)."""
+
+    bars: list[ServedBar]
+    tf: str
+    last_bar: LastBar | None
+
+
+class FormingPanel(TypedDict):
+    """The `forming` panel (forming)."""
+
+    tf: str
+    bars: list[ServedBar]
+    trade_time_ct: str | None
 
 
 def todays_candles(tk: str, now: datetime) -> list[Candle]:
@@ -71,7 +97,7 @@ def daily_candles(tk: str, now: datetime) -> list[Candle]:
     return daily + todays_candles(tk, now)
 
 
-def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+def bars(ticker: str, now: float, params: dict[str, Any]) -> BarsPanel:
     """Return the `bars` panel at `now`: the ticker's bars at chart timeframe `tf`, newest-last.
 
     The page's socket sends it (live_ui, PAGE_PANELS) to every chart, at once and with each new
@@ -89,22 +115,34 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     return {
         "bars": [_served(b) for b in shown],
         "tf": tf,
-        "last_bar": {"t": held[-1]["t"], "label": ct_label(held[-1]["t"])} if held else None,
+        "last_bar": {"t": float(held[-1].ts), "label": ct_label(held[-1].ts)} if held else None,
     }
 
 
-def _served(b: dict[str, Any]) -> dict[str, Any]:
+def _served(bar: Candle) -> ServedBar:
     """Return a chart bar as served: with its change, its start's labels and its texts."""
+    change = bar_change(bar.open, bar.close)
     return {
-        **_lpr.with_change(b),
-        "time_ct": ct_label(b["t"]),
-        "ticks": ct_ticks(b["t"]),
-        "v_text": count_text(b["v"]),
-        **{f"{k}_text": price_text(b[k]) for k in "ohlc"},
+        "t": float(bar.ts),
+        "o": bar.open,
+        "h": bar.high,
+        "l": bar.low,
+        "c": bar.close,
+        "v": bar.volume,
+        "chg": change["chg"],
+        "chg_pct": change["chg_pct"],
+        "chg_text": change["chg_text"],
+        "time_ct": ct_label(bar.ts),
+        "ticks": ct_ticks(bar.ts),
+        "v_text": count_text(bar.volume),
+        "o_text": price_text(bar.open),
+        "h_text": price_text(bar.high),
+        "l_text": price_text(bar.low),
+        "c_text": price_text(bar.close),
     }
 
 
-def forming(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+def forming(ticker: str, now: float, params: dict[str, Any]) -> FormingPanel:
     """Return the `forming` panel at `now`: the chart bars at `tf` Schwab has not sent whole yet.
 
     Sent with each price row and each new bar (server.PRICED_PANELS, BARS_PANELS) for the page to
@@ -122,14 +160,14 @@ def forming(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     if tf == "D":
         daily = daily_candles(ticker, at)
         today = [c for c in daily[-1:] if datetime.fromtimestamp(c.ts, ET).date() == at.date()]
-        return {"tf": tf, "bars": [_served(_bar_dict(c)) for c in today], "trade_time_ct": None}
+        return {"tf": tf, "bars": [_served(c) for c in today], "trade_time_ct": None}
     newest = bar_store.bars_1m(ticker, int(tf))
     built = [m for m in lmp.built_minutes(ticker) if not newest or m.ts > newest[-1].ts]
     if not built:
         return {"tf": tf, "bars": [], "trade_time_ct": None}
     first = _tf_bucket_key(built[0].ts, tf)
-    minutes = [_bar_dict(c) for c in newest if _tf_bucket_key(c.ts, tf) == first] + [
-        _bar_dict(Candle(m.ts, m.open, m.high, m.low, m.close)) for m in built
+    minutes = [c for c in newest if _tf_bucket_key(c.ts, tf) == first] + [
+        Candle(m.ts, m.open, m.high, m.low, m.close) for m in built
     ]
     return {
         "tf": tf,
@@ -138,14 +176,14 @@ def forming(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def held_minutes(ticker: str, limit: object) -> list[dict[str, Any]]:
+def held_minutes(ticker: str, limit: object) -> list[Candle]:
     """`ticker`'s newest `limit` 1-minute bars the console holds, oldest first: a chart's span.
 
     From state.bar_store. A `limit` not a count from 1 to BARS_LIMIT_MAX raises.
     """
     if type(limit) is not int or not 1 <= limit <= BARS_LIMIT_MAX:
         raise ValueError(f"limit {limit!r} is not a count from 1 to {BARS_LIMIT_MAX}")
-    return [_bar_dict(c) for c in bar_store.bars_1m(ticker, limit)]
+    return bar_store.bars_1m(ticker, limit)
 
 
 def _tf_bucket_key(t: float, tf: str) -> date | float:
@@ -180,9 +218,7 @@ def aggregate_vwap(rows: Sequence[Sequence[float]], tf: str) -> list[list[float]
     return out
 
 
-def chart_bars(
-    tk: str, tf: str, minutes: list[dict[str, Any]], now: datetime
-) -> list[dict[str, Any]]:
+def chart_bars(tk: str, tf: str, minutes: list[Candle], now: datetime) -> list[Candle]:
     """`tk`'s bars at chart timeframe `tf` over the span of `minutes` (its 1-minute bars).
 
     A timeframe Schwab sends (SCHWAB_SERIES) is Schwab's series as the bar writer holds it, but
@@ -193,9 +229,9 @@ def chart_bars(
     up from the 1-minute bars. The daily bars are always daily_candles', the ATR's own.
     """
     if tf == "D":
-        first_day = datetime.fromtimestamp(minutes[0]["t"], ET).date() if minutes else None
+        first_day = datetime.fromtimestamp(minutes[0].ts, ET).date() if minutes else None
         return [
-            _bar_dict(c)
+            c
             for c in daily_candles(tk, now)
             if first_day is None or first_day <= datetime.fromtimestamp(c.ts, ET).date()
         ]
@@ -203,12 +239,12 @@ def chart_bars(
     if not sent:
         return aggregate_bars(minutes, tf)
     newest = sent[-1].ts
-    first = minutes[0]["t"] if minutes else sent[0].ts
-    schwab = [_bar_dict(c) for c in sent if first <= c.ts < newest]
-    return schwab + aggregate_bars([m for m in minutes if m["t"] >= newest], tf)
+    first = minutes[0].ts if minutes else sent[0].ts
+    schwab = [c for c in sent if first <= c.ts < newest]
+    return schwab + aggregate_bars([m for m in minutes if m.ts >= newest], tf)
 
 
-def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
+def aggregate_bars(bars: list[Candle], tf: str) -> list[Candle]:
     """Roll up 1m bars to a chart timeframe: THE chart-timeframe roll-up.
 
     The timeframe is "1", "3", "5", "15", "30", "60" minutes, or "D" = the ET trading date: first
@@ -219,23 +255,18 @@ def aggregate_bars(bars: list[dict[str, Any]], tf: str) -> list[dict[str, Any]]:
     """
     if tf == "1":
         return list(bars)
-    out: list[dict[str, Any]] = []
-    cur: dict[str, Any] | None = None
+    out: list[Candle] = []
     cur_key = None
     for b in bars:
-        k = _tf_bucket_key(float(b["t"]), tf)
-        if cur is None or k != cur_key:
-            if cur is not None:
-                out.append(cur)
-            cur = dict(b)
-            if isinstance(k, float):
-                cur["t"] = k
+        k = _tf_bucket_key(float(b.ts), tf)
+        if not out or k != cur_key:
+            # the bucket's own bar: a copy, so the minute it is rolled from stands as it was
+            out.append(replace(b, ts=k) if isinstance(k, float) else replace(b))
             cur_key = k
             continue
-        cur["h"] = max(cur["h"], b["h"])
-        cur["l"] = min(cur["l"], b["l"])
-        cur["c"] = b["c"]
-        cur["v"] = None if (cur["v"] is None or b["v"] is None) else cur["v"] + b["v"]
-    if cur is not None:
-        out.append(cur)
+        cur = out[-1]
+        cur.high = max(cur.high, b.high)
+        cur.low = min(cur.low, b.low)
+        cur.close = b.close
+        cur.volume = None if (cur.volume is None or b.volume is None) else cur.volume + b.volume
     return out

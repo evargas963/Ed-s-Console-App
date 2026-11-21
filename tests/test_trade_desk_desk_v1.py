@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import time_et
+from calc.micro_structure import Candle
 from push import bars as push_bars
 from tests.feed_live_helper import spy_minutes
 from time_et import ET
@@ -29,17 +30,10 @@ _THIN = json.loads(
 )["candles"]
 
 
-def _thin_bars(series: str) -> list[dict]:
+def _thin_bars(series: str) -> list[Candle]:
     """Schwab's candles of `series` in that half hour, each as the chart holds a bar."""
     return [
-        {
-            "t": c["datetime"] / 1000,
-            "o": c["open"],
-            "h": c["high"],
-            "l": c["low"],
-            "c": c["close"],
-            "v": c["volume"],
-        }
+        Candle(c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
         for c in _THIN[series]
     ]
 
@@ -50,16 +44,16 @@ def test_thirty_minute_rollup_is_first_open_max_high_min_low_last_close():
     assert len(out) == 2
     first, second = out
     opening, next_half = hour[:30], hour[30:]
-    assert (first["o"], first["h"], first["l"], first["c"], first["v"]) == (
-        opening[0]["o"],
-        max(m["h"] for m in opening),
-        min(m["l"] for m in opening),
-        opening[-1]["c"],
-        sum(m["v"] for m in opening),
+    assert (first.open, first.high, first.low, first.close, first.volume) == (
+        opening[0].open,
+        max(m.high for m in opening),
+        min(m.low for m in opening),
+        opening[-1].close,
+        sum(m.volume for m in opening),
     )
-    assert (second["o"], second["c"]) == (next_half[0]["o"], next_half[-1]["c"])
-    assert second["t"] - first["t"] == 1800
-    assert datetime.fromtimestamp(first["t"], ET).isoformat() == "2026-09-24T09:30:00-04:00"
+    assert (second.open, second.close) == (next_half[0].open, next_half[-1].close)
+    assert second.ts - first.ts == 1800
+    assert datetime.fromtimestamp(first.ts, ET).isoformat() == "2026-09-24T09:30:00-04:00"
 
 
 @pytest.mark.parametrize("tf", ["5", "15", "30"])
@@ -74,13 +68,15 @@ def test_a_rolled_up_bar_carries_its_steps_start_as_schwabs_own_bar_does(tf):
     times are read).
     """
     minutes, own = _thin_bars("1m"), _thin_bars(push_bars.SCHWAB_SERIES[tf])
-    assert datetime.fromtimestamp(own[0]["t"], ET).strftime("%H:%M") == "05:30"
-    assert minutes[0]["t"] - own[0]["t"] == 60  # the step's first minute has no candle
+    assert datetime.fromtimestamp(own[0].ts, ET).strftime("%H:%M") == "05:30"
+    assert minutes[0].ts - own[0].ts == 60  # the step's first minute has no candle
     rolled = push_bars.aggregate_bars(minutes, tf)
-    assert [b["t"] for b in rolled] == [b["t"] for b in own]
-    assert [[b[k] for k in "ohlc"] for b in rolled] == [[b[k] for k in "ohlc"] for b in own]
-    curve = push_bars.aggregate_vwap([[m["t"], m["c"]] for m in minutes], tf)
-    assert [row[0] for row in curve] == [b["t"] for b in own]
+    assert [b.ts for b in rolled] == [b.ts for b in own]
+    assert [(b.open, b.high, b.low, b.close) for b in rolled] == [
+        (b.open, b.high, b.low, b.close) for b in own
+    ]
+    curve = push_bars.aggregate_vwap([[m.ts, m.close] for m in minutes], tf)
+    assert [row[0] for row in curve] == [b.ts for b in own]
 
 
 def test_the_bars_panel_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():
