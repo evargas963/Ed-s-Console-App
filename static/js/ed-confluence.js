@@ -22,7 +22,12 @@
     ],
     ["Strike", "", "Listed strike.", false],
     ["Δ spot", "points", "Strike minus the live price.", false],
-    ["Composite", "", "The score for this strike, up to the preset ceiling.", true],
+    [
+      "Composite",
+      "size, not direction",
+      "How large this strike's positions and activity are against the expiry's other strikes, up to the preset ceiling. It carries no direction.",
+      true,
+    ],
     ["Net GEX", "$ / 1%", "Net gamma exposure in dollars per 1% move.", false],
     ["OI", "contracts", "Open interest in contracts. Green intensity shows size.", false],
     ["P/C GEX", "ratio", "Put gamma divided by call gamma. Above 1 is put-heavy.", false],
@@ -461,7 +466,7 @@
     HEADS.forEach(function (col, index) {
       var secondary = "<small>" + esc(col[1]) + "</small>";
       if (index === 4) {
-        secondary = "<small>" + esc(text(body.scale_text)) + "</small>";
+        secondary += "<small>" + esc(text(body.scale_text)) + "</small>";
         if (body.preset) secondary += "<small>" + esc(body.preset) + "</small>";
       }
       heads +=
