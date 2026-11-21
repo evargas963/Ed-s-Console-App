@@ -66,6 +66,9 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
         // Schwab's $VIX, $SPX and $NDX messages, fixtures/header_volatility.json), so the foot
         // strip's three indexes take a line of their own
         [READOUT_LIVE, MARKET.market_live],
+        // the evening's: Schwab has marked the indexes Closed, and each stands marked with the
+        // served word, its trade time and its age, on the strip and on the Volatility card
+        [READOUT_LIVE, MARKET.market_closed],
       ]) {
         await openDesk(page, body, false, rows);
         await expect(card(page).locator(".liq-body > *").first()).toBeVisible();
@@ -74,7 +77,12 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
         if (rows)
           for (const row of rows)
             await expect(page.locator("#tdmIdx" + row.ticker.replace(/^\$/, ""))).toContainText(
-              row.spot_disp + row.chg_pct_text + " · last trade " + row.trade_time_ct,
+              row.spot_disp +
+                row.chg_pct_text +
+                (row.feed_live ? "" : " · " + row.feed_label) +
+                " · last trade " +
+                row.trade_time_ct +
+                (row.feed_live ? "" : " · " + row.trade_age_text),
             );
         // the whole Desk at the operator's window is measured with his fonts: Bahnschrift, the
         // Desk's face, is Windows' own, and no other system draws it at its widths
@@ -143,7 +151,11 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
           // the laptop window, which wraps the map's toolbar and legend
           [width === 1920 && process.platform === "win32", width === 1920 ? 356 : 380],
         );
-        const state = width + "×" + height + (rows ? " with the market's rows " : " ");
+        const state =
+          width +
+          "×" +
+          height +
+          (rows ? " with the market's rows " + rows[0].feed_label + " " : " ");
         expect(cut, state + JSON.stringify(cut)).toEqual([]);
       }
     }

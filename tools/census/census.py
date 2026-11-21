@@ -2218,7 +2218,9 @@ for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f 
             add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author")
 by_line("workarounds: ", "; ")
 
-FEED = ("app/market_data/schwab/", "option_contract.py", "numeric_contract.py")
+#: where Schwab's own dicts are read: Feed's folder (docs/ARCHITECTURE.md §1) and the two root
+#: modules every part takes a Schwab field through
+FEED = ("feed/", "option_contract.py", "numeric_contract.py")
 DICT_READ = "dict reads with .get outside the Feed (a dict whose keys nothing guarantees; rule 12)"
 add(S, DICT_READ, "12", "ast")
 for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:

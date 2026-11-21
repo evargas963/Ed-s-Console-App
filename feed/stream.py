@@ -17,7 +17,7 @@ from schwab.streaming import StreamClient
 from numeric_contract import schwab_number
 
 #: schwab-py's field names of each service's items, as its add_*_handler names them (NEWS_HEADLINE
-#: has none: its items are taken as sent)
+#: has none: its items keep Schwab's field numbers, read by feed.connection.news_headline)
 FIELD_NAMES = {
     "LEVELONE_EQUITIES": StreamClient.LevelOneEquityFields,
     "CHART_EQUITY": StreamClient.ChartEquityFields,
