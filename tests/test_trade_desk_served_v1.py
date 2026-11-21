@@ -19,7 +19,6 @@ import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from calc.liquidity_value_engine import LEVEL_NAMES, PHASE2A_LEVEL_IDS
-from calc.micro_structure import Candle
 from calc.order_flow import (
     FlowInput,
     _tilt,
@@ -34,7 +33,6 @@ from calc.terrain_engine import (
     price_relations,
 )
 from calc.terrain_read import level_side
-from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from db import LevelCrossEvent
 from option_contract import read_chain
 from push import confluence as push_confluence
@@ -46,8 +44,10 @@ from tests.feed_live_helper import (
     daemon_bars,
     daemon_status,
     hold_schwab_daily,
+    keep_candles,
     newest_bars,
     price_history,
+    publish_capture,
     recorder,
     stored_crosses,
 )
@@ -164,18 +164,7 @@ def test_a_marker_before_the_charts_first_bar_is_counted_and_worded():
         for b in minutes
         if datetime.fromtimestamp(b["timestamp"] / 1000, ET).date().isoformat() == "2026-09-25"
     ]
-    for b in minutes:
-        bar_store.keep_bar(
-            tk,
-            Candle(
-                ts=b["timestamp"] / 1000,
-                open=b["open"],
-                high=b["high"],
-                low=b["low"],
-                close=b["close"],
-                volume=b["volume"],
-            ),
-        )
+    keep_candles(tk, minutes)
     try:
         body, _rows = _desk_events(
             tk,
@@ -345,20 +334,8 @@ def _forget(tk):
 
 def _priced(tk, chain, spot, ts_utc):
     """Price the chain as the console prices a stored capture (at its own time and spot)."""
-    server._publish_levels(
-        tk,
-        captures=[
-            StoredCapture(
-                et_date=datetime.fromtimestamp(ts_utc, time_et.ET).date().isoformat(),
-                ts_utc=ts_utc,
-                spot=spot,
-                spot_ts=None,
-                basis=CAPTURE_BASIS,
-                contracts=read_chain(chain),
-            )
-        ],
-        now=datetime.fromtimestamp(ts_utc, time_et.ET),
-    )
+    at = datetime.fromtimestamp(ts_utc, time_et.ET)
+    publish_capture(tk, chain, ts_utc, spot, at.date().isoformat(), at)
     return level_store.published_levels(tk).served()
 
 
@@ -386,18 +363,7 @@ def spy_levels():
     _forget(DESK)
     terrain = _priced(DESK, SPY_0DTE.chain, SPY_0DTE.spot, SPY_0DTE.now.timestamp())
     spot = bars[-1]["close"]
-    for b in bars:
-        bar_store.keep_bar(
-            DESK,
-            Candle(
-                ts=b["timestamp"] / 1000,
-                open=b["open"],
-                high=b["high"],
-                low=b["low"],
-                close=b["close"],
-                volume=b["volume"],
-            ),
-        )
+    keep_candles(DESK, bars)
     server._publish_price_levels(DESK, FRIDAY_CLOSE)  # as the bar writer does
 
     def serve(tf="1"):

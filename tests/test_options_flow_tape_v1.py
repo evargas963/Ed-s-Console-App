@@ -25,18 +25,16 @@ from __future__ import annotations
 from datetime import datetime
 
 import live_market_plane as lmp
-import server
 from app.options.order_flow import history, state
 from app.options.order_flow.history import recent_prints, tape_row
 from app.options.order_flow.state import OrderFlowState, read_book
 from app.options.order_flow.streaming import _ingest_pushed
-from calibration.complete_chain_capture import StoredCapture
-from option_contract import read_chain, read_contract
+from option_contract import read_contract
 from push import contract as push_contract
 from push import tape as push_tape
 from state import level_store
 from stream_spine import MessageBus, verbatim_msg
-from tests.feed_live_helper import apply_record, on_the_bus
+from tests.feed_live_helper import apply_record, on_the_bus, publish_capture
 from tests.shared_helpers import fixture_json
 from time_et import ET
 
@@ -252,19 +250,13 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
             push_tape.tape("SPY", at),
             [push_contract.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)],
         )
-        server._publish_levels(
+        publish_capture(
             "SPY",
-            captures=[
-                StoredCapture(
-                    contracts=read_chain(close["chain"]),
-                    ts_utc=close["ts_utc"],
-                    spot=close["spot"],
-                    spot_ts=None,
-                    et_date=at_close.date().isoformat(),
-                    basis=server.CAPTURE_BASIS,
-                )
-            ],
-            now=at_close,
+            close["chain"],
+            close["ts_utc"],
+            close["spot"],
+            at_close.date().isoformat(),
+            at_close,
         )
         body = push_tape.tape("SPY", at)
         sides = [push_contract.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)]

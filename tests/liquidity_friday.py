@@ -15,9 +15,8 @@ import pytest
 
 import live_market_plane as lmp
 import server as srv
-from calc.micro_structure import Candle
 from state import bar_store, price_level_store
-from tests.feed_live_helper import daemon_bars
+from tests.feed_live_helper import daemon_bars, keep_candles
 from time_et import ET
 
 TK = "ZZLIQ"
@@ -63,18 +62,7 @@ def published():
             del price_level_store._MATERIALIZED_SNAPSHOTS[key]
 
     forget()
-    for b in friday_bars():
-        bar_store.keep_bar(
-            TK,
-            Candle(
-                ts=b["timestamp"] / 1000,
-                open=b["open"],
-                high=b["high"],
-                low=b["low"],
-                close=b["close"],
-                volume=b["volume"],
-            ),
-        )
+    keep_candles(TK, friday_bars())
     srv._publish_price_levels(TK, FRIDAY)
     yield
     forget()
