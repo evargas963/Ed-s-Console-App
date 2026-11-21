@@ -39,7 +39,7 @@ const SURFACE = REAL.surface,
   TERRAIN = REAL.terrain,
   STRIKES = REAL.strikes,
   CHAIN = REAL.chain;
-const K = SURFACE.spot_strike; // 270, the strike at the price
+const K = SURFACE.cells.find((c) => c.spot).strike; // 270, the strike at the price
 const EXPIRIES = SURFACE.expirations.map((e) => e.expiry);
 const E1 = EXPIRIES[0],
   E2 = EXPIRIES[1]; // 2026-11-13 (the front one), 2026-11-16

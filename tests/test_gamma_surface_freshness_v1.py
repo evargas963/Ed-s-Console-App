@@ -99,7 +99,8 @@ def test_the_live_surface_is_served_with_the_live_price():
     # 2026-09-02 has no /markets answer held: the levels, and so the surface, are not live
     assert d["source"] == "terrain_live_cache" and d["levels_state"] == "NOT LIVE"
     assert [c["gex"] for c in d["cells"]] == [c["gex"] for c in surface["cells"]]  # served verbatim
-    assert d["spot"] == 206.0 and surface["spot"] == _CRWD["spot"]
+    # computed at the chain's price (the levels' own, snap.spot); the row marked is the live price's
+    assert level_store.published_levels(_ON).snap.spot == _CRWD["spot"] and "spot" not in d
     assert [c["strike"] for c in d["cells"] if c["spot"]] == [
         min(surface["strikes"], key=lambda k: abs(k - 206.0))
     ]

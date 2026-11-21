@@ -21119,8 +21119,6 @@
     ],
     "contracts_total": 12996,
     "contracts_used": 12996,
-    "spot": 757.075,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497441.934527,
@@ -21184,8 +21182,7 @@
         "volume": 185728.0
       },
       "missing_expiry": null
-    },
-    "spot_strike": 757.0
+    }
   },
   "surface_missing_expiry": {
     "ticker": "SPY",
@@ -21402,8 +21399,6 @@
     ],
     "contracts_total": 12996,
     "contracts_used": 12996,
-    "spot": 757.075,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497441.934527,
@@ -21467,8 +21462,7 @@
         "volume": null
       },
       "missing_expiry": "2026-11-14"
-    },
-    "spot_strike": 757.0
+    }
   },
   "surface_second_expiry": {
     "ticker": "SPY",
@@ -22044,8 +22038,6 @@
     ],
     "contracts_total": 12996,
     "contracts_used": 12996,
-    "spot": 757.075,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497441.934527,
@@ -22109,8 +22101,7 @@
         "volume": 22133.0
       },
       "missing_expiry": null
-    },
-    "spot_strike": 757.0
+    }
   },
   "chain": {
     "ticker": "SPY",

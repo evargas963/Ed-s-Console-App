@@ -10638,8 +10638,6 @@
     ],
     "contracts_total": 2440,
     "contracts_used": 2440,
-    "spot": 269.425,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -10693,8 +10691,7 @@
         "volume": 31885.0
       },
       "missing_expiry": null
-    },
-    "spot_strike": 270.0
+    }
   },
   "surface_missing_expiry": {
     "ticker": "AMZN",
@@ -10911,8 +10908,6 @@
     ],
     "contracts_total": 2440,
     "contracts_used": 2440,
-    "spot": 269.425,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -10966,8 +10961,7 @@
         "volume": null
       },
       "missing_expiry": "2026-11-14"
-    },
-    "spot_strike": 270.0
+    }
   },
   "surface_second_expiry": {
     "ticker": "AMZN",
@@ -11543,8 +11537,6 @@
     ],
     "contracts_total": 2440,
     "contracts_used": 2440,
-    "spot": 269.425,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -11598,8 +11590,7 @@
         "volume": 3866.0
       },
       "missing_expiry": null
-    },
-    "spot_strike": 270.0
+    }
   },
   "surface_all": {
     "ticker": "AMZN",
@@ -68698,8 +68689,6 @@
     ],
     "contracts_total": 2440,
     "contracts_used": 2440,
-    "spot": 269.425,
-    "spot_source": "streaming_plane",
     "stream_overlay_contracts": 0,
     "stream_overlay_symbols": [],
     "stream_overlay_computed_ts_utc": 1794497958.223641,
@@ -68753,8 +68742,7 @@
         "volume": 31885.0
       },
       "missing_expiry": null
-    },
-    "spot_strike": 270.0
+    }
   },
   "chain": {
     "ticker": "AMZN",
