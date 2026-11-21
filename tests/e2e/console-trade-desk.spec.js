@@ -339,16 +339,118 @@ test("Desk: an offline price keeps its last trade time on the map", async ({ pag
     localStorage.setItem("ed_sub", "desk");
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#tdmIdxSPX")).toContainText("last trade 14:00:01 CT");
-  await expect(page.locator("#tdmIdxSPX")).toHaveAttribute("title", "last trade 14:00:01 CT");
+  await expect(page.locator("#tdmIdxSPX")).toContainText("OFFLINE · last trade 14:00:01 CT");
+  await expect(page.locator("#tdmIdxSPX")).toHaveAttribute(
+    "title",
+    "Schwab LEVELONE_EQUITIES feed down during RTH",
+  );
   await expect(page.locator("#tdmCardVol")).toContainText(
-    "16.40 (+1.20%) · last trade 14:00:02 CT",
+    "16.40 (+1.20%) · OFFLINE · last trade 14:00:02 CT",
   );
   await expect(page.locator("#tdmCardFlow")).toContainText("OFFLINE");
   await expect(page.locator("#tdmCardFlow .tdm-src")).toContainText("last trade 14:00:03 CT");
   await expect(page.locator("#tdmCardFlow .tdm-src")).toContainText(
     "Schwab LEVELONE_EQUITIES feed down during RTH",
   );
+});
+
+test("Desk: an index that stops stands marked on the Volatility card and the foot strip, with the served word, its trade time and age and why; the push silent, each stands marked with its time and no age", async ({
+  page,
+}) => {
+  // the daemon's own rows for Schwab's $VIX, $SPX and $NDX messages of 2026-11-20
+  // (fixtures/header_volatility.json, held by tests/test_data_path_header_volatility_v1.py): in
+  // regular hours, once Schwab marked the indexes Closed, and with the daemon's Schwab socket
+  // not open; SPY's row is the daemon's of 2026-10-23 (fixtures/price_rows_live.json)
+  const MARKET = require(path.join(__dirname, "fixtures", "header_volatility.json"));
+  const SPY_ROW = require(path.join(__dirname, "fixtures", "price_rows_live.json")).SPY;
+  const errs = watchErrors(page);
+  await holdClock(page); // the page's timers run when the test moves its time
+  const sock = await intercept(page);
+  await openView(page, "trade-desk", "desk");
+  await expect.poll(() => sock.subscribes.length).toBeGreaterThan(0);
+  const name = (row) => row.ticker.replace(/^\$/, "");
+  // what follows an index's value: the mark's word when it is stopped, then its trade time,
+  // with its age while the push delivers one
+  const tail = (row, word, aged) =>
+    (word ? " · " + word : "") +
+    " · last trade " +
+    row.trade_time_ct +
+    (aged ? " · " + row.trade_age_text : "");
+  // every index reads so, on the strip and (the volatility index) on the Volatility card
+  const reads = async (rows, word, aged, why) => {
+    for (const row of rows) {
+      const cell = page.locator("#tdmIdx" + name(row));
+      const words = tail(row, word, aged);
+      await expect(cell).toHaveText(name(row) + row.spot_disp + row.chg_pct_text + words);
+      await expect(cell).toHaveAttribute("title", why(row));
+      await expect(cell.locator(".tdm-stopped")).toHaveText(word ? [words] : []);
+    }
+    const vix = rows.filter((r) => r.ticker === MARKET.live.ticker)[0];
+    const onCard = page.locator("#tdmVolIdx");
+    await expect(onCard).toHaveText(
+      name(vix) + " " + vix.spot_disp + " (" + vix.chg_pct_text + ")" + tail(vix, word, aged),
+    );
+    await expect(onCard).toHaveAttribute("title", why(vix));
+    await expect(onCard.locator("b")).toHaveClass(word ? "tdm-stopped" : "");
+  };
+  const lastTrade = (row) => "last trade " + row.trade_time_ct;
+  // no row has arrived: each index reads "-", on the strip and on the card, never a sentence
+  // in the value's place; that its row is waited for is the title
+  for (const row of MARKET.market_live) {
+    const cell = page.locator("#tdmIdx" + name(row));
+    await expect(cell).toHaveText(name(row) + "-");
+    await expect(cell).toHaveAttribute("title", "waiting for the " + name(row) + " stream");
+  }
+  await expect(page.locator("#tdmVolIdx")).toHaveText(name(MARKET.live) + " -");
+  await expect(page.locator("#tdmVolIdx")).toHaveAttribute(
+    "title",
+    "waiting for the " + name(MARKET.live) + " stream",
+  );
+  // live: each value with its trade time, unmarked
+  sock.quotes([SPY_ROW, ...MARKET.market_live]);
+  await reads(MARKET.market_live, null, false, lastTrade);
+  // Schwab marked the indexes Closed, and no row of the selected ticker follows: each stands
+  // marked NOT LIVE, the served word, with its trade time and age, and why is the title
+  sock.quotes(MARKET.market_closed);
+  expect(MARKET.market_closed.map((r) => r.feed_label)).toEqual([
+    "NOT LIVE",
+    "NOT LIVE",
+    "NOT LIVE",
+  ]);
+  await reads(MARKET.market_closed, "NOT LIVE", true, (row) => row.outage);
+  // the daemon's Schwab socket is not open: OFFLINE, as served, and why
+  sock.quotes(MARKET.market_down);
+  expect(MARKET.market_down.map((r) => r.feed_label)).toEqual(["OFFLINE", "OFFLINE", "OFFLINE"]);
+  await reads(MARKET.market_down, "OFFLINE", true, (row) => row.outage);
+  // live again
+  sock.quotes([SPY_ROW, ...MARKET.market_live]);
+  await reads(MARKET.market_live, null, false, lastTrade);
+  // INDUCED: the push stops (the socket sends nothing more). The header reads OFFLINE, and each
+  // index stands marked so, its trade time with no age (the last age served is not the age now)
+  await page.clock.runFor(4500);
+  await expect(page.locator("#hFeed")).toHaveText("OFFLINE");
+  await reads(MARKET.market_live, "OFFLINE", false, () => "live push down");
+  // an index's own row ends its mark, the selected ticker's not yet back: the closed index reads
+  // as Schwab's row says, the others still as the push left them
+  sock.quotes([MARKET.closed]);
+  const others = MARKET.market_live.filter((r) => r.ticker !== MARKET.closed.ticker);
+  await expect(page.locator("#tdmVolIdx")).toHaveText(
+    name(MARKET.closed) +
+      " " +
+      MARKET.closed.spot_disp +
+      " (" +
+      MARKET.closed.chg_pct_text +
+      ")" +
+      tail(MARKET.closed, "NOT LIVE", true),
+  );
+  for (const row of others)
+    await expect(page.locator("#tdmIdx" + name(row) + " .tdm-stopped")).toHaveText(
+      tail(row, "OFFLINE", false),
+    );
+  // the push is back with every row: live, unmarked
+  sock.quotes([SPY_ROW, ...MARKET.market_live]);
+  await reads(MARKET.market_live, null, false, lastTrade);
+  expect(errs).toEqual([]);
 });
 
 test("Desk: a price push that stops reads OFFLINE on the map, not its last row's LIVE", async ({

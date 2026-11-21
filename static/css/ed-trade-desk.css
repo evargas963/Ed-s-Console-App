@@ -271,6 +271,7 @@
 }
 
 /* ---------- desk page ---------- */
+
 /* the map's floor is 356 px: under the 82 px header the Desk fills a 1920×950 window and does
    not scroll (tests/e2e/console-liquidity-card.spec.js) */
 .tdm {
@@ -293,6 +294,13 @@
 
 .tdm .warn {
   color: var(--ed-warn);
+}
+
+/* a stopped index's mark, on the strip and on the Volatility card: the served word, the trade's
+   time and its age as served (not in the strip's capitals), in the header's colour for them */
+.tdm .tdm-stopped {
+  color: var(--ed-stale-ink);
+  text-transform: none;
 }
 
 .tdm-idx {
@@ -343,6 +351,7 @@
   border-radius: 10px;
   background: var(--ed-panel-2);
   border: 1px solid var(--ed-edge-soft);
+
   --pill-dot: var(--ed-quiet);
 }
 
@@ -500,6 +509,7 @@
   border: 0;
   padding: 1px 0;
   cursor: pointer;
+
   --fam-value: var(--ed-warn);
   --fam-mark: currentcolor;
   --fam-mark-w: 18px;
@@ -913,7 +923,7 @@
   color: var(--ed-ink-3);
 }
 
-.tdm-lean-h span:first-child {
+.tdm-lean-h > :first-child {
   font-weight: 600;
   color: var(--ed-ink-2);
 }

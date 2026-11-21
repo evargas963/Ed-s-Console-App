@@ -1046,7 +1046,8 @@
   // rows). Not live, the value stands dimmed with its trade time and age beside it, and why is
   // the cell's title. `down`: the page's words while the push is silent; they are the title
   // then, and the time has no age (the last age served is not the age now). No row served yet:
-  // "-", as built.
+  // "-", as built. How a row reads is decided here once, its `mark`, and every other surface
+  // of the row is told (ed:market_row; the Desk's index rows draw its word too).
   var _mk = {},
     _mkRows = {};
   function buildMarket() {
@@ -1066,20 +1067,31 @@
   function paintMarket(q, down) {
     var m = _mk[q.ticker],
       parts = m.cell.children,
-      live = down == null && q.feed_live;
-    m.cell.className = live ? m.base : m.base + " stale";
-    m.cell.title = down != null ? down : q.outage != null ? q.outage : "";
+      live = down == null && q.feed_live,
+      // a stopped row's mark: the served word (the page's own while the push is silent), why,
+      // and the trade's time, with its served age while the push delivers one
+      mark = live
+        ? null
+        : {
+            word: down != null ? PUSH_OFFLINE : q.feed_label,
+            why: down != null ? down : q.outage != null ? q.outage : "",
+            when: tradeWhen(q, down == null),
+          };
+    m.cell.className = mark ? m.base + " stale" : m.base;
+    m.cell.title = mark ? mark.why : "";
     parts[1].textContent = orDash(q.spot_disp);
     parts[2].textContent = q.chg_pct != null ? orDash(q.chg_pct_text) : "";
     parts[2].className = "mc " + window.EdDraw.bySign(q.chg_pct, "pos", "neg", "");
-    var when = live ? null : tradeWhen(q, down == null);
-    parts[3].textContent = when != null ? when : "";
+    parts[3].textContent = mark && mark.when != null ? mark.when : "";
+    window.dispatchEvent(new CustomEvent("ed:market_row", { detail: { row: q, mark: mark } }));
   }
   // What is wrong, for row 2's line and the feed word's colour: the program's own sentences from
   // its last beat, in order (Schwab's connection, the recorder, the sign-in), or the page's own
   // words while the push is silent and no row is on its way; then what the program left out
-  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence.
-  var PUSH_DOWN = "live push down";
+  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence. The page's
+  // own words while the push is silent: the feed's word, and why.
+  var PUSH_OFFLINE = "OFFLINE",
+    PUSH_DOWN = "live push down";
   var _beatAlerts = [],
     _beatFeedDown = false,
     _pushDown = false,
@@ -1128,9 +1140,12 @@
     // what the line is of: the alerts' kinds, or the news frame
     var shows = about != null ? about : _news;
     if (shows === _lineOf) {
+      // the same alerts with newer words: each copy of the line takes them, in the alerts' order
       if (about != null)
-        tape.querySelectorAll(".h").forEach(function (el, i) {
-          el.textContent = alerts[i < alerts.length ? i : i - alerts.length][1];
+        tape.querySelectorAll(".htrack, .htrack > [aria-hidden]").forEach(function (copy) {
+          copy.querySelectorAll(":scope > .hni > .h").forEach(function (el, i) {
+            el.textContent = alerts[i][1];
+          });
         });
       return;
     }
@@ -1518,7 +1533,7 @@
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
     // last trade time and no age: the last served age is not the age now.
     var connecting = _priceConnecting;
-    var label = connecting ? "WAITING" : "OFFLINE";
+    var label = connecting ? "WAITING" : PUSH_OFFLINE;
     var age = connecting ? "no push yet" : PUSH_DOWN;
     emit("ed:price_push_down", { label: label }); // every surface of this price says so (the desk map)
     if (_quoteShown)

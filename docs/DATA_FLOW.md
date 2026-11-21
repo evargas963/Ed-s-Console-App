@@ -393,15 +393,19 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   by hand. Enforced by: `tests/test_markets_sessions_v1.py`,
   `tests/test_data_path_stored_sessions_v1.py`.
 - **News.** NEWS_HEADLINE, asked for every watchlist ticker and the market context's symbols
-  (`capture.MARKET_CONTEXT_SERVICES`) → the bus (`news.<symbol>`) → (a) the Recorder,
-  `stream_news_raw`, every message; (b) the daemon's follower (`capture.Daemon._took_news`), which
-  the bus hands every message, once, in the order published (a story is its own item, D3) →
-  `state.news_store.take`, the one reader of the service's numbered fields, which no Schwab document
-  lists (`docs/SOURCES.md`, `schwab-news-headline-recorded`). A story is held once, by its headline
-  id, with the wording of its newest message by Schwab's frame time (D1) and every symbol it was
-  sent under; a message Schwab marks withdrawn (status D) removes its story; a message in another
-  language than English, by Schwab's own language field, is counted and left out, and so is one with
-  no headline, id or time; the newest `news_store.STORIES_HELD` by each story's own time are held →
+  (`capture.MARKET_CONTEXT_SERVICES`). Feed reads each item's numbered fields once, where it arrives
+  (`feed.connection.news_headline`, their one reader: no Schwab document lists them,
+  `docs/SOURCES.md`, `schwab-news-headline-recorded`), into a typed record
+  (`state.news_store.NewsHeadline`: the story's time, the headline id, the status, the headline, the
+  source and the language, each as sent, None where Schwab sent none) → the bus (`news.<symbol>`:
+  Schwab's item verbatim, and that record beside it) → (a) the Recorder, `stream_news_raw`, every
+  message as sent; (b) the daemon's follower (`capture.Daemon._took_news`), which the bus hands
+  every message, once, in the order published (a story is its own item, D3) →
+  `state.news_store.take`, which takes the record. A story is held once, by its headline id, with
+  the wording of its newest message by Schwab's frame time (D1) and every symbol it was sent under;
+  a message Schwab marks withdrawn (status D) removes its story; a message in another language than
+  English, by Schwab's own language field, is counted and left out, and so is one with no headline,
+  id or time; the newest `news_store.STORIES_HELD` by each story's own time are held →
   `push.news.news` (each story's time, symbols, headline and source as texts, and the count left
   out) → the beat (§3.2) → the header's second row on every page, a ticker chosen or not (§6,
   decision 11). Its lifecycle owner is the daemon's market follower
@@ -487,26 +491,31 @@ them".
   context's three price rows (`live_push.MARKET_CONTEXT`, the rows the Desk draws too), the
   volatility index first (`live_push.VOLATILITY_INDEX`), each its served display name, price and
   percent change, and, not live, its value dimmed with its trade time and age beside it and why as
-  its title; then the news line (§3.4 News): each story's time, symbols, headline and source as
-  served, newest first, the count left out its label's title. A line longer than its room runs at a
-  constant speed the drawing module sets from its width (`static/js/ed-draw.js` `tapeSeconds`),
-  rests under the pointer, stands still when the system asks for reduced motion and starts again
-  from the newest when a story arrives; no timer of the page moves it. The alert line takes the
-  news' place while something is wrong, each sentence the program's own, in this order: Schwab's
-  connection (the beat's `schwab_down`), the recorder's whole line while its class is "neg", the
-  sign-in's line and Schwab's reason while it is refused, and what was left out where its cell has
-  no room for the sentence, which draws its dot alone there, never a part of a count. While the push
-  itself is silent the page says so on that line in its own words, the feed word reads OFFLINE and
-  every time stands with no age (D5). A value not yet received reads "-". The header is 82 pixels
-  high (`--ed-header-h`); nothing in it wraps or leaves it at the window widths the browser tests
-  use, and a window under 1,500 pixels wide draws the search box as its icon, which opens while it
-  holds the focus. Its layout is fitted to the console's own faces (`--ed-faces`); a machine with
-  none of them draws the header in a wide system face scaled to their width (`static/index.html`,
+  its title. How a row reads is decided once, in the shell (`static/js/ed-core.js` `paintMarket`),
+  and the Desk's two drawings of the same rows, its Volatility card and its foot strip, are told
+  (`ed:market_row`) and mark a stopped index the same way, with the served word (`feed_label`)
+  before its trade time and age and why as the title. Then the news line (§3.4 News): each story's
+  time, symbols, headline and source as served, newest first, the count left out its label's title.
+  A line longer than its room runs at a constant speed the drawing module sets from its width
+  (`static/js/ed-draw.js` `tapeSeconds`), rests under the pointer, stands still when the system asks
+  for reduced motion and starts again from the newest when a story arrives; no timer of the page
+  moves it. The alert line takes the news' place while something is wrong, each sentence the
+  program's own, in this order: Schwab's connection (the beat's `schwab_down`), the recorder's whole
+  line while its class is "neg", the sign-in's line and Schwab's reason while it is refused, and
+  what was left out where its cell has no room for the sentence, which draws its dot alone there,
+  never a part of a count. While the push itself is silent the page says so on that line in its own
+  words, the feed word reads OFFLINE, every time stands with no age (D5) and the Desk's index rows
+  are marked OFFLINE. A value not yet received reads "-". The header is 82 pixels high
+  (`--ed-header-h`); nothing in it wraps or leaves it at the window widths the browser tests use,
+  and a window under 1,500 pixels wide draws the search box as its icon, which opens while it holds
+  the focus. Its layout is fitted to the console's own faces (`--ed-faces`); a machine with none of
+  them draws the header in a wide system face scaled to their width (`static/index.html`,
   `Ed Header Fallback`), and the layout holds in both. Under it, at a 1920×950 window, the Trade
   Desk's Desk page does not scroll, with every line of its Liquidity card drawn and with the market
-  context's rows arriving: its Market Map's floor is 356 pixels, and 380 in a window 1,400 pixels
-  wide or narrower, which wraps the map's toolbar and legend (`static/css/ed-trade-desk.css`
-  `.tdm`). Enforced by: `tests/e2e/console-header.spec.js`, `tests/e2e/console-sign-in.spec.js`,
+  context's rows arriving, live or stopped: its Market Map's floor is 356 pixels, and 380 in a
+  window 1,400 pixels wide or narrower, which wraps the map's toolbar and legend
+  (`static/css/ed-trade-desk.css` `.tdm`). Enforced by: `tests/e2e/console-header.spec.js`,
+  `tests/e2e/console-sign-in.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-liquidity-card.spec.js`, `tests/test_data_path_header_volatility_v1.py`,
   `tests/test_data_path_header_news_v1.py`, `tests/test_data_path_sign_in_v1.py`,
   `tests/test_live_ui_daemon_to_browser_v1.py`.
