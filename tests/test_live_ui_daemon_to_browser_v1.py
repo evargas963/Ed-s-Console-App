@@ -498,7 +498,9 @@ def test_every_page_is_sent_the_news_line_on_its_first_beat_then_only_when_it_ch
     )
     assert "news" not in quiet and "news" not in still_quiet, "the unchanged line is not sent again"
     assert [i["time_ct"] for i in tomorrow["news"]["items"]] == ["Fri 11/20 08:30 AM CT"] * 5
-    assert [i["id"] for i in tomorrow["news"]["items"]] == [i["id"] for i in today["news"]["items"]]
+    assert [i["headline"] for i in tomorrow["news"]["items"]] == [
+        i["headline"] for i in today["news"]["items"]
+    ]
     assert "news" not in after
 
 

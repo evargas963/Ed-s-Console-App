@@ -52,7 +52,8 @@ function deskSocket(page, rows = [], later = []) {
   return mockPriceSocket(page, rows, later, undefined, panels);
 }
 
-async function intercept(page) {
+// `rows`: the price rows the socket pushes after each subscribe (none unless a test gives them)
+async function intercept(page, rows = []) {
   await routeWatchlist(page, ["SPY"]);
   // the page asks the venue MICRO is the book of, unless the test names another after this
   await page.addInitScript((venue) => localStorage.setItem("ed_book_venue", venue), MICRO.venue);
@@ -79,7 +80,7 @@ async function intercept(page) {
     book: (key, params) => REAL.book[params.venue],
     bars: (key, params, name) => (name === "bars:flow" ? REAL.bars_flow : REAL.bars[params.tf]),
   };
-  return deskSocket(page);
+  return deskSocket(page, rows);
 }
 // A per-timeframe panel's stand-in for `body` (the event window, the bars): the program answers
 // each reader's timeframe in it (server.PAGE_PANELS)

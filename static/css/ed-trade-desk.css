@@ -271,10 +271,12 @@
 }
 
 /* ---------- desk page ---------- */
+/* the map's floor is 356 px: under the 82 px header the Desk fills a 1920×950 window and does
+   not scroll (tests/e2e/console-liquidity-card.spec.js) */
 .tdm {
   height: 100%;
   display: grid;
-  grid-template-rows: minmax(380px, 1fr) auto auto auto;
+  grid-template-rows: minmax(356px, 1fr) auto auto auto;
   gap: 8px;
   min-height: 0;
   overflow: auto;
@@ -1360,6 +1362,14 @@
   font-weight: 600;
   text-transform: none;
   letter-spacing: 0;
+}
+
+/* a window this narrow wraps the map's toolbar and its legend to two lines each, and the map
+   needs 380 px for them and its chart */
+@media (width <=1400px) {
+  .tdm {
+    grid-template-rows: minmax(380px, 1fr) auto auto auto;
+  }
 }
 
 @media (width <=1100px) {

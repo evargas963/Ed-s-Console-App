@@ -3,105 +3,90 @@
     "items": [
       {
         "headline": "Tesla proposes $3.1 bln Texas polysilicon plant for solar manufacturing",
-        "id": "tag_reuters_com_2026_newsml_L2N4710OR",
         "source": "Reuters",
         "symbols_text": "TSLA",
         "time_ct": "11:15 AM CT"
       },
       {
         "headline": "UPDATE 4-Anthropic's post-debut stumble delivers reality check for AI trade",
-        "id": "tag_reuters_com_2026_newsml_L3N4710T1",
         "source": "Reuters",
         "symbols_text": "META · NVDA · AMD · SPCX · AMZN",
         "time_ct": "11:11 AM CT"
       },
       {
         "headline": "S&P 500 ON CORRECTION COURSE, DOWN MORE THAN 10% FROM RECORD CLOSING HIGH",
-        "id": "tag_reuters_com_2026_newsml_L3N4711DF",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "11:08 AM CT"
       },
       {
         "headline": "S&P 500 slips into correction territory, with 10% drawdown from October 6 closing high",
-        "id": "IN20261120120006SPY",
         "source": "Briefing.com",
         "symbols_text": "SPY",
         "time_ct": "11:00 AM CT"
       },
       {
         "headline": "GLOBAL MARKETS-Tech stocks tumble, Treasury yields fall as traders seek refuge",
-        "id": "tag_reuters_com_2026_newsml_L6N4710VG",
         "source": "Reuters",
         "symbols_text": "VIX",
         "time_ct": "10:35 AM CT"
       },
       {
         "headline": "Market Briefing: S&P 500 falls below 7,100 as semiconductor weakness derails rebound",
-        "id": "IN20261120113235TALKX",
         "source": "Briefing.com",
         "symbols_text": "QQQ",
         "time_ct": "10:32 AM CT"
       },
       {
         "headline": "EXCLUSIVE-ABB considers robotics listing if sale to SoftBank fails, sources say",
-        "id": "tag_reuters_com_2026_newsml_L6N4710U2",
         "source": "Reuters",
         "symbols_text": "META",
         "time_ct": "10:25 AM CT"
       },
       {
         "headline": "LIVE MARKETS-Consumer expectations enjoy post-election boost - UMich",
-        "id": "tag_reuters_com_2026_newsml_L6N4710X5",
         "source": "Reuters",
         "symbols_text": "NDX",
         "time_ct": "10:15 AM CT"
       },
       {
         "headline": "BUZZ-US STOCKS ON THE MOVE-Anthropic, PayPal, Nvidia",
-        "id": "tag_reuters_com_2026_newsml_L6N4710WU",
         "source": "Reuters",
         "symbols_text": "AMZN",
         "time_ct": "10:10 AM CT"
       },
       {
         "headline": "NASDAQ <.IXIC> DOWN 285.23 POINTS, OR 1.19 PERCENT, AT 23,593.97 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUO1R",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 %, AT 49,040.94 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUNW7",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 PERCENT, AT 49,040.94 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUO7B",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "U.S. STOCKS EXTEND FALL, NASDAQ <.IXIC> DOWN 1.19%",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUOCO",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "S&P 500 <.INX> DOWN 34.23 POINTS, OR 0.48 PERCENT, AT 7,141.60 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUOA3",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "US stocks tumble, and the S&P 500 drops as the sell-off for AI stocks accelerates",
-        "id": "202611192217AP______FINANCE__c4c3f4878b12989347f8a930ed813dad",
         "source": "Associated Press",
         "symbols_text": "NVDA · SPCX · AMD",
         "time_ct": "Thu 11/19 09:17 PM CT"
@@ -113,105 +98,90 @@
     "items": [
       {
         "headline": "US SENATOR TIM SCOTT SAYS FORMER NVIDIA CEO JENSEN HUANG WILL TESTIFY IN PUBLIC HEARING",
-        "id": "tag_reuters_com_2026_newsml_L6N47112K",
         "source": "Reuters",
         "symbols_text": "NVDA",
         "time_ct": "12:41 PM CT"
       },
       {
         "headline": "Tesla proposes $3.1 bln Texas polysilicon plant for solar manufacturing",
-        "id": "tag_reuters_com_2026_newsml_L2N4710OR",
         "source": "Reuters",
         "symbols_text": "TSLA",
         "time_ct": "11:15 AM CT"
       },
       {
         "headline": "UPDATE 4-Anthropic's post-debut stumble delivers reality check for AI trade",
-        "id": "tag_reuters_com_2026_newsml_L3N4710T1",
         "source": "Reuters",
         "symbols_text": "META · NVDA · AMD · SPCX · AMZN",
         "time_ct": "11:11 AM CT"
       },
       {
         "headline": "S&P 500 ON CORRECTION COURSE, DOWN MORE THAN 10% FROM RECORD CLOSING HIGH",
-        "id": "tag_reuters_com_2026_newsml_L3N4711DF",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "11:08 AM CT"
       },
       {
         "headline": "S&P 500 slips into correction territory, with 10% drawdown from October 6 closing high",
-        "id": "IN20261120120006SPY",
         "source": "Briefing.com",
         "symbols_text": "SPY",
         "time_ct": "11:00 AM CT"
       },
       {
         "headline": "GLOBAL MARKETS-Tech stocks tumble, Treasury yields fall as traders seek refuge",
-        "id": "tag_reuters_com_2026_newsml_L6N4710VG",
         "source": "Reuters",
         "symbols_text": "VIX",
         "time_ct": "10:35 AM CT"
       },
       {
         "headline": "Market Briefing: S&P 500 falls below 7,100 as semiconductor weakness derails rebound",
-        "id": "IN20261120113235TALKX",
         "source": "Briefing.com",
         "symbols_text": "QQQ",
         "time_ct": "10:32 AM CT"
       },
       {
         "headline": "EXCLUSIVE-ABB considers robotics listing if sale to SoftBank fails, sources say",
-        "id": "tag_reuters_com_2026_newsml_L6N4710U2",
         "source": "Reuters",
         "symbols_text": "META",
         "time_ct": "10:25 AM CT"
       },
       {
         "headline": "LIVE MARKETS-Consumer expectations enjoy post-election boost - UMich",
-        "id": "tag_reuters_com_2026_newsml_L6N4710X5",
         "source": "Reuters",
         "symbols_text": "NDX",
         "time_ct": "10:15 AM CT"
       },
       {
         "headline": "BUZZ-US STOCKS ON THE MOVE-Anthropic, PayPal, Nvidia",
-        "id": "tag_reuters_com_2026_newsml_L6N4710WU",
         "source": "Reuters",
         "symbols_text": "AMZN",
         "time_ct": "10:10 AM CT"
       },
       {
         "headline": "NASDAQ <.IXIC> DOWN 285.23 POINTS, OR 1.19 PERCENT, AT 23,593.97 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUO1R",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 %, AT 49,040.94 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUNW7",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 PERCENT, AT 49,040.94 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUO7B",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "U.S. STOCKS EXTEND FALL, NASDAQ <.IXIC> DOWN 1.19%",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUOCO",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "S&P 500 <.INX> DOWN 34.23 POINTS, OR 0.48 PERCENT, AT 7,141.60 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUOA3",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
@@ -223,98 +193,84 @@
     "items": [
       {
         "headline": "CORRECTED-US SENATOR TIM SCOTT'S AIDE (NOT \"TIM SCOTT\") SAYS FORMER NVIDIA CEO JENSEN HUANG WILL TESTIFY IN PUBLIC HEARING",
-        "id": "tag_reuters_com_2026_newsml_L6N47112W",
         "source": "Reuters",
         "symbols_text": "NVDA",
         "time_ct": "12:47 PM CT"
       },
       {
         "headline": "Top Midday Decliners",
-        "id": "202611201345MIDNIGHTLIVEBREF_A3758582",
         "source": "MT Newswire",
         "symbols_text": "NVDA",
         "time_ct": "12:45 PM CT"
       },
       {
         "headline": "Tesla proposes $3.1 bln Texas polysilicon plant for solar manufacturing",
-        "id": "tag_reuters_com_2026_newsml_L2N4710OR",
         "source": "Reuters",
         "symbols_text": "TSLA",
         "time_ct": "11:15 AM CT"
       },
       {
         "headline": "UPDATE 4-Anthropic's post-debut stumble delivers reality check for AI trade",
-        "id": "tag_reuters_com_2026_newsml_L3N4710T1",
         "source": "Reuters",
         "symbols_text": "META · NVDA · AMD · SPCX · AMZN",
         "time_ct": "11:11 AM CT"
       },
       {
         "headline": "S&P 500 ON CORRECTION COURSE, DOWN MORE THAN 10% FROM RECORD CLOSING HIGH",
-        "id": "tag_reuters_com_2026_newsml_L3N4711DF",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "11:08 AM CT"
       },
       {
         "headline": "S&P 500 slips into correction territory, with 10% drawdown from October 6 closing high",
-        "id": "IN20261120120006SPY",
         "source": "Briefing.com",
         "symbols_text": "SPY",
         "time_ct": "11:00 AM CT"
       },
       {
         "headline": "GLOBAL MARKETS-Tech stocks tumble, Treasury yields fall as traders seek refuge",
-        "id": "tag_reuters_com_2026_newsml_L6N4710VG",
         "source": "Reuters",
         "symbols_text": "VIX",
         "time_ct": "10:35 AM CT"
       },
       {
         "headline": "Market Briefing: S&P 500 falls below 7,100 as semiconductor weakness derails rebound",
-        "id": "IN20261120113235TALKX",
         "source": "Briefing.com",
         "symbols_text": "QQQ",
         "time_ct": "10:32 AM CT"
       },
       {
         "headline": "EXCLUSIVE-ABB considers robotics listing if sale to SoftBank fails, sources say",
-        "id": "tag_reuters_com_2026_newsml_L6N4710U2",
         "source": "Reuters",
         "symbols_text": "META",
         "time_ct": "10:25 AM CT"
       },
       {
         "headline": "LIVE MARKETS-Consumer expectations enjoy post-election boost - UMich",
-        "id": "tag_reuters_com_2026_newsml_L6N4710X5",
         "source": "Reuters",
         "symbols_text": "NDX",
         "time_ct": "10:15 AM CT"
       },
       {
         "headline": "BUZZ-US STOCKS ON THE MOVE-Anthropic, PayPal, Nvidia",
-        "id": "tag_reuters_com_2026_newsml_L6N4710WU",
         "source": "Reuters",
         "symbols_text": "AMZN",
         "time_ct": "10:10 AM CT"
       },
       {
         "headline": "UPDATE 1-SpaceX's Cursor weighs phasing out Chinese AI models over geopolitical risk, CNBC reports",
-        "id": "tag_reuters_com_2026_newsml_L3N471158",
         "source": "Reuters",
         "symbols_text": "SPCX",
         "time_ct": "08:42 AM CT"
       },
       {
         "headline": "NASDAQ <.IXIC> DOWN 285.23 POINTS, OR 1.19 PERCENT, AT 23,593.97 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUO1R",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"
       },
       {
         "headline": "DOW JONES <.DJI> DOWN 56.12 POINTS, OR 0.11 %, AT 49,040.94 AFTER MARKET OPEN",
-        "id": "tag_reuters_com_2026-11-20_newsml_AQN2MUNW7",
         "source": "Reuters",
         "symbols_text": "SPX",
         "time_ct": "08:30 AM CT"

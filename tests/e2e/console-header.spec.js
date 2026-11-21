@@ -179,7 +179,7 @@ test("the header is one and the same on every page: each workspace and view show
   const header = () => page.evaluate(() => document.querySelector("header").outerHTML);
   const first = await header();
   for (const row of FX.market_live) expect(first).toContain(">" + row.spot_disp + "<");
-  expect(first).toContain(NEWS.morning.items[0].id.length ? NEWS.morning.items[0].source : "");
+  expect(first).toContain(">" + NEWS.morning.items[0].source + "<");
   const walked = [];
   const workspaces = await eachPage(page, async ({ ws, sub, view }) => {
     // a workspace as it opens is a page too, with or without a view to open

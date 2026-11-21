@@ -223,15 +223,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - LOCAL-SOCKETS (OPERATOR): the page's socket `/ws` binds every address of this PC
   (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
   read the price rows. Changing the bind is his setting.
-- DESK-HEIGHT (OPERATOR): the two-row header is 82 pixels high, 24 more than the one it replaced,
-  and the Trade Desk has no room for them at the operator's 1920×950 window. With every line of the
-  Liquidity card at once (INDUCED) the Desk needs 829 pixels and has 808, so it scrolls 21 pixels
-  and `tests/e2e/console-liquidity-card.spec.js` ("on the operator's 1920×950 window every card
-  shows whole, the Desk does not scroll") fails. With the market's rows arriving, the foot strip's
-  three indexes take a third line and the Desk scrolls 13 pixels in its everyday state, which no
-  test sends. The header's second row draws the same three indexes on the Desk too. Which gives way
-  is his: the header's height, the map's 380-pixel floor, the foot strip's indexes, or the Desk
-  scrolling in its fullest state.
+- DESK-INDEX-LINE (OPERATOR): the Trade Desk's foot strip repeats the three indexes the header's
+  second row now shows on every page (`static/js/ed-trade-desk-map.js` `paintHeader`), each with its
+  last trade's time, on a line of its own. Whether that line stays is his. With it, at the 1920×950
+  window, the Cross-Domain Read row's track is 27 pixels under its 36-pixel panel, and with every
+  line of the Liquidity card at once as well (INDUCED) the Desk needs 823 pixels of its 808 and
+  scrolls 15, as it needed 847 of 832 before the header changed; without that line both fit.
 - INDEX-QUOTE-TIME (OPERATOR): Schwab sends `QUOTE_TIME_MILLIS` 0 for an index with no bid or ask
   ($VIX, $NDX; Schwab Streamer API §3.1, field 34, "Last time a bid or ask updated"), and the price
   row serves it as a time, "Wed 12/31 06:00 PM CT" (`live_price_rows.price_row` `quote_time_ct`, as

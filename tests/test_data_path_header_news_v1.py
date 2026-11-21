@@ -110,8 +110,9 @@ def test_the_line_is_served_newest_first_by_each_storys_own_time_with_its_texts(
     now = sent[-1]["ts_recv"]
     assert time_et.ct_label(now) == "Fri 11/20 11:17 AM CT"
     served = push_news.news(now)
-    items = served["items"]
-    assert [i["id"] for i in items] == _expected_order(sent)
+    items, held = served["items"], news_store.stories()
+    assert [s.headline_id for s in held] == _expected_order(sent)
+    assert [i["headline"] for i in items] == [s.headline for s in held], "served in the held order"
     assert [i["time_ct"] for i in items] == [
         "11:15 AM CT",
         "11:11 AM CT",
@@ -126,9 +127,11 @@ def test_the_line_is_served_newest_first_by_each_storys_own_time_with_its_texts(
         "Thu 11/19 09:17 PM CT",
     ]
     received = [m["item"]["2"] for m in _english(sent)]
-    assert received.index(items[4]["id"]) > received.index(items[2]["id"]), "it came later"
+    assert received.index(held[4].headline_id) > received.index(held[2].headline_id), (
+        "it came later"
+    )
+    assert held[0].headline_id == "tag_reuters_com_2026_newsml_L2N4710OR"
     assert items[0] == {
-        "id": "tag_reuters_com_2026_newsml_L2N4710OR",
         "time_ct": "11:15 AM CT",
         "symbols_text": "TSLA",
         "headline": "Tesla proposes $3.1 bln Texas polysilicon plant for solar manufacturing",
@@ -305,4 +308,6 @@ def test_the_header_tests_news_is_the_programs_own_for_schwabs_messages():
     )
     assert len(served["morning"]["items"]) == 15
     assert served["story"]["items"][0]["headline"].startswith("US SENATOR TIM SCOTT SAYS")
-    assert served["story"]["items"][0]["id"] not in {i["id"] for i in served["withdrawn"]["items"]}
+    assert served["story"]["items"][0]["headline"] not in {
+        i["headline"] for i in served["withdrawn"]["items"]
+    }

@@ -15,11 +15,13 @@ const {
   watchErrors,
   deskPanels,
 } = require("./fixtures/trade_desk");
+const MARKET = require("./fixtures/header_volatility.json");
 
 test.describe("Desk: the Liquidity card draws the served order-imbalance readout", () => {
-  // the desk opened with `body` as the book panel; returns the page's socket
-  async function openDesk(page, body, keep) {
-    const sock = await intercept(page);
+  // the desk opened with `body` as the book panel, the socket pushing `rows` when given; returns
+  // the page's socket
+  async function openDesk(page, body, keep, rows) {
+    const sock = await intercept(page, rows);
     deskPanels().book = body;
     await page.addInitScript((k) => {
       localStorage.setItem("ed_ticker", "SPY");
@@ -54,21 +56,30 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       [1366, 650],
     ]) {
       await page.setViewportSize({ width, height });
-      for (const body of [
-        READOUT_LIVE,
-        READOUT_AUCTION,
-        READOUT_OFFLINE,
-        READOUT_NO_BOOK,
-        READOUT_EVERY_LINE,
+      for (const [body, rows] of [
+        [READOUT_LIVE],
+        [READOUT_AUCTION],
+        [READOUT_OFFLINE],
+        [READOUT_NO_BOOK],
+        [READOUT_EVERY_LINE],
+        // the everyday state: the market context's rows arriving (the daemon's rows for
+        // Schwab's $VIX, $SPX and $NDX messages, fixtures/header_volatility.json), so the foot
+        // strip's three indexes take a line of their own
+        [READOUT_LIVE, MARKET.market_live],
       ]) {
-        await openDesk(page, body);
+        await openDesk(page, body, false, rows);
         await expect(card(page).locator(".liq-body > *").first()).toBeVisible();
         // the served readout drawn, not the card's "Loading…" before it arrives
         await expect(card(page).locator(".liq-body")).not.toContainText("Loading…");
+        if (rows)
+          for (const row of rows)
+            await expect(page.locator("#tdmIdx" + row.ticker.replace(/^\$/, ""))).toContainText(
+              row.spot_disp + row.chg_pct_text + " · last trade " + row.trade_time_ct,
+            );
         // the whole Desk at the operator's window is measured with his fonts: Bahnschrift, the
         // Desk's face, is Windows' own, and no other system draws it at its widths
         const cut = await page.evaluate(
-          (whole) => {
+          ([whole, floor]) => {
             const out = [];
             const root = document.getElementById("tdmRoot");
             if (whole && root.scrollHeight > root.clientHeight)
@@ -85,8 +96,10 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
                 );
             });
             const map = document.querySelector("#tdmRoot .tdm-main");
-            if (map && map.getBoundingClientRect().height < 380)
-              out.push("the market map is under 380 px: " + map.getBoundingClientRect().height);
+            if (map && map.getBoundingClientRect().height < floor)
+              out.push(
+                "the market map is under " + floor + " px: " + map.getBoundingClientRect().height,
+              );
             document.querySelectorAll("#tdmCards > .tdm-card").forEach((c) => {
               // the card hides what passes its edge (overflow: hidden)
               const box = c.getBoundingClientRect(),
@@ -126,9 +139,12 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
             });
             return out;
           },
-          width === 1920 && process.platform === "win32",
+          // the map's floor: 356 px at the operator's window, under the two-row header; 380 at
+          // the laptop window, which wraps the map's toolbar and legend
+          [width === 1920 && process.platform === "win32", width === 1920 ? 356 : 380],
         );
-        expect(cut, width + "×" + height + " " + JSON.stringify(cut)).toEqual([]);
+        const state = width + "×" + height + (rows ? " with the market's rows " : " ");
+        expect(cut, state + JSON.stringify(cut)).toEqual([]);
       }
     }
     // the crossed and not-live pills, the auction line, the dedup note and the book's time, at once, show on it
