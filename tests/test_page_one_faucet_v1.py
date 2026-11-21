@@ -22,8 +22,8 @@ from pathlib import Path
 import pytest
 from fastapi.routing import APIRoute
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
@@ -550,7 +550,7 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     lmp.record_from_level_one_equity(
         "SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830}, received_ts=time_et.now()
     )
-    row = ofs.price_row("SPY", time_et.now())  # the daemon's one row, as the console reads it
+    row = live_price_rows.price_row("SPY", time_et.now())  # the daemon's one row
     try:
         spot = server.resolve_spot("SPY", now=time_et.now())
     finally:

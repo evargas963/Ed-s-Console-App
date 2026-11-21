@@ -123,7 +123,7 @@ def _priced_when_the_status_was_sent(offset: float) -> datetime:
     """
     _beat(_AT + offset)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
-    row = ofs.price_row(TK, _AT)
+    row = live_price_rows.price_row(TK, _AT)
     bus = MessageBus()
     ofls.bind_bus(bus.current)
     ofs._ingest_pushed(*on_the_bus(bus, "LEVELONE_OPTIONS", _MSG["item"], _MSG["ts_recv"]))
@@ -388,7 +388,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
             "$SPX", spx_close["item"], received_ts=spx_close["ts_recv"]
         )
         _all_held(at, "$SPX")
-        row = ofs.price_row("$SPX", at)
+        row = live_price_rows.price_row("$SPX", at)
         assert (row["feed_label"], row["outage"]) == ("NOT LIVE", "Schwab marks $SPX Closed")
         mark = push_spot.price_mark("$SPX", row["trade_ts"], at)
         assert (mark["spot_not_live_text"] is None, *server.price_state("$SPX", at)) == (
@@ -410,7 +410,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
         lmp.record_from_level_one_equity(
             "$SPX", {"key": "$SPX", "LAST_PRICE": -999.0}, received_ts=spx_close["ts_recv"]
         )
-        assert ofs.price_row("$SPX", at)["spot"] is None
+        assert live_price_rows.price_row("$SPX", at)["spot"] is None
         assert server.resolve_spot("$SPX", now=at) == (None, "Schwab marks $SPX Closed", None)
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
@@ -428,7 +428,7 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
     at = _et("2026-10-05", 11)
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
     _all_held(at, TK)
-    assert ofs.price_row(TK, at)["feed_label"] == "LIVE"
+    assert live_price_rows.price_row(TK, at)["feed_label"] == "LIVE"
     _all_held(at)  # SPY no longer held
     assert ofs.price_state(TK, at) == (
         "NOT LIVE",
@@ -440,7 +440,7 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
     for kept in (lmp._by_ticker, lmp._fields_by_ticker):  # held, no quote from Schwab yet
         kept.pop(TK, None)
     assert ofs.price_state(TK, at) == ("LIVE", None)
-    assert ofs.price_row(TK, at)["spot"] is None
+    assert live_price_rows.price_row(TK, at)["spot"] is None
     assert push_spot.price_mark(TK, None, at)["spot_not_live_text"] is None
     assert server.resolve_spot(TK, now=at) == (None, server.SPOT_SOURCE_NONE, None)
 
@@ -502,7 +502,7 @@ def _sym_states() -> list[str]:
 def _publish_chain(at: float) -> None:
     """SPY's chain delivered and priced at `at`, at the price row Schwab's quote made."""
     lmp.record_from_level_one_equity(TK, _QUOTE["item"], received_ts=_QUOTE["ts_recv"])
-    row = ofs.price_row(TK, at)
+    row = live_price_rows.price_row(TK, at)
     server._publish_levels(
         TK,
         read_chain(_CAPTURE["chain"]),

@@ -26,6 +26,7 @@ from fastapi.testclient import TestClient
 
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import capture, live_push
@@ -382,7 +383,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
     else:
         lmp.record_feed_down()
     try:
-        row = ofs.price_row("SPY", now)
+        row = live_price_rows.price_row("SPY", now)
         return {
             "row": row,
             "spot": server.resolve_spot("SPY", now=now),

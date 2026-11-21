@@ -10,8 +10,8 @@ import threading
 import pytest
 from websockets.asyncio.client import connect
 
-import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import live_ui
@@ -175,11 +175,13 @@ def test_a_silent_daemon_keeps_the_last_price():
     async def body(bus, web):
         assert not web.server_state.connections  # the console reads the bus: no socket client
         bus.publish("quote.SPY", _spy_trade(SPY_LAST, time_et.now()))
-        assert await _until(lambda: ofs.price_row("SPY", time_et.now())["spot"] == SPY_LAST)
+        assert await _until(
+            lambda: live_price_rows.price_row("SPY", time_et.now())["spot"] == SPY_LAST
+        )
         assert await _until(lambda: lmp.daemon_status(time_et.now()) is not None)  # a beat taken
         now = time_et.now()
         for at in (now, now + lmp.FEED_HEARTBEAT_MAX_AGE_SEC + live_ui.HEARTBEAT_SEC):
-            row = ofs.price_row("SPY", at)
+            row = live_price_rows.price_row("SPY", at)
             if row["spot"] != SPY_LAST:
                 missing.append(row)
             if not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", at):
