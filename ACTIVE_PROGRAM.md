@@ -227,7 +227,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   INTERPRET in `docs/derived_register.md`), a threshold, a rule that blanks or merges a value. Each
   one shown to be needed and sourced, or deleted; one Schwab sends only changed fields (Streamer
   API), so a field missing from a message is unchanged, its held value current. The option book's
-  resting size (OPTIONS_BOOK, up to 300 contracts) is the confluence matrix revamp's input. Decided:
+  resting size (OPTIONS_BOOK, up to 100 contracts) is the confluence matrix revamp's input. Decided:
   the tape's buyer/seller signing (Lee-Ready) stays, marked estimated on screen ("Flow observations
   (estimated)", `tests/e2e/console-gamma-flow.spec.js`); a print is read against Schwab's bid and
   ask in force when it traded, never the quote that followed it
