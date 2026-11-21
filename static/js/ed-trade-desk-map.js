@@ -6,7 +6,7 @@
                      the terrain panel (call/put wall, gamma flip, max pain -- full chain)
      ATTENTION    <- the desk panel (served, numbered; each marker is its queue entry, linked
                      both ways): level crosses judged by their minute's bar, wall breaches,
-                     the book's size walls at the book's own time
+                     stale levels
      CARDS        <- the book, terrain, bars and liquidity panels (value/VWAP relation) and the
                      price row (Schwab LEVELONE)
      HEADER TRUST <- the same panels' own state/age fields
@@ -489,7 +489,7 @@
       host.innerHTML =
         '<div class="tdm-empty">Nothing in the ' +
         esc(windowLabel()) +
-        ". Level crosses, wall breaches and book size walls land here.</div>";
+        ". Level crosses and wall breaches land here.</div>";
       return;
     }
     host.innerHTML = items
