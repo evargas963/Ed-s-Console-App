@@ -260,7 +260,9 @@ def test_the_strikes_and_their_moves_are_served_as_listed():
             else:
                 assert all(re.fullmatch(r"\d+\.\d\d", text) for text in shown), shown
     assert quoted == 200  # of the expiry's 258 contracts; Schwab streams the other 58
-    assert p["chain"]["spot_text"] == price(p["chain"]["spot"])
+    # the chain's price is Schwab's last trade, the message the panels were made with
+    last = json.loads((FX / "real_spy_quote_2026_11_12.json").read_text(encoding="utf-8"))
+    assert p["chain"]["spot_text"] == price(last["native"]["LAST_PRICE"])
     strikes = p["strikes"]
     # at All Expirations and at the expiry chosen
     for body in (strikes, p["strikes_second_expiry"]):

@@ -68746,11 +68746,9 @@
   },
   "chain": {
     "ticker": "AMZN",
-    "spot": 269.425,
     "spot_text": "269.43",
     "spot_time_ct": "Thu 11/12 09:39 AM CT",
     "expiry": "2026-11-13",
-    "spot_strike": 270.0,
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
@@ -72605,11 +72603,9 @@
   },
   "chain_second_expiry": {
     "ticker": "AMZN",
-    "spot": 269.425,
     "spot_text": "269.43",
     "spot_time_ct": "Thu 11/12 09:39 AM CT",
     "expiry": "2026-11-16",
-    "spot_strike": 270.0,
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
     "levels_stale_reason": "",

@@ -32,8 +32,6 @@ const CONTRACTS = [
 ];
 const CHAIN = {
   ticker: "SPY",
-  spot: 100,
-  spot_strike: 100,
   expiry: "2026-09-11",
   status: "ok",
   scope: { kind: "complete_single_expiry" },

@@ -11811,8 +11811,6 @@
     "scope": {
       "kind": "complete_single_expiry"
     },
-    "spot": null,
-    "spot_strike": null,
     "spot_text": null,
     "spot_time_ct": null,
     "status": "ok",
@@ -23630,8 +23628,6 @@
     "scope": {
       "kind": "complete_single_expiry"
     },
-    "spot": null,
-    "spot_strike": null,
     "spot_text": null,
     "spot_time_ct": null,
     "status": "ok",
@@ -29904,8 +29900,6 @@
     "scope": {
       "kind": "complete_single_expiry"
     },
-    "spot": null,
-    "spot_strike": null,
     "spot_text": null,
     "spot_time_ct": null,
     "status": "ok",

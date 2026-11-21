@@ -108,28 +108,33 @@ ASKED["venue"] = "NYSE_BOOK"
 def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held):
     """Every page panel, found from the app (no GET route answers a ticker).
 
-    A panel that serves a price serves `spot`, the live price, and not the price the payload was
-    computed at, which no page reads (operator 2026-11-12: "Yes, remove it"). The strikes panel
-    and the heatmap serve neither: their pages mark the price's row by the served mark and take
-    the price from the header row. The price's trade time is the text the page shows
-    (`spot_time_ct`); its instant is on the terrain alone, where the desk's Right Now takes it
-    (push.desk), and no page reads one.
+    A panel that serves a price serves the live price, and not the price the payload was
+    computed at, which no page reads (operator 2026-11-12: "Yes, remove it"): as the number
+    (`spot`) where a reader takes it, and as the text its page prints (`spot_text`), which is the
+    chain's whole price. The strikes panel and the heatmap serve neither: their pages mark the
+    price's row by the served mark and take the price from the header row. The price's trade time
+    is the text the page shows (`spot_time_ct`); its instant is on the terrain alone, where the
+    desk's Right Now takes it (push.desk), and no page reads one.
     """
     now = time_et.now()
-    served, instant, heatmap = {}, set(), {}
+    served, printed, instant, drawn = {}, {}, set(), {}
     for kind, panel in server.PAGE_PANELS.items():
         contract = next(iter(held.contracts))
-        body = panel(Asked(TK, now, {**ASKED, "contract": contract}))
+        body = drawn[kind] = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
             served[kind] = (body.get("spot"), "priced_at_spot" in body)
+        if "spot_text" in body:
+            printed[kind] = body["spot_text"]
         if "spot_as_of_ts_utc" in body:
             instant.add(kind)
-        if kind == "surface":
-            heatmap = body
-    assert {"terrain", "chain", "levels"} <= set(served)
-    assert not {"strikes", "surface"} & set(served)
-    # the heatmap is drawn, the price's row marked on its cells: no price key beside them
-    assert heatmap["available"] and not {"spot_source", "spot_strike"} & set(heatmap)
+    assert {"terrain", "levels"} <= set(served)
+    assert not {"strikes", "surface", "chain"} & set(served)
+    # one price on every screen that prints it: the live price's text, the chain's among them
+    assert {"chain", "levels"} <= set(printed) and set(printed.values()) == {f"{LIVE:.2f}"}
+    # the heatmap and the chain are drawn, the price's row marked on their rows: no key beside it
+    assert drawn["surface"]["available"] and drawn["chain"]["status"] == "ok"
+    for kind in ("surface", "chain"):
+        assert not {"spot_source", "spot_strike"} & set(drawn[kind]), kind
     assert instant == {"terrain"}
     routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]
     assert [r.path for r in routes if "ticker" in inspect.signature(r.endpoint).parameters] == []
@@ -250,21 +255,27 @@ def _strike_lists(body):
 
 
 def _spot_marked(body):
-    """The strike every list of the strikes panel marks as the price's, as {"spot_strike": k}."""
+    """The strike every list of the strikes panel marks as the price's."""
     (strike,) = {r["strike"] for r in _strike_lists(body) if SPOT_MARK in r["marks"]}
-    return {"spot_strike": strike}
+    return strike
 
 
 def _spot_cell(body):
-    """The strike the heatmap marks as the price's, by its cells' mark, as {"spot_strike": k}."""
+    """The strike the heatmap marks as the price's, by its cells' mark."""
     (strike,) = [c["strike"] for c in body["cells"] if c["spot"]]
-    return {"spot_strike": strike}
+    return strike
+
+
+def _spot_rung(body):
+    """The strike the chain ladder marks as the price's, by its row's mark."""
+    (strike,) = [r["strike"] for r in body["ladder"] if r["spot"]]
+    return strike
 
 
 @pytest.mark.parametrize(
     "route",
     [
-        lambda: push_chain.chain("SPY", time_et.now(), {"expiry": "2026-10-22"}),
+        lambda: _spot_rung(push_chain.chain("SPY", time_et.now(), {"expiry": "2026-10-22"})),
         lambda: _spot_cell(
             push_surface.gamma_surface(
                 "SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}, requested=False
@@ -277,8 +288,8 @@ def _spot_cell(body):
 def test_the_spot_row_is_served(route):
     """The row every panel marks as spot: the listed strike nearest the live price, served.
 
-    The strikes panel serves it as the mark of its row, the same strike in every list, and the
-    heatmap as the mark of its cells.
+    The strikes panel serves it as the mark of its row, the same strike in every list, the
+    heatmap as the mark of its cells, and the chain ladder as the mark of its row.
 
     It was worked out in six places in the page. SPY's 2026-10-22 close capture, published at the
     price Schwab sent in it (764.04), and SPY's first print after it a strike away (16:39:03 ET,
@@ -297,7 +308,7 @@ def test_the_spot_row_is_served(route):
         daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     try:
-        body = route()
+        marked = route()
     finally:
         with level_store._lock:
             level_store._levels.pop("SPY", None)
@@ -305,7 +316,7 @@ def test_the_spot_row_is_served(route):
         lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
         lmp.record_feed_down()
-    assert body["spot_strike"] == live
+    assert marked == live
 
 
 def test_put_call_ratios_over_every_expiry_are_served(held):

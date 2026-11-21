@@ -66,8 +66,6 @@ const BARS = {
 const CALL_SYM = "CRWD  260918C00272500";
 const PUT_SYM = "CRWD  260918P00272500";
 const CHAIN = {
-  spot: SPOT,
-  spot_strike: K,
   expiry: "2026-09-18",
   status: "ok",
   scope: { kind: "complete_single_expiry" },

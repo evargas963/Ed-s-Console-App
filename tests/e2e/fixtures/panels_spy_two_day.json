@@ -22105,11 +22105,9 @@
   },
   "chain": {
     "ticker": "SPY",
-    "spot": 757.075,
     "spot_text": "757.08",
     "spot_time_ct": "Thu 11/12 09:30 AM CT",
     "expiry": "2026-11-12",
-    "spot_strike": 757.0,
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
@@ -29626,11 +29624,9 @@
   },
   "chain_second_expiry": {
     "ticker": "SPY",
-    "spot": 757.075,
     "spot_text": "757.08",
     "spot_time_ct": "Thu 11/12 09:30 AM CT",
     "expiry": "2026-11-13",
-    "spot_strike": 757.0,
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
