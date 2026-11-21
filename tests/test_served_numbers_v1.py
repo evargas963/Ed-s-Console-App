@@ -94,21 +94,18 @@ def test_the_chains_counts_are_whole_and_its_iv_two_decimals():
     """The chain screens and Strike Detail draw each contract's served texts (AMZN).
 
     The open interest is the chain's, as Schwab sent it in the capture the panel was made of
-    (real_amzn_two_day_captures_2026_11_12.json.gz, its second capture). The volume is the
-    contract's quote's or the stream's, so its text is read by its form.
+    (_sent). The IV is the contract's quote's, or for a contract Schwab streams the one the sweep
+    wrote on its row. The volume is the quote's or the stream's, so its text is read by its form.
     """
     chain = json.loads((E2E / "panels_amzn_two_day.json").read_text(encoding="utf-8"))["chain"]
     sides = [c for r in chain["ladder"] for c in (r["call"], r["put"]) if c is not None]
     assert sides
-    capture = json.loads(
-        gzip.decompress((FX / "real_amzn_two_day_captures_2026_11_12.json.gz").read_bytes())
-    )["captures"][-1]
-    sent = {c["symbol"]: c for row in capture["rows"] for c in row["contracts"]}
+    sent = _sent("amzn")
     for c in sides:
-        assert c["oi_text"] == screen_text(sent[c["symbol"]]["openInterest"], "count")
+        row = sent[c["symbol"]]
+        assert c["oi_text"] == screen_text(row["openInterest"], "count")
         assert re.fullmatch(r"\d{1,3}(,\d{3})*", c["volume_text"]), c["volume_text"]
-        iv = c.get("volatility")
-        assert c["iv_text"] == (None if iv is None else f"{iv:.2f}")
+        assert c["iv_text"] == f"{(row.get('quote') or row)['volatility']:.2f}"
 
 
 def test_vanna_and_charm_are_compact_with_no_dollar_sign():
@@ -148,6 +145,18 @@ def listed(value: float | None) -> str | None:
 
 def _panels(name: str) -> dict:
     return json.loads((E2E / f"panels_{name}_two_day.json").read_text(encoding="utf-8"))
+
+
+def _sent(name: str) -> dict:
+    """Schwab's contracts by symbol, as sent in the capture the ticker's panels were made of.
+
+    real_<name>_two_day_captures_2026_11_12.json.gz, its second capture: each /chains row, with
+    its /quotes answer (`quote`) unless Schwab streams the contract.
+    """
+    capture = json.loads(
+        gzip.decompress((FX / f"real_{name}_two_day_captures_2026_11_12.json.gz").read_bytes())
+    )["captures"][-1]
+    return {c["symbol"]: c for row in capture["rows"] for c in row["contracts"]}
 
 
 def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
@@ -234,11 +243,23 @@ def test_the_strikes_and_their_moves_are_served_as_listed():
     The strikes that grew and traded most, as listed.
     """
     p = _panels("spy")
+    sent = _sent("spy")
+    quoted = 0
     for r in p["chain"]["ladder"]:
         assert r["strike_text"] == listed(r["strike"])
         for c in (r["call"], r["put"]):
-            if c is not None:
-                assert (c["bid_text"], c["ask_text"]) == (price(c["bid"]), price(c["ask"]))
+            if c is None:
+                continue
+            # a quoted contract's bid and ask are its quote's; one Schwab streams shows the
+            # stream's, which the capture does not hold: read by their form
+            quote = sent[c["symbol"]].get("quote")
+            shown = (c["bid_text"], c["ask_text"])
+            if quote:
+                quoted += 1
+                assert shown == (price(quote["bidPrice"]), price(quote["askPrice"]))
+            else:
+                assert all(re.fullmatch(r"\d+\.\d\d", text) for text in shown), shown
+    assert quoted == 200  # of the expiry's 258 contracts; Schwab streams the other 58
     assert p["chain"]["spot_text"] == price(p["chain"]["spot"])
     strikes = p["strikes"]
     # at All Expirations and at the expiry chosen

@@ -345,20 +345,15 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
     """Return the contract as the chain screens show it, under Schwab's field names.
 
     Each field Schwab
-    sent, and each value the record holds (a streamed quote or Greek), and no other. Of its
-    Greeks, the two the Chain ladder draws: gamma and delta. Its strike and its in-the-money flag
-    are the ladder row's (calc.terrain_engine.chain_ladder), its open interest and volume the
-    texts served beside it (push.chain).
+    sent, and each value the record holds (a streamed Greek), and no other. Of its Greeks, the
+    two the Chain ladder draws: gamma and delta. Its strike, its side and its in-the-money flag
+    are the ladder row's (calc.terrain_engine.chain_ladder); its open interest, volume, IV, bid
+    and ask are the texts served beside it (push.chain).
     """
     read = {
         "symbol": c.symbol,
-        "putCall": c.side,
-        "daysToExpiration": c.days_to_expiry,
         "settlementType": c.settlement,
-        "bid": c.bid,
-        "ask": c.ask,
         "multiplier": c.multiplier,
-        "volatility": c.volatility,
         "nonStandard": c.non_standard,
         "gamma": c.gamma,
         "delta": c.delta,

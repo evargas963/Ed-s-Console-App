@@ -158,7 +158,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
     served = {c["symbol"]: c for c in _on_ladder(body)}
     assert no_value
     for s in no_value:
-        assert (served[s]["volatility"], served[s]["gamma"], served[s]["delta"]) == (
+        assert (served[s]["iv_text"], served[s]["gamma"], served[s]["delta"]) == (
             None,
             None,
             None,

@@ -27,18 +27,8 @@ const BARS = {
   last_bar: { t: 1757000180, label: "Thu 09/04 10:36 AM CT" },
 };
 const CONTRACTS = [
-  {
-    putCall: "CALL",
-    gamma: 0.021,
-    delta: 0.52,
-    volatility: 12.3,
-  },
-  {
-    putCall: "PUT",
-    gamma: 0.019,
-    delta: -0.48,
-    volatility: 12.6,
-  },
+  { gamma: 0.021, delta: 0.52 },
+  { gamma: 0.019, delta: -0.48 },
 ];
 const CHAIN = {
   ticker: "SPY",

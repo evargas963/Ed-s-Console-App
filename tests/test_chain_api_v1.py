@@ -90,11 +90,8 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
 #: the chain fields the screens show, each as Schwab sent it (option_contract.chain_row)
 _SHOWN = (
     "symbol",
-    "putCall",
-    "daysToExpiration",
     "settlementType",
     "multiplier",
-    "volatility",
     "nonStandard",
     # the two Greeks the Chain ladder draws; theta, vega and rho are on no screen and not served
     "gamma",
@@ -117,8 +114,6 @@ def _as_shown(contracts):
     return [
         {
             **{k: c[k] for k in _SHOWN if k in c},
-            "bid": None,
-            "ask": None,
             "oi_text": text(c.get("openInterest"), ",.0f"),
             "volume_text": text(c.get("totalVolume"), ",.0f"),
             "iv_text": text(c.get("volatility"), ".2f"),
@@ -245,8 +240,9 @@ def test_a_streamed_contracts_bid_and_ask_are_the_streams_never_the_chains():
         ],
     )
     shown = _served(_get(ticker="TSLA"))
-    assert (shown[pushed["symbol"]]["bid"], shown[pushed["symbol"]]["ask"]) == (bid, ask)
-    assert (shown[silent["symbol"]]["bid"], shown[silent["symbol"]]["ask"]) == (None, None)
+    sent, quiet = shown[pushed["symbol"]], shown[silent["symbol"]]
+    assert (sent["bid_text"], sent["ask_text"]) == (f"{bid:.2f}", f"{ask:.2f}")
+    assert (quiet["bid_text"], quiet["ask_text"]) == (None, None)
 
 
 def test_a_later_streamed_gamma_does_not_replace_the_quote():
@@ -317,8 +313,8 @@ def test_a_quote_streamed_after_the_last_pricing_is_shown_when_it_arrives():
     shown = _stream_after_pricing(
         target, {"BID_PRICE": bid, "ASK_PRICE": ask, "TOTAL_VOLUME": volume}
     )
-    assert (shown["bid"], shown["ask"]) == (bid, ask)
-    assert shown["volume_text"] == f"{volume:,.0f}" and shown["bid_text"] == f"{bid:.2f}"
+    assert (shown["bid_text"], shown["ask_text"]) == (f"{bid:.2f}", f"{ask:.2f}")
+    assert shown["volume_text"] == f"{volume:,.0f}"
     assert shown["oi_text"] == f"{target['openInterest']:,.0f}"  # the chain's (rule 3)
 
 
@@ -328,7 +324,11 @@ def test_a_contract_not_live_keeps_the_values_last_priced():
     shown = _stream_after_pricing(
         target, {"BID_PRICE": target["bid"] + 0.07, "TOTAL_VOLUME": 5}, socket_open=False
     )
-    assert (shown["bid"], shown["ask"], shown["volume_text"]) == (target["bid"], target["ask"], "1")
+    assert (shown["bid_text"], shown["ask_text"], shown["volume_text"]) == (
+        f"{target['bid']:.2f}",
+        f"{target['ask']:.2f}",
+        "1",
+    )
 
 
 def test_every_option_quote_sends_the_chain_panel_of_its_ticker():
