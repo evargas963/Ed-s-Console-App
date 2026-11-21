@@ -390,10 +390,22 @@ test("Desk: an index that stops stands marked on the Volatility card and the foo
     await expect(onCard).toHaveText(
       name(vix) + " " + vix.spot_disp + " (" + vix.chg_pct_text + ")" + tail(vix, word, aged),
     );
-    await expect(onCard).toHaveAttribute("title", word ? why(vix) : "");
+    await expect(onCard).toHaveAttribute("title", why(vix));
     await expect(onCard.locator("b")).toHaveClass(word ? "tdm-stopped" : "");
   };
   const lastTrade = (row) => "last trade " + row.trade_time_ct;
+  // no row has arrived: each index reads "-", on the strip and on the card, never a sentence
+  // in the value's place; that its row is waited for is the title
+  for (const row of MARKET.market_live) {
+    const cell = page.locator("#tdmIdx" + name(row));
+    await expect(cell).toHaveText(name(row) + "-");
+    await expect(cell).toHaveAttribute("title", "waiting for the " + name(row) + " stream");
+  }
+  await expect(page.locator("#tdmVolIdx")).toHaveText(name(MARKET.live) + " -");
+  await expect(page.locator("#tdmVolIdx")).toHaveAttribute(
+    "title",
+    "waiting for the " + name(MARKET.live) + " stream",
+  );
   // live: each value with its trade time, unmarked
   sock.quotes([SPY_ROW, ...MARKET.market_live]);
   await reads(MARKET.market_live, null, false, lastTrade);

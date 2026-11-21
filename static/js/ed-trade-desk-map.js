@@ -694,13 +694,13 @@
       return ctx.volatility;
     })[0];
     var m = S.market[vol.key];
-    el.title = m && m.mark ? m.mark.why : "";
+    el.title = idxTitle(m, vol.display);
     el.innerHTML =
       esc(vol.display) +
       ' <b class="' +
       (m && m.mark ? "tdm-stopped" : "") +
       '">' +
-      vixText(m, vol.display) +
+      vixText(m) +
       "</b>";
   }
   // ------------------------------------------------------------------ liquidity card
@@ -1200,15 +1200,22 @@
   // with the shell's mark of it (ed-core.js paintMarket, S.market): none while the row is live;
   // stopped, the served word (the shell's own while its push is silent), why, and the trade's
   // time with its served age (no age while the push is silent). `idxTail`: what follows an
-  // index's value here, the mark's word and the trade's time.
+  // index's value here, the mark's word and the trade's time. `idxTitle`: the row's title, that
+  // its row is still waited for, why it is stopped, or its last trade's time. A value not
+  // received reads "-".
   function idxTail(m) {
     var when = m.mark ? m.mark.when : m.row.trade_time_ct;
     return (m.mark ? " · " + m.mark.word : "") + (when != null ? " · last trade " + when : "");
   }
-  function vixText(m, name) {
-    if (!m || m.row.spot == null) return "waiting for the " + esc(name) + " stream";
+  function idxTitle(m, name) {
+    if (!m) return "waiting for the " + name + " stream";
+    if (m.mark) return m.mark.why;
+    return m.row.trade_time_ct != null ? "last trade " + m.row.trade_time_ct : "no trade sent";
+  }
+  function vixText(m) {
+    if (!m) return "-";
     return (
-      esc(m.row.spot_disp) +
+      esc(orDash(m.row.spot_disp)) +
       (m.row.chg_pct_text != null ? " (" + esc(m.row.chg_pct_text) + ")" : "") + // served
       esc(idxTail(m))
     );
@@ -1221,10 +1228,7 @@
       var m = S.market[c.key],
         r = m && m.row,
         tail = m ? idxTail(m) : "";
-      if (!m) el.title = "waiting for the " + c.display + " stream";
-      else if (m.mark) el.title = m.mark.why;
-      else if (r.trade_time_ct != null) el.title = "last trade " + r.trade_time_ct;
-      else el.title = "no trade sent";
+      el.title = idxTitle(m, c.display);
       el.innerHTML =
         "<span>" +
         c.display +
