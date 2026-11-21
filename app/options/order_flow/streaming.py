@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-def price_row(ticker: str, now: float) -> dict[str, Any]:
+def price_row(ticker: str, now: float) -> live_price_rows.PriceRow:
     """Return `ticker`'s price row at `now`.
 
     It is the daemon's one row (live_price_rows.price_row), the one the browser reads.

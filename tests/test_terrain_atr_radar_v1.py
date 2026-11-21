@@ -47,7 +47,7 @@ def test_the_bars_panel_serves_canonical_bars_shape():
         body = push_bars.bars("SPY", at, {"tf": "1", "limit": 5})
         assert body["tf"] == "1" and len(body["bars"]) == 5
         row = body["bars"][-1]
-        # each bar carries its served change (live_price_rows.with_change: the bar change is
+        # each bar carries its served change (live_price_rows.bar_change: the bar change is
         # served, the page computes nothing), its served times (time_et.ct_label, ct_ticks) and
         # its volume and prices as the screen shows them
         assert set(row) == {

@@ -19,6 +19,7 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import OrderFlowState, bind_bus
+from calc.micro_structure import Candle
 from calibration.complete_chain_capture import StoredCapture
 from db import LevelCrossEvent, StoredCross
 from feed import connection
@@ -166,24 +167,17 @@ def news_on_the_bus(bus: MessageBus, messages: list[dict]) -> None:
         connection._publisher("NEWS_HEADLINE", bus, HealthRegistry(), lambda at=at: at)(frame)
 
 
-def spy_minutes() -> list[dict]:
+def spy_minutes() -> list[Candle]:
     """Return Schwab's SPY 1-minute bars of 2026-09-24 and 09-25, regular hours, oldest first.
 
-    They are in the shape the console's roll-up takes. Schwab sent no volume for the last minute
+    Each is the bar the console's roll-up takes. Schwab sent no volume for the last minute
     (09-25 15:59 ET).
     """
     bars = json.loads(
         (_FIXTURES / "real_spy_1m_bars_2026_09_24_25.json").read_text(encoding="utf-8")
     )["bars"]
     return [
-        {
-            "t": b["timestamp"] / 1000,
-            "o": b["open"],
-            "h": b["high"],
-            "l": b["low"],
-            "c": b["close"],
-            "v": b["volume"],
-        }
+        Candle(b["timestamp"] / 1000, b["open"], b["high"], b["low"], b["close"], b["volume"])
         for b in bars
     ]
 
