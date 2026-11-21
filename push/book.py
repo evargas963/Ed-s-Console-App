@@ -71,12 +71,12 @@ class LiquidityCard(TypedDict):
     auction_text: str | None
 
 
-class BookPanel(BookMicrostructure):
+class BookPanel(BookMicrostructure, BookTimes):
     """The `book` panel (order_flow_microstructure).
 
     The engine's microstructure of one Schwab book, then the page's words for the quote's and
-    the book's state, the ticker and venue, the two clocks as the screen shows them, and the
-    Liquidity card's readout.
+    the book's state, the ticker and venue, the two clocks as the screen shows them (BookTimes),
+    and the Liquidity card's readout.
     """
 
     top_outage: str | None
@@ -85,11 +85,6 @@ class BookPanel(BookMicrostructure):
     ticker: str
     venue: str
     no_book_text: str | None
-    quote_time_ct: str | None
-    book_time_ct: str | None
-    book_age_text: str | None
-    book_when_age_text: str | None
-    quote_when_age_text: str | None
     readout: LiquidityCard
 
 

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
-from typing import Any, TypedDict
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple, TypedDict
 
 import numpy as np
 
@@ -178,8 +178,7 @@ def _sorted_valid_levels(
     return valid
 
 
-@dataclass(frozen=True)
-class CanonicalBook:
+class CanonicalBook(NamedTuple):
     """The live book of one symbol, read and normalized once (_extract_canonical_book).
 
     Whether a book is held and its Schwab service, the top of book as Schwab last sent it, each
@@ -548,10 +547,13 @@ def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
     ]
     newest: dict[str, tuple[float | None, str]] = {}
     for key, venue, quoted in rows_held:
-        held_time = newest[key][0] if key in newest else None
-        # a time sent is newer than one not sent
-        if key not in newest or (quoted is not None and (held_time is None or quoted > held_time)):
-            newest[key] = (quoted, venue)
+        if key in newest:
+            held_time = newest[key][0]
+            # the copy held stands unless this one's time is newer; a time sent is newer than
+            # one not sent
+            if quoted is None or (held_time is not None and quoted <= held_time):
+                continue
+        newest[key] = (quoted, venue)
     partial = any(
         quoted is None and len({v for k, v, _q in rows_held if k == key}) > 1
         for key, _venue, quoted in rows_held
@@ -590,8 +592,7 @@ _ONE_SIDED = {
 }
 
 
-@dataclass(frozen=True)
-class ReadoutView:
+class ReadoutView(NamedTuple):
     """One view of a book: its best levels' totals, their imbalance and how far they reach.
 
     Each None where the book has no number for it: a side with no levels has no total, and a
@@ -614,8 +615,7 @@ _NO_VIEWS: Mapping[str, ReadoutView] = dict.fromkeys(
 )
 
 
-@dataclass(frozen=True)
-class Readout:
+class Readout(NamedTuple):
     """The imbalance readout of one Schwab book, or of the composite (book_readout).
 
     `status`: "ok", "one_sided" (one side has no levels), "empty" (neither has) or "no_book"
@@ -651,15 +651,17 @@ def _views(bids: Levels, asks: Levels) -> dict[str, ReadoutView]:
         depth = int(view)
         bt, at = _book_side_depth_total(bids, depth), _book_side_depth_total(asks, depth)
         imb = _book_imbalance_from_totals(bt, at)
+        # by position, the record's order (built on every book message): imbalance, pct, each
+        # side's total, their difference and sum, each side's span
         views[view] = ReadoutView(
-            imbalance=imb,
-            pct=_pct(imb),
-            bid_total=bt,
-            ask_total=at,
-            difference=None if bt is None or at is None else abs(bt - at),
-            total_depth=None if bt is None or at is None else bt + at,
-            span_bid=_span(bids, depth),
-            span_ask=_span(asks, depth),
+            imb,
+            _pct(imb),
+            bt,
+            at,
+            None if bt is None or at is None else abs(bt - at),
+            None if bt is None or at is None else bt + at,
+            _span(bids, depth),
+            _span(asks, depth),
         )
     return views
 
@@ -706,11 +708,8 @@ def book_readout(books: Mapping[str, Book | None]) -> Mapping[str, Readout]:
     times = [t for b in held.values() if (t := b.book_time_ms) is not None]
     (bids, bid_partial), (asks, ask_partial) = (_composite_side(held, s) for s in ("BIDS", "ASKS"))
     # its time is its older book's; a book with no time leaves it none
-    out[COMPOSITE] = replace(
-        _readout(bids, asks, min(times) if len(times) == len(held) else None),
-        books=list(held),
-        dedup_partial=bid_partial or ask_partial,
-    )
+    composite = _readout(bids, asks, min(times) if len(times) == len(held) else None)
+    out[COMPOSITE] = composite._replace(books=list(held), dedup_partial=bid_partial or ask_partial)
     return out
 
 
