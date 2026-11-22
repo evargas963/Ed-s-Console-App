@@ -51,21 +51,6 @@ def _schwab_int(val: Any) -> int | None:
     return int(v) if v is not None else None
 
 
-def vendor_triple(
-    trade_ms: Any, price: Any, size: Any
-) -> tuple[int | None, float | None, float | None]:
-    """Vendor last-print key. Not a native trade id."""
-    return (_schwab_int(trade_ms), schwab_number(price), schwab_count(size))
-
-
-def is_adjacent_restatement(
-    prev: tuple[Any, ...] | None,
-    curr: tuple[Any, ...],
-) -> bool:
-    """Return True only when the immediately previous observation equals this vendor triple."""
-    return prev is not None and prev == curr
-
-
 #: how each field of the last print is read, as Schwab sends it (AGENTS.md rule 2)
 _PRINT_READERS = {
     VENDOR_LAST_PRICE: schwab_number,
@@ -127,6 +112,18 @@ class KeptPrint(NamedTuple):
     iv: float | None
     delta: float | None
     landed: str
+
+
+def is_adjacent_restatement(prev: KeptPrint | None, trade: TradePrint) -> bool:
+    """Return whether `trade` restates `prev`, the print kept just before it (None: none kept).
+
+    The same time, price and size: Schwab's last-print values, not a native trade id.
+    """
+    return prev is not None and (prev.time_millis, prev.price, prev.size) == (
+        trade.time_millis,
+        trade.price,
+        trade.size,
+    )
 
 
 def quote_in_force(trade_ms: int | None, top: StreamedTop, before: StreamedTop) -> StreamedTop:

@@ -24,7 +24,6 @@ from calc.l1_trade_observation import (
     extract_vendor_print,
     is_adjacent_restatement,
     quote_in_force,
-    vendor_triple,
 )
 from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
@@ -49,7 +48,6 @@ class OrderFlowState:
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque[KeptPrint]] = {}
-        self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
         #: the bus's current records (stream_spine.MessageBus.current, bind): each symbol's top of
         #: book, Greeks and volume are read from them, never kept here
         self.current: dict[str, tuple[str, Any]] = {}
@@ -113,18 +111,18 @@ class OrderFlowState:
         trade = extract_vendor_print(content_item)
         if trade is None:
             return
-        key = vendor_triple(trade.time_millis, trade.price, trade.size)
         # the symbol's record on the bus, taken once: its newest quote and the one that replaced,
         # read from the same version of it
         record = self.current.get(held_key(service, sym))
         sent = streamed_record(record)
         with self._lock:
+            tape = self._get_tape(sym)
             # an adjacent repeat of the same trade is a restatement (l1_trade_observation): a
-            # whole record, or the merged record on a quote change; never a second print
-            if is_adjacent_restatement(self._prev_trade.get(sym), key):
+            # whole record, or the merged record on a quote change; never a second print. The
+            # trade before it is the tape's last print
+            if is_adjacent_restatement(tape[-1] if tape else None, trade):
                 return
-            self._prev_trade[sym] = key
-            self._get_tape(sym).append(
+            tape.append(
                 history.quoted(
                     trade,
                     # the daemon's receive time of the message that carried the trade, not the
@@ -151,7 +149,7 @@ class OrderFlowState:
             return self._book[sym].get(venue)
 
     def clear_all(self) -> None:
-        """Drop tape/book/top/prev-print identity for every symbol."""
+        """Drop every symbol's tape and books; with a tape goes the trade a restatement repeats."""
         with self._lock:
             self._clear_all_session_state_unlocked()
 
@@ -161,7 +159,6 @@ class OrderFlowState:
             values.clear()
         for values in self._book.values():
             values.clear()
-        self._prev_trade.clear()
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
@@ -172,7 +169,6 @@ class OrderFlowState:
             self._book.pop(sym, None)
             if sym in self._tape:
                 self._tape[sym].clear()
-            self._prev_trade.pop(sym, None)
 
 
 _LIVE_STATE = OrderFlowState()
@@ -252,7 +248,7 @@ def newest_book(symbol: str, venue: str) -> Book | None:
 
 
 def clear_all_live_state() -> None:
-    """Drop tape/book/top/prev-print identity for every symbol.
+    """Drop every symbol's tape and books.
 
     Required on stream disconnect/reconnect. Leaving the last window resident
     mixes pre-disconnect restatements with the new session.
