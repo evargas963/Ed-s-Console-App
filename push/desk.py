@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from calc.micro_structure import Candle
+from calc.terrain_engine import WALL_BREACHED
 from numeric_contract import count_text, price_text
 from push.bars import chart_bars, held_minutes
 from push.terrain import terrain
@@ -115,7 +116,7 @@ def _item(
     dom: str,
     direction: str | None,
     title: str,
-    detail: str,
+    detail: str | None,
     src: str,
     *,
     warn: bool = False,
@@ -169,25 +170,28 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
     """Return a wall the live price is through, and stale levels: the terrain panel's words."""
     items: list[dict[str, Any]] = []
     t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
-    tts = t.get("levels_ts_utc")
-    for side, word, key in (("call", "call", "cw"), ("put", "put", "pw")):
-        if t.get(f"{side}_wall_state") == "breached":  # at the live price (price_relations)
+    walls = (
+        ("call", "cw", "up", t["call_wall_state"], t["call_wall"]),
+        ("put", "pw", "down", t["put_wall_state"], t["put_wall"]),
+    )
+    for word, key, way, state, wall in walls:
+        if state == WALL_BREACHED:  # at the live price (price_relations)
             items.append(
                 _item(
                     key,
-                    t.get("spot_as_of_ts_utc"),
+                    t["spot_as_of_ts_utc"],
                     "OPTIONS",
-                    "up" if side == "call" else "down",
+                    way,
                     f"Spot through the {word} wall",
-                    f"{word} wall {price_text(t[f'{side}_wall'])} · spot {price_text(t['spot'])}",
+                    f"{word} wall {price_text(wall)} · spot {price_text(t['spot'])}",
                     "gamma levels",
                 )
             )
-    if t.get("levels_state") == LEVELS_STALE:
+    if t["levels_state"] == LEVELS_STALE:
         items.append(
             _item(
                 "ls",
-                tts,
+                t.get("levels_ts_utc"),
                 "DATA",
                 None,
                 "Gamma levels are stale",

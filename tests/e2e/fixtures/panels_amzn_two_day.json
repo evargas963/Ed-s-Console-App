@@ -3122,9 +3122,6 @@
     "put_wall": 270.0,
     "absolute_gamma_strike": 270.0,
     "pin_candidate": null,
-    "pin_expected_moves": null,
-    "pin_strike_widths": null,
-    "pin_minutes_to_close": null,
     "max_pain": 260.0,
     "max_pain_dte": 1.0,
     "call_charm_wall": 275.0,
@@ -3150,7 +3147,6 @@
       "call_charm_wall": 267.5,
       "put_charm_wall": 265.0
     },
-    "same_day_repriced_from": "2026-11-13",
     "call_delta_wall": 250.0,
     "put_delta_wall": 270.0,
     "contracts_used": 2440,
@@ -3210,34 +3206,7 @@
       "2028-12-15": 29.447134070000004,
       "2029-01-19": 29.244802085
     },
-    "pcr_volume_by_expiry": {
-      "2026-11-13": 0.29796577707702576,
-      "2026-11-16": 0.4178841132048839,
-      "2026-11-18": 0.3130801687763713,
-      "2026-11-20": 0.3281825494263579,
-      "2026-11-23": 0.22587719298245615,
-      "2026-11-25": 0.5279329608938548,
-      "2026-11-27": 0.25109338821713406,
-      "2026-12-04": 0.20164609053497942,
-      "2026-12-11": 0.33475935828877007,
-      "2026-12-18": 0.1977058847287855,
-      "2026-12-24": 0.2787878787878788,
-      "2026-12-31": 0.15636363636363637,
-      "2027-01-15": 0.20468303826384923,
-      "2027-02-19": 0.23733862959285004,
-      "2027-03-19": 0.7597911227154047,
-      "2027-04-16": 0.47619047619047616,
-      "2027-06-17": 0.2330654420206659,
-      "2027-07-16": 0.6503067484662577,
-      "2027-09-17": 0.09443099273607748,
-      "2027-12-17": 0.6616915422885572,
-      "2028-01-21": 0.1864406779661017,
-      "2028-06-16": 0.3026315789473684,
-      "2028-12-15": 0.4024390243902439,
-      "2029-01-19": 0.38926174496644295
-    },
     "pcr_all": 0.784314095805842,
-    "pcr_volume_all": 0.2952344192270084,
     "expiries": [
       "2026-11-13",
       "2026-11-16",
@@ -3264,32 +3233,6 @@
       "2028-12-15",
       "2029-01-19"
     ],
-    "expiry_dte": {
-      "2026-11-13": 1.0,
-      "2026-11-16": 4.0,
-      "2026-11-18": 6.0,
-      "2026-11-20": 8.0,
-      "2026-11-23": 11.0,
-      "2026-11-25": 13.0,
-      "2026-11-27": 15.0,
-      "2026-12-04": 22.0,
-      "2026-12-11": 29.0,
-      "2026-12-18": 36.0,
-      "2026-12-24": 42.0,
-      "2026-12-31": 49.0,
-      "2027-01-15": 64.0,
-      "2027-02-19": 99.0,
-      "2027-03-19": 127.0,
-      "2027-04-16": 155.0,
-      "2027-06-17": 217.0,
-      "2027-07-16": 246.0,
-      "2027-09-17": 309.0,
-      "2027-12-17": 400.0,
-      "2028-01-21": 435.0,
-      "2028-06-16": 582.0,
-      "2028-12-15": 764.0,
-      "2029-01-19": 799.0
-    },
     "computed_ts_utc": 1794497958.2236412,
     "net_gex_at_spot_text": "$937.34M",
     "contracts_used_text": "2,440",
@@ -77932,7 +77875,6 @@
           "label": "Prior day high",
           "short": "PDH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -77957,7 +77899,6 @@
           "label": "Value area high (est. from 1-min bars)",
           "short": "VAH est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -77982,7 +77923,6 @@
           "label": "Opening range high",
           "short": "ORH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -78007,7 +77947,6 @@
           "label": "Point of control (est. from 1-min bars)",
           "short": "POC est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -78032,7 +77971,6 @@
           "label": "VWAP",
           "short": "VWAP",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -78057,7 +77995,6 @@
           "label": "Overnight high",
           "short": "ONH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
           "provenance": {
@@ -78082,7 +78019,6 @@
           "label": "Opening range mid",
           "short": "ORM",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -78191,7 +78127,6 @@
           "label": "Value area low (est. from 1-min bars)",
           "short": "VAL est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -78216,7 +78151,6 @@
           "label": "Opening range low",
           "short": "ORL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -78241,7 +78175,6 @@
           "label": "Prior day VAH (est. from 1-min bars)",
           "short": "pVAH est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -78266,7 +78199,6 @@
           "label": "Prior day POC (est. from 1-min bars)",
           "short": "pPOC est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -78291,7 +78223,6 @@
           "label": "Prior day close",
           "short": "PDC",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -78316,7 +78247,6 @@
           "label": "Prior day VAL (est. from 1-min bars)",
           "short": "pVAL est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -78341,7 +78271,6 @@
           "label": "Prior day low",
           "short": "PDL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -78366,7 +78295,6 @@
           "label": "Overnight low",
           "short": "ONL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
           "provenance": {
@@ -78797,7 +78725,6 @@
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
         "bars_without_volume": 0,
-        "tick_size": 0.01,
         "bins": [
           [267.83, 1094.2525498655461, false],
           [267.84, 1094.2525498655461, false],
@@ -79479,7 +79406,6 @@
           "label": "Prior day high",
           "short": "PDH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -79504,7 +79430,6 @@
           "label": "Value area high (est. from 1-min bars)",
           "short": "VAH est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79529,7 +79454,6 @@
           "label": "Opening range high",
           "short": "ORH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79554,7 +79478,6 @@
           "label": "Point of control (est. from 1-min bars)",
           "short": "POC est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79579,7 +79502,6 @@
           "label": "VWAP",
           "short": "VWAP",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79604,7 +79526,6 @@
           "label": "Overnight high",
           "short": "ONH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
           "provenance": {
@@ -79629,7 +79550,6 @@
           "label": "Opening range mid",
           "short": "ORM",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79738,7 +79658,6 @@
           "label": "Value area low (est. from 1-min bars)",
           "short": "VAL est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79763,7 +79682,6 @@
           "label": "Opening range low",
           "short": "ORL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -79788,7 +79706,6 @@
           "label": "Prior day VAH (est. from 1-min bars)",
           "short": "pVAH est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -79813,7 +79730,6 @@
           "label": "Prior day POC (est. from 1-min bars)",
           "short": "pPOC est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -79838,7 +79754,6 @@
           "label": "Prior day close",
           "short": "PDC",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -79863,7 +79778,6 @@
           "label": "Prior day VAL (est. from 1-min bars)",
           "short": "pVAL est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -79888,7 +79802,6 @@
           "label": "Prior day low",
           "short": "PDL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -79913,7 +79826,6 @@
           "label": "Overnight low",
           "short": "ONL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
           "provenance": {
@@ -80289,7 +80201,6 @@
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
         "bars_without_volume": 0,
-        "tick_size": 0.01,
         "bins": [
           [267.83, 1094.2525498655461, false],
           [267.84, 1094.2525498655461, false],
@@ -80971,7 +80882,6 @@
           "label": "Prior day high",
           "short": "PDH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -80996,7 +80906,6 @@
           "label": "Value area high (est. from 1-min bars)",
           "short": "VAH est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81021,7 +80930,6 @@
           "label": "Opening range high",
           "short": "ORH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81046,7 +80954,6 @@
           "label": "Point of control (est. from 1-min bars)",
           "short": "POC est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81071,7 +80978,6 @@
           "label": "VWAP",
           "short": "VWAP",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81096,7 +81002,6 @@
           "label": "Overnight high",
           "short": "ONH",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
           "provenance": {
@@ -81121,7 +81026,6 @@
           "label": "Opening range mid",
           "short": "ORM",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81230,7 +81134,6 @@
           "label": "Value area low (est. from 1-min bars)",
           "short": "VAL est",
           "side": "ABOVE",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81255,7 +81158,6 @@
           "label": "Opening range low",
           "short": "ORL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "session_rth",
           "provenance": {
@@ -81280,7 +81182,6 @@
           "label": "Prior day VAH (est. from 1-min bars)",
           "short": "pVAH est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -81305,7 +81206,6 @@
           "label": "Prior day POC (est. from 1-min bars)",
           "short": "pPOC est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -81330,7 +81230,6 @@
           "label": "Prior day close",
           "short": "PDC",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -81355,7 +81254,6 @@
           "label": "Prior day VAL (est. from 1-min bars)",
           "short": "pVAL est",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -81380,7 +81278,6 @@
           "label": "Prior day low",
           "short": "PDL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "prior_rth_session",
           "provenance": {
@@ -81405,7 +81302,6 @@
           "label": "Overnight low",
           "short": "ONL",
           "side": "BELOW",
-          "strength": null,
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
           "provenance": {
@@ -81772,7 +81668,6 @@
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
         "bars_without_volume": 0,
-        "tick_size": 0.01,
         "bins": [
           [267.83, 1094.2525498655461, false],
           [267.84, 1094.2525498655461, false],

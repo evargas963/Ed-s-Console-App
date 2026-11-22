@@ -1253,12 +1253,12 @@ def test_a_page_that_drops_and_returns_gets_its_terrain_again():
 def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
     """The panel says why; the socket stays open and the other panels keep coming.
 
-    Induced condition: CRWD's published snapshot holds a lock where its flip's note goes, so
-    the terrain raises copying it, as a defect in its producer would.
+    INDUCED: CRWD's published snapshot holds a regime the terrain's read has no words for, so
+    the terrain raises wording it, as a defect in its producer would.
     """
     _publish(CRWD)
     held = level_store.published_levels(A)
-    level_store.publish(A, replace(held, snap=replace(held.snap, flip_note=threading.Lock())))
+    level_store.publish(A, replace(held, snap=replace(held.snap, regime="NO SUCH REGIME")))
 
     async def body(url):
         async with connect(url) as ws:
@@ -1270,8 +1270,7 @@ def test_a_terrain_producer_that_raises_fails_its_panel_alone_in_words():
             assert seen["terrain:levels"] == {
                 "type": "terrain:levels",
                 "ticker": A,
-                "failed": "the program could not produce this panel: "
-                "TypeError: cannot pickle '_thread.lock' object",
+                "failed": "the program could not produce this panel: KeyError: 'NO SUCH REGIME'",
             }
             assert seen["charm"]["rows"] == _published_rows(A, "charm")
             assert seen["expiries"]["expiries"] == _expected(CRWD.chain)[0]

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, TypedDict
 
 from numeric_contract import schwab_count, schwab_number
 
@@ -44,7 +44,6 @@ class VolumeProfile:
     volume, which the profile cannot place and does not contain.
     """
 
-    tick_size: float
     bins: tuple[tuple[float, float], ...]
     poc: float
     vah: float
@@ -136,7 +135,6 @@ def volume_profile(
         sum(vol_by_idx.values()) * value_area_pct,
     )
     return VolumeProfile(
-        tick_size=tick_size,
         bins=tuple((i / per_dollar, vol_by_idx[i]) for i in idx_sorted),
         poc=poc_idx / per_dollar,
         vah=idx_sorted[hi_pos] / per_dollar,
@@ -178,6 +176,13 @@ ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
 }
 
 
+class SourceLevel(TypedDict):
+    """One level a zone is clustered from: its tag and its own price."""
+
+    label: str
+    value: float
+
+
 @dataclass
 class Zone:
     """Clustered zone built from one or more price levels."""
@@ -186,8 +191,7 @@ class Zone:
     zone_low: float
     zone_high: float
     zone_mid: float
-    #: [{"label": str, "value": float}]
-    source_levels: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    source_levels: list[SourceLevel] = field(default_factory=list[SourceLevel])
     confluence_score: int = 0
     interpretation_notes: str = ""
 

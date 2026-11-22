@@ -7,16 +7,21 @@ Read from State: the price-level snapshot (state.price_level_store), the publish
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import TypedDict
 
 from calc.liquidity_models import VolumeProfile
-from calc.liquidity_value_engine import LEVEL_NAMES, PriceLevelSnapshot
+from calc.liquidity_value_engine import (
+    LEVEL_NAMES,
+    AbsentFamily,
+    PriceLevelFields,
+    PriceLevelSnapshot,
+)
 from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, TerrainSnapshot
 from calc.terrain_read import from_spot_text, level_side
 from numeric_contract import price_text
 from push.bars import aggregate_vwap
-from push.spot import price_mark, resolve_spot
-from push.verdict import terrain_cache_get
+from push.spot import PriceMark, price_mark, resolve_spot
+from push.verdict import LevelsVerdict, terrain_cache_get
 from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot
 from time_et import age_text, ct_label
@@ -65,17 +70,127 @@ def pin_note(snap: TerrainSnapshot) -> str | None:
     )
 
 
-#: the price-level snapshot's own fields in the panel, each None when none is published
-SNAPSHOT_FIELDS = (
-    "snapshot_time_ct",
-    "snapshot_age_text",
-    "bar_source",
-    "vwap_series",
-    "vwap_text",
-    "volume_profile",
-    "prior_value_area",
-    "degraded",
-)
+class LevelStamp(TypedDict):
+    """A level's time as served: the label the page shows."""
+
+    as_of_time_ct: str | None
+
+
+class Placement(TypedDict):
+    """A level against the live price: its distance (level minus price) and side, each in words.
+
+    With the level's own price as the screen shows it, and whether the liquidity map draws it as
+    a reference line.
+    """
+
+    distance: float | None
+    side: str | None
+    from_spot_text: str | None
+    price_text: str | None
+    reference_line: bool
+
+
+class SessionLevelRow(PriceLevelFields, Placement):
+    """One of the session's price levels on the ladder, with its own time."""
+
+    staleness: LevelStamp
+
+
+class CarriedProvenance(TypedDict):
+    """Where a carried level comes from: the terrain's producer."""
+
+    producer: str
+    carried: bool
+
+
+class CarriedLevelRow(Placement):
+    """One of the terrain's levels carried on the ladder beside the session's, at its own time."""
+
+    id: str
+    price: float
+    family: str
+    label: str
+    short: str
+    evidence_tier: str
+    provenance: CarriedProvenance
+    staleness: LevelStamp
+    note: str | None
+
+
+class SameDayRow(TypedDict):
+    """A level on the 0DTE basis (`price`) beside the whole book's of the same name (`carried`)."""
+
+    id: str
+    label: str
+    price: float | None
+    note: str | None
+    carried: float | None
+    price_text: str | None
+    carried_text: str | None
+    staleness: LevelStamp
+
+
+class ProfileFields(TypedDict):
+    """The session's volume profile as the chart draws it: each bin [price, volume, in value]."""
+
+    basis: str
+    bars: int
+    bars_without_volume: int
+    bins: list[list[float | bool]]
+    max_volume: float | None
+    poc: float
+    poc_label: str
+    vah: float
+    val: float
+
+
+class PriorValueArea(TypedDict):
+    """The prior session's value area the chart shades: its VAL and VAH, and its words."""
+
+    low: float
+    high: float
+    text: str
+
+
+class SessionFields(TypedDict):
+    """The price-level snapshot's own fields in the panel, each None when none is published."""
+
+    snapshot_time_ct: str | None
+    snapshot_age_text: str | None
+    bar_source: str | None
+    vwap_series: list[list[float]] | None
+    vwap_text: str | None
+    volume_profile: ProfileFields | None
+    prior_value_area: PriorValueArea | None
+    degraded: list[str] | None
+
+
+class LevelsPanel(PriceMark, LevelsVerdict, SessionFields):
+    """The `levels` panel: the session's price levels and the terrain's, each from the price."""
+
+    ticker: str
+    schema_version: int
+    spot: float | None
+    spot_text: str | None
+    spot_source: str
+    levels: list[SessionLevelRow | CarriedLevelRow]
+    by_distance: list[str]
+    zero_dte: list[SameDayRow]
+    tf: str
+    families_absent: list[AbsentFamily]
+
+
+#: the price-level snapshot's own fields with none published: each unknown
+NO_SNAPSHOT: SessionFields = {
+    "snapshot_time_ct": None,
+    "snapshot_age_text": None,
+    "bar_source": None,
+    "vwap_series": None,
+    "vwap_text": None,
+    "volume_profile": None,
+    "prior_value_area": None,
+    "degraded": None,
+}
 
 
 def _ct(as_of: float | None) -> str | None:
@@ -92,19 +207,25 @@ def _age(as_of: float | None, served_ts: float) -> str | None:
     return age_text(served_ts - as_of)
 
 
-def _stamp(as_of: float | None) -> dict[str, Any]:
+def _stamp(as_of: float | None) -> LevelStamp:
     """Return a level's time as served: the label the page shows."""
     return {"as_of_time_ct": _ct(as_of)}
 
 
-def _distance(level: float | None, price: float | None) -> float | None:
-    """Return a level's distance from the live price (level minus price); None without both."""
-    if level is None or price is None:
-        return None
-    return level - price
+def _placed(level: float, family: str, price: float | None) -> Placement:
+    """Return a level against the live price; its distance and side unknown without a price."""
+    distance = None if price is None else level - price
+    side = level_side(level, price)
+    return {
+        "distance": distance,
+        "side": side,
+        "from_spot_text": from_spot_text(distance, side),
+        "price_text": price_text(level),
+        "reference_line": family in REFERENCE_LINE_FAMILIES,
+    }
 
 
-def _profile(vp: VolumeProfile | None) -> dict[str, Any] | None:
+def _profile(vp: VolumeProfile | None) -> ProfileFields | None:
     """Return the session's volume profile the value area is read from; None without one."""
     if vp is None:
         return None
@@ -113,7 +234,6 @@ def _profile(vp: VolumeProfile | None) -> dict[str, Any] | None:
         "over its range (not trades observed at a price)",
         "bars": vp.bars,
         "bars_without_volume": vp.bars_without_volume,
-        "tick_size": vp.tick_size,
         # [price, volume, inside the value area]
         "bins": [[p, v, vp.val <= p <= vp.vah] for p, v in vp.bins],
         # the largest bin's volume: the profile's scale
@@ -126,7 +246,7 @@ def _profile(vp: VolumeProfile | None) -> dict[str, Any] | None:
     }
 
 
-def _prior_value_area(snap: PriceLevelSnapshot) -> dict[str, Any] | None:
+def _prior_value_area(snap: PriceLevelSnapshot) -> PriorValueArea | None:
     """Return the prior session's value area the chart shades: its VAL and VAH, and its words.
 
     None when it is absent (families_absent names the `prior_day` or `prior_value_area` reason).
@@ -137,20 +257,20 @@ def _prior_value_area(snap: PriceLevelSnapshot) -> dict[str, Any] | None:
     return {"low": low, "high": high, "text": f"VA {price_text(low)} – {price_text(high)}"}
 
 
-def _session_rows(snap: PriceLevelSnapshot) -> list[dict[str, Any]]:
-    """Return the session's price levels, each with its own time."""
-    rows: list[dict[str, Any]] = []
-    for value in snap.levels.values():
-        row = value.to_contract_dict()
-        row["staleness"] = _stamp(value.as_of_ts_utc)
-        rows.append(row)
-    return rows
+def _session_rows(snap: PriceLevelSnapshot, price: float | None) -> list[SessionLevelRow]:
+    """Return the session's price levels, each with its own time and against the live price."""
+    return [
+        {
+            **value.to_contract_dict(),
+            "staleness": _stamp(value.as_of_ts_utc),
+            **_placed(value.price, value.family, price),
+        }
+        for value in snap.levels.values()
+    ]
 
 
-def _snapshot(snap: PriceLevelSnapshot | None, tf: str, served_ts: float) -> dict[str, Any]:
-    """Return the price-level snapshot's own fields at `tf`; with none published, each unknown."""
-    if snap is None:
-        return dict.fromkeys(SNAPSHOT_FIELDS)
+def _snapshot(snap: PriceLevelSnapshot, tf: str, served_ts: float) -> SessionFields:
+    """Return the price-level snapshot's own fields at `tf`."""
     return {
         "snapshot_time_ct": _ct(snap.as_of_ts_utc),
         "snapshot_age_text": _age(snap.as_of_ts_utc, served_ts),
@@ -164,60 +284,67 @@ def _snapshot(snap: PriceLevelSnapshot | None, tf: str, served_ts: float) -> dic
     }
 
 
-def _gamma(
-    published: PublishedLevels | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Return the terrain's levels carried beside the session's, and the 0DTE rows.
+def _carried_rows(published: PublishedLevels, price: float | None) -> list[CarriedLevelRow]:
+    """Return the terrain's levels carried beside the session's, each with the terrain's own time.
 
-    Each with the terrain's own time. With no levels published: none carried, and each 0DTE level
-    unknown.
+    Against the live price; none for a level not known.
     """
-    if published is None:
-        absent = {
-            "price": None,
-            "note": None,
-            "carried": None,
-            "price_text": None,
-            "carried_text": None,
-            "staleness": _stamp(None),
-        }
-        return [], [{"id": gid, "label": label, **absent} for gid, label in SAME_DAY_LEVELS]
-    t = published.served()
     stamp = _stamp(published.levels_ts_utc)
-    carried = [
+    return [
         {
             "id": gid,
-            "price": t[gid],
+            "price": level,
             "family": "gamma",
             "label": label,
             "short": label,
             "evidence_tier": "DERIVED",
             "provenance": {"producer": "calc.terrain_engine.compute_terrain", "carried": True},
-            "staleness": dict(stamp),
+            "staleness": stamp.copy(),
             "note": pin_note(published.snap) if gid == "pin_candidate" else None,
+            **_placed(level, "gamma", price),
         }
         for gid, label in OPTION_LEVELS
-        if t[gid] is not None
+        if (level := published.snap.level(gid)) is not None
     ]
-    # the nearest listed expiry's own levels, beside the whole book's level of the same name, at
-    # the terrain's own compute time: both as the screen shows them (TerrainSnapshot.to_dict)
-    zero_dte = [
+
+
+def _same_day_rows(published: PublishedLevels | None) -> list[SameDayRow]:
+    """Return the 0DTE rows; with no levels published, each level unknown.
+
+    The nearest listed expiry's own levels, beside the whole book's level of the same name, at
+    the terrain's own compute time: both as the screen shows them.
+    """
+    if published is None:
+        return [
+            {
+                "id": gid,
+                "label": label,
+                "price": None,
+                "note": None,
+                "carried": None,
+                "price_text": None,
+                "carried_text": None,
+                "staleness": _stamp(None),
+            }
+            for gid, label in SAME_DAY_LEVELS
+        ]
+    snap, stamp = published.snap, _stamp(published.levels_ts_utc)
+    return [
         {
             "id": gid,
             "label": label,
-            "price": published.snap.same_day.get(gid),
-            "note": same_day_note(published.snap),
-            "carried": t[gid],
-            "price_text": t["same_day_text"].get(gid),
-            "carried_text": t[f"{gid}_text"],
-            "staleness": dict(stamp),
+            "price": snap.same_day.get(gid),
+            "note": same_day_note(snap),
+            "carried": snap.level(gid),
+            "price_text": price_text(snap.same_day.get(gid)),
+            "carried_text": price_text(snap.level(gid)),
+            "staleness": stamp.copy(),
         }
         for gid, label in SAME_DAY_LEVELS
     ]
-    return carried, zero_dte
 
 
-def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
+def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
     """Return the levels panel at `now`: the published price-level snapshot for the session.
 
     The terrain's levels carried beside it, each with its distance from the live price and
@@ -227,38 +354,24 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     spot, spot_source, spot_ts = resolve_spot(tk, now=served_ts)
     mark = price_mark(tk, spot_ts, served_ts)  # each value computed from that price carries it
     snap = canonical_price_level_snapshot(tk, now)
-    session = _snapshot(snap, tf, served_ts)
     published, verdict = terrain_cache_get(tk, served_ts)
-    carried, zero_dte = _gamma(published)
-    levels: list[dict[str, Any]] = []
-    families_absent: list[dict[str, Any]] = []
+    levels: list[SessionLevelRow | CarriedLevelRow] = []
+    families_absent: list[AbsentFamily] = []
     if snap is None:
+        session = NO_SNAPSHOT
         families_absent.append({"family": "price_levels", "reason": NO_PRICE_LEVELS_REASON})
     else:
-        levels += _session_rows(snap)
+        session = _snapshot(snap, tf, served_ts)
+        levels += _session_rows(snap, spot)
         families_absent += snap.families_absent
-    levels += carried
-    for row in levels:
-        price = row.get("price")
-        row["distance"] = _distance(price, spot)
-        row["side"] = level_side(price, spot)
-        row["from_spot_text"] = from_spot_text(row["distance"], row["side"])
-        row["price_text"] = price_text(price)
-        row["reference_line"] = row["family"] in REFERENCE_LINE_FAMILIES
-    # the ladder in price order (highest first, unpriced last), and the order by distance to spot
-    levels = sorted(
-        (r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True
-    ) + [r for r in levels if r.get("price") is None]
+    if published is not None:
+        levels += _carried_rows(published, spot)
+    # the ladder in price order (highest first), and the order by distance to spot
+    levels.sort(key=lambda r: r["price"], reverse=True)
     # the order the chart draws them in: nearest Schwab's last price (spot, with its trade time)
     by_distance: list[str] = []
     if spot is not None:
-        by_distance = [
-            r["id"]
-            for r in sorted(
-                (r for r in levels if r.get("price") is not None),
-                key=lambda r: abs(r["price"] - spot),
-            )
-        ]
+        by_distance = [r["id"] for r in sorted(levels, key=lambda r: abs(r["price"] - spot))]
 
     return {
         "ticker": tk,
@@ -274,7 +387,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         "bar_source": session["bar_source"],
         "levels": levels,
         "by_distance": by_distance,
-        "zero_dte": zero_dte,
+        "zero_dte": _same_day_rows(published),
         # The VWAP curve, CARRIED: the one VWAP of the session, which no page accumulates for
         # itself. [epoch_sec, vwap]
         "vwap_series": session["vwap_series"],

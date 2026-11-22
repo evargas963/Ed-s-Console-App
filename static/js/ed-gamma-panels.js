@@ -190,7 +190,7 @@
     }
   }
 
-  // ---------- Put/Call OI and volume <- the terrain panel's pcr_by_expiry, pcr_volume_by_expiry (selected expiry, else the front one) ----------
+  // ---------- Put/Call OI and volume <- the terrain panel's ratio texts (the selected expiry's, else the whole book's) ----------
   function expiryFilter() {
     return window.EdShell.getExpiry();
   }

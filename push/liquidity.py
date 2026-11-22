@@ -7,9 +7,9 @@ levels (state.level_store), the bars and candles the bar writer holds and the li
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Literal, TypedDict
 
-from calc.liquidity_models import ZONE_DISPLAY, PlaybookConfig
+from calc.liquidity_models import ZONE_DISPLAY, PlaybookConfig, SnapshotSummary, SourceLevel
 from calc.liquidity_value_engine import (
     HOLD_BASELINE_LEVELS,
     HOLD_MIN_TOUCHES,
@@ -24,7 +24,6 @@ from calc.liquidity_value_engine import (
 from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
-from push.answers import unavailable
 from push.levels import NO_PRICE_LEVELS_REASON
 from push.spot import resolve_spot
 from state import bar_store
@@ -33,13 +32,82 @@ from state.price_level_store import canonical_price_level_snapshot, materialize_
 from time_et import sessions
 
 
+class ShownSourceLevel(SourceLevel):
+    """A level a zone is clustered from, with its price as the screen shows it."""
+
+    value_text: str | None
+
+
+class ZoneRow(TypedDict):
+    """One zone as the liquidity map draws it: its side of the price, its range and its levels."""
+
+    zone_label: str
+    zone_side: str
+    zone_low: float
+    zone_high: float
+    zone_low_text: str | None
+    zone_high_text: str | None
+    anchor: float
+    source_levels: list[ShownSourceLevel]
+    confluence_score: int
+    interpretation_notes: str
+
+
+class ValueSummary(TypedDict):
+    """Where today's value area sits against the prior day's, and VWAP against today's.
+
+    Each with its words as the Desk's agreement strip says it.
+    """
+
+    value_state: str | None
+    vwap_relation: str | None
+    value_state_text: str | None
+    vwap_relation_text: str | None
+
+
+class SpotLocation(TypedDict):
+    """Where the price sits among the zones, by index: inside one, else the nearest each way."""
+
+    inside: int | None
+    above: int | None
+    below: int | None
+
+
+class HoldRate(TypedDict):
+    """One fixed level type's hold rate in words, at 15 and 30 minutes."""
+
+    level: str
+    text: str
+
+
+class LiquidityPanel(TypedDict):
+    """The `liquidity` panel: the session's zones nearest the price first, and the hold rates."""
+
+    ticker: str
+    zones: list[ZoneRow]
+    no_zones_text: str | None
+    summary: ValueSummary | None
+    spot_location: SpotLocation | None
+    hold_rates: list[HoldRate]
+    hold_note: str
+
+
+class NoLiquidity(TypedDict):
+    """The `liquidity` panel's answer with no price levels published: no zone, and why."""
+
+    ticker: str
+    available: Literal[False]
+    zones: list[ZoneRow]
+    reason: str
+
+
 def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
     """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
     published = published_levels(tk)
     return [
-        (float(getattr(published.snap, k)), tag)
+        (float(level), tag)
         for k, tag in OPTION_LEVEL_TAGS
-        if published is not None and getattr(published.snap, k) is not None
+        if published is not None and (level := published.snap.level(k)) is not None
     ]
 
 
@@ -96,7 +164,7 @@ def hold_text(c: HoldCount) -> str:
     )
 
 
-def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
+def hold_rates(tk: str, now: datetime) -> list[HoldRate]:
     """Each fixed level type's hold rate at 15 and 30 minutes over the ticker's held bars.
 
     calc.liquidity_value_engine.hold_counts over every 1-minute bar the bar writer holds and
@@ -117,7 +185,7 @@ def hold_rates(tk: str, now: datetime) -> list[dict[str, str]]:
     ]
 
 
-def _spot_location(zones: list[dict[str, Any]], spot: float | None) -> dict[str, int | None] | None:
+def _spot_location(zones: list[ZoneRow], spot: float | None) -> SpotLocation | None:
     """Where spot sits among the zones, by index into `zones`.
 
     The zone it is inside, else the nearest zone above and below. None without a spot or a zone.
@@ -125,10 +193,10 @@ def _spot_location(zones: list[dict[str, Any]], spot: float | None) -> dict[str,
     if spot is None or not zones:
         return None
     for i, z in enumerate(zones):
-        if within(z.get("zone_low"), z.get("zone_high"), spot):
+        if within(z["zone_low"], z["zone_high"], spot):
             return {"inside": i, "above": None, "below": None}
-    above = [i for i, z in enumerate(zones) if level_side(z.get("zone_low"), spot) == LEVEL_ABOVE]
-    below = [i for i, z in enumerate(zones) if level_side(z.get("zone_high"), spot) == LEVEL_BELOW]
+    above = [i for i, z in enumerate(zones) if level_side(z["zone_low"], spot) == LEVEL_ABOVE]
+    below = [i for i, z in enumerate(zones) if level_side(z["zone_high"], spot) == LEVEL_BELOW]
     return {
         "inside": None,
         "above": min(above, key=lambda i: zones[i]["zone_low"]) if above else None,
@@ -136,7 +204,25 @@ def _spot_location(zones: list[dict[str, Any]], spot: float | None) -> dict[str,
     }
 
 
-def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
+def _summary(summary: SnapshotSummary | None) -> ValueSummary | None:
+    """Return the value read with each relation's words; None when the snapshot reads none."""
+    if summary is None:
+        return None
+    return {
+        "value_state": summary.value_state,
+        "vwap_relation": summary.vwap_relation,
+        # each as the Desk's agreement strip says it
+        "value_state_text": VALUE_STATE_TEXT[summary.value_state],
+        "vwap_relation_text": VWAP_RELATION_TEXT[summary.vwap_relation],
+    }
+
+
+def _no_liquidity(ticker: str) -> NoLiquidity:
+    """Return the panel's answer with no price levels published for the session: no zone, why."""
+    return {"ticker": ticker, "available": False, "zones": [], "reason": NO_PRICE_LEVELS_REASON}
+
+
+def liquidity_snapshot(ticker: str, now: datetime) -> LiquidityPanel | NoLiquidity:
     """Return the market session's liquidity & value zones for the ticker at `now`.
 
     Built from the one price-level snapshot (canonical_price_level_snapshot, the same values the
@@ -151,7 +237,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
     spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
     _canon = canonical_price_level_snapshot(ticker_upper, now)
     if _canon is None:
-        return unavailable(ticker_upper, NO_PRICE_LEVELS_REASON, zones=[])
+        return _no_liquidity(ticker_upper)
     out = build_zone_snapshot(
         ticker_upper,
         config,
@@ -161,7 +247,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
         price=spot_for_zones,
         sessions=sessions(),
     )
-    zones_payload: list[dict[str, Any]] = [
+    zones_payload: list[ZoneRow] = [
         {
             "zone_label": ZONE_DISPLAY[z.zone_type][0],
             "zone_side": ZONE_DISPLAY[z.zone_type][1],
@@ -186,14 +272,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
         "zones": zones_payload,
         # the zone list's words when it lists none; with no levels published, `reason` says why
         "no_zones_text": None if zones_payload else NO_ZONES_TEXT,
-        "summary": out.summary
-        and {
-            "value_state": out.summary.value_state,
-            "vwap_relation": out.summary.vwap_relation,
-            # each as the Desk's agreement strip says it
-            "value_state_text": VALUE_STATE_TEXT[out.summary.value_state],
-            "vwap_relation_text": VWAP_RELATION_TEXT[out.summary.vwap_relation],
-        },
+        "summary": _summary(out.summary),
         "spot_location": _spot_location(zones_payload, spot_for_zones),
         "hold_rates": hold_rates(ticker_upper, now),
         "hold_note": HOLD_NOTE,

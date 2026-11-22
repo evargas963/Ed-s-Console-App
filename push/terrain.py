@@ -6,21 +6,21 @@ and monthly candles the bar writer holds (state.bar_store, push.bars.daily_candl
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import TypedDict
 
 import live_market_plane as lmp
 from app.options.order_flow.streaming import price_state
 from calc.terrain_atr import Atr, compute_atrs
-from calc.terrain_engine import compute_terrain, price_relations
+from calc.terrain_engine import RelationFields, TerrainFields, compute_terrain, price_relations
 from calc.terrain_read import REGIME_NAME, REGIME_TEXT
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
 from push.bars import daily_candles
-from push.spot import price_mark, resolve_spot
-from push.verdict import terrain_cache_get
+from push.spot import PriceMark, price_mark, resolve_spot
+from push.verdict import LevelsVerdict, terrain_cache_get
 from state import bar_store, level_store
+from state.level_store import ServedLevels, SpotStamp
 from time_et import ET, sessions
 
 
@@ -31,7 +31,41 @@ class LevelsMark(TypedDict):
     levels_mark_reason: str | None
 
 
-def levels_mark(levels: Mapping[str, Any], ticker: str, now: float) -> LevelsMark:
+class AtrFields(TypedDict):
+    """The ticker's daily, weekly and monthly ATR, each with its text; None with too few candles."""
+
+    atr_daily: float | None
+    atr_weekly: float | None
+    atr_monthly: float | None
+    atr_daily_text: str | None
+    atr_weekly_text: str | None
+    atr_monthly_text: str | None
+
+
+class RegimeWords(TypedDict):
+    """A regime as the screen says it: in short, and its name in words (terrain_read)."""
+
+    regime_text: str
+    regime_name: str
+
+
+class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, RegimeWords, PriceMark, LevelsMark):
+    """What the terrain panel carries beside the levels' own fields, published or not.
+
+    The levels' verdict, the live price's relations to them and its mark, the ATRs, the regime's
+    words and the Key Levels line's word.
+    """
+
+
+class TerrainPanel(ServedLevels, BesideTheLevels):
+    """The `terrain` panel: a ticker's published levels at the live price (terrain)."""
+
+
+class TerrainNotReady(TerrainFields, SpotStamp, BesideTheLevels):
+    """The `terrain` panel before a ticker's first levels: each level unknown, and why (`error`)."""
+
+
+def levels_mark(levels: LevelsVerdict, ticker: str, now: float) -> LevelsMark:
     """Return the one word the Key Levels line shows, from the levels' verdict and their price's.
 
     From terrain_staleness and price_state: the levels' state while it is not LIVE, else the
@@ -60,22 +94,28 @@ def atr(ticker: str, now: datetime) -> Atr:
     )
 
 
-def _atr_fields(tk: str, now: datetime) -> dict[str, float | str | None]:
+def _atr_fields(tk: str, now: datetime) -> AtrFields:
     """atr_daily / atr_weekly / atr_monthly at `now`, each with its text.
 
     A horizon that cannot be computed is None.
     """
     a = atr(tk, now)
-    atrs = {"atr_daily": a.daily, "atr_weekly": a.weekly, "atr_monthly": a.monthly}
-    return atrs | {f"{name}_text": price_text(value) for name, value in atrs.items()}
+    return {
+        "atr_daily": a.daily,
+        "atr_weekly": a.weekly,
+        "atr_monthly": a.monthly,
+        "atr_daily_text": price_text(a.daily),
+        "atr_weekly_text": price_text(a.weekly),
+        "atr_monthly_text": price_text(a.monthly),
+    }
 
 
-def _regime_words(regime: str) -> dict[str, str]:
+def _regime_words(regime: str) -> RegimeWords:
     """Return a regime as the screen says it: in short, and its name in words (terrain_read)."""
     return {"regime_text": REGIME_TEXT[regime], "regime_name": REGIME_NAME[regime]}
 
 
-def terrain(tk: str, now: float) -> dict[str, Any]:
+def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
     """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
 
     `tk` is the levels' own key ($SPX). The page's socket sends
@@ -84,38 +124,41 @@ def terrain(tk: str, now: float) -> dict[str, Any]:
     """
     at = datetime.fromtimestamp(now, ET)
     cached, staleness = terrain_cache_get(tk, now)
+    spot, spot_source, spot_ts = resolve_spot(tk, now=now)
     if cached is not None:
+        served = cached.served()
         # the levels as the producer published them; `spot` is the live price, and every relation
         # of the price to the levels is at it (price_relations); internal fields (the kept chain,
         # the heatmap grid, per-strike rows) are their own panels
-        out = cached.served() | staleness
-        out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
-        out.update(price_relations(out, out["spot"]).to_dict())
-        out.update(_atr_fields(tk, at))  # live: today's candle from the bars held now
-        out.update(_regime_words(cached.snap.regime))
-        # the chain's verdict is levels_state, above. The live price the relations are computed from
-        # is a separate fact: the numbers stay, marked with whether that price is live
-        out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
-        return out | levels_mark(out, tk, now)
-    spot, spot_source, spot_ts = resolve_spot(tk, now=now)
-    _why = level_store.chain_failure(tk)
-    empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
-    mark = price_mark(tk, spot_ts, now)
-    return (
-        empty
-        | price_relations(empty, spot).to_dict()
-        | mark
-        | levels_mark(staleness, tk, now)
-        | {
+        return {
+            **served,
+            **staleness,
+            "spot": spot,
             "spot_source": spot_source,
             "spot_as_of_ts_utc": spot_ts,
-            **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
-            **_regime_words(empty["regime"]),
-            # not ready, with the producer's reason when it has one, and the levels' verdict
-            "error": (
-                "terrain_not_ready: no chain from the daemon yet for this ticker"
-                + (f" (last chain error: {_why})" if _why else "")
-            ),
-            **staleness,
+            **price_relations(served, spot).to_dict(),
+            **_atr_fields(tk, at),  # live: today's candle from the bars held now
+            **_regime_words(cached.snap.regime),
+            # the chain's verdict is levels_state, above. The live price the relations are computed
+            # from is a separate fact: the numbers stay, marked with whether that price is live
+            **price_mark(tk, spot_ts, now),
+            **levels_mark(staleness, tk, now),
         }
-    )
+    _why = level_store.chain_failure(tk)
+    empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
+    return {
+        **empty,
+        **price_relations(empty, spot).to_dict(),
+        **price_mark(tk, spot_ts, now),
+        **levels_mark(staleness, tk, now),
+        "spot_source": spot_source,
+        "spot_as_of_ts_utc": spot_ts,
+        **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
+        **_regime_words(empty["regime"]),
+        # not ready, with the producer's reason when it has one, and the levels' verdict
+        "error": (
+            "terrain_not_ready: no chain from the daemon yet for this ticker"
+            + (f" (last chain error: {_why})" if _why else "")
+        ),
+        **staleness,
+    }

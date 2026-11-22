@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from itertools import pairwise
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, TypedDict
 
 from calc.liquidity_models import (
     PlaybookConfig,
@@ -608,6 +608,40 @@ _SESSION_SCOPE_OF: dict[str, str] = {
 }
 
 
+class LevelProvenance(TypedDict):
+    """Where a price level comes from: its producer, and the hours and window it is read over."""
+
+    producer: str
+    session_scope: str
+    semantic_scope: str
+    window: str
+    vendor_basis: str
+
+
+class PriceLevelFields(TypedDict):
+    """A price level as the levels panel carries it (PriceLevelValue.to_contract_dict).
+
+    `side` is None here: the panel reads it against the live price.
+    """
+
+    id: str
+    price: float
+    family: str
+    label: str
+    short: str
+    side: str | None
+    evidence_tier: str
+    semantic_scope: str
+    provenance: LevelProvenance
+
+
+class AbsentFamily(TypedDict):
+    """A family with no levels, and why, as the levels panel lists it."""
+
+    family: str
+    reason: str
+
+
 class PriceLevelValue:
     """One materialized level: its value AND the identity that makes it comparable."""
 
@@ -650,7 +684,7 @@ class PriceLevelValue:
     def session_scope(self) -> str:
         return _SESSION_SCOPE_OF[self.semantic_scope]
 
-    def to_contract_dict(self) -> dict[str, Any]:
+    def to_contract_dict(self) -> PriceLevelFields:
         label, short = LEVEL_NAMES[self.level_id]
         return {
             "id": self.level_id,
@@ -659,7 +693,6 @@ class PriceLevelValue:
             "label": label,
             "short": short,
             "side": None,
-            "strength": None,
             "evidence_tier": self.evidence_tier,
             "semantic_scope": self.semantic_scope,
             "provenance": {
@@ -698,7 +731,7 @@ class PriceLevelSnapshot:
         bar_source: str,
         as_of_ts_utc: float | None,
         levels: dict[str, PriceLevelValue],
-        families_absent: list[dict[str, str]],
+        families_absent: list[AbsentFamily],
         degraded: list[str],
         bars_used: int,
         vwap_series: list[VwapPoint],
@@ -1023,7 +1056,9 @@ def build_price_level_snapshot(
         as_of_ts_utc=as_of,
         levels=_level_values(families, as_of),
         vwap_series=vwap_series,
-        families_absent=[f._asdict() for f in families if isinstance(f, _Absent)],
+        families_absent=[
+            {"family": f.family, "reason": f.reason} for f in families if isinstance(f, _Absent)
+        ],
         degraded=degraded,
         bars_used=len(bars_norm),
         volume_profile=profile,

@@ -7022,9 +7022,6 @@
     "put_wall": 250.0,
     "absolute_gamma_strike": 260.0,
     "pin_candidate": null,
-    "pin_expected_moves": null,
-    "pin_strike_widths": null,
-    "pin_minutes_to_close": null,
     "max_pain": 215.0,
     "max_pain_dte": 9.0,
     "call_charm_wall": 300.0,
@@ -7050,7 +7047,6 @@
       "call_charm_wall": 270.0,
       "put_charm_wall": 265.0
     },
-    "same_day_repriced_from": "2026-10-16",
     "call_delta_wall": 117.5,
     "put_delta_wall": 250.0,
     "contracts_used": 244,
@@ -7064,15 +7060,8 @@
     "atm_iv_pct_by_expiry": {
       "2026-10-16": 47.69963702
     },
-    "pcr_volume_by_expiry": {
-      "2026-10-16": 1.0192307692307692
-    },
     "pcr_all": 1.0536356096212331,
-    "pcr_volume_all": 1.0192307692307692,
     "expiries": ["2026-10-16"],
-    "expiry_dte": {
-      "2026-10-16": 9.0
-    },
     "computed_ts_utc": 1791383920.598783,
     "net_gex_at_spot_text": "$20.73M",
     "contracts_used_text": "244",
