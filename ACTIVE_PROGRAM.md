@@ -256,7 +256,20 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   what Schwab is asked and how fresh a start's first values are. Since
   `tests/test_data_path_rules_v1.py`
   `test_d5_a_ticker_selected_while_the_price_history_is_asked_has_its_own_next` the ticker on a page
-  no longer waits for the others' price history.
+  no longer waits for the others' price history. In the daemon's log of 2026-11-20 (25 starts) about
+  3,100 requests were a start's repeats: 911 of the 949 `/markets`, 199 of the 207
+  `/expirationchain`, whose answers are not recorded, and about 2,000 `/pricehistory`.
+- ONE-ASK (OPERATOR): what Schwab is still asked more than once for, beside a start's repeats
+  (START-ASKS-AGAIN) and a streamed contract's fields in `/chains` (STREAM-ONE), counted in the
+  daemon's log of 2026-11-20 (20.5 hours). `/chains` is asked again for each ticker and expiry every
+  `chain_sweep.CHAINS_AGAIN_SEC` (his setting: 22,297 requests for 202 ticker-expiries, 14
+  answered 429) though its contract list and open interest change once a day, but for a series an
+  exchange adds inside a session (`docs/SOURCES.md`, `sec-34-60365`). The 5-, 15- and 30-minute
+  price history is asked whole, ten days of bars, each time one bar completes (about 2,300
+  requests). `/quotes` is asked again with every chain for the symbols it named invalid (1,725 named
+  in 48 answers). Regular hours ran about 240 REST requests a minute, and Schwab support states 120
+  a minute for non-order endpoints (`schwab-support-2026-10-06`). Each changes a request rate, a
+  setting or what the program holds, so each is his.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
   tolerance; depth to 5 levels); a book side with no levels has no depth total.
