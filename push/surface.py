@@ -329,76 +329,82 @@ def gamma_surface_payload(
 ) -> SurfacePanel | NoSurface:
     """Return the heatmap's answer for ticker `tk` at `now` (the `surface` panel).
 
-    With no live surface the answer is "unavailable" with the reason; there is no second source.
-    Served with the levels' verdict (terrain_staleness), which carries the chain's time.
+    With no live surface the answer is "unavailable" with the reason (_no_surface); there is no
+    second source. Served with the levels' verdict (terrain_staleness), which carries the chain's
+    time.
     """
-    # ---- LIVE: surface projected this cycle from the canonical live terrain wide chain ----
+    # the surface projected this cycle from the canonical live terrain wide chain
     live, verdict = terrain_cache_get(tk, now.timestamp())
     surf = None if live is None else live.gamma_surface
-    if live is not None and surf is not None:
-        # the row at the price: the listed strike nearest the live price, the header's own rule
-        spot_strike = nearest_strike(surf["strikes"], resolve_spot(tk, now=now.timestamp())[0])
-        # the surface's state is the levels' (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE);
-        # whether the cells on screen are streaming is the view's coverage
-        columns, strikes, cells, view = _surface_view(
-            surf,
-            _stamp_columns(surf["expirations"], now),
-            spot_strike,
-            scope,
-            centre,
-            shift,
-            cols,
-            expiry,
-        )
-        return {
-            # every cell Schwab listed is drawn: a cell without a value is None, drawn "-"
-            "ticker": tk,
-            "symbol": tk,
-            "available": True,
-            "reason": None,
-            "source": "terrain_live_cache",
-            **verdict,
-            "chain_basis": live.chain_basis,
-            "expirations": columns,
-            "strikes": strikes,
-            "cells": cells,
-            "contracts_total": surf["contracts_total"],
-            "contracts_used": surf["contracts_used"],
-            "stream_by_expiry": surf["stream_by_expiry"],
-            "surface_seq": surf["surface_seq"],
-            "view": view,
-        }
+    if live is None or surf is None:
+        return _no_surface(tk, verdict["levels_stale_reason"], now.timestamp(), requested)
+    # the row at the price: the listed strike nearest the live price, the header's own rule
+    spot_strike = nearest_strike(surf["strikes"], resolve_spot(tk, now=now.timestamp())[0])
+    # the surface's state is the levels' (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE);
+    # whether the cells on screen are streaming is the view's coverage
+    columns, strikes, cells, view = _surface_view(
+        surf,
+        _stamp_columns(surf["expirations"], now),
+        spot_strike,
+        scope,
+        centre,
+        shift,
+        cols,
+        expiry,
+    )
+    return {
+        # every cell Schwab listed is drawn: a cell without a value is None, drawn "-"
+        "ticker": tk,
+        "symbol": tk,
+        "available": True,
+        "reason": None,
+        "source": "terrain_live_cache",
+        **verdict,
+        "chain_basis": live.chain_basis,
+        "expirations": columns,
+        "strikes": strikes,
+        "cells": cells,
+        "contracts_total": surf["contracts_total"],
+        "contracts_used": surf["contracts_used"],
+        "stream_by_expiry": surf["stream_by_expiry"],
+        "surface_seq": surf["surface_seq"],
+        "view": view,
+    }
 
-    # ---- no live surface: unavailable, with the reason. Nothing stands in for it. ----
-    # REQUESTED: a page shows this ticker. WARMING: its chain is coming -- it is on the
-    # watchlist (fetched in turn; while Closed, once, its close values). The reason is that
-    # state's own.
-    _watched = lmp.watchlist()  # the last list stands when the heartbeat is missing
-    _warming = _watched is not None and tk in _watched
-    _levels_why = verdict["levels_stale_reason"]
-    if lmp.daemon_status(now.timestamp()) is None:
-        _why = ["the capture daemon is not reporting (no current heartbeat)"]
-        if _watched is None:
-            _why.append("its watchlist is unknown")
-        elif tk not in _watched:
-            _why.append("it is not on the watchlist")
-        if _levels_why:
-            _why.append(_levels_why)
-    elif _watched is not None and tk not in _watched:
+
+def _no_surface(tk: str, levels_why: str | None, now: float, requested: bool) -> NoSurface:
+    """Return the `surface` panel's answer with no live surface: why. Nothing stands in for it.
+
+    `requested`: a page shows this ticker. Warming: its chain is coming, because it is on the
+    watchlist (fetched in turn; while Closed, once, its close values). The reason is that state's
+    own; `levels_why` is the levels' own reason for being stale (terrain_staleness), None when
+    they give none.
+    """
+    watched = lmp.watchlist()  # the last list stands when the heartbeat is missing
+    warming = watched is not None and tk in watched
+    if lmp.daemon_status(now) is None:
+        why = ["the capture daemon is not reporting (no current heartbeat)"]
+        if watched is None:
+            why.append("its watchlist is unknown")
+        elif tk not in watched:
+            why.append("it is not on the watchlist")
+        if levels_why:
+            why.append(levels_why)
+    elif watched is not None and tk not in watched:
         # no chain is coming for it, at any hour: that, not how old its last levels are
-        _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
-    elif _levels_why:
-        _why = [_levels_why]
-    elif _warming:
-        _why = ["the surface is projected when the daemon delivers this ticker's chain"]
+        why = ["no chain is fetched for this ticker: it is not on the watchlist"]
+    elif levels_why:
+        why = [levels_why]
+    elif warming:
+        why = ["the surface is projected when the daemon delivers this ticker's chain"]
     else:
-        _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
+        why = ["no chain is fetched for this ticker: it is not on the watchlist"]
     return {
         "ticker": tk,
         "available": False,
         "symbol": tk,
         "source": "unavailable",
-        "warming": requested and _warming,
+        "warming": requested and warming,
         "requested": requested,
-        "reason": " — ".join(r for r in _why if r),
+        "reason": " — ".join(r for r in why if r),
     }
