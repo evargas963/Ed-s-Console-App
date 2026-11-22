@@ -232,11 +232,13 @@
       ["Net GEX @ spot", orDash(d.net_gex_at_spot_text)],
     ];
     if (d.flip_note != null) rows.push(["Γ flip note", d.flip_note]); // served: the flip's note
+    // the hero is the regime's name as the terrain panel serves it in words (regime_name), the
+    // Desk's Options card's own; the page draws no code
     return stage(
       3,
       "td-accent-amber",
       "Confirm — options regime",
-      orDash(d.regime),
+      orDash(d.regime_name),
       "",
       null,
       rows,
@@ -248,7 +250,7 @@
   function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
-      lines.push(["Regime", orDash(terrain.regime)]);
+      lines.push(["Regime", orDash(terrain.regime_name)]); // served: the regime's name in words
       // the served headline, its served sources on hover
       if (terrain.headline) lines.push(["Read", terrain.headline, terrain.headline_source]);
     }
