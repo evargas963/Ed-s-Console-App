@@ -126,6 +126,11 @@ class PerStrikeView(StrikeRows):
     by_expiry: dict[str, StrikeRows]
 
 
+#: where the busiest strikes sit against the walls (PositioningMigration's busiest_vs_walls): all
+#: above the call wall, all below the put wall, or all between the two
+ABOVE_CALL_WALL, BELOW_PUT_WALL, INSIDE_WALLS = "ABOVE_CALL_WALL", "BELOW_PUT_WALL", "INSIDE_WALLS"
+
+
 class PositioningMigration(TypedDict):
     """positioning_migration's answer for one book: the whole book's, or one expiry's."""
 
@@ -414,9 +419,9 @@ def positioning_migration(
     # strike, a wall not known, or the busiest strikes on both sides of a wall
     where = None
     if busiest and call_wall is not None and min(busiest) > call_wall:
-        where = "ABOVE_CALL_WALL"
+        where = ABOVE_CALL_WALL
     elif busiest and put_wall is not None and max(busiest) < put_wall:
-        where = "BELOW_PUT_WALL"
+        where = BELOW_PUT_WALL
     elif (
         busiest
         and call_wall is not None
@@ -424,7 +429,7 @@ def positioning_migration(
         and put_wall <= min(busiest)
         and max(busiest) <= call_wall
     ):
-        where = "INSIDE_WALLS"
+        where = INSIDE_WALLS
     return {
         "rows": rows,
         "compared": bool(changes),
