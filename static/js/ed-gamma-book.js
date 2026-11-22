@@ -197,8 +197,13 @@
       return;
     }
     if (_obTicker !== ticker()) {
+      // a new ticker: nothing of the last one's, its badges and its context line included
       _obTicker = ticker();
+      var src = document.getElementById("opbSrc"),
+        ctx = document.getElementById("opbCtx");
       if (host) window.EdShell.placeholder(host, "-");
+      if (src) src.innerHTML = "";
+      if (ctx) ctx.textContent = "";
     }
     window.EdShell.showPanel("option_book:book", window.EdShell.windowAtExpiry(null));
   }

@@ -30,12 +30,15 @@ const CELLS = [
   ["put", "volume"],
 ];
 
-// the page on Options · Book for SPY, the program answering each window with its own panel
-// (`auto`: its answer for the Auto window)
+// the page on Options · Book for SPY, the program answering each of SPY's windows with its own
+// panel (`auto`: its answer for the Auto window) and sending none for another ticker
 async function openBook(page, auto = BOOK.auto) {
-  await routeWatchlist(page, ["SPY"]);
+  await routeWatchlist(page, ["SPY", "QQQ"]);
   const sock = await mockPriceSocket(page, [], [], undefined, {
-    option_book: (key, params) => (params.scope === "wider" ? BOOK.wider : auto),
+    option_book: (key, params) => {
+      if (key !== "SPY") return undefined;
+      return params.scope === "wider" ? BOOK.wider : auto;
+    },
   });
   await page.setViewportSize({ width: 1500, height: 980 });
   await page.addInitScript(() => {
@@ -202,6 +205,21 @@ test.describe("Options Book: the panel on the page's socket", () => {
     await page.locator(BOOK_PANE + " > .panel").screenshot({
       path: testInfo.outputPath("option-book-no-price.png"),
     });
+    expect(errs).toEqual([]);
+  });
+
+  test("a ticker switch leaves nothing of the last ticker: its rows, its badges and its context line", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await openBook(page);
+    await expect.poll(() => drawn(page)).toEqual(expected(BOOK.auto));
+    await expect(page.locator("#opbSrc .asof")).toHaveCount(2);
+    await page.evaluate(() => window.EdShell.setTicker("QQQ")); // QQQ's panel is not sent
+    await expect(page.locator("#opbBody .placeholder")).toHaveText("-");
+    await expect(page.locator("#opbBody .ob-row")).toHaveCount(0);
+    await expect(page.locator("#opbSrc .asof")).toHaveCount(0);
+    await expect(page.locator("#opbCtx")).toHaveText("");
     expect(errs).toEqual([]);
   });
 

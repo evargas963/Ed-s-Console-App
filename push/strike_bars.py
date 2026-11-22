@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from calc.terrain_engine import nearest_strike
 from push.answers import NotAvailable, not_available
@@ -16,7 +16,7 @@ from push.strike_rows import (
     window_asked,
     windowed,
 )
-from state.level_store import published_levels
+from push.verdict import LevelsVerdict, terrain_cache_get
 
 #: a per-strike bar panel's rows in the published levels' per-strike view
 type BarKey = Literal["vanna", "charm"]
@@ -28,11 +28,12 @@ STRIKE_BAR_METHODS: dict[BarKey, str] = {
 }
 
 
-class StrikeBarPanel(TypedDict):
+class StrikeBarPanel(LevelsVerdict):
     """A per-strike bar panel (strike_bar_payload): Vanna or Charm at the expiry chosen.
 
-    The window's rows as the page draws them with the window's view and scope, whether there is
-    a bar to draw and why not, and how the rows are made.
+    The levels' verdict (the rows are the published levels': their state, time, age and why), the
+    window's rows as the page draws them with the window's view and scope, whether there is a bar
+    to draw and why not, and how the rows are made.
     """
 
     ticker: str
@@ -58,11 +59,12 @@ def strike_bar_payload(
 
     The published rows `key` of `expiry` (None: every expiry's, the whole book), windowed for the
     panel (windowed), each as the page draws it (served: delta-shares, compact, the row at the
-    live price marked). An expiry the published chain does not list is answered with why, never
+    live price marked), with the levels' verdict at `now` (terrain_cache_get: the one every
+    screen shows). An expiry the published chain does not list is answered with why, never
     another expiry's rows.
     """
     method = STRIKE_BAR_METHODS[key]
-    levels = published_levels(tk)
+    levels, verdict = terrain_cache_get(tk, now)
     if levels is None:
         return not_available(tk, "no levels published for this ticker yet")
     book = rows_of(levels.snap.per_strike, expiry)
@@ -75,6 +77,7 @@ def strike_bar_payload(
         "ticker": tk,
         "available": bool(rows),
         "expiry": expiry,
+        **verdict,
         "rows": [served(r, key, {"spot": spot_strike}) for r in win],
         "view": view,
         "scope": scope,

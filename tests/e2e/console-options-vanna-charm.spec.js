@@ -4,9 +4,10 @@
  * server.strike_bars): while a tab is on, the subscribe names its
  * panel and the window it asks (the scope and the operator's pan), and the page asks no route
  * for it. The bars are the producer's own answer for CRWD's real 2026-10-07 chain at Schwab's
- * CRWD price (fixtures/vanna_charm_panels_crwd.json, held to the producer by
- * tests/test_vanna_charm_by_strike_v1.py); the "no levels" answer is the producer's own words
- * for a ticker with none published. Offline.
+ * CRWD price, with the levels verdict it serves beside them, and (INDUCED) the same chain read
+ * ten minutes on with nothing renewed (fixtures/vanna_charm_panels_crwd.json, held to the
+ * producer by tests/test_vanna_charm_by_strike_v1.py); the "no levels" answer is the producer's
+ * own words for a ticker with none published. Offline.
  */
 const { test, expect } = require("@playwright/test");
 const { served, priceRow } = require("./fixtures/price_socket");
@@ -66,6 +67,11 @@ function strikes(page, host) {
 function sentStrikes(kind) {
   return PANELS[kind].rows.map((r) => r.strike).reverse();
 }
+// a tab's badge as the page draws the levels verdict a panel is served with: its state word, the
+// time and the age
+function badgeText(panel) {
+  return ["terrain", panel.levels_state, panel.levels_time_ct, panel.levels_age_text].join(" · ");
+}
 
 test.describe("Vanna and Charm by strike: the panels on the page's socket", () => {
   test("the Vanna tab names its panel and window on the subscribe and draws the bars sent, asking no route", async ({
@@ -75,6 +81,36 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
     await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));
     expect(s.last().panels).toEqual({ expiries: {}, vanna: AUTO });
     expect(s.asked).toEqual([]);
+    // the bars are the levels': the tab's badge is the levels verdict served with them
+    await expect(page.locator("#vnSrc .asof")).toHaveText(badgeText(PANELS.vanna));
+    await expect(page.locator("#vnSrc .asof")).toHaveClass("asof live");
+  });
+
+  // INDUCED (tests/test_vanna_charm_by_strike_v1.py): the same chain read ten minutes on with no
+  // chain or heartbeat since, as the program serves it
+  test("levels that stopped arriving stand on each tab, marked STALE with their time, age and why", async ({
+    page,
+  }) => {
+    await open(page, "vanna", (ws, req) => {
+      if (req.ticker !== "CRWD") return;
+      ["vanna", "charm"].forEach((k) => {
+        if (req.panels[k]) ws.send(frame(k, "CRWD", PANELS[k + "_stale"]));
+      });
+    });
+    for (const [kind, host, src] of [
+      ["vanna", "#vnBody", "#vnSrc"],
+      ["charm", "#chmBody", "#chmSrc"],
+    ]) {
+      const panel = PANELS[kind + "_stale"];
+      await page.evaluate((k) => window.EdShell.setSubview(k), kind);
+      // the last values stand: the bars drawn are the ones sent
+      await expect.poll(() => strikes(page, host)).toEqual(sentStrikes(kind));
+      const badge = page.locator(src + " .asof");
+      await expect(badge).toHaveText(badgeText(panel));
+      expect(panel.levels_state).toBe("STALE");
+      await expect(badge).toHaveClass("asof stale");
+      await expect(badge).toHaveAttribute("title", panel.levels_stale_reason);
+    }
   });
 
   test("switching to the Charm tab swaps the panel the subscribe names", async ({ page }) => {
@@ -166,8 +202,10 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
       answerCrwd(ws, req);
     });
     await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));
+    await expect(page.locator("#vnSrc .asof")).toHaveCount(1);
     await page.evaluate(() => window.EdShell.setTicker("MRVL")); // MRVL's panel is held back
     await expect(page.locator("#vnBody .placeholder")).toHaveText("-");
+    await expect(page.locator("#vnSrc .asof")).toHaveCount(0); // CRWD's badge left with its bars
     // CRWD's next panel, still in flight to a page that has left CRWD; then a MRVL row drawn
     // after it: once the row is on screen, the panel before it was read
     program.send(frame("vanna", "CRWD", PANELS.vanna));
@@ -177,6 +215,7 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
     expect(await page.locator("#vnBody .gbs-row").count()).toBe(0);
     program.send(frame("vanna", "MRVL", NO_LEVELS)); // MRVL's own: no levels yet, said so
     await expect(page.locator("#vnBody .placeholder")).toHaveText(NO_LEVELS.reason);
+    await expect(page.locator("#vnSrc .asof")).toHaveCount(0); // no levels, so no verdict to show
   });
 
   test("the socket drops and returns: the subscribe names the panel again and the bars sent are drawn", async ({

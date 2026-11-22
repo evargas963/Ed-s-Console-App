@@ -344,11 +344,16 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`calc.math_exposure_core.overlay_streamed_contract_fields`). After the ticker's option close the
   chain is valued at that close (`time_et.valuation_instant`) and the close values stand until the
   next open. The verdict (`push.verdict.terrain_staleness`): LIVE, CLOSE, STALE past two of the
-  sweep's rounds, or NOT LIVE, with the levels' time and age. Enforced by:
-  `tests/test_instant_ui_blockers_a_v1.py`, `tests/test_one_levels_producer_v1.py`,
-  `tests/test_data_path_silent_price_v1.py`, `tests/test_data_path_startup_v1.py`,
-  `tests/test_data_path_confluence_v1.py`, `tests/test_rest_quotes_reach_the_levels_v1.py`,
-  `tests/test_data_path_chain_spot_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
+  sweep's rounds, or NOT LIVE, with the levels' time and age. Each panel that serves the levels'
+  values serves that verdict with them and its tab shows it as its badge: Key Levels, the heatmap,
+  GEX by strike, Vanna and Charm by strike, the Chain, Strike Detail, Structures and the Options
+  Book (`tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`,
+  `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-options-book.spec.js`,
+  `tests/e2e/console-gamma-heatmap.spec.js`). Enforced by: `tests/test_instant_ui_blockers_a_v1.py`,
+  `tests/test_one_levels_producer_v1.py`, `tests/test_data_path_silent_price_v1.py`,
+  `tests/test_data_path_startup_v1.py`, `tests/test_data_path_confluence_v1.py`,
+  `tests/test_rest_quotes_reach_the_levels_v1.py`, `tests/test_data_path_chain_spot_v1.py`,
+  `tests/test_data_path_charm_side_unknown_v1.py`.
 - **Served words.** A state the program serves is served with the words the screen shows for it,
   from one table where the frame is built: the regime (`regime_text`, `regime_name`:
   `calc.terrain_read.REGIME_TEXT`, `REGIME_NAME`), the price's side of the flip

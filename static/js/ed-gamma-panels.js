@@ -237,21 +237,21 @@
     _gbs = e.detail;
     drawGbs();
   });
-  function setGbsAsOf(d) {
-    var el = document.getElementById("gbsSrc");
-    if (!el) return;
-    if (!d) {
-      el.innerHTML = "";
-      return;
-    }
-    // the levels verdict the server serves (levels_state, its time and age); the badge formats it
-    el.innerHTML = window.EdShell.asOfBadge({
+  // the levels verdict a per-strike panel is served with (levels_state, its time and age, why in
+  // the tooltip), as that panel's badge; '' with no panel to read it from
+  function terrainBadge(d) {
+    if (!d) return "";
+    return window.EdShell.asOfBadge({
       label: "terrain",
       state: d.levels_state,
       when: d.levels_time_ct,
       age: d.levels_age_text,
       reason: d.levels_stale_reason,
     });
+  }
+  function setGbsAsOf(d) {
+    var el = document.getElementById("gbsSrc");
+    if (el) el.innerHTML = terrainBadge(d);
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
   // ({strike, value, text, ...}, ascending), drawn highest strike first, each bar's length its
@@ -529,9 +529,11 @@
     var pan = window.EdShell.newPan(),
       panTicker = null;
     function renderIt(host, d) {
-      var src = document.getElementById(srcId);
-      if (src) src.textContent = "";
-      if (d.failed != null || !d.available) {
+      var src = document.getElementById(srcId),
+        drawn = d.failed == null && d.available;
+      // the rows are the published levels': their verdict, served with them, is the tab's badge
+      if (src) src.innerHTML = terrainBadge(drawn ? d : null);
+      if (!drawn) {
         // not produced, or nothing to draw: why
         window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);
         return;
@@ -546,12 +548,14 @@
         return;
       }
       if (panTicker !== ticker()) {
-        // a new ticker: its own window, and nothing of the last one's
+        // a new ticker: its own window, and nothing of the last one's, its badge included
         pan.centre = null;
         pan.shift = 0;
         panTicker = ticker();
-        var host = document.getElementById(hostId);
+        var host = document.getElementById(hostId),
+          src = document.getElementById(srcId);
         if (host) window.EdShell.placeholder(host, "-");
+        if (src) src.innerHTML = "";
       }
       window.EdShell.showPanel(kind, window.EdShell.windowAtExpiry(pan));
     }
@@ -577,9 +581,14 @@
     return '<span class="st-flag' + (on ? " on" : "") + '">' + esc(label) + "</span>";
   }
   // NON-STD: Schwab's nonStandard flag, as sent (a non-standard, adjusted deliverable)
-  function renderStructures(host, d) {
+  // the chain answer's scope and the levels verdict served with it, as the Chain tab shows them;
+  // none after a failed read or for a ticker with no answer yet (null)
+  function setStructuresSrc(d) {
     var src = document.getElementById("stSrc");
-    if (src) src.textContent = "";
+    if (src) src.innerHTML = window.EdShell.chainScopeBadge(d);
+  }
+  function renderStructures(host, d) {
+    setStructuresSrc(d);
     // served: one row per strike, high to low; an 'unavailable' chain answer carries none
     if (d.status !== "ok") {
       host.innerHTML =
@@ -646,6 +655,7 @@
     )
       return;
     if (d.failed != null) {
+      setStructuresSrc(null);
       window.EdShell.placeholder(host, d.failed);
       return;
     }
@@ -657,7 +667,9 @@
       return;
     }
     if (_stTicker !== ticker()) {
+      // a new ticker: nothing of the last one's, its badge included
       _stTicker = ticker();
+      setStructuresSrc(null);
       var host = document.getElementById("stBody");
       if (host) window.EdShell.placeholder(host, "-");
     }

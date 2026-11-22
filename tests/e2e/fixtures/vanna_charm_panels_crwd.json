@@ -3,6 +3,10 @@
     "ticker": "CRWD",
     "available": true,
     "expiry": null,
+    "levels_state": "LIVE",
+    "levels_stale_reason": "",
+    "levels_age_text": "0s",
+    "levels_time_ct": "Wed 10/07 09:38 AM CT",
     "rows": [
       {
         "strike": 257.5,
@@ -101,6 +105,214 @@
     "ticker": "CRWD",
     "available": true,
     "expiry": null,
+    "levels_state": "LIVE",
+    "levels_stale_reason": "",
+    "levels_age_text": "0s",
+    "levels_time_ct": "Wed 10/07 09:38 AM CT",
+    "rows": [
+      {
+        "strike": 257.5,
+        "value": 88.34527657847713,
+        "strike_text": "257.5",
+        "text": "88",
+        "marks": []
+      },
+      {
+        "strike": 260.0,
+        "value": 1815.4814792529362,
+        "strike_text": "260",
+        "text": "1.82K",
+        "marks": []
+      },
+      {
+        "strike": 262.5,
+        "value": -11.96444251800446,
+        "strike_text": "262.5",
+        "text": "-12",
+        "marks": []
+      },
+      {
+        "strike": 265.0,
+        "value": 83.88802387542643,
+        "strike_text": "265",
+        "text": "84",
+        "marks": []
+      },
+      {
+        "strike": 267.5,
+        "value": 15.9411965885839,
+        "strike_text": "267.5",
+        "text": "16",
+        "marks": []
+      },
+      {
+        "strike": 270.0,
+        "value": -305.0185341435,
+        "strike_text": "270",
+        "text": "-305",
+        "marks": [
+          {
+            "kind": "spot",
+            "label": "SPOT"
+          }
+        ]
+      },
+      {
+        "strike": 272.5,
+        "value": -316.5538272763643,
+        "strike_text": "272.5",
+        "text": "-317",
+        "marks": []
+      },
+      {
+        "strike": 275.0,
+        "value": -654.1933347806855,
+        "strike_text": "275",
+        "text": "-654",
+        "marks": []
+      },
+      {
+        "strike": 277.5,
+        "value": -491.13101698276057,
+        "strike_text": "277.5",
+        "text": "-491",
+        "marks": []
+      },
+      {
+        "strike": 280.0,
+        "value": -2036.4132729955295,
+        "strike_text": "280",
+        "text": "-2.04K",
+        "marks": []
+      },
+      {
+        "strike": 282.5,
+        "value": -638.5754683111031,
+        "strike_text": "282.5",
+        "text": "-639",
+        "marks": []
+      }
+    ],
+    "view": {
+      "centre": 270.0,
+      "centre_text": "270",
+      "note": null,
+      "max_abs": 2036.4132729955295
+    },
+    "scope": "auto",
+    "reason": null,
+    "method": "the published levels' charm map -> call_charm - put_charm"
+  },
+  "vanna_stale": {
+    "ticker": "CRWD",
+    "available": true,
+    "expiry": null,
+    "levels_state": "STALE",
+    "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
+    "levels_age_text": "10m",
+    "levels_time_ct": "Wed 10/07 09:38 AM CT",
+    "rows": [
+      {
+        "strike": 257.5,
+        "value": -36.66299391684396,
+        "strike_text": "257.5",
+        "text": "-37",
+        "marks": []
+      },
+      {
+        "strike": 260.0,
+        "value": -767.6186834491689,
+        "strike_text": "260",
+        "text": "-768",
+        "marks": []
+      },
+      {
+        "strike": 262.5,
+        "value": 5.232990787044514,
+        "strike_text": "262.5",
+        "text": "5",
+        "marks": []
+      },
+      {
+        "strike": 265.0,
+        "value": -39.58207143301394,
+        "strike_text": "265",
+        "text": "-40",
+        "marks": []
+      },
+      {
+        "strike": 267.5,
+        "value": -12.785340696334345,
+        "strike_text": "267.5",
+        "text": "-13",
+        "marks": []
+      },
+      {
+        "strike": 270.0,
+        "value": 85.66144366021244,
+        "strike_text": "270",
+        "text": "86",
+        "marks": [
+          {
+            "kind": "spot",
+            "label": "SPOT"
+          }
+        ]
+      },
+      {
+        "strike": 272.5,
+        "value": 108.19712194988712,
+        "strike_text": "272.5",
+        "text": "108",
+        "marks": []
+      },
+      {
+        "strike": 275.0,
+        "value": 234.1146484523618,
+        "strike_text": "275",
+        "text": "234",
+        "marks": []
+      },
+      {
+        "strike": 277.5,
+        "value": 179.54165920143828,
+        "strike_text": "277.5",
+        "text": "180",
+        "marks": []
+      },
+      {
+        "strike": 280.0,
+        "value": 754.1187901636961,
+        "strike_text": "280",
+        "text": "754",
+        "marks": []
+      },
+      {
+        "strike": 282.5,
+        "value": 238.51379201755063,
+        "strike_text": "282.5",
+        "text": "239",
+        "marks": []
+      }
+    ],
+    "view": {
+      "centre": 270.0,
+      "centre_text": "270",
+      "note": null,
+      "max_abs": 767.6186834491689
+    },
+    "scope": "auto",
+    "reason": null,
+    "method": "the published levels' exposure book -> call_vanna - put_vanna"
+  },
+  "charm_stale": {
+    "ticker": "CRWD",
+    "available": true,
+    "expiry": null,
+    "levels_state": "STALE",
+    "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
+    "levels_age_text": "10m",
+    "levels_time_ct": "Wed 10/07 09:38 AM CT",
     "rows": [
       {
         "strike": 257.5,

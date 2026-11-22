@@ -726,6 +726,15 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await page.evaluate(() => window.EdShell.setSubview("structures"));
     const rows = page.locator("#stBody tbody tr");
     await expect(rows).toHaveCount(ladder.length);
+    // the chain's scope and the levels verdict served with it, as the Chain tab shows them
+    await expect(page.locator("#stSrc .asof")).toHaveText(
+      [
+        "vendor · " + CHAIN.scope.kind_text,
+        CHAIN.levels_state,
+        CHAIN.levels_time_ct,
+        CHAIN.levels_age_text,
+      ].join(" · "),
+    );
     const s = row.series;
     const cells = [String(s.multiplier), s.settlementType, s.exerciseType, s.expirationType];
     await expect(rows.nth(i).locator("td")).toHaveText(
