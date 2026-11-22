@@ -9,12 +9,16 @@ msg}).
 Real data: Schwab's answers to an ADD past LEVELONE_OPTIONS' 3,000 symbols, as the daemon logged
 them on 2026-10-07 04:40:39 (logs/stream_capture.log): code 19 "You've reached the maximum number of
 symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=2181)", then code 24 "ADD command failed";
+its answers to a request it took part of, as the daemon recorded them on 2026-11-22
+(tests/fixtures/real_schwab_symbol_limit_answers_2026_11_22.json): code 19 with the count past
+the limit as DISCARDED, then code 0 "<COMMAND> command succeeded"
+(tests/test_stream_limit_remembered_v1.py holds this stand-in to that record);
 Schwab's answers to SUBS asking field numbers past what each service accepts (code 22 "SUBS command
 failed", tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
-STAND-INS: the login and a code-0 answer's message (Schwab's were not logged); the limit (`limits`,
-per service) a test sets; which symbols of a request past the limit Schwab keeps, which its
-document does not say and no logged refusal shows (each was of a service already full): the first
-that fit, or with `keeps_what_fits` off none of that request; a SUBS whose highest field number is
+STAND-INS: the login (Schwab's was not logged); the limit (`limits`, per service) a test sets;
+which symbols of a request past the limit Schwab keeps (its recorded refusals say how many, never
+which, and its document says neither): the first that fit, or, induced, with `keeps_what_fits`
+off none of that request; a SUBS whose highest field number is
 past the service's range refused whole (Schwab's refusals were of ranges and of single numbers); a
 data entry (`data`) sent once after an accepted SUBS; Schwab's heartbeat ({"notify":
 [{"heartbeat": "<ms>"}]}, Streamer API §1.3) every HEARTBEAT_SEC (its cadence was not logged).
@@ -96,9 +100,10 @@ class LocalStreamer:
 
     Each request it receives is kept (`requests`), with the
     frames it answered (`answers`). SUBS/ADD hold the keys asked for up to `limits[service]`;
-    past it, the request is answered twice: code 19 (refusal) and then code 24
-    ("<COMMAND> command failed"), as Schwab answered on 2026-10-07. UNSUBS releases them, and a
-    new connection holds nothing.
+    past it, the request is answered twice, as Schwab answers: code 19 (refusal), then code 0
+    ("<COMMAND> command succeeded") when it kept part of the request, or code 24 ("<COMMAND>
+    command failed") when it kept none. UNSUBS releases them, and a new connection holds
+    nothing.
 
     Each frame carries the time it was made; every frame after the login's answer reaches the
     daemon `lag` seconds after it, in order, as frames reach a reader that runs that far behind
@@ -223,12 +228,11 @@ class LocalStreamer:
         room = max(0, limit - len(held))
         kept = new[:room] if self.keeps_what_fits or len(new) <= room else []
         held.extend(kept)
+        succeeded = response(0, f"{command} command succeeded")
         if len(kept) < len(new):
-            return [
-                response(19, refusal(service, limit, len(new) - len(kept))),
-                response(24, f"{command} command failed"),
-            ]
-        return [response(0, f"{command} command succeeded")]
+            second = succeeded if kept else response(24, f"{command} command failed")
+            return [response(19, refusal(service, limit, len(new) - len(kept))), second]
+        return [succeeded]
 
     def asked(self, service: str) -> list[tuple[str, list[str]]]:
         """(command, keys) of each request on `service`, in order."""

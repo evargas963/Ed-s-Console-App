@@ -80,7 +80,7 @@ from app.options.order_flow import streaming as console_feed
 from calc.terrain_engine import nearest_position
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
-from feed.connection import SERVICES, Connection
+from feed.connection import SERVICES, SYMBOL_LIMIT, Connection, SymbolLimit, stated_limit
 from feed.schwab_client import Client, SchwabClientState, build_client_from_token, check_ticker
 from instrument_identity import ticker_storage_key
 from option_contract import GREEK_FIELDS, OptionContract
@@ -137,24 +137,54 @@ WATCHLIST_TEXT = {
 }
 
 
+def _stored(db_path: str | Path, table: str, query: str, *args: object) -> list[Any]:
+    """Return the rows `query` reads of the record's `table`, read once at startup.
+
+    The database is opened read-only. One that does not exist yet, or holds no such table (a
+    first start), has no rows.
+    """
+    if not Path(db_path).is_file():
+        return []
+    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone():
+            return []
+        return conn.execute(query, args).fetchall()
+    finally:
+        conn.close()
+
+
 def stored_watchlist(db_path: str | Path) -> list[str]:
     """Return the watchlist as the newest stored record holds it, read once at startup.
 
     The record is stream_watchlist, written by the daemon's writer; the watchlist is empty
     when none was ever stored.
     """
-    if not Path(db_path).is_file():
-        return []
-    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
-    try:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name='stream_watchlist'").fetchone():
-            return []
-        rows = conn.execute(
-            "SELECT tickers_json FROM stream_watchlist ORDER BY rowid DESC LIMIT 1"
-        ).fetchall()
-    finally:
-        conn.close()
+    rows = _stored(
+        db_path,
+        "stream_watchlist",
+        "SELECT tickers_json FROM stream_watchlist ORDER BY rowid DESC LIMIT 1",
+    )
     return [t for (tickers,) in rows for t in json.loads(tickers)]
+
+
+def stored_limits(db_path: str | Path) -> list[SymbolLimit]:
+    """Return each service's symbol limit as Schwab last stated it, read once at startup.
+
+    The record is stream_subscriptions, every answer of Schwab's as sent, written by the
+    daemon's writer: the newest refusal that states a service's limit
+    (feed.connection.stated_limit) is that service's. A service Schwab has stated none for in
+    the rows the record keeps (stream_spine.KEPT_BY_TIME) has none here, and the connection asks
+    it for everything until Schwab states one (feed.connection.Connection.ask).
+    """
+    rows = _stored(
+        db_path,
+        "stream_subscriptions",
+        "SELECT service, code, reason FROM stream_subscriptions WHERE code = ? ORDER BY ts",
+        SYMBOL_LIMIT,
+    )
+    stated = (stated_limit(service, code, reason) for service, code, reason in rows)
+    return list({limit.service: limit for limit in stated if limit is not None}.values())
 
 
 def watchlist_message(
@@ -324,6 +354,7 @@ class Daemon:
         health: HealthRegistry,
         watchlist: Iterable[str] = (),
         *,
+        limits: Iterable[SymbolLimit] = (),
         clock: Callable[[], float] = time_et.now,
         on_page: Callable[[], Iterable[str]] = frozenset,
     ) -> None:
@@ -354,8 +385,9 @@ class Daemon:
         self.writer: CaptureWriter | None = None  # its state rides the heartbeat
         #: the daemon's one Schwab client (run): the checks; none before run
         self.schwab_client: Callable[[], Client] = _not_started
-        #: the one Schwab stream connection, asking for what is wanted (wanted)
-        self.connection = Connection(bus, health, self.wanted, time_et.now)
+        #: the one Schwab stream connection, asking for what is wanted (wanted) within each
+        #: service's symbol limit as Schwab last stated it (`limits`: stored_limits at startup)
+        self.connection = Connection(bus, health, self.wanted, time_et.now, limits)
 
     def wanted(self) -> dict[str, tuple[str, ...]]:
         """Return what Schwab is asked for, per service, in the order it is asked.
@@ -396,8 +428,9 @@ class Daemon:
         tickers a page shows (shown); then every other ticker's. Each of the three in the rule's
         order (shown_first), dealt across its tickers, each ticker's first, then each one's
         second. No number of ours caps them: every one is asked until Schwab states its symbol
-        limit for the service (code 19), and from then the first that many of this order are
-        (wanted). A ticker without a chain and a price yet has none. When what is wanted changes,
+        limit for the service (code 19), and from then, on every connection and after a restart
+        (stored_limits), the first that many of this order are (wanted). A ticker without a chain
+        and a price yet has none. When what is wanted changes,
         the difference is asked (ask: one UNSUBS and one ADD per service).
         """
         ranked = {tk: self._ranked[tk] for tk in self.watchlist if tk in self._ranked}
@@ -1218,6 +1251,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
         bus,
         health,
         stored_watchlist(writer.db_path),
+        limits=stored_limits(writer.db_path),
         on_page=lambda: selected(server.app.state),
     )
     daemon.writer = writer
