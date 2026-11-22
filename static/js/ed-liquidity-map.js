@@ -88,10 +88,7 @@
     // served (not sent yet, not produced, or no price levels published)
     var src = document.getElementById("liqmSrc"),
       marked = snap && snap.available !== false ? snap : null;
-    if (src)
-      src.innerHTML =
-        window.EdShell.snapshotBadge(marked, "price levels") +
-        window.EdShell.verdictBadge(marked, "terrain");
+    if (src) src.innerHTML = window.EdShell.levelsBadges(marked);
     c.setBars(
       barsD ? barsD.bars : [],
       barsD ? barsD.tf : _tf,

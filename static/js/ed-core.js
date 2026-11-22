@@ -661,6 +661,11 @@
     if (!d || d.snapshot_time_ct == null) return "";
     return asOfBadge({ label: label, when: d.snapshot_time_ct, age: d.snapshot_age_text });
   }
+  // Both marks of a panel that serves the session's price levels beside the gamma levels (the
+  // levels panel, the liquidity zones), as its badges: the snapshot's, then the verdict's.
+  function levelsBadges(d) {
+    return [snapshotBadge(d, "price levels"), verdictBadge(d, "terrain")].join("");
+  }
   // A chain answer's badge: its served scope, in the words served with it, and the levels verdict
   // served with it; '' after a failed read (null: no answer).
   function chainScopeBadge(d) {
@@ -1837,6 +1842,7 @@
     asOfBadge: asOfBadge,
     verdictBadge: verdictBadge,
     snapshotBadge: snapshotBadge,
+    levelsBadges: levelsBadges,
     chainScopeBadge: chainScopeBadge,
     chainEmptyText: chainEmptyText,
     placeholder: placeholder,

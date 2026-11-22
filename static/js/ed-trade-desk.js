@@ -206,8 +206,7 @@
       rows,
       null,
       null,
-      window.EdShell.snapshotBadge(levelsD, "price levels") +
-        window.EdShell.verdictBadge(levelsD, "terrain"),
+      window.EdShell.levelsBadges(levelsD),
     );
   }
 

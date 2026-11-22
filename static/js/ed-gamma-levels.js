@@ -127,11 +127,7 @@
       "</span></div>";
     // what the rows are made of, each as served: the price-level snapshot's time and age, and the
     // gamma levels' verdict (its state, time and age, why on hover)
-    var asof =
-      '<div class="chart-asof">' +
-      window.EdShell.snapshotBadge(d, "price levels") +
-      window.EdShell.verdictBadge(d, "terrain") +
-      "</div>";
+    var asof = '<div class="chart-asof">' + window.EdShell.levelsBadges(d) + "</div>";
     var table =
       '<table class="lv"><thead><tr><th>Level</th><th>Regular</th><th>0DTE</th>' +
       "</tr></thead><tbody>" +
