@@ -147,7 +147,8 @@ class PositioningMigration(TypedDict):
 class TerrainFields(TypedDict):
     """A snapshot as the terrain panel carries it (TerrainSnapshot.to_dict).
 
-    Each field but the heavy maps as the snapshot holds it, then each number as the screen shows it.
+    Each field a reader of the panel takes, as the snapshot holds it, then each number as the
+    screen shows it.
     """
 
     ticker: str
@@ -161,9 +162,6 @@ class TerrainFields(TypedDict):
     put_wall: float | None
     absolute_gamma_strike: float | None
     pin_candidate: float | None
-    pin_expected_moves: float | None
-    pin_strike_widths: float | None
-    pin_minutes_to_close: float | None
     max_pain: float | None
     max_pain_dte: float | None
     call_charm_wall: float | None
@@ -175,7 +173,6 @@ class TerrainFields(TypedDict):
     gsf: float | None
     grc: float | None
     same_day: dict[str, float | None]
-    same_day_repriced_from: str | None
     call_delta_wall: float | None
     put_delta_wall: float | None
     contracts_used: int
@@ -185,11 +182,8 @@ class TerrainFields(TypedDict):
     error: str
     pcr_by_expiry: dict[str, float | None]
     atm_iv_pct_by_expiry: dict[str, float | None]
-    pcr_volume_by_expiry: dict[str, float | None]
     pcr_all: float | None
-    pcr_volume_all: float | None
     expiries: list[str]
-    expiry_dte: dict[str, float | None]
     computed_ts_utc: float | None
     net_gex_at_spot_text: str | None
     contracts_used_text: str | None
@@ -352,10 +346,13 @@ class TerrainSnapshot:
     def to_dict(self) -> TerrainFields:
         """Return the per-poll payload.
 
-        It holds every field except the heavy maps (profile, per_strike, books, charm_by_strike,
-        charm_by_expiry, iv_by_expiry), which the server reads off the snapshot, then the net
-        gamma at spot, the contracts used, each option level's price (and each on the 0DTE basis)
-        and the put/call ratios as the screen shows them.
+        The snapshot's fields, then the net gamma at spot, the contracts used, each option
+        level's price (and each on the 0DTE basis) and the put/call ratios as the screen shows
+        them. Not the heavy maps (profile, per_strike, books, charm_by_strike, charm_by_expiry,
+        iv_by_expiry), which the server reads off the snapshot, nor the fields no reader of the
+        payload takes: the pin's distances and the expiry the same-day levels were re-priced from
+        (the notes say them), each expiry's days, and the volume ratios as numbers (their text
+        is served).
         """
         return {
             "ticker": self.ticker,
@@ -369,9 +366,6 @@ class TerrainSnapshot:
             "put_wall": self.put_wall,
             "absolute_gamma_strike": self.absolute_gamma_strike,
             "pin_candidate": self.pin_candidate,
-            "pin_expected_moves": self.pin_expected_moves,
-            "pin_strike_widths": self.pin_strike_widths,
-            "pin_minutes_to_close": self.pin_minutes_to_close,
             "max_pain": self.max_pain,
             "max_pain_dte": self.max_pain_dte,
             "call_charm_wall": self.call_charm_wall,
@@ -383,7 +377,6 @@ class TerrainSnapshot:
             "gsf": self.gsf,
             "grc": self.grc,
             "same_day": dict(self.same_day),
-            "same_day_repriced_from": self.same_day_repriced_from,
             "call_delta_wall": self.call_delta_wall,
             "put_delta_wall": self.put_delta_wall,
             "contracts_used": self.contracts_used,
@@ -393,11 +386,8 @@ class TerrainSnapshot:
             "error": self.error,
             "pcr_by_expiry": dict(self.pcr_by_expiry),
             "atm_iv_pct_by_expiry": dict(self.atm_iv_pct_by_expiry),
-            "pcr_volume_by_expiry": dict(self.pcr_volume_by_expiry),
             "pcr_all": self.pcr_all,
-            "pcr_volume_all": self.pcr_volume_all,
             "expiries": list(self.expiries),
-            "expiry_dte": dict(self.expiry_dte),
             "computed_ts_utc": self.computed_ts_utc,
             "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
             "contracts_used_text": count_text(self.contracts_used),

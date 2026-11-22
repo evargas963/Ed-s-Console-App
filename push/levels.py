@@ -136,7 +136,6 @@ class ProfileFields(TypedDict):
     basis: str
     bars: int
     bars_without_volume: int
-    tick_size: float
     bins: list[list[float | bool]]
     max_volume: float | None
     poc: float
@@ -235,7 +234,6 @@ def _profile(vp: VolumeProfile | None) -> ProfileFields | None:
         "over its range (not trades observed at a price)",
         "bars": vp.bars,
         "bars_without_volume": vp.bars_without_volume,
-        "tick_size": vp.tick_size,
         # [price, volume, inside the value area]
         "bins": [[p, v, vp.val <= p <= vp.vah] for p, v in vp.bins],
         # the largest bin's volume: the profile's scale

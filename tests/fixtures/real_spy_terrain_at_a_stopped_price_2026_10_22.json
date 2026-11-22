@@ -27,9 +27,6 @@
  "expiries": [
   "2026-10-22"
  ],
- "expiry_dte": {
-  "2026-10-22": 0.0
- },
  "flip_note": null,
  "flip_relation": null,
  "flip_relation_text": null,
@@ -67,19 +64,12 @@
  "pcr_by_expiry_text": {
   "2026-10-22": "1.09"
  },
- "pcr_volume_all": 1.1502520957806701,
  "pcr_volume_all_text": "1.15",
- "pcr_volume_by_expiry": {
-  "2026-10-22": 1.1502520957806701
- },
  "pcr_volume_by_expiry_text": {
   "2026-10-22": "1.15"
  },
  "pin_candidate": null,
  "pin_candidate_text": null,
- "pin_expected_moves": null,
- "pin_minutes_to_close": null,
- "pin_strike_widths": null,
  "put_charm_wall": null,
  "put_charm_wall_text": null,
  "put_delta_wall": 772.0,
@@ -106,7 +96,6 @@
   "put_delta_wall": 772.0,
   "put_wall": 764.0
  },
- "same_day_repriced_from": null,
  "same_day_text": {
   "absolute_gamma_strike": "765.00",
   "call_charm_wall": null,

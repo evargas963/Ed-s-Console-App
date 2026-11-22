@@ -630,7 +630,6 @@ class PriceLevelFields(TypedDict):
     label: str
     short: str
     side: str | None
-    strength: None
     evidence_tier: str
     semantic_scope: str
     provenance: LevelProvenance
@@ -694,7 +693,6 @@ class PriceLevelValue:
             "label": label,
             "short": short,
             "side": None,
-            "strength": None,
             "evidence_tier": self.evidence_tier,
             "semantic_scope": self.semantic_scope,
             "provenance": {

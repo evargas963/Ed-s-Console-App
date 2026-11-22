@@ -44,7 +44,6 @@ class VolumeProfile:
     volume, which the profile cannot place and does not contain.
     """
 
-    tick_size: float
     bins: tuple[tuple[float, float], ...]
     poc: float
     vah: float
@@ -136,7 +135,6 @@ def volume_profile(
         sum(vol_by_idx.values()) * value_area_pct,
     )
     return VolumeProfile(
-        tick_size=tick_size,
         bins=tuple((i / per_dollar, vol_by_idx[i]) for i in idx_sorted),
         poc=poc_idx / per_dollar,
         vah=idx_sorted[hi_pos] / per_dollar,
