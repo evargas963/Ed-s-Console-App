@@ -195,6 +195,35 @@ test("a chosen expiry that has passed is said, never another expiry's ranking", 
   await expect(page.locator("#cmRows tr")).toHaveCount(0);
 });
 
+// the rail's regime cell, as drawn
+const regimeCell = (page) =>
+  page.locator("#cmBody .stat", { hasText: "GAMMA REGIME · CHAIN" }).locator("strong");
+
+test("the rail says MRVL's regime in the served words", async ({ page }) => {
+  // MRVL's real answer: dealer gamma at the price is positive
+  const body = served(FRONT);
+  expect([body.regime, body.regime_text]).toEqual(["LONG_GAMMA_CHOP", "Dealer Γ +"]);
+  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await openMatrix(page);
+  await expect(regimeCell(page)).toHaveText("Dealer Γ +");
+});
+
+// INDUCED: MRVL's answer with each other regime the server serves and the words it serves with it
+// (calc.terrain_read.REGIME_TEXT), then a regime and words the page has never held: the rail
+// draws the served words and picks none
+for (const [regime, words] of [
+  ["SHORT_GAMMA_TREND", "Dealer Γ −"],
+  ["UNAVAILABLE", "unavailable"],
+  ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
+]) {
+  test(`the rail says the regime ${regime} in the served words`, async ({ page }) => {
+    const body = Object.assign({}, served(FRONT), { regime: regime, regime_text: words });
+    await mockPriceSocket(page, [], [], undefined, { confluence: body });
+    await openMatrix(page);
+    await expect(regimeCell(page)).toHaveText(words);
+  });
+}
+
 test("the Composite column says what it measures: size, not direction", async ({ page }) => {
   // the score ranks unsigned sizes (calc.confluence_composite.magnitudes), so the header says so,
   // beside the served scale and preset

@@ -42,7 +42,10 @@ const TERRAIN = {
   call_wall_text: K.toFixed(2),
   put_wall_text: PUT_WALL.toFixed(2),
   same_day_text: {},
+  // the regime, and as the screen says it (calc.terrain_read.REGIME_TEXT, REGIME_NAME)
   regime: "LONG_GAMMA_CHOP",
+  regime_text: "Dealer Γ +",
+  regime_name: "LONG GAMMA CHOP",
   levels_state: "LIVE",
   levels_mark: "LIVE",
 };
@@ -68,7 +71,7 @@ const PUT_SYM = "CRWD  260918P00272500";
 const CHAIN = {
   expiry: "2026-09-18",
   status: "ok",
-  scope: { kind: "complete_single_expiry" },
+  scope: { kind: "complete_single_expiry", kind_text: "complete (ALL)" }, // push.chain.SCOPE_TEXT
   // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
   ladder: [
     {

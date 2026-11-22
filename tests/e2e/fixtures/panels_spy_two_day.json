@@ -3794,6 +3794,7 @@
       "grew_text": "775/770",
       "shrank_text": "756/760",
       "busiest_text": "757\u2013760",
+      "busiest_vs_walls_text": null,
       "note": null,
       "volume_zero_text": null
     },
@@ -3803,6 +3804,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
+        "level_text": "Call wall",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -3812,6 +3814,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
+        "level_text": "Put wall",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -3821,6 +3824,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
+        "level_text": "\u0393 flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -7902,6 +7906,7 @@
       "grew_text": "775/770",
       "shrank_text": "756/760",
       "busiest_text": "757\u2013760",
+      "busiest_vs_walls_text": null,
       "note": null,
       "volume_zero_text": null
     },
@@ -7911,6 +7916,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
+        "level_text": "Call wall",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -7920,6 +7926,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
+        "level_text": "Put wall",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -7929,6 +7936,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
+        "level_text": "\u0393 flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -9499,6 +9507,7 @@
       "grew_text": "766/740",
       "shrank_text": "760/755",
       "busiest_text": "756\u2013757",
+      "busiest_vs_walls_text": "BELOW the put wall",
       "note": null,
       "volume_zero_text": null
     },
@@ -9508,6 +9517,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
+        "level_text": "Call wall",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -9517,6 +9527,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
+        "level_text": "Put wall",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -9526,6 +9537,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
+        "level_text": "\u0393 flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -9895,12 +9907,15 @@
     "call_wall_lean": null,
     "put_wall_lean": "BREACHED \u2014 spot below",
     "flip_relation": "BELOW",
+    "flip_relation_text": "Below \u0393 flip",
     "atr_daily": 11.064105444079996,
     "atr_weekly": 19.863970115131707,
     "atr_monthly": 37.92614433481697,
     "atr_daily_text": "11.06",
     "atr_weekly_text": "19.86",
     "atr_monthly_text": "37.93",
+    "regime_text": "Dealer \u0393 \u2212",
+    "regime_name": "SHORT GAMMA TREND",
     "spot_time_ct": "Thu 11/12 09:30 AM CT",
     "spot_not_live_text": null,
     "levels_mark": "LIVE",
@@ -29619,7 +29634,8 @@
     ],
     "n_strikes": 129,
     "scope": {
-      "kind": "complete_single_expiry"
+      "kind": "complete_single_expiry",
+      "kind_text": "complete (ALL)"
     }
   },
   "chain_second_expiry": {
@@ -39462,7 +39478,8 @@
     ],
     "n_strikes": 171,
     "scope": {
-      "kind": "complete_single_expiry"
+      "kind": "complete_single_expiry",
+      "kind_text": "complete (ALL)"
     }
   },
   "book": {
@@ -40317,7 +40334,8 @@
             "source_text": "Schwab NYSE_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "NYSE"
           },
           "NASDAQ_BOOK": {
             "status": "ok",
@@ -40996,7 +41014,8 @@
             "source_text": "Schwab NASDAQ_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Nasdaq"
           },
           "COMPOSITE": {
             "status": "ok",
@@ -41675,7 +41694,8 @@
             "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Composite"
           }
         },
         "disagree": {
@@ -42544,7 +42564,8 @@
             "source_text": "Schwab NYSE_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "NYSE"
           },
           "NASDAQ_BOOK": {
             "status": "ok",
@@ -43223,7 +43244,8 @@
             "source_text": "Schwab NASDAQ_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Nasdaq"
           },
           "COMPOSITE": {
             "status": "ok",
@@ -43902,7 +43924,8 @@
             "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Composite"
           }
         },
         "disagree": {
@@ -44138,7 +44161,9 @@
     ],
     "summary": {
       "value_state": "lower",
-      "vwap_relation": "inside_value"
+      "vwap_relation": "inside_value",
+      "value_state_text": "lower",
+      "vwap_relation_text": "inside value"
     },
     "spot_location": {
       "inside": 0,

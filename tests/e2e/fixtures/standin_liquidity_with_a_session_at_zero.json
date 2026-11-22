@@ -76,7 +76,12 @@
       "interpretation_notes": "No live price: the side of the price is not known"
     }
   ],
-  "summary": { "value_state": "lower", "vwap_relation": "above_value" },
+  "summary": {
+    "value_state": "lower",
+    "vwap_relation": "above_value",
+    "value_state_text": "lower",
+    "vwap_relation_text": "above value"
+  },
   "spot_location": null,
   "hold_rates": [
     { "level": "Prior day high", "text": "- (0 touches) [30 min: - (0 touches)]" },

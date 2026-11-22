@@ -48,6 +48,25 @@ def _distance_to_spot(lo: float, hi: float, spot: float) -> float:
     return 0.0 if within(lo, hi, spot) else min(abs(spot - lo), abs(spot - hi))
 
 
+#: where today's value area sits against the prior day's (liquidity_value_engine
+#: .value_area_relation) and where VWAP sits against today's (vwap_against_value), each as the
+#: Desk's agreement strip says it; no words where it is not known
+VALUE_STATE_TEXT: dict[str | None, str | None] = {
+    "unchanged": "unchanged",
+    "higher": "higher",
+    "lower": "lower",
+    "inside": "inside",
+    "outside": "outside",
+    "overlapping_higher": "overlapping higher",
+    "overlapping_lower": "overlapping lower",
+    None: None,
+}
+VWAP_RELATION_TEXT: dict[str | None, str | None] = {
+    "above_value": "above value",
+    "below_value": "below value",
+    "inside_value": "inside value",
+    None: None,
+}
 #: what the hold rates are, shown on hover beside them
 HOLD_NOTE = (
     f"Over the last {HOLD_WINDOW_SESSIONS} completed sessions held: a touch is a 1-minute bar "
@@ -166,6 +185,9 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
         and {
             "value_state": out.summary.value_state,
             "vwap_relation": out.summary.vwap_relation,
+            # each as the Desk's agreement strip says it
+            "value_state_text": VALUE_STATE_TEXT[out.summary.value_state],
+            "vwap_relation_text": VWAP_RELATION_TEXT[out.summary.vwap_relation],
         },
         "spot_location": _spot_location(zones_payload, spot_for_zones),
         "hold_rates": hold_rates(ticker_upper, now),

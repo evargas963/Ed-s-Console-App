@@ -536,6 +536,8 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
         and out["call_wall"] is None
         and out["error"] == "no spot price"
     )
+    # no regime is said in the screen's words too, served beside it: the page picks none
+    assert (out["regime_text"], out["regime_name"]) == ("unavailable", "UNAVAILABLE")
     assert not [k for k in out if k.startswith("priced_at_spot")]
 
 

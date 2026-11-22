@@ -34,7 +34,7 @@ const CHAIN = {
   ticker: "SPY",
   expiry: "2026-09-11",
   status: "ok",
-  scope: { kind: "complete_single_expiry" },
+  scope: { kind: "complete_single_expiry", kind_text: "complete (ALL)" }, // push.chain.SCOPE_TEXT
   // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
   ladder: [{ strike: 100, call: CONTRACTS[0], put: CONTRACTS[1], net_gex: null }],
 };
@@ -107,6 +107,30 @@ test.describe("#4 per-panel source / as-of / freshness", () => {
     await expect(badge).toContainText("vendor");
     await expect(badge).toContainText("complete (ALL)");
   });
+
+  // INDUCED: the chain as push.chain answers it with no chain to answer from (its scope and the
+  // words served with it), then a scope and words the page has never held: the badge draws the
+  // served words and picks none
+  for (const [kind, words] of [
+    ["unavailable", "unavailable"],
+    ["a_scope_only_the_server_knows", "as only the server says"],
+  ]) {
+    test(`Strike Detail's chain badge says the served words of the scope ${kind}`, async ({
+      page,
+    }) => {
+      await routes({
+        chain: {
+          ticker: "SPY",
+          expiry: null,
+          ladder: [],
+          status: "unavailable",
+          scope: { kind: kind, reason: "no listed expiry for this ticker", kind_text: words },
+        },
+      })(page);
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      await expect(page.locator("#sdSrc .asof")).toContainText("vendor · " + words);
+    });
+  }
 
   test("the two panels show DIFFERENT source truths, not one merged status", async ({ page }) => {
     await routes()(page);

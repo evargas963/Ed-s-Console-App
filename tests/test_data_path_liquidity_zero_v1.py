@@ -233,6 +233,39 @@ def test_each_value_area_relation_is_the_two_areas_own_edges_with_no_tolerance()
     assert (vwap(lo, lo, hi), vwap(hi, lo, hi)) == ("inside_value", "inside_value")
 
 
+def test_every_relation_the_calculators_name_has_the_strips_words():
+    """Every relation the two calculators can return, with the words the panel serves for it.
+
+    Friday's real edges placed as the test above places them. The Desk's agreement strip draws
+    the served words and replaces no underscore itself; an unknown relation has no words.
+    """
+    last = friday_bars()[-1]
+    lo, hi = last["low"], last["high"]
+    width = hi - lo
+    relation = liquidity_value_engine.value_area_relation
+    areas = {
+        relation(lo, hi, lo, hi): "unchanged",
+        relation(lo, hi, lo - 3 * width, lo - 2 * width): "higher",
+        relation(lo, hi, hi + 2 * width, hi + 3 * width): "lower",
+        relation(lo, hi, lo - width, hi + width): "inside",
+        relation(lo - width, hi + width, lo, hi): "outside",
+        relation(lo, hi, lo - width, hi - width / 2): "overlapping higher",
+        relation(lo, hi, lo + width / 2, hi + width): "overlapping lower",
+        relation(lo, hi, None, None): None,
+    }
+    assert len(areas) == 8, "every relation, each once"
+    assert {state: push_liquidity.VALUE_STATE_TEXT[state] for state in areas} == areas
+    vwap = liquidity_value_engine.vwap_against_value
+    sides = {
+        vwap(hi + width, lo, hi): "above value",
+        vwap(lo - width, lo, hi): "below value",
+        vwap(lo, lo, hi): "inside value",
+        vwap(None, lo, hi): None,
+    }
+    assert len(sides) == 4
+    assert {state: push_liquidity.VWAP_RELATION_TEXT[state] for state in sides} == sides
+
+
 @pytest.mark.usefixtures("published")
 def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value():
     """Friday's bars at 0 but its last, which keeps its prices: its value area is at 0, VWAP above.
@@ -243,6 +276,8 @@ def test_a_poc_at_zero_under_a_vwap_above_it_reads_above_value():
     body = _snapshot(FRIDAY_ON, FRIDAY, keep=last)
     summary = body["summary"]
     assert (summary["value_state"], summary["vwap_relation"]) == ("lower", "above_value")
+    # each with the words the Desk's agreement strip draws, served beside it
+    assert (summary["value_state_text"], summary["vwap_relation_text"]) == ("lower", "above value")
     assert body == json.loads(DRAWN.read_text(encoding="utf-8"))
 
 

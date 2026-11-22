@@ -373,6 +373,15 @@ def _served(readout: dict) -> dict:
         history.LEAN.forget("SPY")
 
 
+def test_each_venue_is_served_with_the_name_its_dot_shows():
+    """SPY's real pair of books: each venue of the card with its name, the composite too.
+
+    The card's dots name their venue from the readout; the page holds no table of names.
+    """
+    names = {v: r["name"] for v, r in _served(_pair_readout()).items()}
+    assert names == {"NYSE_BOOK": "NYSE", "NASDAQ_BOOK": "Nasdaq", e.COMPOSITE: "Composite"}
+
+
 def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_partial():
     """A level as Schwab sent it, its own rows removed: its TOTAL_VOLUME is counted once.
 

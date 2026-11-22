@@ -14,6 +14,7 @@ import live_market_plane as lmp
 from app.options.order_flow.streaming import price_state
 from calc.terrain_atr import Atr, compute_atrs
 from calc.terrain_engine import compute_terrain, price_relations
+from calc.terrain_read import REGIME_NAME, REGIME_TEXT
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
 from push.bars import daily_candles
@@ -69,6 +70,11 @@ def _atr_fields(tk: str, now: datetime) -> dict[str, float | str | None]:
     return atrs | {f"{name}_text": price_text(value) for name, value in atrs.items()}
 
 
+def _regime_words(regime: str) -> dict[str, str]:
+    """Return a regime as the screen says it: in short, and its name in words (terrain_read)."""
+    return {"regime_text": REGIME_TEXT[regime], "regime_name": REGIME_NAME[regime]}
+
+
 def terrain(tk: str, now: float) -> dict[str, Any]:
     """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
 
@@ -86,6 +92,7 @@ def terrain(tk: str, now: float) -> dict[str, Any]:
         out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
         out.update(price_relations(out, out["spot"]).to_dict())
         out.update(_atr_fields(tk, at))  # live: today's candle from the bars held now
+        out.update(_regime_words(cached.snap.regime))
         # the chain's verdict is levels_state, above. The live price the relations are computed from
         # is a separate fact: the numbers stay, marked with whether that price is live
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
@@ -103,6 +110,7 @@ def terrain(tk: str, now: float) -> dict[str, Any]:
             "spot_source": spot_source,
             "spot_as_of_ts_utc": spot_ts,
             **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
+            **_regime_words(empty["regime"]),
             # not ready, with the producer's reason when it has one, and the levels' verdict
             "error": (
                 "terrain_not_ready: no chain from the daemon yet for this ticker"

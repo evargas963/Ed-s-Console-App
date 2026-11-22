@@ -54,7 +54,9 @@ const TAPE_ROW = {
   ask_text: "1.19",
   trade_text: "1.18",
   delta_text: "0.357",
+  // where it landed, and that place in the "vs Market" column's words (history.LANDED_TEXT)
   classification: "inside_spread",
+  classification_text: "inside",
 };
 
 async function intercept(page, tapeBody) {
@@ -69,7 +71,11 @@ async function intercept(page, tapeBody) {
       expiry: null,
       ladder: [],
       status: "unavailable",
-      scope: { kind: "unavailable", reason: "no listed expiry for this ticker" },
+      scope: {
+        kind: "unavailable",
+        reason: "no listed expiry for this ticker",
+        kind_text: "unavailable", // push.chain.SCOPE_TEXT
+      },
     },
     strikes: REAL.strikes,
   });
@@ -155,6 +161,7 @@ test.describe("Options Flow tape (Gamma pane, native trade prints)", () => {
       trade: 1.17,
       trade_text: "1.17",
       classification: "at_bid",
+      classification_text: "at bid",
     };
     const atAsk = {
       ...TAPE_ROW,
@@ -163,6 +170,7 @@ test.describe("Options Flow tape (Gamma pane, native trade prints)", () => {
       trade: 1.19,
       trade_text: "1.19",
       classification: "at_ask",
+      classification_text: "at ask",
     };
     await intercept(page, {
       ticker: "SPY",
@@ -175,5 +183,28 @@ test.describe("Options Flow tape (Gamma pane, native trade prints)", () => {
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0).locator(".of-cls")).toHaveText("at ask"); // newest-first
     await expect(rows.nth(1).locator(".of-cls")).toHaveText("at bid");
+  });
+
+  test("where a print landed is said in the served words: below the bid, above the ask, not known", async ({
+    page,
+  }) => {
+    // INDUCED from the row above: each other place history.quoted names with the words
+    // history.LANDED_TEXT serves for it (none where no quote in force is known: the dash), then
+    // a place and words the page has never held: the page draws the served words and picks none
+    const landed = [
+      ["outside_spread_low", "below bid", "below bid"],
+      ["outside_spread_high", "above ask", "above ask"],
+      ["unknown", null, "-"],
+      ["a_place_only_the_server_knows", "where only the server says", "where only the server says"],
+    ];
+    const rows = landed.map(([classification, words], i) => ({
+      ...TAPE_ROW,
+      trade_time_ms: TAPE_ROW.trade_time_ms - 1000 * i,
+      classification,
+      classification_text: words,
+    }));
+    await intercept(page, { ticker: "SPY", available: true, symbols: [TAPE_ROW.symbol], rows });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#ofBody tbody tr .of-cls")).toHaveText(landed.map((l) => l[2]));
   });
 });

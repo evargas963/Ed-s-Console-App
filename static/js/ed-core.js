@@ -640,15 +640,14 @@
       '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(" · ") + "</span>"
     );
   }
-  // A chain answer's badge: its served scope and the levels verdict served with it; '' after a
-  // failed read (null: no answer).
-  var CHAIN_SCOPE = { complete_single_expiry: "complete (ALL)", unavailable: "unavailable" };
+  // A chain answer's badge: its served scope, in the words served with it, and the levels verdict
+  // served with it; '' after a failed read (null: no answer).
   function chainScopeBadge(d) {
     if (d === null) return "";
     var sc = d.scope,
       kind = sc.kind;
     return asOfBadge({
-      label: "vendor · " + CHAIN_SCOPE[kind],
+      label: "vendor · " + sc.kind_text,
       state: d.levels_state,
       when: d.levels_time_ct,
       age: d.levels_age_text,

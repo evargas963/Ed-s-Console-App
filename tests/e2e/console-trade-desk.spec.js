@@ -1240,6 +1240,141 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: the regime is said in the served words on the Options card and the agreement strip", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "desk");
+    const card = page.locator("#tdmCardOpt .tdm-state");
+    const strip = page.locator("#tdmAgree");
+    // SPY's real levels: dealer gamma at the price is negative
+    await expect(card).toHaveText("SHORT GAMMA TREND");
+    await expect(strip).toContainText("OPTIONSDealer Γ −");
+    // INDUCED: those levels with each other regime the server serves, its name in words and its
+    // short words (calc.terrain_read.REGIME_NAME, REGIME_TEXT), then a regime the page has never
+    // held: the card and the strip draw the served words and pick none
+    for (const [regime, name, words] of [
+      ["LONG_GAMMA_CHOP", "LONG GAMMA CHOP", "Dealer Γ +"],
+      ["UNAVAILABLE", "UNAVAILABLE", "unavailable"],
+      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "THE SERVER'S OWN NAME", "as only the server says"],
+    ]) {
+      deskPanels().terrain = Object.assign({}, TERRAIN, {
+        regime: regime,
+        regime_name: name,
+        regime_text: words,
+      });
+      sock.changed("terrain");
+      await expect(card).toHaveText(name);
+      await expect(strip).toContainText("OPTIONS" + words);
+    }
+    expect(errs).toEqual([]);
+  });
+
+  test("Desk: the agreement strip says the value area, the VWAP and the flip in the served words", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "desk");
+    const strip = page.locator("#tdmAgree");
+    // SPY's real panels, each state with the words served beside it
+    await expect(strip).toContainText("VALUE" + LIQ.summary.value_state_text);
+    await expect(strip).toContainText("VWAP" + LIQ.summary.vwap_relation_text);
+    await expect(strip).toContainText("GAMMA" + TERRAIN.flip_relation_text);
+    // INDUCED: those panels with every state the server serves and the words it serves with it
+    // (push.liquidity.VALUE_STATE_TEXT, VWAP_RELATION_TEXT; calc.terrain_read.FLIP_RELATION_TEXT),
+    // then none known (no words: the dash), then states the page has never held: the strip draws
+    // the served words and picks none. Each row: the state, its served words, the cell as drawn.
+    for (const [value, vwap, flip] of [
+      [
+        ["unchanged", "unchanged", "unchanged"],
+        ["above_value", "above value", "above value"],
+        ["ABOVE", "Above Γ flip", "Above Γ flip"],
+      ],
+      [
+        ["higher", "higher", "higher"],
+        ["below_value", "below value", "below value"],
+        ["AT", "At Γ flip", "At Γ flip"],
+      ],
+      [
+        ["inside", "inside", "inside"],
+        ["inside_value", "inside value", "inside value"],
+        ["BELOW", "Below Γ flip", "Below Γ flip"],
+      ],
+      [
+        ["outside", "outside", "outside"],
+        [null, null, "-"],
+        [null, null, "-"],
+      ],
+      [
+        ["overlapping_higher", "overlapping higher", "overlapping higher"],
+        ["above_value", "above value", "above value"],
+        ["ABOVE", "Above Γ flip", "Above Γ flip"],
+      ],
+      [
+        ["overlapping_lower", "overlapping lower", "overlapping lower"],
+        ["below_value", "below value", "below value"],
+        ["BELOW", "Below Γ flip", "Below Γ flip"],
+      ],
+      [
+        [null, null, "-"],
+        ["a_state_only_the_server_knows", "as only the server says", "as only the server says"],
+        ["ELSEWHERE", "Where only the server says", "Where only the server says"],
+      ],
+    ]) {
+      deskPanels().liquidity = Object.assign({}, LIQ, {
+        summary: {
+          value_state: value[0],
+          vwap_relation: vwap[0],
+          value_state_text: value[1],
+          vwap_relation_text: vwap[1],
+        },
+      });
+      deskPanels().terrain = Object.assign({}, TERRAIN, {
+        flip_relation: flip[0],
+        flip_relation_text: flip[1],
+      });
+      sock.changed("liquidity");
+      sock.changed("terrain");
+      await expect(strip).toContainText("VALUE" + value[2]);
+      await expect(strip).toContainText("VWAP" + vwap[2]);
+      await expect(strip).toContainText("GAMMA" + flip[2]);
+    }
+    expect(errs).toEqual([]);
+  });
+
+  test("Right Now: where the busiest strikes sit is said in the served words, each place", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "right-now");
+    const body = page.locator("#tdBody");
+    // SPY's real panel: the place is not known, and no words are served for it
+    expect(STRIKES.migration.busiest_vs_walls_text).toBeNull();
+    await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
+    // INDUCED: that panel with each place the server serves and the words it serves with it
+    // (push.strikes.BUSIEST_VS_WALLS_TEXT), then with a place and words the page has never held:
+    // the page draws the served words, whichever they are, and picks none
+    for (const [place, words] of [
+      ["ABOVE_CALL_WALL", "ABOVE the call wall"],
+      ["BELOW_PUT_WALL", "BELOW the put wall"],
+      ["INSIDE_WALLS", "inside the wall range"],
+      ["A_PLACE_ONLY_THE_SERVER_KNOWS", "where only the server says"],
+    ]) {
+      deskPanels().strikes = Object.assign({}, STRIKES, {
+        migration: Object.assign({}, STRIKES.migration, {
+          busiest_vs_walls: place,
+          busiest_vs_walls_text: words,
+        }),
+      });
+      sock.changed("strikes");
+      await expect(body).toContainText("Heaviest option trading at 757–760That is " + words + ".");
+    }
+    expect(errs).toEqual([]);
+  });
+
   test("Right Now: the book age keeps Schwab's book time", async ({ page }) => {
     const errs = watchErrors(page);
     const BOOK_TIME = "Fri 09/25 06:59 PM CT";

@@ -923,6 +923,24 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#subnav .wtitle")).toContainText("SYSTEM");
   });
 
+  test("Key Levels says the regime in the served words, each regime", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    // AMZN's real levels: dealer gamma at the price is positive
+    await expect(page.locator("#klRegime")).toHaveText("Dealer Γ +");
+    // INDUCED: those levels with each other regime the server serves and the words it serves
+    // with it (calc.terrain_read.REGIME_TEXT), then a regime and words the page has never held:
+    // Key Levels draws the served words and picks none
+    for (const [regime, words] of [
+      ["SHORT_GAMMA_TREND", "Dealer Γ −"],
+      ["UNAVAILABLE", "unavailable"],
+      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
+    ]) {
+      panels.terrain = Object.assign({}, TERRAIN, { regime: regime, regime_text: words });
+      sock.changed("terrain");
+      await expect(page.locator("#klRegime")).toHaveText(words);
+    }
+  });
+
   test("key levels rail reflects the terrain panel", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#klFlip")).toHaveText("243.91");

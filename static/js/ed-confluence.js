@@ -57,14 +57,6 @@
     return window.EdShell.getState();
   }
 
-  function regimeWords(code) {
-    var table = window.EdGammaRegime;
-    if (!table || code == null) return "-";
-    var row = table[code];
-    if (!row || row.t == null) return "-";
-    return row.t;
-  }
-
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
 
@@ -437,7 +429,7 @@
             ? "last trade " + body.spot_time_ct
             : "",
       ],
-      ["GAMMA REGIME · CHAIN", regimeWords(body.regime), ""],
+      ["GAMMA REGIME · CHAIN", orDash(body.regime_text), ""], // served: the regime in words
       ["MODELED FLIP · CHAIN", body.flip_text, body.expiry ? body.expiry : ""],
       ["PIN · CHAIN", body.pin_text, body.pin_text ? "expiry closing today" : "", body.pin_note],
     ]

@@ -58,6 +58,15 @@ class Cell(TypedDict):
 #: between them, below the bid, above the ask; NO_QUOTE when no quote in force is known
 AT_BID, AT_ASK, INSIDE_SPREAD = "at_bid", "at_ask", "inside_spread"
 BELOW_BID, ABOVE_ASK, NO_QUOTE = "outside_spread_low", "outside_spread_high", "unknown"
+#: each of them as the tape's "vs Market" column says it (tape_row); no words where it is not known
+LANDED_TEXT: dict[str, str | None] = {
+    AT_BID: "at bid",
+    AT_ASK: "at ask",
+    INSIDE_SPREAD: "inside",
+    BELOW_BID: "below bid",
+    ABOVE_ASK: "above ask",
+    NO_QUOTE: None,
+}
 
 
 class TapeRow(TypedDict):
@@ -66,7 +75,7 @@ class TapeRow(TypedDict):
     Schwab's trade time and that time in CT, the contract, the trade and what it was kept with
     (the quote in force, the day's volume, the volatility and delta), where it landed
     (`classification`), the contract's terms and open interest, its premium, and each as the
-    screen shows it.
+    screen shows it: where it landed in the "vs Market" column's words (LANDED_TEXT).
     """
 
     trade_time_ms: int | None
@@ -99,6 +108,7 @@ class TapeRow(TypedDict):
     volume_text: str | None
     oi_text: str | None
     iv_text: str | None
+    classification_text: str | None
 
 
 class BookHeatmap(TypedDict):
@@ -206,6 +216,7 @@ def tape_row(symbol: str, kept: KeptPrint, contract: OptionContract) -> TapeRow:
         "volume_text": count_text(kept.volume),
         "oi_text": count_text(contract.open_interest),
         "iv_text": iv_text(kept.iv),
+        "classification_text": LANDED_TEXT[kept.landed],
     }
 
 

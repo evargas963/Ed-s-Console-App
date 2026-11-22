@@ -19,6 +19,7 @@ from calc.terrain_engine import (
     TerrainSnapshot,
     nearest_strike,
 )
+from calc.terrain_read import REGIME_TEXT
 from numeric_contract import price_text
 from push.answers import unavailable
 from push.levels import pin_note
@@ -279,6 +280,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             ),
             **_rail(levels, body["rows"]),
             "regime": live.regime,
+            "regime_text": REGIME_TEXT[live.regime],
             "flip_text": None if flip is None else flip["price_text"],
             "pin_text": None if pin is None else pin["price_text"],
             "pin_note": pin_note(live),

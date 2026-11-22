@@ -640,14 +640,10 @@
         src(c, "Schwab option chain · " + (t === undefined ? "loading…" : esc(why(t))));
         c.querySelector(".tdm-rows").innerHTML = "";
       } else {
-        // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
-        var reg = t.regime ? String(t.regime) : null;
-        var rm = reg != null ? window.EdGammaRegime[reg] : null;
-        state(
-          c,
-          reg != null ? reg.replace(/_/g, " ") : "-",
-          t.levels_state !== "LIVE" ? "warn" : rm ? rm.tone : "",
-        );
+        // the regime's name as served in words, and its tone from the one regime table
+        // (ed-gamma-panels.js)
+        var rm = t.regime ? window.EdGammaRegime[t.regime] : null;
+        state(c, orDash(t.regime_name), t.levels_state !== "LIVE" ? "warn" : rm ? rm.tone : "");
         var ng = t.net_gex_at_spot; // absent is uncoloured, never read as 0
         c.querySelector(".tdm-hero").innerHTML =
           '<span class="' +
@@ -707,7 +703,6 @@
   // The served order-imbalance readout (the book panel's `readout`): every number,
   // word, sentence and flag is the server's; the card picks the venue and depth to show and places
   // the dots, bars and lines on its boxes.
-  var LIQ_NAME = { NYSE_BOOK: "NYSE", NASDAQ_BOOK: "Nasdaq", COMPOSITE: "Composite" };
   function liqKey() {
     return S.liqVenue === "COMPOSITE" ? "COMPOSITE" : window.EdShell.getState().bookVenue;
   }
@@ -915,7 +910,7 @@
                 '" style="left:' +
                 liqLeft(p) +
                 '" title="' +
-                LIQ_NAME[k] +
+                esc(rd.venues[k].name) + // served: the venue as the card names it
                 " " +
                 esc(rd.venues[k].views[view].pct_text) +
                 '"></i>';
@@ -1059,21 +1054,19 @@
       ],
       [
         "VALUE",
-        l && l.summary ? String(orDash(l.summary.value_state)).replace(/_/g, " ") : "-",
+        l && l.summary ? orDash(l.summary.value_state_text) : "-", // served, in words
         "",
       ],
       [
         "VWAP",
-        l && l.summary ? String(orDash(l.summary.vwap_relation)).replace(/_/g, " ") : "-",
+        l && l.summary ? orDash(l.summary.vwap_relation_text) : "-", // served, in words
         "",
       ],
-      ["OPTIONS", t && !why(t) && t.regime ? window.EdGammaRegime[t.regime].t : "-", ""],
+      ["OPTIONS", t && !why(t) && t.regime ? t.regime_text : "-", ""], // served: the regime in words
       [
         "GAMMA",
-        t && t.flip_relation
-          ? { ABOVE: "Above Γ flip", AT: "At Γ flip", BELOW: "Below Γ flip" }[t.flip_relation] +
-            notLive(t)
-          : "-",
+        // served: the price's side of the flip, in words
+        t && t.flip_relation ? t.flip_relation_text + notLive(t) : "-",
         t && t.flip_relation === "ABOVE" ? "up" : t && t.flip_relation === "BELOW" ? "dn" : "",
       ],
     ];
