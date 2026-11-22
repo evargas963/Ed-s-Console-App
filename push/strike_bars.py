@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from calc.terrain_engine import nearest_strike
-from push.answers import unavailable
+from push.answers import NotAvailable, not_available
 from push.spot import resolve_spot
-from push.strike_rows import expiry_unreadable, rows_of, served, window_asked, windowed
+from push.strike_rows import (
+    BarView,
+    ServedValue,
+    expiry_unreadable,
+    rows_of,
+    served,
+    window_asked,
+    windowed,
+)
 from state.level_store import published_levels
 
 #: a per-strike bar panel's rows in the published levels' per-strike view
@@ -20,6 +28,23 @@ STRIKE_BAR_METHODS: dict[BarKey, str] = {
 }
 
 
+class StrikeBarPanel(TypedDict):
+    """A per-strike bar panel (strike_bar_payload): Vanna or Charm at the expiry chosen.
+
+    The window's rows as the page draws them with the window's view and scope, whether there is
+    a bar to draw and why not, and how the rows are made.
+    """
+
+    ticker: str
+    available: bool
+    expiry: str | None
+    rows: list[ServedValue]
+    view: BarView
+    scope: str
+    reason: str | None
+    method: str
+
+
 def strike_bar_payload(
     tk: str,
     key: BarKey,
@@ -28,7 +53,7 @@ def strike_bar_payload(
     shift: int,
     expiry: str | None,
     now: float,
-) -> dict[str, Any]:
+) -> StrikeBarPanel | NotAvailable:
     """Return a per-strike bar panel's answer at `now` (vanna, charm) of `expiry`.
 
     The published rows `key` of `expiry` (None: every expiry's, the whole book), windowed for the
@@ -39,10 +64,10 @@ def strike_bar_payload(
     method = STRIKE_BAR_METHODS[key]
     levels = published_levels(tk)
     if levels is None:
-        return unavailable(tk, "no levels published for this ticker yet")
+        return not_available(tk, "no levels published for this ticker yet")
     book = rows_of(levels.snap.per_strike, expiry)
     if book is None:
-        return unavailable(tk, f"the chain lists no contracts for {expiry}")
+        return not_available(tk, f"the chain lists no contracts for {expiry}")
     rows = book[key]
     spot_strike = nearest_strike([r.strike for r in rows], resolve_spot(tk, now=now)[0])
     win, view = windowed(rows, spot_strike, scope, centre, shift)
@@ -58,7 +83,9 @@ def strike_bar_payload(
     }
 
 
-def strike_bars(key: BarKey, tk: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+def strike_bars(
+    key: BarKey, tk: str, now: float, params: dict[str, Any]
+) -> StrikeBarPanel | NotAvailable:
     """Return the per-strike bar panel `key` of `tk` at `now` in the window `params` ask for.
 
     "vanna": net_vanna = call_vanna - put_vanna per strike (the Vanna panel). "charm": the charm
@@ -68,8 +95,8 @@ def strike_bars(key: BarKey, tk: str, now: float, params: dict[str, Any]) -> dic
     """
     asked = window_asked(params)
     if isinstance(asked, str):
-        return unavailable(tk, asked)
+        return not_available(tk, asked)
     unreadable = expiry_unreadable(params)
     if unreadable is not None:
-        return unavailable(tk, unreadable)
+        return not_available(tk, unreadable)
     return strike_bar_payload(tk, key, *asked, params["expiry"], now)
