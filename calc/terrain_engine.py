@@ -690,26 +690,23 @@ def atm_sigma_by_expiry(
     # a contract with no expiry date keeps its own key (None), last
     for k, legs in sorted(strikes.items(), key=lambda kv: (kv[0] is None, kv[0])):
         # one chain sends one rate and one count of days for an expiry: the least were there two
-        out[k] = (
-            _sigma_at_the_step(legs, float(spot) * (1.0 + min(interest[k])))
-            if k in interest
-            else None
-        )
+        out[k] = _sigma_at_the_step(legs, float(spot), min(interest[k])) if k in interest else None
     return out
 
 
 def _sigma_at_the_step(
-    legs: Mapping[float, Mapping[str, OptionContract]], by_interest: float
+    legs: Mapping[float, Mapping[str, OptionContract]], spot: float, interest: float
 ) -> float | None:
     """Return the mean volatility of the two listed strikes the volatility's step lies between.
 
     The step sits at the forward, between two readings of it: the one the expiry's own options
     imply (the listed strike where the call's and the put's mid prices are nearest, the forward
     at or above it when the call is the dearer and below it when the put is: Cboe's VIX
-    methodology, docs/SOURCES.md) and `by_interest`, the price plus the interest to the expiry.
-    Of the pairs of neighbouring strikes from one below the lower of those two to one above the
-    higher, the step is the pair across which the volatility rises the most, when it rises there
-    by more than across the pair on each side of it; with no such pair the value is the implied
+    methodology, docs/SOURCES.md) and the price plus the interest to the expiry (`interest`, a
+    share of `spot`). Of the pairs of neighbouring strikes from one below the lower of those two
+    to one above the higher, the step is the pair across which the volatility rises the most,
+    when it rises there by more than across the pair on each side of it. With no such pair, or
+    no interest (the expiry's own day: the step is the interest's), the value is the implied
     forward's own pair's. A strike's volatility is the mean of its call's and its put's, both or
     none: one side's IV never stands in for the mean. None when no strike has both legs quoted,
     or the implied forward's own pair lacks a strike or a volatility: the next pair's never
@@ -730,15 +727,16 @@ def _sigma_at_the_step(
         return None
     nearest = min(gaps, key=lambda n: (abs(gaps[n]), n))
     implied = nearest if gaps[nearest] >= 0.0 else nearest - 1
-    interest = bisect.bisect_right(listed, by_interest) - 1
+    by_interest = bisect.bisect_right(listed, spot * (1.0 + interest)) - 1
     # each pair of neighbouring strikes' rise in volatility, by its lower strike's place
     rises = {low: sigmas[low + 1] - sigmas[low] for low in sigmas if low + 1 in sigmas}
     if implied not in rises:
         return None
-    searched = range(min(implied, interest) - 1, max(implied, interest) + 2)
+    searched = range(min(implied, by_interest) - 1, max(implied, by_interest) + 2)
     # the largest rise, the pair nearest the implied forward's own on a tie
     step = max(
-        (low for low in searched if low in rises),
+        (low for low in searched if interest > 0.0 and low in rises),
+        default=implied,
         key=lambda low: (rises[low], -abs(low - implied)),
     )
     stands_out = (

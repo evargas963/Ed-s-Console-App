@@ -89,12 +89,6 @@
     tb: null,
     chart: null,
     bars: [],
-    levels: null,
-    terrain: null,
-    micro: null,
-    crosses: null,
-    analytics: null,
-    liq: null,
     quotes: {},
     // each market context row with the shell's mark of it (ed:market_row): {row, mark}
     market: {},
