@@ -919,13 +919,24 @@ lines_matching(
     "regex",
     skip_comment=True,
 )
+#: the drawing module writes the pixels and percents it places things by as text; a number the
+#: screen shows is formatted on the server (AGENTS.md rule 13), so the chart's axis price counts
 lines_matching(
-    PAGE_JS,
+    [f for f in PAGE_JS if f != "static/js/ed-draw.js"],
     [
         (
             r"\.toFixed\(|\.toLocaleString\(|Intl\.NumberFormat|\.toPrecision\(",
             "page formats numbers",
         ),
+    ],
+    S,
+    "4",
+    "regex",
+    skip_comment=True,
+)
+lines_matching(
+    PAGE_JS,
+    [
         (
             r"\bDate\.now\(|new Date\(|\.getTime\(\)|performance\.now\(",
             "page reads the clock or does date math",
