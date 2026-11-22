@@ -392,9 +392,29 @@ def test_a_429_on_one_expiry_does_not_cost_the_ticker_its_round(tmp_path):
     assert [q["symbol"] for p, q, *_ in schwab.requests if p == CHAIN] == ["SPY", "SPY", "TSLA"]
 
 
-def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(
+def test_a_429_on_one_quotes_request_does_not_cost_its_tickers_their_round(tmp_path):
+    """A 429 on one quotes request is asked once more, and its tickers are delivered.
+
+    INDUCED: Schwab answered none of its 1,339,785 /quotes requests of 2026-10-10 to 2026-11-22
+    with a 429; the first quotes request here is. It goes again at once, as a refused expiry
+    does, so no ticker fails and every contract is quoted.
+    """
+    schwab = LocalSchwab()
+    schwab.throttle_quotes = 1
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
+    try:
+        assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
+    finally:
+        schwab.close()
+    assert [msg["failed"] for _topic, msg in published if "failed" in msg] == []
+    asked = [q["symbols"] for q in schwab.asked(QUOTES)]
+    assert len(asked) == len(set(asked)) + 1, "the refused request, and no other, was sent again"
+
+
+def test_a_quotes_request_refused_twice_fails_each_ticker_in_it_and_the_next_goes_at_once(
     tmp_path,
 ):
+    """Each refused quotes request is asked once more; refused again, its tickers fail."""
     schwab = LocalSchwab()
     schwab.quotes_status = 429
     _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
@@ -411,7 +431,9 @@ def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_g
         ("chain.SPY", "quotes for 300 contracts returned HTTP 429"),
         ("chain.TSLA", f"quotes for {len(TSLA['chain'])} contracts returned HTTP 429"),
     ]
-    assert [p for p, *_ in refused].count(QUOTES) == 2, "SPY's other contracts are not asked for"
+    assert [p for p, *_ in refused].count(QUOTES) == 4, (
+        "SPY's first request and TSLA's, each twice: SPY's other contracts are not asked for"
+    )
     gaps = [b[2] - a[3] for a, b in zip(refused, refused[1:] + after[:1])]
     assert max(gaps) < 1.0, f"a pause after Schwab's 429: {max(gaps):.2f} s"
 

@@ -260,6 +260,11 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
     assert {t: time_et.options_open(_et(f"2026-11-02 {t}")) for t in expected} == expected
     assert time_et.options_opened(_et("2026-11-02 12:00")) == _et("2026-11-02 07:30")
     assert time_et.option_market_open(_et("2026-11-02 08:00")) is False  # the close values' window
+    # the stock options' post-market begins at 16:00 inside the index options' regular window
+    began = {"07:29": None, "09:24": "07:30", "09:27": None, "09:30": "09:30", "16:05": "09:30"}
+    assert {t: time_et.option_window_began(_et(f"2026-11-02 {t}")) for t in began} == {
+        t: b and _et(f"2026-11-02 {b}") for t, b in began.items()
+    }
 
 
 def test_after_schwabs_break_the_levels_are_not_live_and_say_why():

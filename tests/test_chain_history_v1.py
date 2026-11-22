@@ -35,7 +35,7 @@ from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
 from tests.shared_helpers import et_ts
-from time_et import ET
+from time_et import ET, record_markets
 
 _QUOTED = {s: e["quote"] for s, e in SPY_QUOTES.items()}
 _MRVL = sc.flatten_chain_contracts(
@@ -264,17 +264,16 @@ def test_the_history_is_written_once_a_day_at_the_close_and_never_in_the_session
     )
 
 
-def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_every_chain(
+def test_schwabs_chains_answers_are_asked_once_in_the_window_and_its_quotes_every_chain(
     tmp_path, schwab
 ):
-    """Operator 2026-11-12: "every five minutes should do" (an exchange may list a series intraday).
+    """Operator 2026-11-22: open interest is updated once a day, so it is not asked for again.
 
     Three chains of SPY in the regular session: 10:01, 10:04 and 10:07. The first asks /chains;
-    the second, three minutes on, asks /chains for nothing and takes those answers again, as
-    sent, with its own /quotes for every contract, and is delivered at its own time; the third,
-    six minutes after the answers were asked for, asks /chains again. Each chain carries every
-    contract with the same open interest and its quote's gamma, and no chain's quote reaches
-    another's contracts.
+    the second and the third, six minutes after the answers were asked for, ask /chains for
+    nothing and take those answers again, as sent, each with its own /quotes for every contract,
+    delivered at its own time. Each chain carries every contract with the same open interest
+    and its quote's gamma, and no chain's quote reaches another's contracts.
     """
     clock = {"now": 0.0}
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
@@ -284,7 +283,7 @@ def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_ever
         assert _rotate(sweep, client) == {"SPY"}
         asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
     (one, quotes), (two, quotes_two), (three, quotes_three) = asked
-    assert one >= 1 and two == one and three == 2 * one, "/chains: once in five minutes"
+    assert one >= 1 and (two, three) == (one, one), "/chains: once in the window"
     assert (quotes_two, quotes_three) == (2 * quotes, 3 * quotes), "/quotes: every chain"
     chains = [msg for _t, msg in published if "contracts" in msg]
     assert [_et(m["ts_recv"]) for m in chains if m["part"] == 0] == [
@@ -306,27 +305,122 @@ def test_schwabs_chains_answers_are_asked_every_five_minutes_and_its_quotes_ever
     assert written == [], "a chain in the session is live, never stored"
 
 
-def test_before_the_open_the_chains_answers_are_asked_every_five_minutes_too(tmp_path, schwab):
-    """Before the option session (2026-09-30 08:00 ET) the same five minutes hold.
+def test_schwabs_chains_answers_are_asked_once_in_each_option_window_schwab_sends(tmp_path, schwab):
+    """Monday 2026-11-02, Schwab's own windows: pre-market 07:30 to 09:25 ET, regular from 09:30.
 
-    Production asked /chains for every pre-market chain (about 11,000 requests on 2026-11-11).
-    Three chains of SPY at 08:00, 08:03 and 08:07: the first and the third ask /chains, the
-    second takes the first's answers; each asks its own quotes.
+    Seven chains of SPY. 07:00, before any window, asks /chains. 07:31 asks (the pre-market's
+    first chain) and 08:00 takes its answers again; 09:31 asks (the regular session's first) and
+    10:06 and 16:05 take those: the stock options' post-market begins at 16:00 inside the index
+    options' regular window, and the options did not stop there. 16:16, after SPY's option
+    close, asks once more: the close capture. Each chain asks its own quotes and is delivered at
+    its own time.
     """
+    _hold_schwabs_windows_of_2026_11_02()
+    clock = {"now": 0.0}
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
+    times = ["07:00", "07:31", "08:00", "09:31", "10:06", "16:05", "16:16"]
+    asked = []
+    for at in times:
+        clock["now"] = et_ts(f"2026-11-02 {at}")
+        sweep.fetch_chain(client, "SPY", threading.Event())
+        sweep.send_quotes(client, threading.Event(), part_full=True)
+        asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
+    one, quotes = asked[0]
+    assert one >= 1 and [c for c, _q in asked] == [one * n for n in (1, 2, 2, 3, 3, 3, 4)], (
+        "/chains: once in each window"
+    )
+    assert [q for _c, q in asked] == [quotes * n for n in range(1, 8)], "/quotes: every chain"
+    delivered = [_et(m["ts_recv"]) for _t, m in published if "contracts" in m and m["part"] == 0]
+    assert delivered == [f"2026-11-02 {at}" for at in times]
+
+
+def _hold_schwabs_windows_of_2026_11_02() -> None:
+    """Hold Schwab's /markets answer of 2026-11-02, with its options' pre- and post-market."""
+    answer = Path(__file__).resolve().parent / "fixtures" / "real_schwab_markets_2026_11_02.json"
+    record_markets(json.loads(answer.read_text(encoding="utf-8"))["body"])
+
+
+def test_a_windows_first_chains_request_that_fails_is_asked_again_by_the_next_chain(
+    tmp_path, schwab
+):
+    """The answers of the window before are never taken in a new window's place.
+
+    Monday 2026-11-02: 07:31 asks /chains, in the pre-market. INDUCED: Schwab's host answers the
+    regular session's first /chains request, at 09:31, with a 502. That chain fails with the
+    reason and takes nothing from the pre-market's answers; the next, at 09:33, asks /chains
+    again and is delivered.
+    """
+    _hold_schwabs_windows_of_2026_11_02()
     clock = {"now": 0.0}
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     asked = []
-    for at in ("2026-09-30 08:00", "2026-09-30 08:03", "2026-09-30 08:07"):
-        clock["now"] = et_ts(at)
+    for at, refused in (("07:31", set()), ("09:31", {"SPY"}), ("09:33", set())):
+        clock["now"] = et_ts(f"2026-11-02 {at}")
+        schwab.refuse_chain = refused
         sweep.fetch_chain(client, "SPY", threading.Event())
-        while sweep._queue:
-            sweep.send_quotes(client)
-        asked.append((len(schwab.asked(CHAIN)), len(schwab.asked(QUOTES))))
-    (one, quotes), (two, quotes_two), (three, quotes_three) = asked
-    assert one >= 1 and (two, three) == (one, 2 * one), "/chains: once in five minutes"
-    assert (quotes_two, quotes_three) == (2 * quotes, 3 * quotes), "/quotes: every chain"
+        sweep.send_quotes(client, threading.Event(), part_full=True)
+        asked.append(len(schwab.asked(CHAIN)))
+    assert asked == [asked[0] * n for n in (1, 2, 3)], "/chains asked by each of the three"
+    failed = [(_et(m["ts_recv"]), m["failed"]) for _t, m in published if "failed" in m]
+    assert failed == [("2026-11-02 09:31", "chain for 2026-11-20 returned HTTP 502")]
     delivered = [_et(m["ts_recv"]) for _t, m in published if "contracts" in m and m["part"] == 0]
-    assert delivered == ["2026-09-30 08:00", "2026-09-30 08:03", "2026-09-30 08:07"]
+    assert delivered == ["2026-11-02 07:31", "2026-11-02 09:33"]
+
+
+def _mrvl_queued(tmp_path, schwab):
+    """The sweep with MRVL's 2,432 contracts, none streamed, queued for their quotes.
+
+    Nine requests. Returns the sweep, what it publishes, its client and the queued symbols.
+    """
+    clock = et_ts("2026-10-01 10:00")
+    sweep, published, client = _sweep(tmp_path, schwab, lambda: clock)
+    sweep.watchlist = ["MRVL"]
+    chain = cs._Chain("MRVL", clock)
+    chain.by_expiry = {"every expiry": [dict(ct) for ct in _MRVL]}
+    sweep.take_greeks(chain)
+    queued = [ct["symbol"] for _chain, ct in sweep._queue]
+    assert len(queued) == len(_MRVL) == 2432
+    return sweep, published, client, queued
+
+
+def test_the_next_quotes_request_is_sent_as_an_answer_is_taken(tmp_path, schwab):
+    """Operator 2026-11-22: no request Schwab would take is left unasked.
+
+    MRVL's nine quotes requests. INDUCED: Schwab's host answers the second only once a fifth has
+    arrived, and 503 after 5 seconds without one. The fifth is sent as the first's answer is
+    taken, while the second is still with Schwab, so every request is answered and the chain is
+    delivered. Sent four at a time with the next four only after all four answers, the second
+    would never be answered. The session holds no more than REQUESTS_AT_ONCE
+    (tests/test_instant_ui_blockers_a_v1.py).
+    """
+    sweep, published, client, queued = _mrvl_queued(tmp_path, schwab)
+    schwab.quotes_hold = (queued[sc.QUOTES_BATCH_MAX], sc.REQUESTS_AT_ONCE + 1)
+    sweep.send_quotes(client, threading.Event(), part_full=True)
+    quotes = [r for r in schwab.requests if r[0] == QUOTES]
+    assert len(quotes) == 9 and [m["failed"] for _t, m in published if "failed" in m] == []
+    assert [m["parts"] for _t, m in published if "contracts" in m and m["part"] == 0] == [5]
+    held = next(r for r in quotes if r[1]["symbols"].startswith(queued[sc.QUOTES_BATCH_MAX]))
+    assert sum(1 for r in quotes if r[2] < held[3]) >= sc.REQUESTS_AT_ONCE + 1, (
+        "a fifth request was sent while the second was still with Schwab"
+    )
+
+
+def test_a_stop_sends_no_quotes_request_more_and_the_answers_asked_for_are_taken(tmp_path, schwab):
+    """A stop asked while quotes requests are with Schwab.
+
+    MRVL's nine quotes requests; the stop comes as the first answer is taken. The four already
+    sent are answered and taken, no fifth is sent, the contracts not asked for stay queued, and
+    nothing fails.
+    """
+    sweep, published, client, queued = _mrvl_queued(tmp_path, schwab)
+    stop = threading.Event()
+    publish = sweep.publish
+    sweep.publish = lambda topic, msg: (publish(topic, msg), topic == "optquotes" and stop.set())
+    sweep.send_quotes(client, stop, part_full=True)
+    assert len(schwab.asked(QUOTES)) == sc.REQUESTS_AT_ONCE
+    assert len([t for t, _m in published if t == "optquotes"]) == sc.REQUESTS_AT_ONCE
+    assert len(sweep._queue) == len(queued) - sc.REQUESTS_AT_ONCE * sc.QUOTES_BATCH_MAX
+    assert [m for _t, m in published if "failed" in m or "contracts" in m] == []
 
 
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
