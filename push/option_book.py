@@ -11,7 +11,7 @@ Options Positioning card at the front one.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 import live_market_plane as lmp
 from app.options.order_flow.state import newest_book
@@ -29,16 +29,137 @@ from calc.option_book import (
 )
 from calc.order_flow import Book, book_age_sec
 from calc.terrain_engine import nearest_strike
-from numeric_contract import count_text, price_text, strike_text
-from push.answers import unavailable
+from numeric_contract import count_text, strike_text
+from push.answers import NotAvailable, not_available
 from push.book import when_age
 from push.chain import expiry_asked
 from push.spot import resolve_spot
-from push.strike_rows import MARK_LABELS, window, window_asked
+from push.strike_rows import MARK_LABELS, Mark, WindowView, window, window_asked
+from push.verdict import LevelsVerdict
 from time_et import age_text, ct_label
 
 #: Schwab's service for an option contract's book
 OPTIONS_BOOK = "OPTIONS_BOOK"
+
+
+class ServedLeg(TypedDict):
+    """One contract's cells as the page draws them (_served_leg).
+
+    Its resting bid and ask and its volume today, each with its text (None: not known); whether
+    its book is live by the one live rule (None: no book held), and the book's time with its age.
+    """
+
+    symbol: str
+    bid: float | None
+    ask: float | None
+    volume: float | None
+    bid_text: str | None
+    ask_text: str | None
+    volume_text: str | None
+    book_live: bool | None
+    book_when_text: str | None
+
+
+class ServedBookRow(TypedDict):
+    """One row of the Book as the page draws it (_served_row).
+
+    A strike with its text, whether the row is in the summary (`summed`: its call and its put
+    both have a book), its mark when it is the row at the price, and its call's and its put's
+    cells (None: none listed).
+    """
+
+    strike: float
+    strike_text: str
+    summed: bool
+    marks: list[Mark]
+    call: ServedLeg | None
+    put: ServedLeg | None
+
+
+class ServedSplit(TypedDict):
+    """One summary bar as served (_served_split): its two totals and their shares, with texts."""
+
+    left: float | None
+    right: float | None
+    left_share: float | None
+    right_share: float | None
+    left_text: str | None
+    right_text: str | None
+    left_share_text: str | None
+    right_share_text: str | None
+
+
+class ServedLean(TypedDict):
+    """The options lean as served (_served_lean).
+
+    Its value, its zone (`zone_index`: its place among `zones`) and the needle's angle, then its
+    three readings, each with its text. None where the calculator has none.
+    """
+
+    value: float | None
+    value_text: str | None
+    zone: str | None
+    zone_index: int | None
+    needle_deg: float | None
+    calls: float | None
+    calls_text: str | None
+    puts: float | None
+    puts_text: str | None
+    volume: float | None
+    volume_text: str | None
+
+
+class BarScales(TypedDict):
+    """Each bar's full length: the rows' largest resting size and their largest volume."""
+
+    resting: float | None
+    volume: float | None
+
+
+class ServedSummary(TypedDict):
+    """The summary as served: which strikes it sums and leaves out, in words, and its three bars."""
+
+    summed_text: str
+    left_out_text: str | None
+    calls: ServedSplit
+    puts: ServedSplit
+    volume: ServedSplit
+
+
+class OptionBookPanel(LevelsVerdict):
+    """The `option_book` panel (option_book): the Options Book of one expiry.
+
+    The expiry answered, the levels' verdict, the window's view, the rows with their bars'
+    scales, the summary, the lean with its zones' names, and the books' state: how many
+    contracts shown have one, whether they are live, why not, and the oldest one's time. The
+    live price is not served here: the row at it carries its mark.
+    """
+
+    ticker: str
+    available: Literal[True]
+    expiry: str | None
+    view: WindowView
+    rows: list[ServedBookRow]
+    scales: BarScales
+    summary: ServedSummary
+    lean: ServedLean
+    zones: list[str]
+    books_held_text: str
+    book_state: str | None
+    book_outage: str | None
+    book_oldest_text: str | None
+
+
+class NoOptionBook(LevelsVerdict):
+    """The `option_book` panel's answer with no contract of the expiry to show: why.
+
+    The expiry asked for (None with none asked and none listed) and the levels' verdict.
+    """
+
+    ticker: str
+    available: Literal[False]
+    expiry: str | None
+    reason: str
 
 
 def _share_text(share: float | None) -> str | None:
@@ -59,7 +180,7 @@ def _book_when(book: Book | None, now: float) -> str | None:
 
 def _served_leg(
     cells: Leg | None, books: dict[str, Book], live: set[str], now: float
-) -> dict[str, Any] | None:
+) -> ServedLeg | None:
     """Return one contract's cells as the page draws them; None where no contract is listed."""
     if cells is None:
         return None
@@ -79,7 +200,7 @@ def _served_leg(
 
 def _served_row(
     row: BookRow, spot_strike: float | None, books: dict[str, Book], live: set[str], now: float
-) -> dict[str, Any]:
+) -> ServedBookRow:
     """Return one row as the page draws it, the row at the price marked."""
     return {
         "strike": row.strike,
@@ -93,7 +214,7 @@ def _served_row(
     }
 
 
-def _served_split(s: Split) -> dict[str, Any]:
+def _served_split(s: Split) -> ServedSplit:
     """Return one summary bar: its two totals and their shares, with their texts."""
     return {
         "left": s.left,
@@ -107,7 +228,7 @@ def _served_split(s: Split) -> dict[str, Any]:
     }
 
 
-def _served_lean(x: Lean) -> dict[str, Any]:
+def _served_lean(x: Lean) -> ServedLean:
     """Return the lean, its zone and the needle's angle, and its three readings, with texts."""
     return {
         "value": x.value,
@@ -167,20 +288,30 @@ def _book_state(
     return label, outage, when
 
 
-def option_book(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+def option_book(
+    ticker: str, now: float, params: dict[str, Any]
+) -> OptionBookPanel | NoOptionBook | NotAvailable:
     """Return the Options Book of `ticker` at `now` in the window and expiry `params` ask for.
 
     One row per strike of the window (push.strike_rows.window: the scope's strikes around the
     listed strike nearest the live price, or the operator's pan), each with its call's and put's
     resting bid and ask (Schwab's newest OPTIONS_BOOK, every level summed) and volume today; the
-    summary of the rows whose call and put both have a book; and the options lean of it.
+    summary of the rows whose call and put both have a book; and the options lean of it. A window
+    that cannot be read is answered with why; so is an expiry with no contract to show, with the
+    expiry asked for and the levels' verdict.
     """
     win = window_asked(params)
     if isinstance(win, str):
-        return unavailable(ticker, win)
+        return not_available(ticker, win)
     asked = expiry_asked(ticker, now, params)
     if asked.reason is not None:
-        return unavailable(ticker, asked.reason, expiry=asked.expiry, **asked.verdict)
+        return {
+            "ticker": ticker,
+            "available": False,
+            "expiry": asked.expiry,
+            **asked.verdict,
+            "reason": asked.reason,
+        }
     spot, _src, _ts = resolve_spot(ticker, now=now)  # the one live price
     # each contract the ladder places (a strike, a side): the chain panel logs any other
     placed = [
@@ -209,8 +340,6 @@ def option_book(ticker: str, now: float, params: dict[str, Any]) -> dict[str, An
         "ticker": ticker,
         "available": True,
         "expiry": asked.expiry,
-        "spot": spot,
-        "spot_text": price_text(spot),
         **asked.verdict,
         "view": view,
         "rows": [_served_row(r, spot_strike, books, live, now) for r in rows],

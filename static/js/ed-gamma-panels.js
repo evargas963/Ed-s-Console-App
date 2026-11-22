@@ -774,13 +774,24 @@
       return;
     }
     if (ctx) ctx.textContent = d.expiry + " · " + d.books_held_text;
+    // the books' own state, then the chain's: the rows' volumes and their listing are the chain's,
+    // served with the levels verdict (its state word, its time and age, why)
     if (src)
-      src.innerHTML = window.EdShell.asOfBadge({
-        label: "books",
-        state: d.book_state,
-        when: d.book_oldest_text,
-        reason: d.book_outage,
-      });
+      src.innerHTML = [
+        window.EdShell.asOfBadge({
+          label: "books",
+          state: d.book_state,
+          when: d.book_oldest_text,
+          reason: d.book_outage,
+        }),
+        window.EdShell.asOfBadge({
+          label: "chain",
+          state: d.levels_state,
+          when: d.levels_time_ct,
+          age: d.levels_age_text,
+          reason: d.levels_stale_reason,
+        }),
+      ].join("");
     var sc = d.scales;
     var rows = d.rows
       .map(function (r) {
@@ -811,7 +822,9 @@
       .join("");
     var s = d.summary;
     host.innerHTML =
-      '<div class="ob"><div class="ob-scroll"><table class="ob-t"><thead><tr>' +
+      '<div class="ob">' +
+      (d.view.note ? '<div class="gbs-allexp">' + esc(d.view.note) + "</div>" : "") + // why not around the price
+      '<div class="ob-scroll"><table class="ob-t"><thead><tr>' +
       '<th class="c">Call bid</th><th class="c">Call ask</th><th class="c">Call vol</th>' +
       '<th class="ob-k">Strike</th>' +
       '<th class="p">Put bid</th><th class="p">Put ask</th><th class="p">Put vol</th>' +

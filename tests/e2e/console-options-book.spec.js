@@ -4,9 +4,11 @@
  * the program sends on the page's socket (push.option_book): every row's served numbers on bars
  * against the served scales, the summary's split bars at the served shares, and the options lean's
  * gauge with its needle at the served angle and its served words. The panels are the producer's
- * own answers for SPY's front expiry at 2026-11-19 10:01:50 ET, Auto and Wider windows
- * (fixtures/option_book_spy.json, held to the producer by tests/test_option_book_v1.py). The page
- * computes nothing; the test works out each bar's length from the served value and scale.
+ * own answers for SPY's front expiry at 2026-11-19 10:01:50 ET, Auto and Wider windows, and
+ * (INDUCED on the same captures) the Auto window read ten minutes later with nothing renewed and
+ * read with no live price held (fixtures/option_book_spy.json, held to the producer by
+ * tests/test_option_book_v1.py). The page computes nothing; the test works out each bar's length
+ * from the served value and scale.
  * Offline. Each test saves its screen as an attachment (option-book.png, options-card.png).
  */
 const { test, expect } = require("@playwright/test");
@@ -29,10 +31,11 @@ const CELLS = [
 ];
 
 // the page on Options · Book for SPY, the program answering each window with its own panel
-async function openBook(page) {
+// (`auto`: its answer for the Auto window)
+async function openBook(page, auto = BOOK.auto) {
   await routeWatchlist(page, ["SPY"]);
   const sock = await mockPriceSocket(page, [], [], undefined, {
-    option_book: (key, params) => (params.scope === "wider" ? BOOK.wider : BOOK.auto),
+    option_book: (key, params) => (params.scope === "wider" ? BOOK.wider : auto),
   });
   await page.setViewportSize({ width: 1500, height: 980 });
   await page.addInitScript(() => {
@@ -90,7 +93,13 @@ test.describe("Options Book: the panel on the page's socket", () => {
     // the row at the price, marked as served
     await expect(page.locator("#opbBody .ob-row.mark-spot .ob-k")).toHaveText("737SPOT");
     await expect(page.locator("#opbCtx")).toHaveText(panel.expiry + " · " + panel.books_held_text);
-    await expect(page.locator("#opbSrc .asof")).toContainText("books · LIVE");
+    // the books' own badge, then the chain's: each its served state, time and age
+    await expect(page.locator("#opbSrc .asof")).toHaveText([
+      "books · LIVE · " + panel.book_oldest_text,
+      "chain · LIVE · " + panel.levels_time_ct + " · " + panel.levels_age_text,
+    ]);
+    // the rows are around the price: no note says otherwise
+    await expect(page.locator("#opbBody .gbs-allexp")).toHaveCount(0);
     // the summary: each split's served totals and shares, its track split at the served shares
     const s = panel.summary;
     const splits = page.locator("#opbBody .ob-split");
@@ -157,6 +166,42 @@ test.describe("Options Book: the panel on the page's socket", () => {
       expect(r.cells[2][1]).not.toBeNull(); // the volume is still Schwab's, on its bar
     }
     await expect(page.locator("#opbBody .ob-note")).toContainText(BOOK.wider.summary.left_out_text);
+    expect(errs).toEqual([]);
+  });
+
+  test("a chain that stopped arriving is said beside the books' state, with its time, age and why", async ({
+    page,
+  }, testInfo) => {
+    const errs = watchErrors(page);
+    await openBook(page, BOOK.stale);
+    const panel = BOOK.stale;
+    // the last values stand: every served row is drawn as it was
+    await expect.poll(() => drawn(page)).toEqual(expected(panel));
+    const badges = page.locator("#opbSrc .asof");
+    await expect(badges).toHaveText([
+      "books · " + panel.book_state + " · " + panel.book_oldest_text,
+      "chain · STALE · " + panel.levels_time_ct + " · " + panel.levels_age_text,
+    ]);
+    await expect(badges.nth(1)).toHaveClass("asof stale");
+    await expect(badges.nth(1)).toHaveAttribute("title", panel.levels_stale_reason);
+    await page.locator(BOOK_PANE + " > .panel").screenshot({
+      path: testInfo.outputPath("option-book-stale.png"),
+    });
+    expect(errs).toEqual([]);
+  });
+
+  test("with no live price the Book says why its rows are not around it, and marks no row", async ({
+    page,
+  }, testInfo) => {
+    const errs = watchErrors(page);
+    await openBook(page, BOOK.no_price);
+    const panel = BOOK.no_price;
+    await expect.poll(() => drawn(page)).toEqual(expected(panel));
+    await expect(page.locator("#opbBody .ob > .gbs-allexp")).toHaveText(panel.view.note);
+    await expect(page.locator("#opbBody .ob-row.mark-spot")).toHaveCount(0);
+    await page.locator(BOOK_PANE + " > .panel").screenshot({
+      path: testInfo.outputPath("option-book-no-price.png"),
+    });
     expect(errs).toEqual([]);
   });
 

@@ -245,9 +245,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`server.LEVELS_PANELS`). Its lifecycle owner is the order-flow state's books (State) and the
   levels producer's chain; when the OPTIONS_BOOK feed stops, the last books stand and the panel says
   NOT LIVE or OFFLINE with why and the oldest book's time; a contract with no book held is "-",
-  never 0. Read by the Options Book subview at the selected expiry and the Trade Desk's Options
-  Positioning card (its gauge) at the front one. Enforced by: `tests/test_option_book_v1.py`,
-  `tests/e2e/console-options-book.spec.js`.
+  never 0. The rows' volumes and their listing are the chain's, so the panel carries the levels'
+  verdict and the subview shows it beside the books' own state: a chain no longer delivered stands,
+  marked STALE with its time, its age and why. With no live price the window is the chain's middle
+  strikes and the subview says so. Read by the Options Book subview at the selected expiry and the
+  Trade Desk's Options Positioning card (its gauge) at the front one. Enforced by:
+  `tests/test_option_book_v1.py`, `tests/e2e/console-options-book.spec.js`.
 - **The option contracts streamed (the option rule).** `capture.Daemon.pick_options` orders what is
   asked on LEVELONE_OPTIONS and OPTIONS_BOOK: the Flow panel's contract, then every ticker's kept
   contracts, then every contract of the tickers a page shows, then every other ticker's; each
