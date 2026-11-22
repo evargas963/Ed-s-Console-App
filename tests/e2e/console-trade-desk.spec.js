@@ -624,6 +624,31 @@ test("Desk: a price push that stops reads OFFLINE on the map, not its last row's
   await expect(page.locator("#tdmCardFlow")).not.toContainText("OFFLINE");
 });
 
+test("Desk: the first ticker chosen on it reads WAITING, its panels not sent yet, and no error", async ({
+  page,
+}) => {
+  // INDUCED: a browser that never chose a ticker, on the Desk, and a program that says nothing.
+  // The shell says the push is WAITING before the Desk holds the ticker; a panel nothing was
+  // asked for used to read as one the program could not produce, its words read off nothing:
+  // the page threw.
+  const errs = watchErrors(page);
+  await page.routeWebSocket(/\/ws$/, () => {});
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem("ed_ws", "trade-desk");
+    localStorage.setItem("ed_sub", "desk");
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#hFeed")).toHaveText("NO SYMBOL");
+  await page.evaluate(() => window.EdShell.setTicker("SPY"));
+  const trust = page.locator("#tdmTrust");
+  await expect(trust).toContainText("PRICE WAITING");
+  for (const panel of ["BOOK", "LEVELS", "GAMMA"]) await expect(trust).toContainText(panel + " …");
+  await expect(trust).not.toContainText("FAILED");
+  await expect(page.locator("#tdmCardVol")).not.toContainText("UNAVAILABLE");
+  expect(errs).toEqual([]);
+});
+
 test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's book time (the route's own answer)", async ({
   page,
 }) => {
