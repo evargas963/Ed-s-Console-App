@@ -10,14 +10,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final, Literal, TypedDict
 
 import live_market_plane as lmp
 from app.options.order_flow.state import rest_quotes, streamed_values
 from calc.math_exposure_core import overlay_streamed_contract_fields
 from calc.terrain_engine import LadderRow, chain_ladder
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
-from option_contract import OptionContract, chain_row
+from option_contract import ChainRow, OptionContract, chain_row
 from push.spot import resolve_spot
 from push.strike_rows import expiry_unreadable
 from push.verdict import LevelsVerdict, terrain_cache_get
@@ -30,10 +30,107 @@ log = logging.getLogger("ed_server")
 
 #: the chain panel's reason while no chain of the ticker is held and no chain error is recorded
 NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
+#: a chain answer's status: one expiry's contracts, or none (its scope says why)
+CHAIN_OK: Final = "ok"
+CHAIN_UNAVAILABLE: Final = "unavailable"
 #: a chain answer's scope (its `scope.kind`): every contract of one expiry, or no chain to answer
 #: from; and each as the chain's badge says it (`scope.kind_text`)
 COMPLETE_SINGLE_EXPIRY, SCOPE_UNAVAILABLE = "complete_single_expiry", "unavailable"
 SCOPE_TEXT = {COMPLETE_SINGLE_EXPIRY: "complete (ALL)", SCOPE_UNAVAILABLE: "unavailable"}
+
+
+class ChainLeg(ChainRow):
+    """A contract as the chain screens show it (_shown).
+
+    Its fields under Schwab's names (option_contract.chain_row), and its open interest, volume,
+    IV, bid and ask as the screen shows them: None where Schwab sent no value.
+    """
+
+    oi_text: str | None
+    volume_text: str | None
+    iv_text: str | None
+    bid_text: str | None
+    ask_text: str | None
+
+
+class Series(TypedDict):
+    """A ladder row's contract-level fields, each once, as Structures shows them (_series).
+
+    Each as Schwab sent it to every leg of the row, under Schwab's name; the last trading day as
+    its date in ET. None where the legs differ or Schwab sent none.
+    """
+
+    multiplier: object
+    settlementType: object
+    exerciseType: object
+    expirationType: object
+    nonStandard: object
+    pennyPilot: object
+    last_trading_day_et: str | None
+
+
+#: a Series field read from a leg under Schwab's own name
+type SeriesField = Literal[
+    "multiplier", "settlementType", "exerciseType", "expirationType", "nonStandard", "pennyPilot"
+]
+
+
+class ServedLadderRow(LadderRow[ChainLeg]):
+    """A ladder row as the chain panel serves it (_served_ladder).
+
+    The row, its strike as the screen shows it, its net GEX in this expiry (None with no surface
+    value at the strike) with that as text, and its contract-level fields.
+    """
+
+    strike_text: str
+    net_gex: float | None
+    net_gex_text: str | None
+    series: Series
+
+
+class ChainScope(TypedDict):
+    """A chain answer's scope: its kind, and the kind as the chain's badge says it."""
+
+    kind: str
+    kind_text: str
+
+
+class NoChainScope(ChainScope):
+    """The scope of an answer with no chain: why there is none."""
+
+    reason: str | None
+
+
+class ChainPanel(LevelsVerdict):
+    """The `chain` panel (chain): one expiry of the ticker's chain, with the levels' verdict.
+
+    The live price as the screen shows it with Schwab's trade time, the expiry answered, whether
+    Schwab lists two contracts at one strike and side, the ladder and how many strikes it holds.
+    """
+
+    ticker: str
+    spot_text: str | None
+    spot_time_ct: str | None
+    expiry: str
+    has_duplicate_contracts: bool
+    status: Literal["ok"]
+    ladder: list[ServedLadderRow]
+    n_strikes: int
+    scope: ChainScope
+
+
+class NoChain(LevelsVerdict):
+    """The `chain` panel's answer with no chain to answer from: why, in its scope.
+
+    The expiry asked for (None with none asked and none listed) and a ladder of no rows: the page
+    draws the ladder it is sent.
+    """
+
+    ticker: str
+    expiry: str | None
+    ladder: list[ServedLadderRow]
+    status: Literal["unavailable"]
+    scope: NoChainScope
 
 
 def _net_gex_column(surf: GammaSurface | None, expiry: str) -> dict[float, float | None] | None:
@@ -73,7 +170,7 @@ def _newest(contracts: list[OptionContract], since: float, now: float) -> list[O
     )
 
 
-def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:
+def _shown(contracts: list[OptionContract]) -> list[ChainLeg]:
     """Each contract as the chain screens show it, with its counts, IV, bid and ask as text."""
     return [
         {
@@ -88,46 +185,52 @@ def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:
     ]
 
 
-#: the fields Schwab sends per contract that Structures shows once per ladder row, under Schwab's
-#: names: a listing's call and put at one strike share them
-SERIES_FIELDS = (
-    "multiplier",
-    "settlementType",
-    "exerciseType",
-    "expirationType",
-    "nonStandard",
-    "pennyPilot",
-)
-
-
-def _last_trading_day_et(leg: dict[str, Any]) -> str | None:
+def _last_trading_day_et(leg: ChainLeg) -> str | None:
     """Return Schwab's lastTradingDay (epoch milliseconds) as its date in ET; None when not sent."""
     ms = leg.get("lastTradingDay")
     return et_date_str_from_ts_utc(ms / 1000.0) if isinstance(ms, float) else None
 
 
-def _series(row: LadderRow) -> dict[str, Any]:
+def _only[T](values: set[T]) -> T | None:
+    """Return the one value of `values`; None where they differ."""
+    return next(iter(values)) if len(values) == 1 else None
+
+
+def _shared(legs: list[ChainLeg], name: SeriesField) -> object:
+    """Return the value every one of `legs` was sent `name` with; None where they differ."""
+    return _only({leg.get(name) for leg in legs})
+
+
+def _series(row: LadderRow[ChainLeg]) -> Series:
     """Return the contract-level fields of the row's call and put, each once, as Structures shows.
 
-    Each is the value every leg of the row was sent with (a row of one leg, that leg's); one the
-    legs differ on, or that Schwab did not send, is None: no leg's value stands for another's.
+    The fields Schwab sends per contract, under Schwab's names: a listing's call and put at one
+    strike share them. Each is the value every leg of the row was sent with (a row of one leg,
+    that leg's); one the legs differ on, or that Schwab did not send, is None: no leg's value
+    stands for another's.
     """
     legs = [leg for leg in (row["call"], row["put"]) if leg is not None]
-    read = {f: {leg.get(f) for leg in legs} for f in SERIES_FIELDS}
-    read["last_trading_day_et"] = {_last_trading_day_et(leg) for leg in legs}
-    return {f: next(iter(v)) if len(v) == 1 else None for f, v in read.items()}
+    return {
+        "multiplier": _shared(legs, "multiplier"),
+        "settlementType": _shared(legs, "settlementType"),
+        "exerciseType": _shared(legs, "exerciseType"),
+        "expirationType": _shared(legs, "expirationType"),
+        "nonStandard": _shared(legs, "nonStandard"),
+        "pennyPilot": _shared(legs, "pennyPilot"),
+        "last_trading_day_et": _only({_last_trading_day_et(leg) for leg in legs}),
+    }
 
 
 def _served_ladder(
-    ladder: list[LadderRow], column: dict[float, float | None] | None
-) -> list[dict[str, Any]]:
+    ladder: list[LadderRow[ChainLeg]], column: dict[float, float | None] | None
+) -> list[ServedLadderRow]:
     """Each ladder row with its net GEX in this expiry and its contract-level fields (_series).
 
     The net GEX is the expiry's column of the surface, as the heatmap publishes it
     (_net_gex_column): Strike Detail shows it beside this expiry's contracts -- one value, one
     producer.
     """
-    served: list[dict[str, Any]] = []
+    served: list[ServedLadderRow] = []
     for row in ladder:
         gex = _net_gex_at(column, row["strike"])
         served.append(
@@ -142,12 +245,9 @@ def _served_ladder(
     return served
 
 
-def _listing(contracts: list[OptionContract]) -> dict[str, Any]:
-    """Return what Schwab's listing says of an expiry's contracts, as the chain panel serves it."""
-    return {
-        # two contracts listed at one (strike, side): the chain is not strike-unique
-        "has_duplicate_contracts": len({(c.strike, c.side) for c in contracts}) < len(contracts),
-    }
+def _has_duplicates(contracts: list[OptionContract]) -> bool:
+    """Tell whether Schwab lists two contracts at one (strike, side): not strike-unique."""
+    return len({(c.strike, c.side) for c in contracts}) < len(contracts)
 
 
 @dataclass(frozen=True)
@@ -173,17 +273,18 @@ def expiry_asked(t: str, now: float, params: dict[str, Any]) -> ExpiryAsked:
     listed. Each contract as the levels priced it, with the newest values Schwab sent since: the
     screen shows Schwab's value when it arrives, not at the next pricing.
     """
-    expiry = params.get("expiry")
+    unreadable = expiry_unreadable(params)
+    # the expiry the page chose: a date, or None for the front one (and where it names none)
+    expiry: str | None = None if unreadable is not None else params["expiry"]
     # the chain's state is its levels' (terrain_staleness), the one verdict the screen shows
     held, verdict = terrain_cache_get(t, now)
     listed = held.snap.expiries if held is not None else None
-    requested = expiry.strip()[:10] if isinstance(expiry, str) and expiry.strip() else None
+    requested = expiry.strip()[:10] if expiry is not None and expiry.strip() else None
     resolved = requested or (listed[0] if listed else None)
 
     def why(reason: str) -> ExpiryAsked:
         return ExpiryAsked(held, verdict, resolved, [], reason)
 
-    unreadable = expiry_unreadable(params)
     if unreadable is not None:
         return why(unreadable)
     if held is None:
@@ -198,7 +299,7 @@ def expiry_asked(t: str, now: float, params: dict[str, Any]) -> ExpiryAsked:
     return ExpiryAsked(held, verdict, resolved, _newest(priced, held.computed_ts_utc, now), None)
 
 
-def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
+def chain(ticker: str, now: float, params: dict[str, Any]) -> ChainPanel | NoChain:
     """Return one expiry of the ticker's full chain at `now`, from the chain the daemon delivered.
 
     The `chain` panel: the Chain ladder, Strike Detail and Structures, each its own reader with
@@ -219,7 +320,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             "ticker": t,
             "expiry": resolved_expiry,
             "ladder": [],
-            "status": "unavailable",
+            "status": CHAIN_UNAVAILABLE,
             **verdict,
             "scope": {
                 "kind": SCOPE_UNAVAILABLE,
@@ -245,9 +346,9 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         "spot_text": price_text(live_spot),
         "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
-        **_listing(response_contracts),
+        "has_duplicate_contracts": _has_duplicates(response_contracts),
         **verdict,
-        "status": "ok",
+        "status": CHAIN_OK,
         "ladder": served,
         "n_strikes": len({r["strike"] for r in ladder}),
         "scope": {

@@ -493,21 +493,24 @@ def strike_window(
     return lo, lo + n - 1, ks[c]
 
 
-class LadderRow(TypedDict):
-    """One row of the chain ladder: a strike, and the call and put listed at it (chain_ladder)."""
+class LadderRow[L](TypedDict):
+    """One row of the chain ladder: a strike, and the call and put listed at it (chain_ladder).
+
+    `L` is a listed contract as the caller shows it.
+    """
 
     strike: float
     first: bool
     spot: bool
-    call: dict[str, Any] | None
-    put: dict[str, Any] | None
+    call: L | None
+    put: L | None
     call_itm: bool | None
     put_itm: bool | None
 
 
-def chain_ladder(
-    contracts: list[OptionContract], spot: float | None, shown: list[dict[str, Any]]
-) -> tuple[list[LadderRow], int]:
+def chain_ladder[L](
+    contracts: list[OptionContract], spot: float | None, shown: list[L]
+) -> tuple[list[LadderRow[L]], int]:
     """Return one expiry's chain as the ladder draws it, and how many contracts it could not place.
 
     A contract it cannot place has no strike, or a putCall other than CALL/PUT. Strikes high to
@@ -517,7 +520,7 @@ def chain_ladder(
     Schwab's own: its money intrinsic value positive (Schwab Streamer API, LEVELONE_OPTIONS field
     11), None when Schwab sent none; `spot` marks the first row of the strike nearest spot.
     """
-    by_k: dict[float, dict[str, list[tuple[OptionContract, dict[str, Any]]]]] = {}
+    by_k: dict[float, dict[str, list[tuple[OptionContract, L]]]] = {}
     unplaced = 0
     for c, row in zip(contracts, shown, strict=True):
         if c.strike is None or c.side is None:
@@ -526,14 +529,14 @@ def chain_ladder(
         by_k.setdefault(c.strike, {"call": [], "put": []})[c.side.lower()].append((c, row))
     spot_k = nearest_strike(by_k, spot)
 
-    def leg(legs: list[tuple[OptionContract, dict[str, Any]]], i: int) -> dict[str, Any] | None:
+    def leg(legs: list[tuple[OptionContract, L]], i: int) -> L | None:
         return legs[i][1] if i < len(legs) else None
 
-    def itm(legs: list[tuple[OptionContract, dict[str, Any]]], i: int) -> bool | None:
+    def itm(legs: list[tuple[OptionContract, L]], i: int) -> bool | None:
         value = legs[i][0].money_intrinsic if i < len(legs) else None
         return None if value is None else value > 0
 
-    rows: list[LadderRow] = []
+    rows: list[LadderRow[L]] = []
     for k in sorted(by_k, reverse=True):
         g = by_k[k]
         rows.extend(

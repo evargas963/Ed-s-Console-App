@@ -13,7 +13,7 @@ import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
 
@@ -25,10 +25,44 @@ GREEKS = ("gamma", "delta", "theta", "vega", "rho")
 #: docs/schwab/schwab_support_emails_2026_10_06.txt item 6), and its quotes and its
 #: LEVELONE_OPTIONS stream send as computed
 GREEK_FIELDS = (*GREEKS, "volatility")
+type ListedField = Literal[
+    "pennyPilot", "exerciseType", "expirationType", "lastTradingDay", "greeksTime"
+]
 #: the contract's terms from /chains the Structures tab shows as sent, beside those read into
 #: the record, and the time of its Greeks (the chain sweep's `greeksTime`, AGENTS.md rule 5);
 #: no other /chains field reaches the screen
-LISTED = ("pennyPilot", "exerciseType", "expirationType", "lastTradingDay", "greeksTime")
+LISTED: tuple[ListedField, ...] = (
+    "pennyPilot",
+    "exerciseType",
+    "expirationType",
+    "lastTradingDay",
+    "greeksTime",
+)
+
+
+class Listing(TypedDict, total=False):
+    """A contract's LISTED terms, each as Schwab sent it: one it did not send is not there."""
+
+    pennyPilot: object
+    exerciseType: object
+    expirationType: object
+    lastTradingDay: object
+    greeksTime: object
+
+
+class ChainRow(Listing, total=False):
+    """A contract as the chain screens show it, under Schwab's field names (chain_row).
+
+    Its LISTED terms, then each of these Schwab sent or the record holds a value for (a streamed
+    Greek): a field with neither is not there.
+    """
+
+    symbol: str | None
+    settlementType: object
+    multiplier: float | None
+    nonStandard: bool | None
+    gamma: float | None
+    delta: float | None
 
 
 @dataclass(frozen=True)
@@ -74,7 +108,7 @@ class OptionContract:
     interest_rate: float | None
     dividend_yield: float | None
     #: the LISTED terms Schwab sent, as sent, for the screen only
-    listing: Mapping[str, Any] = field(repr=False)
+    listing: Listing = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
     sent: frozenset[str] = field(repr=False, default=frozenset())
 
@@ -289,6 +323,10 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         # a contract Schwab streams: the stream's bid, ask and volume when its chain was
         # complete, as the sweep read them (ChainSweep.take_greeks)
         quoted = raw["streamed"]
+    listing: Listing = {}
+    for name in LISTED:
+        if name in raw:
+            listing[name] = _shown(raw[name])
     return OptionContract(
         symbol=raw.get("symbol"),
         side=side if side in ("CALL", "PUT") else None,
@@ -315,7 +353,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
         interest_rate=schwab_number(raw.get("interestRate")),
         dividend_yield=schwab_number(raw.get("dividendYield")),
-        listing={k: _shown(raw[k]) for k in LISTED if k in raw},
+        listing=listing,
         sent=frozenset(raw),
     )
 
@@ -341,7 +379,12 @@ def listed_expiries(answer: Mapping[str, Any], today: date) -> list[date]:
     )
 
 
-def chain_row(c: OptionContract) -> dict[str, Any]:
+def _shows(c: OptionContract, name: str, value: object) -> bool:
+    """Tell whether the chain screens show `name` of `c`: Schwab sent it, or the record holds it."""
+    return name in c.sent or value is not None
+
+
+def chain_row(c: OptionContract) -> ChainRow:
     """Return the contract as the chain screens show it, under Schwab's field names.
 
     Each field Schwab
@@ -350,12 +393,17 @@ def chain_row(c: OptionContract) -> dict[str, Any]:
     are the ladder row's (calc.terrain_engine.chain_ladder); its open interest, volume, IV, bid
     and ask are the texts served beside it (push.chain).
     """
-    read = {
-        "symbol": c.symbol,
-        "settlementType": c.settlement,
-        "multiplier": c.multiplier,
-        "nonStandard": c.non_standard,
-        "gamma": c.gamma,
-        "delta": c.delta,
-    }
-    return {**c.listing, **{k: v for k, v in read.items() if k in c.sent or v is not None}}
+    row: ChainRow = {**c.listing}
+    if _shows(c, "symbol", c.symbol):
+        row["symbol"] = c.symbol
+    if _shows(c, "settlementType", c.settlement):
+        row["settlementType"] = c.settlement
+    if _shows(c, "multiplier", c.multiplier):
+        row["multiplier"] = c.multiplier
+    if _shows(c, "nonStandard", c.non_standard):
+        row["nonStandard"] = c.non_standard
+    if _shows(c, "gamma", c.gamma):
+        row["gamma"] = c.gamma
+    if _shows(c, "delta", c.delta):
+        row["delta"] = c.delta
+    return row
