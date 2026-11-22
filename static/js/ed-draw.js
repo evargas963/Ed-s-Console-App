@@ -21,6 +21,10 @@
     var s = strength(value, scale);
     return s == null ? 0 : s * 100;
   }
+  // a width in percent as a style takes it, to a tenth
+  function pct(width) {
+    return width.toFixed(1) + "%";
+  }
   // a heat cell's colour: the theme's zero colour toward its positive or negative one by
   // strength; null when strength is
   function heatFill(value, scale, colors) {
@@ -300,6 +304,7 @@
     gauge: gauge,
     strength: strength,
     barWidth: barWidth,
+    pct: pct,
     bySign: bySign,
     heatFill: heatFill,
     heatInk: heatInk,
