@@ -339,6 +339,11 @@ def test_the_chain_e2e_panels_are_the_producers_own():
     assert calls(first)[SPY_CALL]["volume_text"] != calls(last)[SPY_CALL]["volume_text"]
     assert "SPY   261023P00762000" in {r["put"]["symbol"] for r in first["ladder"] if r["put"]}
     assert FLOW_CONTRACT in calls(live["tsla"])
+    # the capture's contracts each carry the time of their Greeks (the sweep's greeksTime), which
+    # no screen draws: the record holds it (OptionContract.greeks_time) and no leg serves it
+    assert json.loads(_SPY_CLOSE.read_text(encoding="utf-8"))["newer"]["chain"][0]["greeksTime"]
+    legs = [leg for r in first["ladder"] for leg in (r["call"], r["put"]) if leg]
+    assert legs and not [leg for leg in legs if "greeksTime" in leg]
 
 
 def test_the_flow_header_is_served_from_the_contracts_chain_record():

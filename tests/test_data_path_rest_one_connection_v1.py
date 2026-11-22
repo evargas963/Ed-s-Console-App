@@ -209,7 +209,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     record = daemon.option_record(HELD)[1]
     content = record["content"]
     assert {f: getattr(spy[HELD], f) for f in GREEKS} == {f: content[f.upper()] for f in GREEKS}
-    assert spy[HELD].listing["greeksTime"] == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
+    assert spy[HELD].greeks_time == {f: record["field_ts"][f.upper()][0] for f in GREEKS}
     rounded = {ct["symbol"]: ct["gamma"] for ct in SPY["chain"]}
     # each /quotes answer went to the console at once as Schwab sent it, its quoteTime included,
     # with the time it was received (the sweep's clock)
@@ -255,7 +255,7 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     )
     assert put_call_volume_ratio(unknown.values()) is None
     assert all(
-        getattr(ct, f) is None and ct.listing["greeksTime"] is None
+        getattr(ct, f) is None and ct.greeks_time is None and "greeksTime" in ct.sent
         for ct in tsla.values()
         for f in GREEKS
     ), "a Greek Schwab did not send is absent"
@@ -539,7 +539,7 @@ def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_re
     spy = delivered(published, "SPY")
     assert len(spy) == len(SPY["chain"]) + len(named)
     assert all(
-        getattr(spy[s], f) is None and spy[s].listing["greeksTime"] is None
+        getattr(spy[s], f) is None and spy[s].greeks_time is None and "greeksTime" in spy[s].sent
         for s in named
         for f in GREEKS
     )

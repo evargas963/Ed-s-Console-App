@@ -25,18 +25,14 @@ GREEKS = ("gamma", "delta", "theta", "vega", "rho")
 #: docs/schwab/schwab_support_emails_2026_10_06.txt item 6), and its quotes and its
 #: LEVELONE_OPTIONS stream send as computed
 GREEK_FIELDS = (*GREEKS, "volatility")
-type ListedField = Literal[
-    "pennyPilot", "exerciseType", "expirationType", "lastTradingDay", "greeksTime"
-]
+type ListedField = Literal["pennyPilot", "exerciseType", "expirationType", "lastTradingDay"]
 #: the contract's terms from /chains the Structures tab shows as sent, beside those read into
-#: the record, and the time of its Greeks (the chain sweep's `greeksTime`, AGENTS.md rule 5);
-#: no other /chains field reaches the screen
+#: the record; no other /chains field reaches the screen
 LISTED: tuple[ListedField, ...] = (
     "pennyPilot",
     "exerciseType",
     "expirationType",
     "lastTradingDay",
-    "greeksTime",
 )
 
 
@@ -47,7 +43,6 @@ class Listing(TypedDict, total=False):
     exerciseType: object
     expirationType: object
     lastTradingDay: object
-    greeksTime: object
 
 
 class ChainRow(Listing, total=False):
@@ -107,6 +102,9 @@ class OptionContract:
     #: flatten_chain_contracts puts the chain's own on each contract)
     interest_rate: float | None
     dividend_yield: float | None
+    #: when Schwab's stream sent each of its Greeks, as the chain sweep stamped it (`greeksTime`:
+    #: {field: Schwab's time}); None when its Greeks are the quote's. On no screen
+    greeks_time: object
     #: the LISTED terms Schwab sent, as sent, for the screen only
     listing: Listing = field(repr=False)
     #: the fields Schwab sent: the screen shows a field Schwab did not send only with a value
@@ -353,6 +351,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
         non_standard=flag if isinstance(flag := raw.get("nonStandard"), bool) else None,
         interest_rate=schwab_number(raw.get("interestRate")),
         dividend_yield=schwab_number(raw.get("dividendYield")),
+        greeks_time=raw.get("greeksTime"),
         listing=listing,
         sent=frozenset(raw),
     )
