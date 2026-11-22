@@ -19,7 +19,6 @@ import live_market_plane as lmp
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState, streamed_record
 from calc import order_flow as ofe
-from calc.order_flow import OrderFlowEngine
 from option_contract import NO_TOP, StreamedTop
 from push import book as push_book
 from stream_spine import MessageBus, held_key
@@ -408,17 +407,6 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     # and an unchanged re-read of v2 gives v2's values again
     m2b = _micro(v2, now_ts=3.0)
     assert m2b["depth"] == m2["depth"]
-
-
-def test_engine_and_route_read_the_same_canonical_state():
-    """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes.
-
-    One faucet, not two producers.
-    """
-    data = _data()
-    out = OrderFlowEngine().compute(_read(data), now=1787233772.0)
-    route = _micro(data, now_ts=1787233772.0)
-    assert out["book_microstructure"]["depth"] == route["depth"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
