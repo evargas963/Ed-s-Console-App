@@ -5,12 +5,16 @@ to its request, hands every frame's data to the bus, and reconnects with backoff
 connection breaks:
 
   SUBSCRIBE  What the daemon wants (its `wanted`), per service, cut at the symbol limit Schwab
-             stated for the service on this connection. No number of ours caps a service: when
-             Schwab refuses with its symbol limit (code 19) the service is asked again once, a
-             SUBS of the first that many. A change is asked once: UNSUBS what left, then SUBS (a
-             service's first request) or ADD what came. Any other refusal is not asked again on
-             this connection. Requests are split so none exceeds Schwab's 64 KB message limit (a
-             larger request closes the socket).
+             stated for the service. No number of ours caps a service: one Schwab has stated no
+             limit for is asked for everything, and when Schwab refuses with its symbol limit
+             (code 19) the service is asked again once, a SUBS of the first that many. The limit
+             is the service's, not the connection's: it stands on every connection after, and a
+             start is given the one Schwab last stated, from the record of its answers
+             (`limits`), so no request past a limit Schwab has stated is sent again; a refusal
+             that states another number replaces it. A change is asked once: UNSUBS what left,
+             then SUBS (a service's first request) or ADD what came. Any other refusal is not
+             asked again on this connection. Requests are split so none exceeds Schwab's 64 KB
+             message limit (a larger request closes the socket).
   ANSWERS    Every Schwab answer is matched to its own request by its requestid, logged and
              recorded (stream_subscriptions) exactly as sent -- a refused ADD is answered twice
              (code 19, then code 24 "ADD command failed"), and both are its answers.
@@ -28,7 +32,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -77,9 +81,22 @@ SERVICES = (
     "OPTIONS_BOOK",
     "NEWS_HEADLINE",
 )
-#: Schwab's answer code for a request past its symbol limit (Schwab Streamer API, response
-#: codes: 19 REACHED_SYMBOL_LIMIT)
+#: Schwab's answer code for a request past its symbol limit (Schwab Streamer API §1.4, Response
+#: Codes: 19 REACHED_SYMBOL_LIMIT, which does not sever the connection)
 SYMBOL_LIMIT = 19
+
+
+def stated_limit(service: str, code: int | None, msg: str) -> int | None:
+    """Return the symbol limit Schwab states for `service` in one answer; None: it states none.
+
+    Schwab states it in the message of a refusal of code SYMBOL_LIMIT, after the service's name:
+    "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000,
+    DISCARDED=1362)". The one reader of that statement: of an answer as it arrives
+    (Connection.answered) and of the recorded answers a start reads (capture.stored_limits).
+    """
+    stated = re.search(rf"{service}=(\d+)", msg) if code == SYMBOL_LIMIT else None
+    return int(stated[1]) if stated else None
+
 
 #: LEVELONE_EQUITIES / CHART_EQUITY fields copied into the database's flat columns (the full
 #: Schwab item is kept verbatim beside them in native_json).
@@ -248,7 +265,9 @@ class Connection:
     """The one Schwab stream connection, asking for what `wanted` returns per service, in order.
 
     `clock` is the program's one clock (time_et's), handed in by the daemon that runs it: a
-    request's send time, the silence check and the backoff are read on it.
+    request's send time, the silence check and the backoff are read on it. `limits` is each
+    service's symbol limit as Schwab last stated it before this program started
+    (capture.stored_limits); a service not in it has been stated none.
     """
 
     def __init__(
@@ -257,18 +276,21 @@ class Connection:
         health: HealthRegistry,
         wanted: Callable[[], dict[str, tuple[str, ...]]],
         clock: Callable[[], float],
+        limits: Mapping[str, int],
     ) -> None:
         self.bus = bus
         self.wanted = wanted
         self.clock = clock
-        #: what this connection has asked Schwab for, what Schwab accepted (code 0), and the symbol
-        #: limit Schwab stated for the service in a refusal (code 19), None until it states one
+        #: what this connection has asked Schwab for, and what Schwab accepted (code 0)
         self.asked: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
         self.held: dict[str, frozenset[str]] = {s: frozenset() for s in SERVICES}
         #: when Schwab's answer began each held symbol's hold: a record's field received before
         #: it is of an ended hold (held_since)
         self.since: dict[str, dict[str, float]] = {s: {} for s in SERVICES}
-        self.limit: dict[str, int | None] = dict.fromkeys(SERVICES)
+        #: the symbol limit Schwab stated for each service (stated_limit), None while it has
+        #: stated none: the one a start was given (`limits`), then the one each refusal states.
+        #: It is the service's, no connection's: it stands when a connection ends (disconnect)
+        self.limit: dict[str, int | None] = {**dict.fromkeys(SERVICES), **limits}
         #: requests waiting to be sent, and every request sent on this connection by requestid
         self._requests: list[tuple[str, str, list[str]]] = []
         self._sent: dict[int, _Sent] = {}
@@ -289,11 +311,11 @@ class Connection:
     def ask(self) -> None:
         """Queue what this connection has not asked Schwab for.
 
-        Per service, what is wanted cut at the symbol limit Schwab stated for it: UNSUBS what
-        left, then SUBS (when nothing asked stays: its first request, or the first since Schwab
-        stated its limit) or ADD what came, in the service's order. What Schwab refuses is not
-        asked again on this connection. Nothing is queued while no connection is open: a
-        connection asks for everything when it opens.
+        Per service, what is wanted cut at the symbol limit Schwab stated for it (none stated:
+        all of it): UNSUBS what left, then SUBS (when nothing asked stays: its first request on
+        this connection, or the first since Schwab stated a limit) or ADD what came, in the
+        service's order. What Schwab refuses is not asked again on this connection. Nothing is
+        queued while no connection is open: a connection asks for everything when it opens.
         """
         if self.stream is None:
             return
@@ -332,8 +354,8 @@ class Connection:
         It is matched to its request by its requestid, logged and recorded
         (stream_subscriptions) exactly as Schwab sent it. The first answer to a request decides
         what the service holds; a later answer to the same request is recorded as its own. An
-        answer of code 19 that states a symbol limit not yet known has the service asked again
-        within it (ask).
+        answer that states a symbol limit (stated_limit) other than the one held replaces it,
+        and the service is asked again within it (ask).
         """
         rid = int(response["requestid"])
         sent = self._sent.get(rid)
@@ -368,11 +390,11 @@ class Connection:
             ),
         )
         svc = sent.service
-        stated = re.search(rf"{svc}=(\d+)", msg)
-        if code == SYMBOL_LIMIT and stated and int(stated[1]) != self.limit[svc]:
+        stated = stated_limit(svc, code, msg)
+        if stated is not None and stated != self.limit[svc]:
             # Schwab states the service's limit, and not which of the request's symbols it kept:
             # the service is asked again from nothing, the first that many of its order
-            self.limit[svc] = int(stated[1])
+            self.limit[svc] = stated
             self.asked[svc] = frozenset()
             self.ask()
         if sent.answers > 1:
@@ -402,11 +424,11 @@ class Connection:
 
     async def disconnect(self) -> None:
         s, self.stream = self.stream, None
-        # the next connection has asked for nothing, holds nothing and has been told no limit
+        # the next connection has asked for nothing and holds nothing; each limit Schwab stated
+        # stands
         self.asked = {k: frozenset() for k in SERVICES}
         self.held = {k: frozenset() for k in SERVICES}
         self.since = {k: {} for k in SERVICES}
-        self.limit = dict.fromkeys(SERVICES)
         if s is not None:
             logged_out = False
             try:

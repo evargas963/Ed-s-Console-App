@@ -38,10 +38,11 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calc.terrain_engine import strike_window
 from feed.chain_sweep import chain_messages
+from feed.connection import SERVICES
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
 from state import level_store
-from stream_spine import HealthRegistry, MessageBus, held_key, quote_msg
+from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, held_key, quote_msg
 from tests.feed_live_helper import on_the_bus
 from tests.real_chains import CRWD, MRVL, SPY_FULL, TSLA
 from tests.schwab_rest_standin import LocalSchwab
@@ -137,13 +138,15 @@ def _rule(
     watchlist: list[str],
     flow: str | None = None,
     shown: tuple[str, ...] = (),
+    limits: dict[str, int] = SCHWAB_LIMITS,
 ) -> dict[str, set[str]]:
     """Return what Schwab holds, in the rule's order.
 
     The Flow contract; every ticker's recorded contracts; every contract of the tickers a page
     shows (`shown`); every other ticker's. Each group dealt across its tickers: each ticker's
-    first, each one's second, ... Up to Schwab's limit on each service: asked for more, Schwab
-    states its limit and the daemon asks once more, for the first that many.
+    first, each one's second, ... Up to the limit Schwab stated on each service (`limits`):
+    asked for more, Schwab states its limit and the daemon asks once more, for the first that
+    many.
     """
     ranked = {tk: by_definition(chains[tk], prices[tk], now) for tk in watchlist}
     windows = {tk: recorded_by_definition(chains[tk], prices[tk], now) for tk in watchlist}
@@ -159,7 +162,7 @@ def _rule(
             ]
         )
     )
-    return {svc: set(order[: SCHWAB_LIMITS[svc]]) for svc in (L1, BOOK)}
+    return {svc: set(order[: limits[svc]]) for svc in (L1, BOOK)}
 
 
 async def _until(cond, seconds: float = 20.0) -> None:
@@ -172,15 +175,31 @@ async def _until(cond, seconds: float = 20.0) -> None:
 class _Market:
     """Schwab's streamer (with its limits) and REST host played locally, the daemon on them.
 
-    Its bus is fed as the chain sweep and the stream feed it.
+    Its bus is fed as the chain sweep and the stream feed it. `stated`: the limits Schwab stated
+    before this daemon started, as its start reads them (capture.stored_limits); `lag`: how late
+    Schwab's answers reach it; `db`: the database its writer records every message in.
     """
 
-    def __init__(self, tmp_path, watchlist: list[str], clock, keeps_what_fits: bool = True):
-        self.streamer = LocalStreamer(SCHWAB_LIMITS, data={}, keeps_what_fits=keeps_what_fits)
+    def __init__(
+        self,
+        tmp_path,
+        watchlist: list[str],
+        clock,
+        keeps_what_fits: bool = True,
+        *,
+        stated=capture.NONE_STATED,
+        lag: float = 0.0,
+        db: Path | None = None,
+    ):
+        self.streamer = LocalStreamer(SCHWAB_LIMITS, {}, lag, keeps_what_fits=keeps_what_fits)
         self.rest = LocalSchwab(self.streamer.url)
+        tmp_path.mkdir(exist_ok=True)  # a market of its own in a test that runs two
         self.client = self.rest.client(tmp_path)
         self.bus = MessageBus()
-        self.daemon = capture.Daemon(self.bus, HealthRegistry(), watchlist, clock=clock)
+        self.daemon = capture.Daemon(
+            self.bus, HealthRegistry(), watchlist, limits=stated, clock=clock
+        )
+        self.db = db
         self.marks = 0  # the prices taken() has published
 
     def chain(self, tk: str, ts: float = CAPTURED, contracts: list[dict] | None = None) -> None:
@@ -225,6 +244,10 @@ class _Market:
                 asyncio.create_task(self.daemon.run(lambda: self.client, stop)),
                 asyncio.create_task(self.daemon.follow_market(stop)),
             ]
+            if self.db is not None:  # the Recorder, as capture.run starts it
+                record = CaptureWriter(self.db, batch_rows=1, batch_sec=0.01)
+                every = self.bus.subscribe("", policy=LOG)
+                tasks.append(asyncio.create_task(record.run(every, stop=stop)))
             try:
                 await steps(self)
             finally:
@@ -261,6 +284,18 @@ def _both_arrive(want):
     return steps
 
 
+async def _in_turn(m, alone: dict[str, set[str]], both: dict[str, set[str]]) -> None:
+    """MRVL's chain and price arrive and Schwab holds `alone`; then SPY's, and it holds `both`.
+
+    One request is answered before the next change is asked, so what Schwab is asked and what
+    it answers are the same on every run.
+    """
+    for tk, want in (("MRVL", alone), ("SPY", both)):
+        m.chain(tk)
+        m.price(tk, PRICES[tk])
+        await _until(lambda want=want: m.holds(want))
+
+
 @pytest.mark.parametrize("keeps_what_fits", [True, False])
 def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(
     tmp_path, keeps_what_fits
@@ -271,14 +306,15 @@ def test_each_ticker_streams_its_highest_gamma_contracts_within_schwabs_limits(
     3,000) and refuses nothing. OPTIONS_BOOK refuses, stating its limit of 100, and is asked
     once more, a SUBS of the first 100 of the rule's order (each ticker's highest gamma, dealt in
     turn), which it holds: whichever symbols of the refused request Schwab kept, the first that
-    fit or none (induced: Schwab's document does not say which).
+    fit (its second answer then that the command succeeded) or none (induced: Schwab's recorded
+    refusals of a request with room left all kept as many as fit; then that it failed).
     """
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, keeps_what_fits)
     market.run(_both_arrive(want))
     assert (len(want[L1]), len(want[BOOK])) == (2432 + 442, 100)
-    book = _answers(market.streamer, BOOK)
-    assert set(_answers(market.streamer, L1)) == {0} and book[:2] == [19, 24] and book[-1] == 0
+    book, second = _answers(market.streamer, BOOK), 0 if keeps_what_fits else 24
+    assert set(_answers(market.streamer, L1)) == {0} and book[:2] == [19, second] and book[-1] == 0
     subs = [len(keys) for command, keys in market.streamer.asked(BOOK) if command == "SUBS"]
     assert subs[0] > 100 and subs[1:] == [100], "asked again once, within the limit Schwab stated"
 
@@ -398,37 +434,204 @@ def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp
     assert later and set(later) == {0}, "Schwab refused nothing after it stated its limit"
 
 
-def test_a_new_connection_is_asked_in_full_and_told_schwabs_limit_again(tmp_path):
+def _logins(m) -> int:
+    return len([r for r in m.streamer.requests if r["command"] == "LOGIN"])
+
+
+def _codes(streamer, since: int = 0) -> set[int]:
+    """Return the codes of the answers Schwab gave from its `since`-th on, on every service."""
+    return {a["response"][0]["content"]["code"] for a in streamer.answers[since:]}
+
+
+def _keys(asked: list[tuple[str, list[str]]]) -> list[tuple[str, set[str]]]:
+    return [(command, set(keys)) for command, keys in asked]
+
+
+def test_a_new_connection_is_asked_within_the_limit_schwab_stated(tmp_path):
     """Schwab drops the socket once it holds the rule's contracts.
 
-    A limit Schwab stated belongs to the connection that heard it. The next one, a session that
-    holds nothing, is asked for every contract again: OPTIONS_BOOK states its 100 again and is
-    asked once more for the first 100, and Schwab holds the rule's contracts as before.
+    A limit Schwab stated is the service's, not the connection's. The next connection, a session
+    that holds nothing, is asked for every contract again on LEVELONE_OPTIONS (under its 3,000,
+    which Schwab never had to state) and once for the first 100 on OPTIONS_BOOK: Schwab refuses
+    nothing on it, and holds the rule's contracts as before.
     """
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
     sent: dict = {}
 
-    def logins(m):
-        return [r for r in m.streamer.requests if r["command"] == "LOGIN"]
+    async def steps(m):
+        await _in_turn(m, _rule(CHAINS, PRICES, CAPTURED, ["MRVL"]), want)
+        sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
+        sent["answers"] = len(m.streamer.answers)
+        await m.daemon.connection.stream._socket.close()  # the socket is gone
+        await _until(lambda: _logins(m) == 2 and m.holds(want))
+
+    market.run(steps)
+    again = {s: market.streamer.asked(s)[sent[s] :] for s in (L1, BOOK)}
+    assert {k for _c, keys in again[L1] for k in keys} == want[L1], "every contract, once again"
+    assert _keys(again[BOOK]) == [("SUBS", want[BOOK])], "the first 100, asked once"
+    assert _codes(market.streamer, sent["answers"]) == {0}, "the new connection is refused nothing"
+    refused = _answers(market.streamer, BOOK).count(19)
+    assert refused == 2, "the two parts of the first connection's one request past the limit"
+
+
+def test_a_start_given_schwabs_limits_asks_within_them_and_holds_the_same_contracts(tmp_path):
+    """Two starts on the same chains: one that knows no limit, one given the limits Schwab stated.
+
+    MRVL and SPY's whole chain of 2026-11-09 (more contracts than LEVELONE_OPTIONS' 3,000), at
+    SPY's capture time. The first start asks past both limits, is refused, and asks once more
+    within what Schwab stated. The second is given those limits, as a start reads them from the
+    record (capture.stored_limits): no request of its own goes past one, Schwab refuses nothing,
+    and it holds the same contracts as the first, the rule's first 3,000 and first 100.
+    """
+    now = SPY_FULL.now.timestamp()
+    chains = {"MRVL": CHAINS["MRVL"], "SPY": SPY_FULL.chain}
+    prices = {"MRVL": PRICES["MRVL"], "SPY": SPY_FULL.spot}
+    want = _rule(chains, prices, now, ["MRVL", "SPY"])
+    held: list[dict[str, set[str]]] = []
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk, now, chains[tk])
+            m.price(tk, prices[tk])
+        await _until(lambda: m.holds(want))
+        held.append({s: set(m.streamer.held[s]) for s in (L1, BOOK)})
+
+    untold = _Market(tmp_path / "untold", ["MRVL", "SPY"], lambda: now)
+    untold.run(steps)
+    told = _Market(tmp_path / "told", ["MRVL", "SPY"], lambda: now, stated=SCHWAB_LIMITS)
+    told.run(steps)
+    assert held[0] == held[1] == want, "the same contracts, with and without the limits"
+    assert (len(want[L1]), len(want[BOOK])) == (3000, 100)
+    assert {19} < _codes(untold.streamer), "untold, it was refused on its way there"
+    assert _codes(told.streamer) == {0}, "told, it is refused nothing"
+    for svc in (L1, BOOK):
+        now_held: set[str] = set()
+        for command, keys in told.streamer.asked(svc):
+            now_held = now_held - set(keys) if command == "UNSUBS" else now_held | set(keys)
+            assert len(now_held) <= SCHWAB_LIMITS[svc], "no request of its own goes past a limit"
+
+
+@pytest.mark.parametrize(
+    ("remembered", "first_request", "holds"),
+    [
+        (150, [150, 100], 100),  # Schwab's limit is lower: its refusal replaces what was held
+        (50, [50], 50),  # Schwab would take more: it states nothing, and the 50 stand
+    ],
+)
+def test_a_limit_from_an_older_statement_stands_until_schwab_states_another(
+    tmp_path, remembered, first_request, holds
+):
+    """A start given a limit for OPTIONS_BOOK that is not the 100 Schwab holds it to.
+
+    INDUCED: Schwab has stated 100 in every refusal recorded; the daemon is given `remembered`.
+    Over Schwab's limit, its first request is refused, the refusal states 100, and it asks once
+    more for the first 100 (the refusal's two answers are one statement). Under it, Schwab has
+    nothing to refuse and states nothing, so the limit it was given stands: no number of ours
+    is put in its place.
+    """
+    limits = {L1: 3000, BOOK: holds}
+    alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"], limits=limits)
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], limits=limits)
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, stated={BOOK: remembered})
+    market.run(lambda m: _in_turn(m, alone, want))
+    subs = [len(keys) for command, keys in market.streamer.asked(BOOK) if command == "SUBS"]
+    assert subs == first_request
+    assert market.daemon.connection.limit == {**dict.fromkeys(SERVICES), BOOK: holds}
+    assert _answers(market.streamer, BOOK).count(19) == len(first_request) - 1
+
+
+def test_a_limit_schwab_states_anew_replaces_the_one_held_on_this_and_the_next_connection(tmp_path):
+    """Schwab holds OPTIONS_BOOK's 100, then refuses the next change stating a limit of 60.
+
+    INDUCED: Schwab has never stated another limit than 100; here its limit falls to 60 while
+    the connection holds 100. SPY is removed from the watchlist: the ADD of MRVL's contracts
+    that take its place is refused with the new number, and the daemon asks once more, a SUBS of
+    the first 60. The socket then drops: the next connection is asked for those 60, once.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"], limits={L1: 3000, BOOK: 60})
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED)
+    sent: dict = {}
 
     async def steps(m):
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
+        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
+        m.streamer.limits[BOOK] = 60
+        m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
         await _until(lambda: m.holds(want))
-        sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
-        sent["answers"] = len(_answers(m.streamer, BOOK))
+        sent["asked"] = len(m.streamer.asked(BOOK))
+        sent["answers"] = len(m.streamer.answers)
         await m.daemon.connection.stream._socket.close()  # the socket is gone
-        await _until(lambda: len(logins(m)) == 2 and m.holds(want))
+        await _until(lambda: _logins(m) == 2 and m.holds(want))
 
     market.run(steps)
-    again = {s: market.streamer.asked(s)[sent[s] :] for s in (L1, BOOK)}
-    assert {k for _c, keys in again[L1] for k in keys} == want[L1], "every contract, once again"
-    subs = [len(keys) for command, keys in again[BOOK] if command == "SUBS"]
-    assert subs[0] > 100 and subs[1:] == [100], "told the limit again, asked once within it"
-    book = _answers(market.streamer, BOOK)[sent["answers"] :]
-    assert book[:2] == [19, 24] and book[-1] == 0
+    before = market.streamer.asked(BOOK)[: sent["asked"]]
+    assert _keys(before[-1:]) == [("SUBS", want[BOOK])], "asked once more, for the first 60"
+    assert len(want[BOOK]) == 60 and market.daemon.connection.limit[BOOK] == 60
+    assert _keys(market.streamer.asked(BOOK)[sent["asked"] :]) == [("SUBS", want[BOOK])]
+    assert _codes(market.streamer, sent["answers"]) == {0}, "the next connection is refused nothing"
+
+
+def test_a_connection_lost_before_schwabs_refusal_arrives_learns_the_limit_on_the_next(tmp_path):
+    """Schwab's answers arrive a second late, and the socket drops before the refusal does.
+
+    INDUCED: the lag, and the drop. The first connection asked OPTIONS_BOOK past its limit and
+    ended with no answer to that request: nothing was stated to it, so nothing is held as a
+    limit. The next connection asks in full again, hears the refusal, asks once more for the
+    first 100 and holds the rule's contracts: an answer that never came teaches nothing.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, lag=1.0)
+    seen: dict = {}
+
+    async def steps(m):
+        for tk in ("MRVL", "SPY"):
+            m.chain(tk)
+            m.price(tk, PRICES[tk])
+        await _until(lambda: m.streamer.asked(BOOK))  # Schwab has the request past its limit
+        seen["limit"] = m.daemon.connection.limit[BOOK]  # and its refusal is still on its way
+        seen["asked"] = len(m.streamer.asked(BOOK))
+        await m.daemon.connection.stream._socket.close()  # the socket is gone
+        await _until(lambda: _logins(m) == 2 and m.holds(want))
+
+    market.run(steps)
+    assert seen["limit"] is None, "the first connection ended before Schwab's refusal arrived"
+    subs = [
+        len(keys)
+        for command, keys in market.streamer.asked(BOOK)[seen["asked"] :]
+        if command == "SUBS"
+    ]
+    assert subs[0] > 100 and subs[-1] == 100, "asked in full again, then within the limit stated"
+    assert market.daemon.connection.limit[BOOK] == 100
+
+
+def test_a_restart_reads_schwabs_limit_from_the_record_and_asks_within_it(tmp_path):
+    """The program runs, stops and starts again on the same database (ed.db's stream tables).
+
+    The first run knows no limit: OPTIONS_BOOK refuses its request, stating 100, and the Recorder
+    writes that answer as sent (stream_subscriptions). LEVELONE_OPTIONS holds every contract and
+    states nothing. The next start reads the record (capture.stored_limits): OPTIONS_BOOK's 100,
+    and none for LEVELONE_OPTIONS, the half Schwab never stated. It asks OPTIONS_BOOK once, for
+    the first 100; Schwab refuses nothing and holds the same contracts as before the stop.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    db = tmp_path / "ed.db"
+    assert capture.stored_limits(db) == {}, "a first start: no database yet, no limit stated"
+    first = _Market(tmp_path / "first", ["MRVL", "SPY"], lambda: CAPTURED, db=db)
+    first.run(lambda m: _in_turn(m, _rule(CHAINS, PRICES, CAPTURED, ["MRVL"]), want))
+    stated = capture.stored_limits(db)
+    assert stated == {BOOK: 100}, "the limit Schwab stated, and none where it stated none"
+    again = _Market(tmp_path / "again", ["MRVL", "SPY"], lambda: CAPTURED, stated=stated, db=db)
+    again.run(_both_arrive(want))
+    # the first run's one request past the limit went in two parts, each refused
+    assert _answers(first.streamer, BOOK).count(19) == 2 and _codes(again.streamer) == {0}
+    first_asked = [len(keys) for _command, keys in again.streamer.asked(BOOK)[:1]]
+    assert first_asked == [len(want[BOOK])] == [100], (
+        "asked within the limit from its first request"
+    )
+    assert capture.stored_limits(db) == {BOOK: 100}, "the statement stands in the record"
 
 
 def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_none(tmp_path):
