@@ -204,11 +204,14 @@ def window_asked(params: dict[str, Any]) -> tuple[str, float | None, int] | str:
 
     The page sends all three: the scope, one of SCOPES; the centre, a strike or None (follow the
     price); the shift, a whole number of rows. Parameters that ask for none of these: the words
-    saying which.
+    saying which. A centre not sent is not a centre of None: the window names none.
     """
-    scope, centre, shift = params.get("scope"), params.get("centre"), params.get("shift")
+    scope, shift = params.get("scope"), params.get("shift")
     if scope not in SCOPES:
         return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
+    if "centre" not in params:
+        return "the window names no centre"
+    centre = params["centre"]
     if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):
         return f"centre {centre!r} is not a strike"
     if isinstance(shift, bool) or not isinstance(shift, int):

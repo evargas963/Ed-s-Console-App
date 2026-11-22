@@ -93,6 +93,7 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
         ({**AUTO, "shift": 1.5}, "shift 1.5 is not a whole number of rows"),
         ({"centre": None, "shift": 0}, "scope None is not one of auto, wider, all"),
         ({"scope": "auto", "centre": None}, "shift None is not a whole number of rows"),
+        ({"scope": "auto", "shift": 0, "expiry": None}, "the window names no centre"),
         ({**AUTO, "expiry": 20261016}, "expiry 20261016 is not an expiry date or null"),
         ({**AUTO, "expiry": "2026-10-17"}, "the chain lists no contracts for 2026-10-17"),
     ],
@@ -106,6 +107,28 @@ def test_a_window_the_panel_cannot_draw_is_unavailable_with_its_words(params, wo
     for rows in ("vanna", "charm"):
         body = push_strike_bars.strike_bars(rows, TK, time_et.now(), params)
         assert body == {"ticker": TK, "available": False, "reason": words}
+
+
+def test_a_window_that_names_no_centre_is_said_never_read_as_following_the_price():
+    """A request with no `centre` is not one whose centre is null: each panel says which.
+
+    The page sends `centre` with every window, null to follow the price (ed-core.js
+    windowParams). The strikes panel, both bar panels and the heatmap read the window through
+    the one reader (strike_rows.window_asked): a request without it is answered with why, and
+    the same request with `centre` null with its rows, as before.
+    """
+    _put_live_chain()
+    at = CRWD.now.timestamp()
+    no_centre = {"scope": "auto", "shift": 0, "expiry": None}
+    said = {"ticker": TK, "available": False, "reason": "the window names no centre"}
+    assert push_strikes.strikes(TK, at, no_centre) == said
+    assert len(push_strikes.strikes(TK, at, AUTO)["today"]) == 11
+    for key in ("vanna", "charm"):
+        assert push_strike_bars.strike_bars(key, TK, at, no_centre) == said
+        assert len(push_strike_bars.strike_bars(key, TK, at, AUTO)["rows"]) == 11
+    heat = push_surface.gamma_surface(TK, at, {**AUTO, "cols": None}, requested=False)
+    assert heat["available"] is True and len(heat["cells"]) == 11
+    assert push_surface.gamma_surface(TK, at, {**no_centre, "cols": None}, requested=False) == said
 
 
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
