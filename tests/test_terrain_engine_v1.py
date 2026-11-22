@@ -27,10 +27,19 @@ from calc.terrain_engine import (
     wall_geometry_state,
 )
 from option_contract import read_chain, read_contract
-from tests.real_chains import MRVL, NFLX, SPY_0DTE, spy_0dte_book
+from tests.real_chains import MRVL, NFLX, SPY_0DTE, SPY_FULL, spy_0dte_book
 from time_et import sessions
 
 NOW = SPY_0DTE.now
+
+
+def _strike_sigma(chain: list, expiry: str, strike: float) -> float:
+    """Return a strike's volatility, worked out from the chain outside the calculator.
+
+    The mean of its call's and its put's Schwab volatility (a percent), as a fraction.
+    """
+    legs = {c.side: c.volatility for c in chain if c.expiry == expiry and c.strike == strike}
+    return (legs["CALL"] + legs["PUT"]) / 200.0
 
 
 def test_fails_closed_on_every_missing_input() -> None:
@@ -135,23 +144,110 @@ def test_payload_is_json_serialisable() -> None:
     assert "flip_note" in round_tripped
 
 
-def test_a_price_midway_between_two_strikes_takes_the_lower_strikes_iv_in_any_order() -> None:
-    """The real SPY chain at a price exactly between two of its listed strikes.
+def test_the_atm_iv_takes_one_strike_from_each_side_of_the_step_at_the_forward() -> None:
+    """The real NFLX chain's 2026-10-16 expiry, nine days out: Schwab's volatility steps there.
 
-    Each leg's IV is the lower strike's (nearest_strike's rule), whichever way the chain is
-    ordered: once the first contract met won, so the answer followed the chain's order.
+    As captured its strikes read 67.5: 29.266, 68: 29.235, 69: 30.936, 70: 31.077. Between 68
+    and 69, the pair that holds the forward (68.76 plus nine days' interest at Schwab's 4.037%:
+    68.83), it steps up 1.70 where its neighbours move 0.03 and 0.14. The value is the mean of
+    those two strikes', one from each side of the step: 30.0855. The strike nearest the price
+    alone (69), the value before, is the upper side: 30.936. The terrain serves that value.
     """
-    chain, spot = spy_0dte_book()
-    strikes = sorted({c.strike for c in chain if c.expiry == chain[0].expiry})
-    lower = max(k for k in strikes if k <= spot)
-    upper = min(k for k in strikes if k > lower)
-    midway = (lower + upper) / 2.0
-    assert nearest_strike(strikes, midway) == lower
-    at_lower = atm_sigma_by_expiry([c for c in chain if c.strike != upper], midway)
-    forward = atm_sigma_by_expiry(chain, midway)
-    assert forward == atm_sigma_by_expiry(list(reversed(chain)), midway)
-    front = chain[0].expiry
-    assert forward[front] is not None and forward[front] == at_lower[front]
+    chain = read_chain(NFLX.chain)
+    expiry = "2026-10-16"
+    below, above = _strike_sigma(chain, expiry, 68.0), _strike_sigma(chain, expiry, 69.0)
+    assert above - below > 0.015, "the step, as captured"
+    assert abs(below - _strike_sigma(chain, expiry, 67.5)) < 0.001
+    assert abs(_strike_sigma(chain, expiry, 70.0) - above) < 0.002
+    value = atm_sigma_by_expiry(chain, NFLX.spot)[expiry]
+    assert value is not None and math.isclose(value, (below + above) / 2.0, rel_tol=1e-12)
+    assert math.isclose(100.0 * value, 30.0855, abs_tol=5e-5)
+    assert below < value < above
+    snap = compute_terrain("NFLX", chain, NFLX.spot, now=NFLX.now, sessions=sessions())
+    assert math.isclose(snap.atm_iv_pct_by_expiry[expiry], 100.0 * value, rel_tol=1e-12)
+
+
+def test_a_step_one_pair_from_the_forward_is_where_the_atm_iv_is_read() -> None:
+    """The real NFLX chain's 2028-01-21 expiry: the step sits in the pair above the forward's.
+
+    As captured: 71: 33.432, 72: 33.253, 73: 33.271, 74: 44.680. The forward (68.76 plus 471
+    days' interest: 72.34) is between 72 and 73, where the volatility barely moves; the two
+    sides meet between 73 and 74, a step of 11.4. The value is the mean of 73's and 74's,
+    38.9755; the forward's own pair would read the lower side twice, 33.26.
+    """
+    chain = read_chain(NFLX.chain)
+    expiry = "2028-01-21"
+    lower, upper = _strike_sigma(chain, expiry, 73.0), _strike_sigma(chain, expiry, 74.0)
+    assert upper - lower > 0.11, "the step, as captured"
+    assert abs(lower - _strike_sigma(chain, expiry, 72.0)) < 0.001
+    value = atm_sigma_by_expiry(chain, NFLX.spot)[expiry]
+    assert value is not None and math.isclose(value, (lower + upper) / 2.0, rel_tol=1e-12)
+    assert math.isclose(100.0 * value, 38.9755, abs_tol=5e-5)
+
+
+def test_a_price_that_crossed_a_strike_since_the_contracts_were_solved_reads_the_same_step() -> (
+    None
+):
+    """INDUCED: the real NFLX chain valued at a price a strike lower and a strike higher.
+
+    Schwab solves a contract's volatility at the price of that moment and sends a contract's
+    Greeks about every fifteen seconds, so the price can cross a strike before the step moves
+    with it. With the forward in the pair below the step (a price of 67.90) or in the pair above
+    it (69.30), the value is still the mean of the step's own two strikes, 68 and 69.
+    """
+    chain = read_chain(NFLX.chain)
+    expiry = "2026-10-16"
+    as_captured = atm_sigma_by_expiry(chain, NFLX.spot)[expiry]
+    assert as_captured is not None
+    for moved in (67.90, 69.30):
+        assert atm_sigma_by_expiry(chain, moved)[expiry] == as_captured, moved
+
+
+def test_with_no_step_near_the_forward_the_atm_iv_is_its_own_pairs() -> None:
+    """The real SPY chain's same-day expiry (2026-11-09, 11:06 ET): no interest left, no step.
+
+    As captured: 749: 21.626, 750: 20.670, 751: 20.219, 752: 19.810, falling at every strike
+    around the forward (no day of interest to a same-day expiry: the price, 750.36). The value
+    is the mean of the forward's own two strikes, 750 and 751: 20.444.
+    """
+    chain = read_chain(SPY_FULL.chain)
+    expiry = "2026-11-09"
+    sigma = {k: _strike_sigma(chain, expiry, k) for k in (749.0, 750.0, 751.0, 752.0)}
+    assert sigma[749.0] > sigma[750.0] > sigma[751.0] > sigma[752.0], "no rise, as captured"
+    value = atm_sigma_by_expiry(chain, SPY_FULL.spot)[expiry]
+    assert value is not None
+    assert math.isclose(value, (sigma[750.0] + sigma[751.0]) / 2.0, rel_tol=1e-12)
+    assert math.isclose(100.0 * value, 20.444, abs_tol=5e-4)
+
+
+def test_the_atm_iv_is_the_same_whichever_way_the_chain_is_ordered() -> None:
+    """The real MRVL full chain, 20 expiries, read forwards and backwards.
+
+    Once the first contract met won, so the answer followed the chain's order.
+    """
+    chain = read_chain(MRVL.chain)
+    forwards = atm_sigma_by_expiry(chain, MRVL.spot)
+    assert forwards == atm_sigma_by_expiry(list(reversed(chain)), MRVL.spot)
+    assert sum(v is not None for v in forwards.values()) > 10
+
+
+def test_the_atm_iv_is_unknown_without_a_rate_or_a_strike_on_each_side_of_the_forward() -> None:
+    """INDUCED on the real NFLX chain: no rate sent; no days sent; a price off the listing.
+
+    The forward needs Schwab's rate and its days to the expiry, and the value a listed strike
+    at or below the forward and one above it. Without them it is unknown, never the nearest
+    strike's.
+    """
+    chain = read_chain(NFLX.chain)
+    expiry = "2026-10-16"
+    assert atm_sigma_by_expiry(chain, NFLX.spot)[expiry] is not None
+    no_rate = [replace(c, interest_rate=None) if c.expiry == expiry else c for c in chain]
+    assert atm_sigma_by_expiry(no_rate, NFLX.spot)[expiry] is None
+    no_days = [replace(c, days_to_expiry=None) if c.expiry == expiry else c for c in chain]
+    assert atm_sigma_by_expiry(no_days, NFLX.spot)[expiry] is None
+    strikes = [c.strike for c in chain if c.expiry == expiry]
+    assert atm_sigma_by_expiry(chain, max(strikes) + 1.0)[expiry] is None
+    assert atm_sigma_by_expiry(chain, min(strikes) / 2.0)[expiry] is None
 
 
 def test_the_nearest_strike_is_one_rule_for_a_list_in_order_and_a_list_that_is_not() -> None:
@@ -186,35 +282,24 @@ def test_an_atm_contract_with_no_iv_is_never_replaced_by_the_next_strikes() -> N
     """The ATM call's IV is Schwab's -999 (no value): that leg has no IV.
 
     The expiry's ATM IV is None -- the 705 call's IV used to stand in for it, labelled ATM
-    (operator 2026-10-01: "we use what schwab gives us and we display it").
+    (operator 2026-10-01: "we use what schwab gives us and we display it"). INDUCED: the same
+    chain with that call's IV sent has one, the mean of the 700 and 705 strikes'.
     """
-    # the rule needs a known ATM contract with no IV beside a priced one
+    # the rule needs a known ATM contract with no IV beside priced ones: the two strikes around
+    # the forward (700 plus a day's interest), each with its call and its put
+    day = {"daysToExpiration": 1, "expirationDate": "2026-10-02", "interestRate": 4.0}
+    legs = (
+        ("CALL", 700.0, -999.0),
+        ("CALL", 705.0, 30.0),
+        ("PUT", 700.0, 24.0),
+        ("PUT", 705.0, 30.0),
+    )
     chain = read_chain(
-        [
-            {
-                "putCall": "CALL",
-                "strikePrice": 700.0,
-                "volatility": -999.0,
-                "daysToExpiration": 1,
-                "expirationDate": "2026-10-02",
-            },
-            {
-                "putCall": "CALL",
-                "strikePrice": 705.0,
-                "volatility": 30.0,
-                "daysToExpiration": 1,
-                "expirationDate": "2026-10-02",
-            },
-            {
-                "putCall": "PUT",
-                "strikePrice": 700.0,
-                "volatility": 24.0,
-                "daysToExpiration": 1,
-                "expirationDate": "2026-10-02",
-            },
-        ]
+        [{"putCall": side, "strikePrice": k, "volatility": iv, **day} for side, k, iv in legs]
     )
     assert atm_sigma_by_expiry(chain, 700.0) == {"2026-10-02": None}
+    sent = [replace(chain[0], volatility=26.0), *chain[1:]]
+    assert atm_sigma_by_expiry(sent, 700.0) == {"2026-10-02": pytest.approx((0.25 + 0.30) / 2.0)}
 
 
 def test_every_expiry_carries_its_atm_iv_by_the_one_rule() -> None:

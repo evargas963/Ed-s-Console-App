@@ -667,27 +667,74 @@ def atm_sigma_by_expiry(
 ) -> dict[str | None, float | None]:
     """Return each expiry date's ATM implied vol as a fraction, over all its contracts.
 
-    The value is the mean of the call and the put IV, each at its side's strike nearest spot
-    (the lower one on a tie, as nearest_strike). Both legs or None: one side's IV never stands
-    in for the mean, and a leg whose nearest contract has no IV from Schwab (-999, or 0: no
-    sigma) has none -- the next strike's IV never stands in for it. Schwab `volatility` is a
-    percent, converted by schwab_iv_to_sigma.
+    At the money is the forward price: `spot` plus the interest to the expiry, at the chain's own
+    rate over Schwab's own days to it (interestRate, a percent; daysToExpiration). The value is
+    the mean volatility of the two listed strikes where the two sides of the forward meet
+    (_sigma_at_the_forward). A leg's IV is its first contract's at the strike; one with no IV
+    from Schwab (-999, or 0: no sigma) has none. Schwab `volatility` is a percent, converted by
+    schwab_iv_to_sigma. None for an expiry Schwab sent no rate or no days for.
     """
-    legs: dict[str | None, dict[str, tuple[tuple[float, float], float | None]]] = {}
+    legs: dict[str | None, dict[tuple[float, str], float | None]] = {}
+    # each expiry's interest to it as a share of the price, by each contract that carries both
+    interest: dict[str | None, set[float]] = {}
     for c in contracts:
         sides = legs.setdefault(c.expiry, {})
         if c.strike is None or c.side is None:
             continue
-        near = (abs(c.strike - float(spot)), c.strike)
-        if c.side not in sides or near < sides[c.side][0]:
-            sides[c.side] = (near, schwab_iv_to_sigma(c.volatility))
+        sides.setdefault((c.strike, c.side), schwab_iv_to_sigma(c.volatility))
+        if c.interest_rate is not None and c.days_to_expiry is not None:
+            interest.setdefault(c.expiry, set()).add(
+                c.interest_rate / 100.0 * c.days_to_expiry / _DAYS_PER_YEAR
+            )
     out: dict[str | None, float | None] = {}
     # a contract with no expiry date keeps its own key (None), last
-    for k, s in sorted(legs.items(), key=lambda kv: (kv[0] is None, kv[0])):
-        # the call's and the put's sigma, each when known: their mean only with both
-        sig = [v for x in ("CALL", "PUT") if x in s and (v := s[x][1]) is not None]
-        out[k] = (sig[0] + sig[1]) / 2.0 if len(sig) == 2 else None
+    for k, sides in sorted(legs.items(), key=lambda kv: (kv[0] is None, kv[0])):
+        # one chain sends one rate and one count of days for an expiry: the least were there two
+        out[k] = (
+            _sigma_at_the_forward(sides, float(spot) * (1.0 + min(interest[k])))
+            if k in interest
+            else None
+        )
     return out
+
+
+def _sigma_at_the_forward(
+    sides: dict[tuple[float, str], float | None], forward: float
+) -> float | None:
+    """Return the mean volatility of the two listed strikes where the forward's two sides meet.
+
+    Schwab's volatility of a strike below the forward and of one above it differ by a step the
+    size of the interest to the expiry (docs/derived_register.md: measured on every stored
+    chain), so one strike is taken from each side of that step: of the pair of neighbouring
+    strikes that holds the forward and the pair on each side of it, the pair across which the
+    volatility rises the most, or the forward's own pair when none rises. A strike's volatility
+    is the mean of its call's and its put's, both or none: one side's IV never stands in for the
+    mean. None when the forward's own pair lacks a strike or a volatility: the next pair's never
+    stands in for it.
+    """
+    listed = sorted({strike for strike, _side in sides})
+    at = bisect.bisect_right(listed, forward) - 1  # the last strike at or below the forward
+    if at < 0 or at + 2 > len(listed):
+        return None
+
+    def sigma(strike: float) -> float | None:
+        if (strike, "CALL") not in sides or (strike, "PUT") not in sides:
+            return None
+        call, put = sides[strike, "CALL"], sides[strike, "PUT"]
+        return None if call is None or put is None else (call + put) / 2.0
+
+    # each pair's rise and its mean, the forward's own pair first: it wins an equal rise
+    pairs: dict[int, tuple[float, float]] = {}
+    for low in (at, at - 1, at + 1):
+        if low < 0 or low + 2 > len(listed):
+            continue
+        below, above = sigma(listed[low]), sigma(listed[low + 1])
+        if below is not None and above is not None:
+            pairs[low] = (above - below, (below + above) / 2.0)
+    if at not in pairs:
+        return None
+    rise, mean = max(pairs.values(), key=lambda pair: pair[0])
+    return mean if rise > 0.0 else pairs[at][1]
 
 
 def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
@@ -854,8 +901,9 @@ def wall_lean(wall: float | None, price: float | None, side: str) -> str | None:
 #: How far from the price a strike may be to be the pin strike, in expected moves: within one
 #: (|z| <= 1, the distance measure of Avellaneda & Lipkin 2003's pinning model; pin_research.md).
 PIN_MAX_EXPECTED_MOVES = 1.0
-#: minutes in a year of ACT/365 (time_et.YEAR_SECONDS / 60)
-_MINUTES_PER_YEAR = 365.0 * 24.0 * 60.0
+#: days and minutes in a year of ACT/365 (time_et.YEAR_SECONDS / 60)
+_DAYS_PER_YEAR = 365.0
+_MINUTES_PER_YEAR = _DAYS_PER_YEAR * 24.0 * 60.0
 
 
 @dataclass(frozen=True)

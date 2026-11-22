@@ -38,6 +38,9 @@ DELETED = frozenset(
 _RECORD = gzip.decompress((_FX / "real_terrains_2026_11_09.json.gz").read_bytes())
 BEFORE = json.loads(_RECORD)["terrains"]
 
+#: the one field read another way since the record was written (test_every_value_is_what_it_was)
+ATM_IV = "atm_iv_pct_by_expiry"
+
 #: a number may differ from what it was only in the last digits of a double: Python's math and
 #: numpy's exp and log, on one platform and another, round their last bit their own way. On
 #: Windows the largest difference measured, every field of every chain, is 0
@@ -75,6 +78,11 @@ def _per_strike_keys(record: list, rename: dict[str, str], drop: set[str]) -> li
     ]
 
 
+def _field(record: list, key: str) -> list:
+    """Return one field of a written-out terrain: its value as written."""
+    return next(value for _d, k, value in record if k == key)
+
+
 def test_every_value_is_what_it_was():
     """Every field is what it was when the record was written, on every chain.
 
@@ -82,14 +90,18 @@ def test_every_value_is_what_it_was():
     and text exactly; every number within a double's last digits (REL_TOL, ABS_TOL). The record
     was written while the whole book's GEX rows were keyed `all`, beside the fixed `near` and
     `far` DTE buckets the one expiry choice deleted; the whole book's rows are now `gex`, and each
-    expiry's own (`by_expiry`, new) are proved in tests/test_strikes_follow_the_expiry_v1.py.
+    expiry's own (`by_expiry`, new) are proved in tests/test_strikes_follow_the_expiry_v1.py. It
+    was written, too, while each expiry's ATM IV was its strike nearest the price's; it is read
+    where the two sides of the forward meet now (ATM_IV: its expiries and their order are what
+    they were, its values are proved on the real chains in tests/test_terrain_engine_v1.py).
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
     for tk, snap in terrains.items():
         was = _per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"})
         now = _per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"})
-        _same(was, now, tk)
+        _same([e for e in was if e[1] != ATM_IV], [e for e in now if e[1] != ATM_IV], tk)
+        assert [e[1] for e in _field(was, ATM_IV)] == [e[1] for e in _field(now, ATM_IV)], tk
         # the whole book's charm rows (new) are its charm map's nets, the map the record holds
         nets = {k: b["net_charm"] for k, b in snap.charm_by_strike.items()}
         assert snap.per_strike["charm"] == sorted(
