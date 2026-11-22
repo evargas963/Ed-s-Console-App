@@ -331,6 +331,24 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_silent_price_v1.py`, `tests/test_data_path_startup_v1.py`,
   `tests/test_data_path_confluence_v1.py`, `tests/test_rest_quotes_reach_the_levels_v1.py`,
   `tests/test_data_path_chain_spot_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
+- **Served words.** A state the program serves is served with the words the screen shows for it,
+  from one table where the frame is built: the regime (`regime_text`, `regime_name`:
+  `calc.terrain_read.REGIME_TEXT`, `REGIME_NAME`), the price's side of the flip
+  (`flip_relation_text`), a level move's level and where the busiest strikes sit against the walls
+  (`level_text`, `busiest_vs_walls_text`: `push.strikes`), where a tape print landed
+  (`classification_text`: `history.LANDED_TEXT`), a chain answer's scope (`scope.kind_text`:
+  `push.chain.SCOPE_TEXT`), a venue of the Liquidity card (`name`: `push.book.VENUE_NAMES`), and the
+  value area's and the VWAP's relations (`value_state_text`, `vwap_relation_text`:
+  `push.liquidity`). The page draws them and holds no table from a served state to words; a table
+  from a state to a colour, a tone or an arrow is drawing and stays on the page. Enforced by:
+  `tests/test_positioning_migration_v1.py`, `tests/test_options_flow_tape_v1.py`,
+  `tests/test_chain_api_v1.py`, `tests/test_liquidity_readout_v1.py`,
+  `tests/test_one_levels_producer_v1.py`, `tests/test_trade_desk_served_v1.py`,
+  `tests/test_data_path_liquidity_zero_v1.py`, `tests/e2e/console-trade-desk.spec.js`,
+  `tests/e2e/console-options-flow-tape.spec.js`, `tests/e2e/console-gamma-asof.spec.js`,
+  `tests/e2e/console-liquidity-card.spec.js`, `tests/e2e/console-gamma-heatmap.spec.js`,
+  `tests/e2e/console-confluence.spec.js`; that no page script holds such a table: no machine check,
+  ENF-12.
 - **Price relations.** Each level's distance and side from the live price, the walls' state and the
   side of the flip are computed when served, at the live price
   (`calc.terrain_engine.price_relations`, `calc.terrain_read.level_side`), with the price's own mark
