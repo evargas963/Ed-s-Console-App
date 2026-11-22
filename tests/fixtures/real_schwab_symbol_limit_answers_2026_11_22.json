@@ -1,0 +1,33 @@
+{
+  "what": "Schwab's answers to the first option subscription of one stream connection and to the one that followed it within the limits it stated, in order, as the daemon recorded them (stream_subscriptions)",
+  "recorded": "2026-11-22 03:05:13 CT, production's ed.db",
+  "left_out": "each request's symbol list, for its size; `symbols` is how many it held",
+  "answers": [
+    {"ts": 1795338313.8131797, "service": "LEVELONE_OPTIONS", "command": "SUBS", "symbols": 2181, "code": 0, "reason": "SUBS command succeeded"},
+    {"ts": 1795338313.8320892, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=1362)"},
+    {"ts": 1795338313.85042, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 0, "reason": "ADD command succeeded"},
+    {"ts": 1795338314.2930188, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=2181)"},
+    {"ts": 1795338314.2938242, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2940314, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=2181)"},
+    {"ts": 1795338314.2946901, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2948987, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=2181)"},
+    {"ts": 1795338314.2956524, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2958677, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 1573, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (LEVELONE_OPTIONS=3000, DISCARDED=1573)"},
+    {"ts": 1795338314.2965174, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 1573, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2967093, "service": "OPTIONS_BOOK", "command": "SUBS", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (OPTIONS_BOOK=100, DISCARDED=2081)"},
+    {"ts": 1795338314.297596, "service": "OPTIONS_BOOK", "command": "SUBS", "symbols": 2181, "code": 0, "reason": "SUBS command succeeded"},
+    {"ts": 1795338314.2977722, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (OPTIONS_BOOK=100, DISCARDED=2181)"},
+    {"ts": 1795338314.2979765, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.298126, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (OPTIONS_BOOK=100, DISCARDED=2181)"},
+    {"ts": 1795338314.2982817, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2984436, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (OPTIONS_BOOK=100, DISCARDED=2181)"},
+    {"ts": 1795338314.2986774, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.298878, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (OPTIONS_BOOK=100, DISCARDED=2181)"},
+    {"ts": 1795338314.2991593, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 2181, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2993696, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 1573, "code": 19, "reason": "You've reached the maximum number of symbols allowed.  (OPTIONS_BOOK=100, DISCARDED=1573)"},
+    {"ts": 1795338314.2995918, "service": "OPTIONS_BOOK", "command": "ADD", "symbols": 1573, "code": 24, "reason": "ADD command failed"},
+    {"ts": 1795338314.2998352, "service": "LEVELONE_OPTIONS", "command": "SUBS", "symbols": 2181, "code": 0, "reason": "SUBS command succeeded"},
+    {"ts": 1795338314.300689, "service": "LEVELONE_OPTIONS", "command": "ADD", "symbols": 819, "code": 0, "reason": "ADD command succeeded"},
+    {"ts": 1795338314.4436798, "service": "OPTIONS_BOOK", "command": "SUBS", "symbols": 100, "code": 0, "reason": "SUBS command succeeded"}
+  ]
+}

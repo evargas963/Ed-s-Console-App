@@ -194,7 +194,7 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
     answers = _answers(log)
     assert [a for a in answers if a[0] == "LEVELONE_OPTIONS"] == [
         ("LEVELONE_OPTIONS", "SUBS", 19, refusal("LEVELONE_OPTIONS", 2, len(symbols) - 2)),
-        ("LEVELONE_OPTIONS", "SUBS", 24, "SUBS command failed"),
+        ("LEVELONE_OPTIONS", "SUBS", 0, "SUBS command succeeded"),  # it kept the 2 that fit
         ("LEVELONE_OPTIONS", "SUBS", 0, "SUBS command succeeded"),
     ], "both of Schwab's answers to the refused request, as sent, then its answer to the next"
     assert all(code == 0 for svc, _c, code, _m in answers if svc != "LEVELONE_OPTIONS"), answers
