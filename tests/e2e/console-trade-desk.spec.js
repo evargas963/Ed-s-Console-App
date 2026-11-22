@@ -1441,6 +1441,45 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Right Now: the regime is said by its served name in the Confirm stage and the context summary", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "right-now");
+    const hero = page.locator("#tdBody .td-stage.td-accent-amber .td-hero");
+    const row = page
+      .locator("#tdBody .td-ctx-row")
+      .filter({ has: page.locator(".lbl", { hasText: /^Regime$/ }) })
+      .locator(".val");
+    // SPY's real levels: the regime's name as the terrain panel serves it, never its code
+    expect([TERRAIN.regime, TERRAIN.regime_name]).toEqual([
+      "SHORT_GAMMA_TREND",
+      "SHORT GAMMA TREND",
+    ]);
+    await expect(hero).toHaveText(TERRAIN.regime_name);
+    await expect(row).toHaveText(TERRAIN.regime_name);
+    // INDUCED: those levels with each other regime the server serves and its name
+    // (calc.terrain_read.REGIME_NAME), then a name the page has never held: both places draw the
+    // served name and pick none
+    for (const [regime, name] of [
+      ["LONG_GAMMA_CHOP", "LONG GAMMA CHOP"],
+      ["UNAVAILABLE", "UNAVAILABLE"],
+      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "THE SERVER'S OWN NAME"],
+    ]) {
+      deskPanels().terrain = Object.assign({}, TERRAIN, { regime, regime_name: name });
+      sock.changed("terrain");
+      await expect(hero).toHaveText(name);
+      await expect(row).toHaveText(name);
+    }
+    // INDUCED: no regime served: the dash in both places, never a code
+    deskPanels().terrain = Object.assign({}, TERRAIN, { regime: null, regime_name: null });
+    sock.changed("terrain");
+    await expect(hero).toHaveText("-");
+    await expect(row).toHaveText("-");
+    expect(errs).toEqual([]);
+  });
+
   test("Right Now: the book age keeps Schwab's book time", async ({ page }) => {
     const errs = watchErrors(page);
     const BOOK_TIME = "Fri 09/25 06:59 PM CT";
