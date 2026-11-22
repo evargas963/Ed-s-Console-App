@@ -9,22 +9,40 @@
 const { test, expect } = require("@playwright/test");
 const LINES = require("./fixtures/sign_in_lines.json");
 
+// The page's socket as the program keeps it (live_ui): a beat carries the feed's status and the
+// rows (none here: no ticker's row is sent), every second (HEARTBEAT_SEC), so the page never says
+// the push is down (PRICE_SILENCE_MS, 3 s) between two of them, however slow the test runs.
+async function programSocket(page) {
+  const program = { ws: null, status: null };
+  const beat = () => {
+    if (program.status === null) return;
+    program.ws.send(
+      JSON.stringify({
+        type: "feed",
+        feed: { ts: Date.now() / 1000, watchlist: [], session: "Unknown", ...program.status },
+        rows: [],
+      }),
+    );
+  };
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    program.ws = ws;
+    const timer = setInterval(beat, 1000);
+    ws.onClose(() => clearInterval(timer));
+  });
+  program.beat = (status) => {
+    program.status = status;
+    beat();
+  };
+  return program;
+}
+
 test("the header shows Schwab's refusal of the sign-in, then its acceptance", async ({ page }) => {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  let program = null;
-  await page.routeWebSocket(/\/ws$/, (ws) => {
-    program = ws;
-  });
-  const beat = (signIn) =>
-    program.send(
-      JSON.stringify({
-        type: "feed",
-        feed: { ts: Date.now() / 1000, watchlist: [], session: "Unknown", sign_in: signIn },
-      }),
-    );
+  const program = await programSocket(page);
+  const beat = (signIn) => program.beat({ sign_in: signIn });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect.poll(() => program !== null).toBe(true);
+  await expect.poll(() => program.ws !== null).toBe(true);
   const cell = page.locator("#hSignIn");
   beat(LINES.refused);
   await expect(cell).toHaveText(LINES.refused.word);
@@ -52,19 +70,10 @@ test("the header shows what the program left out, and nothing when nothing was",
 }) => {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  let program = null;
-  await page.routeWebSocket(/\/ws$/, (ws) => {
-    program = ws;
-  });
-  const beat = (leftOut) =>
-    program.send(
-      JSON.stringify({
-        type: "feed",
-        feed: { ts: Date.now() / 1000, watchlist: [], session: "Unknown", left_out: leftOut },
-      }),
-    );
+  const program = await programSocket(page);
+  const beat = (leftOut) => program.beat({ left_out: leftOut });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect.poll(() => program !== null).toBe(true);
+  await expect.poll(() => program.ws !== null).toBe(true);
   const kv = page.locator("#hLeftOutKv");
   beat(null);
   await expect(kv).toBeHidden();
