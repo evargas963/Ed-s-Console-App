@@ -368,9 +368,9 @@ def test_a_windows_first_chains_request_that_fails_is_asked_again_by_the_next_ch
 
 
 def _mrvl_queued(tmp_path, schwab):
-    """The sweep with MRVL's 2,432 contracts, none streamed, queued for their quotes.
+    """Return the sweep with MRVL's 2,432 contracts, none streamed, queued for their quotes.
 
-    Nine requests. Returns the sweep, what it publishes, its client and the queued symbols.
+    Nine requests. With it, what it publishes, its client and the queued symbols.
     """
     clock = et_ts("2026-10-01 10:00")
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock)
