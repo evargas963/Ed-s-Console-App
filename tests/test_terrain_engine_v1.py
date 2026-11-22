@@ -272,6 +272,35 @@ def test_with_no_step_the_atm_iv_is_read_at_the_options_own_forward() -> None:
     assert math.isclose(100.0 * value, 22.4002, abs_tol=5e-5)
 
 
+def test_on_the_expirys_own_day_no_step_is_looked_for() -> None:
+    """INDUCED on the real SPY chain's same-day expiry (2026-11-12): one strike's jump, no step.
+
+    The step is the interest to the expiry, and on its own day there is none. The 759 strike's
+    volatility raised five points: the rise from 758 to 759 stands above the fall on each side
+    of it, a pair from the forward's own (757 and 758), and the value stays that pair's,
+    22.4002. The same jump on the next day's expiry (2026-11-13, its own pair 757 and 758, a
+    day of interest) reads the jump's pair: a step is looked for where there is interest.
+    """
+    chain, spot = _quoted("spy")
+
+    def jumped(expiry: str) -> list[OptionContract]:
+        return [
+            replace(c, volatility=c.volatility + 5.0)
+            if c.expiry == expiry and c.strike == 759.0
+            else c
+            for c in chain
+        ]
+
+    same_day, next_day = "2026-11-12", "2026-11-13"
+    as_sent = atm_sigma_by_expiry(chain, spot)[same_day]
+    assert as_sent == pytest.approx(0.224002, abs=5e-7)
+    assert atm_sigma_by_expiry(jumped(same_day), spot)[same_day] == as_sent
+    above, jump = _strike_sigma(chain, next_day, 758.0), _strike_sigma(chain, next_day, 759.0)
+    value = atm_sigma_by_expiry(jumped(next_day), spot)[next_day]
+    assert value is not None
+    assert math.isclose(value, (above + jump + 0.05) / 2.0, rel_tol=1e-9)
+
+
 def test_the_atm_iv_is_the_same_whichever_way_the_chain_is_ordered() -> None:
     """The real AMZN chain of 2026-11-12, 24 expiries, read forwards and backwards.
 
