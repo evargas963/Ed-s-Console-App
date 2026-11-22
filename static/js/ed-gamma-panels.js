@@ -296,8 +296,8 @@
           '<span class="gbs-track"><i class="gbs-bar ' +
           tone +
           '" style="width:' +
-          w.toFixed(1) +
-          '%"></i></span>' +
+          window.EdDraw.pct(w) +
+          '"></i></span>' +
           '<span class="gbs-v ' +
           tone +
           '">' +
@@ -685,7 +685,7 @@
         ? ' title="Schwab book ' + esc(leg.book_when_text) + '"'
         : "") +
       ">" +
-      (v == null ? "" : '<i style="width:' + w.toFixed(1) + '%"></i>') +
+      (v == null ? "" : '<i style="width:' + window.EdDraw.pct(w) + '"></i>') +
       "<span>" +
       esc(orDash(leg ? leg[key + "_text"] : null)) +
       "</span></td>"
@@ -718,10 +718,10 @@
       (s.left_share == null
         ? ""
         : '<i class="l" style="width:' +
-          lw.toFixed(1) +
-          '%"></i><i class="r" style="width:' +
-          rw.toFixed(1) +
-          '%"></i>') +
+          window.EdDraw.pct(lw) +
+          '"></i><i class="r" style="width:' +
+          window.EdDraw.pct(rw) +
+          '"></i>') +
       "</div></div>"
     );
   }

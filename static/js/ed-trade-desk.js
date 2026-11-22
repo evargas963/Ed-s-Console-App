@@ -483,8 +483,8 @@
         ? '<i class="mig-ghost ' +
           window.EdDraw.bySign(gy, "pos", "neg", "") +
           '" style="width:' +
-          window.EdDraw.barWidth(gy, maxAbs).toFixed(1) +
-          '%"></i>'
+          window.EdDraw.pct(window.EdDraw.barWidth(gy, maxAbs)) +
+          '"></i>'
         : "";
       var delta = m ? m.change : null; // served change
       var deltaHtml =
@@ -509,8 +509,8 @@
         '<span class="gbs-track mig-track"><i class="gbs-bar ' +
         tone +
         '" style="width:' +
-        wToday.toFixed(1) +
-        '%"></i>' +
+        window.EdDraw.pct(wToday) +
+        '"></i>' +
         (_migGhost ? ghostBar : "") +
         "</span>" +
         '<span class="gbs-v ' +
