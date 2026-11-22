@@ -67,6 +67,8 @@ def _readout(sent: dict) -> dict:
 
 #: every venue with no book
 _NO_BOOK = _readout(dict.fromkeys(e.BOOK_VENUES))
+#: every venue with no end time: readout_card serves no value for it
+_NO_END: dict[str, float | None] = dict.fromkeys(_NO_BOOK)
 
 
 def _pair_readout() -> dict:
@@ -549,7 +551,9 @@ def test_a_thin_side_is_read_over_the_levels_it_has():
         lv["ASK_PRICE"] for lv in content["ASKS"]
     )
     assert r.views["5"].span_ask == pytest.approx(span)
-    card = e.readout_card({**_NO_BOOK, svc: r}, [(1.0, {**_NO_BOOK, svc: r})], {svc: 1.0})
+    card = e.readout_card(
+        {**_NO_BOOK, svc: r}, [(1.0, {**_NO_BOOK, svc: r})], {**_NO_END, svc: 1.0}
+    )
     assert card["venues"][svc]["levels_text"] == "Levels available: bids 7 · asks 4"
     full = e.readout_card(
         _pair_readout(), [(1.0, _pair_readout())], dict.fromkeys(_pair_readout(), 1.0)
@@ -721,7 +725,7 @@ def test_held_is_at_least_when_the_tilt_stood_from_the_first_value_kept():
             )
         points = history.LEAN.points("SPY")
         assert len(points) == 2
-        card = e.readout_card(points[-1][1], points, {_ROWS[0][1]: points[-1][0]})
+        card = e.readout_card(points[-1][1], points, {**_NO_END, _ROWS[0][1]: points[-1][0]})
         w = card["venues"][_ROWS[0][1]]["views"]["5"]
         assert w["held_open"] is True and w["held_sec"] == e.OF_LEAN_KEPT_SEC
         assert None not in w["lean"]["5m"]["values"]
@@ -922,8 +926,10 @@ def test_a_book_that_stopped_is_read_to_its_own_last_book_while_the_other_runs()
     assert rd[e.COMPOSITE]["live"] is False
     readout, points = _replay(rows)
     last_nq = max(ts for ts, svc, _c in rows if svc == "NASDAQ_BOOK")
-    own = e.readout_card(readout, points, {"NASDAQ_BOOK": last_nq})["venues"]["NASDAQ_BOOK"]
-    on = e.readout_card(readout, points, {"NASDAQ_BOOK": _END})["venues"]["NASDAQ_BOOK"]
+    own = e.readout_card(readout, points, {**_NO_END, "NASDAQ_BOOK": last_nq})["venues"][
+        "NASDAQ_BOOK"
+    ]
+    on = e.readout_card(readout, points, {**_NO_END, "NASDAQ_BOOK": _END})["venues"]["NASDAQ_BOOK"]
     assert rd["NASDAQ_BOOK"]["views"] == own["views"]
     assert own["views"]["5"]["held_sec"] < on["views"]["5"]["held_sec"]
     # the composite changed after NASDAQ_BOOK's last book: it is read to its own last change
@@ -933,7 +939,9 @@ def test_a_book_that_stopped_is_read_to_its_own_last_book_while_the_other_runs()
         if r[e.COMPOSITE] != q[e.COMPOSITE]
     ]
     assert int(changed[-1]) > int(last_nq)
-    comp = e.readout_card(readout, points, {e.COMPOSITE: changed[-1]})["venues"][e.COMPOSITE]
+    comp = e.readout_card(readout, points, {**_NO_END, e.COMPOSITE: changed[-1]})["venues"][
+        e.COMPOSITE
+    ]
     assert rd[e.COMPOSITE]["views"] == comp["views"]
 
 
@@ -1020,6 +1028,21 @@ def test_the_opening_auction_line():
         "Opening auction window — auction imbalance is a different number, not shown here."
     )
     assert p["readout"]["venues"][e.COMPOSITE]["views"]["5"]["pct"] is not None
+
+
+def test_a_day_schwabs_market_hours_are_not_held_for_has_no_auction_line_and_says_so():
+    """The route on 2031-03-04, a day none of Schwab's /markets answers held covers.
+
+    Its auction windows are unknown: no auction line, and each venue's source line says so.
+    """
+    at = datetime.fromisoformat("2031-03-04T10:30:00-05:00")
+    assert auction(at) is None
+    rd = build_readout_payload(now=at.timestamp())["readout"]
+    assert (rd["auction"], rd["auction_text"]) == (None, None)
+    for got in rd["venues"].values():
+        assert got["source_text"].endswith(
+            "auction windows unknown: no Schwab market hours held for today"
+        )
 
 
 def test_a_ticker_without_readouts_has_an_empty_series():

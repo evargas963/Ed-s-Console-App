@@ -31,7 +31,7 @@ from instrument_identity import ticker_storage_key
 from live_price_rows import price_row
 from option_contract import NO_TOP, StreamedTop
 from push.asked import venue_asked
-from time_et import CLOSE_AUCTION, ET, OPEN_AUCTION, age_text, auction, ct_label
+from time_et import CLOSE_AUCTION, ET, NO_AUCTION, OPEN_AUCTION, age_text, auction, ct_label
 
 
 class BookTimes(TypedDict):
@@ -188,11 +188,13 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> BookPanel:
 
 #: the amber line inside an exchange auction window, by window (time_et.auction): the continuous
 #: book's number stays. Outside a window, or with today's windows unknown (None), there is none.
-_AUCTION_TEXT: dict[str | None, str] = {
+_AUCTION_TEXT: dict[str | None, str | None] = {
     OPEN_AUCTION: "Opening auction window — auction imbalance is a different number, not shown"
     " here.",
     CLOSE_AUCTION: "Closing auction window — auction imbalance is a different number, not shown"
     " here.",
+    NO_AUCTION: None,
+    None: None,
 }
 
 
@@ -284,7 +286,10 @@ def liquidity_readout(t: str, now: float) -> LiquidityCard:
     readout = points[-1][1] if points else _NO_BOOKS
     labels = {v: price_state(t, now, v)[0] for v in BOOK_VENUES}
     labels[COMPOSITE] = next((labels[v] for v in BOOK_VENUES if labels[v] != lmp.LIVE), lmp.LIVE)
-    ends = {v: now if labels[v] == lmp.LIVE else _stood_from(points, v) for v in readout if points}
+    # with no reading kept, no venue has an end
+    ends: dict[str, float | None] = dict.fromkeys(readout)
+    if points:
+        ends = {v: now if labels[v] == lmp.LIVE else _stood_from(points, v) for v in readout}
     card = readout_card(readout, points, ends)
     window = auction(datetime.fromtimestamp(now, ET))
     venues: dict[str, ServedVenue] = {}
@@ -316,5 +321,5 @@ def liquidity_readout(t: str, now: float) -> LiquidityCard:
         "disagree": card["disagree"],
         "detail": card["detail"],
         "auction": window,
-        "auction_text": _AUCTION_TEXT[window] if window in _AUCTION_TEXT else None,
+        "auction_text": _AUCTION_TEXT[window],
     }

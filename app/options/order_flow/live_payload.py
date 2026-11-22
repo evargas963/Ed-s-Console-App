@@ -22,7 +22,7 @@ def flow_block(of: EngineFlow) -> dict[str, Any]:
     delta sums: the result but its book. It is the same block for an option contract and an
     equity (Trade Desk Order Flow card).
     """
-    flow: dict[str, Any] = {k: v for k, v in of.items() if k != "book_microstructure"}
+    flow = {k: v for k, v in of.items() if k != "book_microstructure"}
     flow["classification"] = {
         "tape_pressure_30s": "PROXY",
         "tape_pressure_2m": "PROXY",
@@ -54,7 +54,7 @@ def options_live_payload(contract: str, now: float) -> dict[str, Any]:
         ),
         now=now,
     )
-    book: dict[str, Any] = dict(of["book_microstructure"])
+    book = dict(of["book_microstructure"])
     book["flow"] = flow_block(of)
     book["top_outage"], book["top_feed_label"] = top_outage, top_label
     return book

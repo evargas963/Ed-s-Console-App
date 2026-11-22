@@ -8,7 +8,6 @@ it, the tape in receive order and whether the feed delivers the book now.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple, TypedDict
@@ -547,27 +546,24 @@ def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
     ]
     newest: dict[str, tuple[float | None, str]] = {}
     for key, venue, quoted in rows_held:
-        if key in newest:
-            held_time = newest[key][0]
-            # the copy held stands unless this one's time is newer; a time sent is newer than
-            # one not sent
-            if quoted is None or (held_time is not None and quoted <= held_time):
-                continue
-        newest[key] = (quoted, venue)
+        held = newest.get(key)
+        # a time sent is newer than one not sent
+        if held is None or (quoted is not None and (held[0] is None or quoted > held[0])):
+            newest[key] = (quoted, venue)
     partial = any(
         quoted is None and len({v for k, v, _q in rows_held if k == key}) > 1
         for key, _venue, quoted in rows_held
     )
-    sizes: defaultdict[float, float] = defaultdict(float)  # price -> the shares summed at it
+    sizes: dict[float, float] = {}
     for venue, book in books.items():
         for price, total, rows in book.levels(side):
             if rows is None:
                 partial = True
-                sizes[price] += total
+                sizes[price] = sizes.get(price, 0.0) + total
                 continue
             for code, size, _quoted in rows:
                 if newest[code.upper()][1] == venue:
-                    sizes[price] += size
+                    sizes[price] = sizes.get(price, 0.0) + size
     return sorted(sizes.items(), reverse=side == "BIDS"), partial
 
 
@@ -651,17 +647,15 @@ def _views(bids: Levels, asks: Levels) -> dict[str, ReadoutView]:
         depth = int(view)
         bt, at = _book_side_depth_total(bids, depth), _book_side_depth_total(asks, depth)
         imb = _book_imbalance_from_totals(bt, at)
-        # by position, the record's order (built on every book message): imbalance, pct, each
-        # side's total, their difference and sum, each side's span
         views[view] = ReadoutView(
-            imb,
-            _pct(imb),
-            bt,
-            at,
-            None if bt is None or at is None else abs(bt - at),
-            None if bt is None or at is None else bt + at,
-            _span(bids, depth),
-            _span(asks, depth),
+            imbalance=imb,
+            pct=_pct(imb),
+            bid_total=bt,
+            ask_total=at,
+            difference=None if bt is None or at is None else abs(bt - at),
+            total_depth=None if bt is None or at is None else bt + at,
+            span_bid=_span(bids, depth),
+            span_ask=_span(asks, depth),
         )
     return views
 
@@ -930,12 +924,11 @@ def readout_card(
     sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
     in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts
     kept, (receive time,
-    readout) oldest first; `ends`: venue -> its end time, None (or the venue not named) with no
-    value.
+    readout) oldest first; `ends`: venue -> its end time, None with no value.
     """
     venues: dict[str, VenueCard] = {}
     for v, r in readout.items():
-        end = ends[v] if v in ends else None
+        end = ends[v]
         views: dict[str, CardView | NoView] = {}
         for view in READOUT_VIEWS:
             if end is None:
