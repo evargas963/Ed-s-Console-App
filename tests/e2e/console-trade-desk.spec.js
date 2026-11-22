@@ -1240,6 +1240,37 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: the regime is said in the served words on the Options card and the agreement strip", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "desk");
+    const card = page.locator("#tdmCardOpt .tdm-state");
+    const strip = page.locator("#tdmAgree");
+    // SPY's real levels: dealer gamma at the price is negative
+    await expect(card).toHaveText("SHORT GAMMA TREND");
+    await expect(strip).toContainText("OPTIONSDealer Γ −");
+    // INDUCED: those levels with each other regime the server serves, its name in words and its
+    // short words (calc.terrain_read.REGIME_NAME, REGIME_TEXT), then a regime the page has never
+    // held: the card and the strip draw the served words and pick none
+    for (const [regime, name, words] of [
+      ["LONG_GAMMA_CHOP", "LONG GAMMA CHOP", "Dealer Γ +"],
+      ["UNAVAILABLE", "UNAVAILABLE", "unavailable"],
+      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "THE SERVER'S OWN NAME", "as only the server says"],
+    ]) {
+      deskPanels().terrain = Object.assign({}, TERRAIN, {
+        regime: regime,
+        regime_name: name,
+        regime_text: words,
+      });
+      sock.changed("terrain");
+      await expect(card).toHaveText(name);
+      await expect(strip).toContainText("OPTIONS" + words);
+    }
+    expect(errs).toEqual([]);
+  });
+
   test("Right Now: where the busiest strikes sit is said in the served words, each place", async ({
     page,
   }) => {

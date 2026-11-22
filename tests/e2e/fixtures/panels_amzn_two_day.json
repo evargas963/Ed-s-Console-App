@@ -3396,6 +3396,8 @@
     "atr_daily_text": "9.45",
     "atr_weekly_text": "17.39",
     "atr_monthly_text": "32.79",
+    "regime_text": "Dealer \u0393 +",
+    "regime_name": "LONG GAMMA CHOP",
     "spot_time_ct": "Thu 11/12 09:39 AM CT",
     "spot_not_live_text": null,
     "levels_mark": "LIVE",

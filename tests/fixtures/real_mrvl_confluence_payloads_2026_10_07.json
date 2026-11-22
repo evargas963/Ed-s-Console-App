@@ -1606,6 +1606,7 @@
     "280.00": "0DTE Key \u0394 strike"
    },
    "regime": "LONG_GAMMA_CHOP",
+   "regime_text": "Dealer \u0393 +",
    "flip_text": "249.97",
    "pin_text": null,
    "pin_note": null
@@ -3190,6 +3191,7 @@
     "280.00": "0DTE Key \u0394 strike"
    },
    "regime": "LONG_GAMMA_CHOP",
+   "regime_text": "Dealer \u0393 +",
    "flip_text": "249.97",
    "pin_text": null,
    "pin_note": null

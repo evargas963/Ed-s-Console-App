@@ -1402,6 +1402,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
+      "busiest_vs_walls_text": "ABOVE the call wall",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -1411,6 +1412,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
+        "level_text": "Call wall",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -1420,6 +1422,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
+        "level_text": "Put wall",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -1429,6 +1432,7 @@
         "prior": null,
         "today": 238.1179647277906,
         "change": null,
+        "level_text": "\u0393 flip",
         "prior_text": null,
         "today_text": "238.12",
         "change_text": null
@@ -2937,6 +2941,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
+      "busiest_vs_walls_text": "ABOVE the call wall",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -2946,6 +2951,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
+        "level_text": "Call wall",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -2955,6 +2961,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
+        "level_text": "Put wall",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -2964,6 +2971,7 @@
         "prior": null,
         "today": 238.1179647277906,
         "change": null,
+        "level_text": "\u0393 flip",
         "prior_text": null,
         "today_text": "238.12",
         "change_text": null
@@ -6749,6 +6757,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
+      "busiest_vs_walls_text": "ABOVE the call wall",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -6758,6 +6767,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
+        "level_text": "Call wall",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -6767,6 +6777,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
+        "level_text": "Put wall",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -6776,6 +6787,7 @@
         "prior": null,
         "today": 238.1179647277906,
         "change": null,
+        "level_text": "\u0393 flip",
         "prior_text": null,
         "today_text": "238.12",
         "change_text": null
@@ -6909,6 +6921,8 @@
     "atr_daily_text": null,
     "atr_weekly_text": null,
     "atr_monthly_text": null,
+    "regime_text": "Dealer \u0393 +",
+    "regime_name": "LONG GAMMA CHOP",
     "spot_time_ct": "Wed 10/07 09:38 AM CT",
     "spot_not_live_text": "not live \u00b7 last trade Wed 10/07 09:38 AM CT, 40s old",
     "levels_mark": "OFFLINE",

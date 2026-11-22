@@ -162,6 +162,18 @@ _READS = {
         "",
     ),
 }
+#: each regime as the screen says it: in short (Key Levels, the Desk's agreement strip, the
+#: Confluence rail), and its name in words (the Desk's Options Positioning card)
+REGIME_TEXT = {
+    REGIME_LONG_GAMMA: "Dealer Γ +",
+    REGIME_SHORT_GAMMA: "Dealer Γ −",
+    REGIME_UNAVAILABLE: "unavailable",
+}
+REGIME_NAME = {
+    REGIME_LONG_GAMMA: "LONG GAMMA CHOP",
+    REGIME_SHORT_GAMMA: "SHORT GAMMA TREND",
+    REGIME_UNAVAILABLE: "UNAVAILABLE",
+}
 
 
 def build_terrain_read(*, spot: float | None, gamma_at_spot: float | None = None) -> TerrainRead:

@@ -31,10 +31,12 @@
   }
   var ticker = window.EdShell.ticker;
 
+  // each regime's colour on Key Levels and its tone on the Desk map, by the regime as served; its
+  // words are served with it (regime_text, regime_name)
   var REGIME = {
-    LONG_GAMMA_CHOP: { t: "Dealer Γ +", c: "var(--ed-pos-ink)", tone: "up" },
-    SHORT_GAMMA_TREND: { t: "Dealer Γ −", c: "var(--ed-warn)", tone: "dn" },
-    UNAVAILABLE: { t: "unavailable", c: "var(--ed-ink-3)", tone: "" },
+    LONG_GAMMA_CHOP: { c: "var(--ed-pos-ink)", tone: "up" },
+    SHORT_GAMMA_TREND: { c: "var(--ed-warn)", tone: "dn" },
+    UNAVAILABLE: { c: "var(--ed-ink-3)", tone: "" },
   };
   window.EdGammaRegime = REGIME;
 
@@ -158,9 +160,9 @@
     }
     var reg = document.getElementById("klRegime");
     if (reg) {
-      var rm = REGIME[d.regime] || { t: orDash(d.regime), c: "var(--ed-ink-2)" };
-      reg.textContent = rm.t;
-      reg.style.color = rm.c;
+      var rm = REGIME[d.regime];
+      reg.textContent = orDash(d.regime_text); // served: the regime in words
+      reg.style.color = rm ? rm.c : "var(--ed-ink-2)";
     }
     // the levels rail recedes while the served levels are STALE
     var klb = document.getElementById("klBody");

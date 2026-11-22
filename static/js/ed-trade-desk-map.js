@@ -640,14 +640,10 @@
         src(c, "Schwab option chain · " + (t === undefined ? "loading…" : esc(why(t))));
         c.querySelector(".tdm-rows").innerHTML = "";
       } else {
-        // the served regime word, and its tone from the one regime table (ed-gamma-panels.js)
-        var reg = t.regime ? String(t.regime) : null;
-        var rm = reg != null ? window.EdGammaRegime[reg] : null;
-        state(
-          c,
-          reg != null ? reg.replace(/_/g, " ") : "-",
-          t.levels_state !== "LIVE" ? "warn" : rm ? rm.tone : "",
-        );
+        // the regime's name as served in words, and its tone from the one regime table
+        // (ed-gamma-panels.js)
+        var rm = t.regime ? window.EdGammaRegime[t.regime] : null;
+        state(c, orDash(t.regime_name), t.levels_state !== "LIVE" ? "warn" : rm ? rm.tone : "");
         var ng = t.net_gex_at_spot; // absent is uncoloured, never read as 0
         c.querySelector(".tdm-hero").innerHTML =
           '<span class="' +
@@ -1066,7 +1062,7 @@
         l && l.summary ? String(orDash(l.summary.vwap_relation)).replace(/_/g, " ") : "-",
         "",
       ],
-      ["OPTIONS", t && !why(t) && t.regime ? window.EdGammaRegime[t.regime].t : "-", ""],
+      ["OPTIONS", t && !why(t) && t.regime ? t.regime_text : "-", ""], // served: the regime in words
       [
         "GAMMA",
         t && t.flip_relation
