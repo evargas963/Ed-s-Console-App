@@ -46,12 +46,12 @@ import socket
 import sqlite3
 import sys
 import threading
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from itertools import zip_longest
 from pathlib import Path
-from types import FrameType, MappingProxyType
+from types import FrameType
 from typing import Any, NoReturn, TextIO, TypedDict, cast, override
 
 import uvicorn
@@ -80,7 +80,7 @@ from app.options.order_flow import streaming as console_feed
 from calc.terrain_engine import nearest_position
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
-from feed.connection import SERVICES, SYMBOL_LIMIT, Connection, stated_limit
+from feed.connection import SERVICES, SYMBOL_LIMIT, Connection, SymbolLimit, stated_limit
 from feed.schwab_client import Client, SchwabClientState, build_client_from_token, check_ticker
 from instrument_identity import ticker_storage_key
 from option_contract import GREEK_FIELDS, OptionContract
@@ -109,8 +109,6 @@ EQUITY_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_B
 #: the market context every page asks for (live_push.MARKET_CONTEXT) is streamed on these,
 #: whatever the watchlist holds
 MARKET_CONTEXT_SERVICES = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE")
-#: no symbol limit stated: what a daemon given no record of Schwab's answers knows of them
-NONE_STATED: Mapping[str, int] = MappingProxyType({})
 
 
 # ---------------------------------------------------------------------------- the watchlist
@@ -170,7 +168,7 @@ def stored_watchlist(db_path: str | Path) -> list[str]:
     return [t for (tickers,) in rows for t in json.loads(tickers)]
 
 
-def stored_limits(db_path: str | Path) -> dict[str, int]:
+def stored_limits(db_path: str | Path) -> list[SymbolLimit]:
     """Return each service's symbol limit as Schwab last stated it, read once at startup.
 
     The record is stream_subscriptions, every answer of Schwab's as sent, written by the
@@ -185,8 +183,8 @@ def stored_limits(db_path: str | Path) -> dict[str, int]:
         "SELECT service, code, reason FROM stream_subscriptions WHERE code = ? ORDER BY ts",
         SYMBOL_LIMIT,
     )
-    stated = ((service, stated_limit(service, code, reason)) for service, code, reason in rows)
-    return {service: limit for service, limit in stated if limit is not None}
+    stated = (stated_limit(service, code, reason) for service, code, reason in rows)
+    return list({limit.service: limit for limit in stated if limit is not None}.values())
 
 
 def watchlist_message(
@@ -356,7 +354,7 @@ class Daemon:
         health: HealthRegistry,
         watchlist: Iterable[str] = (),
         *,
-        limits: Mapping[str, int] = NONE_STATED,
+        limits: Iterable[SymbolLimit] = (),
         clock: Callable[[], float] = time_et.now,
         on_page: Callable[[], Iterable[str]] = frozenset,
     ) -> None:

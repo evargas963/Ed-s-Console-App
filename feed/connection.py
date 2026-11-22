@@ -32,7 +32,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -86,7 +86,15 @@ SERVICES = (
 SYMBOL_LIMIT = 19
 
 
-def stated_limit(service: str, code: int | None, msg: str) -> int | None:
+@dataclass(frozen=True)
+class SymbolLimit:
+    """A service's symbol limit, as Schwab stated it in one answer (stated_limit)."""
+
+    service: str
+    limit: int
+
+
+def stated_limit(service: str, code: int | None, msg: str) -> SymbolLimit | None:
     """Return the symbol limit Schwab states for `service` in one answer; None: it states none.
 
     Schwab states it in the message of a refusal of code SYMBOL_LIMIT, after the service's name:
@@ -95,7 +103,7 @@ def stated_limit(service: str, code: int | None, msg: str) -> int | None:
     (Connection.answered) and of the recorded answers a start reads (capture.stored_limits).
     """
     stated = re.search(rf"{service}=(\d+)", msg) if code == SYMBOL_LIMIT else None
-    return int(stated[1]) if stated else None
+    return SymbolLimit(service, int(stated[1])) if stated else None
 
 
 #: LEVELONE_EQUITIES / CHART_EQUITY fields copied into the database's flat columns (the full
@@ -276,7 +284,7 @@ class Connection:
         health: HealthRegistry,
         wanted: Callable[[], dict[str, tuple[str, ...]]],
         clock: Callable[[], float],
-        limits: Mapping[str, int],
+        limits: Iterable[SymbolLimit],
     ) -> None:
         self.bus = bus
         self.wanted = wanted
@@ -290,7 +298,8 @@ class Connection:
         #: the symbol limit Schwab stated for each service (stated_limit), None while it has
         #: stated none: the one a start was given (`limits`), then the one each refusal states.
         #: It is the service's, no connection's: it stands when a connection ends (disconnect)
-        self.limit: dict[str, int | None] = {**dict.fromkeys(SERVICES), **limits}
+        self.limit: dict[str, int | None] = dict.fromkeys(SERVICES)
+        self.limit.update({stated.service: stated.limit for stated in limits})
         #: requests waiting to be sent, and every request sent on this connection by requestid
         self._requests: list[tuple[str, str, list[str]]] = []
         self._sent: dict[int, _Sent] = {}
@@ -391,10 +400,10 @@ class Connection:
         )
         svc = sent.service
         stated = stated_limit(svc, code, msg)
-        if stated is not None and stated != self.limit[svc]:
+        if stated is not None and stated.limit != self.limit[svc]:
             # Schwab states the service's limit, and not which of the request's symbols it kept:
             # the service is asked again from nothing, the first that many of its order
-            self.limit[svc] = stated
+            self.limit[svc] = stated.limit
             self.asked[svc] = frozenset()
             self.ask()
         if sent.answers > 1:

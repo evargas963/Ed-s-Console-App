@@ -38,7 +38,7 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calc.terrain_engine import strike_window
 from feed.chain_sweep import chain_messages
-from feed.connection import SERVICES
+from feed.connection import SERVICES, SymbolLimit
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
 from state import level_store
@@ -187,7 +187,7 @@ class _Market:
         clock,
         keeps_what_fits: bool = True,
         *,
-        stated=capture.NONE_STATED,
+        stated=(),
         lag: float = 0.0,
         db: Path | None = None,
     ):
@@ -499,7 +499,8 @@ def test_a_start_given_schwabs_limits_asks_within_them_and_holds_the_same_contra
 
     untold = _Market(tmp_path / "untold", ["MRVL", "SPY"], lambda: now)
     untold.run(steps)
-    told = _Market(tmp_path / "told", ["MRVL", "SPY"], lambda: now, stated=SCHWAB_LIMITS)
+    stated = [SymbolLimit(svc, limit) for svc, limit in SCHWAB_LIMITS.items()]
+    told = _Market(tmp_path / "told", ["MRVL", "SPY"], lambda: now, stated=stated)
     told.run(steps)
     assert held[0] == held[1] == want, "the same contracts, with and without the limits"
     assert (len(want[L1]), len(want[BOOK])) == (3000, 100)
@@ -533,7 +534,8 @@ def test_a_limit_from_an_older_statement_stands_until_schwab_states_another(
     limits = {L1: 3000, BOOK: holds}
     alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"], limits=limits)
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], limits=limits)
-    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, stated={BOOK: remembered})
+    stated = [SymbolLimit(BOOK, remembered)]
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, stated=stated)
     market.run(lambda m: _in_turn(m, alone, want))
     subs = [len(keys) for command, keys in market.streamer.asked(BOOK) if command == "SUBS"]
     assert subs == first_request
@@ -618,11 +620,11 @@ def test_a_restart_reads_schwabs_limit_from_the_record_and_asks_within_it(tmp_pa
     """
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
     db = tmp_path / "ed.db"
-    assert capture.stored_limits(db) == {}, "a first start: no database yet, no limit stated"
+    assert capture.stored_limits(db) == [], "a first start: no database yet, no limit stated"
     first = _Market(tmp_path / "first", ["MRVL", "SPY"], lambda: CAPTURED, db=db)
     first.run(lambda m: _in_turn(m, _rule(CHAINS, PRICES, CAPTURED, ["MRVL"]), want))
     stated = capture.stored_limits(db)
-    assert stated == {BOOK: 100}, "the limit Schwab stated, and none where it stated none"
+    assert stated == [SymbolLimit(BOOK, 100)], "its stated limit, and none where it stated none"
     again = _Market(tmp_path / "again", ["MRVL", "SPY"], lambda: CAPTURED, stated=stated, db=db)
     again.run(_both_arrive(want))
     # the first run's one request past the limit went in two parts, each refused
@@ -631,7 +633,7 @@ def test_a_restart_reads_schwabs_limit_from_the_record_and_asks_within_it(tmp_pa
     assert first_asked == [len(want[BOOK])] == [100], (
         "asked within the limit from its first request"
     )
-    assert capture.stored_limits(db) == {BOOK: 100}, "the statement stands in the record"
+    assert capture.stored_limits(db) == stated, "the statement stands in the record"
 
 
 def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_none(tmp_path):
