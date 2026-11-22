@@ -31,6 +31,11 @@ class TapePanel(TypedDict):
     reason: str | None
 
 
+def _no_tape(ticker: str, reason: str) -> NoTape:
+    """Return the `tape` panel's answer while the console has no tape of `ticker`: why."""
+    return {"ticker": ticker, "available": False, "rows": [], "reason": reason}
+
+
 def tape(ticker: str, now: float) -> TapePanel | NoTape:
     """Return the `tape` panel at `now`: the newest option trade prints of the ticker.
 
@@ -44,18 +49,11 @@ def tape(ticker: str, now: float) -> TapePanel | NoTape:
     side. `ticker` is the levels' own key.
     """
     held = published_levels(ticker)
-    symbols = [] if held is None else lmp.held_option_symbols(held.contracts, now)
-    if held is None or not symbols:
-        return {
-            "ticker": ticker,
-            "available": False,
-            "rows": [],
-            "reason": (
-                "the console holds no chain of this ticker yet"
-                if held is None
-                else "the daemon streams no option contract of this ticker"
-            ),
-        }
+    if held is None:
+        return _no_tape(ticker, "the console holds no chain of this ticker yet")
+    symbols = lmp.held_option_symbols(held.contracts, now)
+    if not symbols:
+        return _no_tape(ticker, "the daemon streams no option contract of this ticker")
     # the newest TAPE_ROWS of all the contracts' kept prints are picked first, and only those are
     # made rows: each contract's last TAPE_ROWS received are the ones looked at
     newest = heapq.nlargest(
