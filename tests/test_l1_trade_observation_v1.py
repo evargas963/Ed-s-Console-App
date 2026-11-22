@@ -83,7 +83,7 @@ def test_distinct_same_ms_price_change_retained():
     content = _tape("L1A", (P, 10, 1000), (P + 0.1, 10, 1000))
     out = content
     assert len(out) == 2
-    assert [p["price"] for p in out] == [P, P + 0.1]
+    assert [p.price for p in out] == [P, P + 0.1]
     assert _cvd(content) == 10
 
 
@@ -91,7 +91,7 @@ def test_distinct_same_ms_size_change_retained():
     content = _tape("L1B", (P, 10, 1000), (P, 4, 1000))
     out = content
     assert len(out) == 2
-    assert [p["size"] for p in out] == [10, 4]
+    assert [p.size for p in out] == [10, 4]
 
 
 def test_adjacent_identical_restatement_suppressed():
@@ -125,15 +125,13 @@ def test_schwabs_whole_record_restating_the_held_trade_is_no_second_print():
     for m in sent:
         apply_record(state, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"], m["schwab_ts"]))
     tape = state.prints("AMD")
-    assert [(p["time_millis"], p["price"], p["size"]) for p in tape] == [
+    assert [(p.time_millis, p.price, p.size) for p in tape] == [
         (1795002799757, 513.5, 1),
         (1795002815201, 513.5, 1),
         (1795002816236, 513.57, 1),
         (1795002832692, 513.4874, 100),
     ]
-    assert [b - a for a, b in zip(volumes, volumes[1:], strict=False)] == [
-        p["size"] for p in tape[1:]
-    ]
+    assert [b - a for a, b in zip(volumes, volumes[1:], strict=False)] == [p.size for p in tape[1:]]
 
 
 def test_non_adjacent_identical_triple_retained():
@@ -145,7 +143,7 @@ def test_non_adjacent_identical_triple_retained():
 def test_out_of_order_vendor_timestamps_preserve_receive_order():
     content = _tape("L1E", (P, 10, 2000), (P + 0.2, 5, 1000))
     prints = content
-    assert [p["time_millis"] for p in prints] == [2000, 1000]
+    assert [p.time_millis for p in prints] == [2000, 1000]
     assert _cvd(content) == 5
 
 
@@ -230,7 +228,7 @@ def test_missing_size_remains_unavailable():
     assert l1.tick_rule_sign(P, None, 1) is None
     # the real message with no LAST_PRICE is no trade
     assert l1.extract_vendor_print({k: v for k, v in _SENT.items() if k != "LAST_PRICE"}) is None
-    assert l1.compute_cum_delta_proxy([{"price": P, "size": None, "time_millis": 1}]) is None
+    assert l1.compute_cum_delta_proxy(_tape("L1NOSIZE", (P, None, 1))) is None
 
 
 def test_reconnect_clear_resets_restatement_identity():
@@ -244,8 +242,6 @@ def test_reconnect_clear_resets_restatement_identity():
     apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), time_et.now()))
     tape = live_state.prints(sym)
     assert len(tape) == 1
-    assert tape[0]["receive_seq"] == 1
-    assert tape[0]["classification"] == l1.TAPE_CLASSIFICATION
 
 
 def test_live_state_equals_replay_of_same_receive_order_observations():
@@ -261,7 +257,7 @@ def test_mutation_first_per_ms_fails_current_keep():
     seen: set[int] = set()
     old = []
     for p in current:
-        ms = p["time_millis"]
+        ms = p.time_millis
         if ms in seen:
             continue
         seen.add(ms)

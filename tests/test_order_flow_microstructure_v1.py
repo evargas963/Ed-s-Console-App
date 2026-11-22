@@ -517,7 +517,7 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         sent = {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02, "BID_SIZE": 3}
         record = on_the_bus(bus, EQ, {**sent, "ASK_SIZE": 4, "MARK": 100.01}, 1_000.0)
         apply_record(ofls._LIVE_STATE, EQ, record)
-        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in ofls.prints("O01EQ"))
+        assert ofls.prints("O01EQ") == []  # a quote with no trade: no print is kept of it
         assert ofls.newest_book("O01EQ", "OPTIONS_BOOK") is None
         assert ofls.option_top("O01EQ") is NO_TOP
     finally:

@@ -13,16 +13,14 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
-from dataclasses import asdict
 from typing import Any
 
 from app.options.order_flow import history
 from calc.l1_trade_observation import (
-    TAPE_CLASSIFICATION,
-    TAPE_COMPLETENESS,
     VENDOR_LAST_PRICE,
     VENDOR_LAST_SIZE,
     VENDOR_TRADE_TIME,
+    KeptPrint,
     extract_vendor_print,
     is_adjacent_restatement,
     quote_in_force,
@@ -50,9 +48,8 @@ class OrderFlowState:
         # each symbol's newest book from each Schwab service, the newest arrival last: a book
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
-        self._tape: dict[str, deque[dict[str, Any]]] = {}
+        self._tape: dict[str, deque[KeptPrint]] = {}
         self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
-        self._receive_seq: dict[str, int] = {}
         #: the bus's current records (stream_spine.MessageBus.current, bind): each symbol's top of
         #: book, Greeks and volume are read from them, never kept here
         self.current: dict[str, tuple[str, Any]] = {}
@@ -61,7 +58,7 @@ class OrderFlowState:
         """Return what Schwab `service` last sent of `symbol`, from its record on the bus."""
         return streamed_record(self.current.get(held_key(service, ticker_storage_key(symbol))))
 
-    def _get_tape(self, symbol: str) -> deque[dict[str, Any]]:
+    def _get_tape(self, symbol: str) -> deque[KeptPrint]:
         with self._lock:
             if symbol not in self._tape:
                 self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
@@ -127,30 +124,21 @@ class OrderFlowState:
             if is_adjacent_restatement(self._prev_trade.get(sym), key):
                 return
             self._prev_trade[sym] = key
-            self._receive_seq[sym] = self._receive_seq.get(sym, 0) + 1
             self._get_tape(sym).append(
-                {
-                    **asdict(trade),
-                    "receive_seq": self._receive_seq[sym],
+                history.quoted(
+                    trade,
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
                     # unchanged price carries a new time and size but no LAST_PRICE (Change)
-                    "server_received_ts": float(
-                        max(received(f) for f in _PRINT_FIELDS if f in content_item)
-                    ),
-                    "classification": TAPE_CLASSIFICATION,
-                    "completeness": TAPE_COMPLETENESS,
+                    float(max(received(f) for f in _PRINT_FIELDS if f in content_item)),
                     # the bid and ask in force when the trade was made, by Schwab's own quote and
                     # trade times (never the quote that followed it), and the record's Greeks
-                    **history.quoted(
-                        trade.price,
-                        quote_in_force(trade.time_millis, sent.top, quote_before(record)),
-                        sent.greeks,
-                    ),
-                }
+                    quote_in_force(trade.time_millis, sent.top, quote_before(record)),
+                    sent.greeks,
+                )
             )
 
-    def prints(self, symbol: str) -> list[dict[str, Any]]:
+    def prints(self, symbol: str) -> list[KeptPrint]:
         """Return the symbol's tape: each print it kept, in receive order."""
         sym = ticker_storage_key(symbol)
         with self._lock:
@@ -174,7 +162,6 @@ class OrderFlowState:
         for values in self._book.values():
             values.clear()
         self._prev_trade.clear()
-        self._receive_seq.clear()
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
@@ -186,7 +173,6 @@ class OrderFlowState:
             if sym in self._tape:
                 self._tape[sym].clear()
             self._prev_trade.pop(sym, None)
-            self._receive_seq.pop(sym, None)
 
 
 _LIVE_STATE = OrderFlowState()
@@ -255,7 +241,7 @@ def push_level_one(
     )
 
 
-def prints(symbol: str) -> list[dict[str, Any]]:
+def prints(symbol: str) -> list[KeptPrint]:
     """Return the live singleton's tape of `symbol`: each print it kept, in receive order."""
     return _LIVE_STATE.prints(symbol)
 

@@ -12,9 +12,10 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
-from collections.abc import Mapping, Sequence
-from typing import Any, Literal, TypedDict
+from collections.abc import Mapping
+from typing import Literal, TypedDict
 
+from calc.l1_trade_observation import KeptPrint, TradePrint
 from calc.order_flow import OF_LEAN_KEPT_SEC, Book, Readout
 from instrument_identity import ticker_storage_key
 from numeric_contract import (
@@ -52,50 +53,38 @@ class Cell(TypedDict):
     side: str
 
 
-class Quoted(TypedDict):
-    """What a print is kept with (quoted): the quote in force when it traded, streamed values."""
-
-    bid: Any
-    bid_size: Any
-    ask: Any
-    ask_size: Any
-    volume: Any
-    iv: Any
-    delta: Any
-    landed: str
+#: where a print landed against the bid and ask in force when it traded (quoted): at one of them,
+#: between them, below the bid, above the ask; NO_QUOTE when no quote in force is known
+AT_BID, AT_ASK, INSIDE_SPREAD = "at_bid", "at_ask", "inside_spread"
+BELOW_BID, ABOVE_ASK, NO_QUOTE = "outside_spread_low", "outside_spread_high", "unknown"
 
 
-class Printed(TypedDict):
-    """A print's own fields: Schwab's trade time, the trade and what the state held then."""
+class TapeRow(TypedDict):
+    """One kept print as the Options Flow tape shows it (tape_row).
+
+    Schwab's trade time and that time in CT, the contract, the trade and what it was kept with
+    (the quote in force, the day's volume, the volatility and delta), where it landed
+    (`classification`), the contract's terms and open interest, its premium, and each as the
+    screen shows it.
+    """
 
     trade_time_ms: int | None
-    symbol: str
-    bid: Any
-    bid_size: Any
-    ask: Any
-    ask_size: Any
-    trade: float
-    size: Any
-    volume: Any
-    iv: Any
-    delta: Any
-    classification: str
-
-
-class TapePrint(Printed):
-    """One kept print as the tape names it (recent_prints), with when it was received."""
-
-    ts_recv: float
-
-
-class TapeRow(Printed):
-    """One print as the Options Flow tape shows it (tape_row): its time in CT, its terms."""
-
     trade_time_ct: str | None
+    symbol: str
+    bid: float | None
+    bid_size: float | None
+    ask: float | None
+    ask_size: float | None
+    trade: float
+    size: float | None
+    volume: float | None
+    iv: float | None
+    delta: float | None
+    classification: str
     expiry: str | None
     type: str | None
     strike: float | None
-    oi: Any
+    oi: float | None
     premium: float | None
     strike_text: str | None
     bid_text: str | None
@@ -144,90 +133,67 @@ class BookHeatmap(TypedDict):
     method: str
 
 
-def quoted(trade: float, top: StreamedTop, streamed: StreamedGreeks) -> Quoted:
-    """Return what a print at `trade` is kept with.
+def quoted(
+    trade: TradePrint, received: float, top: StreamedTop, streamed: StreamedGreeks
+) -> KeptPrint:
+    """Return `trade` as the tape keeps it.
 
-    The quote in force when it traded (`top`: calc.l1_trade_observation.quote_in_force, never
-    the quote that followed the trade), the record's streamed volume, volatility and delta
-    (`streamed`), and `landed`: only where the trade landed against that bid and ask (no
-    aggressor side); "unknown" when no quote in force is known.
+    With `received`, when the daemon received the message that carried it; the quote in force
+    when it traded (`top`: calc.l1_trade_observation.quote_in_force, never the quote that
+    followed the trade); the record's streamed volume, volatility and delta (`streamed`); and
+    `landed`: only where the trade landed against that bid and ask (no aggressor side); NO_QUOTE
+    when no quote in force is known.
     """
     bid, ask = top.bid, top.ask
-    landed = "unknown"
+    landed = NO_QUOTE
     if bid is not None and ask is not None:
-        if trade <= bid:
-            landed = "at_bid" if trade == bid else "outside_spread_low"
-        elif trade >= ask:
-            landed = "at_ask" if trade == ask else "outside_spread_high"
+        if trade.price <= bid:
+            landed = AT_BID if trade.price == bid else BELOW_BID
+        elif trade.price >= ask:
+            landed = AT_ASK if trade.price == ask else ABOVE_ASK
         else:
-            landed = "inside_spread"
-    return {
-        "bid": bid,
-        "bid_size": top.bid_size,
-        "ask": ask,
-        "ask_size": top.ask_size,
-        "volume": streamed.total_volume.value,
-        "iv": streamed.volatility.value,
-        "delta": streamed.delta.value,
-        "landed": landed,
-    }
+            landed = INSIDE_SPREAD
+    return KeptPrint(
+        price=trade.price,
+        size=trade.size,
+        time_millis=trade.time_millis,
+        server_received_ts=received,
+        bid=bid,
+        bid_size=top.bid_size,
+        ask=ask,
+        ask_size=top.ask_size,
+        volume=streamed.total_volume.value,
+        iv=streamed.volatility.value,
+        delta=streamed.delta.value,
+        landed=landed,
+    )
 
 
-def recent_prints(contract: str, kept: Sequence[dict[str, Any]], limit: int) -> list[TapePrint]:
-    """Return the newest `limit` prints of `contract` as the tape names them, newest first.
+def tape_row(symbol: str, kept: KeptPrint, contract: OptionContract) -> TapeRow:
+    """Return a print the live state kept of contract `symbol` as the Options Flow tape shows it.
 
-    `kept` is the live state's tape of the contract (state.prints), in receive order: each print
-    it kept, a genuinely new (TRADE_TIME_MILLIS, LAST_PRICE, LAST_SIZE), with what it held then.
-    `trade_time_ms` is Schwab's TRADE_TIME_MILLIS as sent (None: the message carried none);
-    `ts_recv`, when the message arrived, is not shown; the tape orders prints by Schwab's trade
-    time (server.tape).
-    The contract's terms are not here: the tape shows them from its chain record (tape_row).
+    With its contract's terms: expiry, side, strike and open interest are the chain record's
+    (option_contract.read_contract, the one reader of them); premium = trade x size x that
+    record's multiplier, unknown without a size or a multiplier. Its time is Schwab's
+    TRADE_TIME_MILLIS as sent (None: the message carried none), and `trade_time_ct` that time as
+    the screen shows it (time_et.ct_clock); the receive time is not served.
     """
-    sym = ticker_storage_key(contract)
-    return [
-        {
-            "ts_recv": p["server_received_ts"],
-            "trade_time_ms": p["time_millis"],
-            "symbol": sym,
-            "bid": p["bid"],
-            "bid_size": p["bid_size"],
-            "ask": p["ask"],
-            "ask_size": p["ask_size"],
-            "trade": p["price"],
-            "size": p["size"],
-            "volume": p["volume"],
-            "iv": p["iv"],
-            "delta": p["delta"],
-            "classification": p["landed"],
-        }
-        for p in kept[::-1][: max(0, int(limit))]
-    ]
-
-
-def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
-    """Return one kept print as the Options Flow tape shows it, with its contract's terms.
-
-    Expiry, side, strike and open interest are the chain record's (option_contract.read_contract,
-    the one reader of them); premium = trade x size x that record's multiplier, unknown without
-    a size or a multiplier. Its time is Schwab's trade time, and `trade_time_ct` that time as the
-    screen shows it (time_et.ct_clock, None when Schwab sent none); the receive time is not served.
-    """
-    size, mult, ms = printed["size"], contract.multiplier, printed["trade_time_ms"]
-    premium = None if size is None or mult is None else printed["trade"] * size * mult
+    size, mult, ms = kept.size, contract.multiplier, kept.time_millis
+    premium = None if size is None or mult is None else kept.price * size * mult
     return {
         "trade_time_ms": ms,
         "trade_time_ct": None if ms is None else ct_clock(ms / 1000),
-        "symbol": printed["symbol"],
-        "bid": printed["bid"],
-        "bid_size": printed["bid_size"],
-        "ask": printed["ask"],
-        "ask_size": printed["ask_size"],
-        "trade": printed["trade"],
+        "symbol": symbol,
+        "bid": kept.bid,
+        "bid_size": kept.bid_size,
+        "ask": kept.ask,
+        "ask_size": kept.ask_size,
+        "trade": kept.price,
         "size": size,
-        "volume": printed["volume"],
-        "iv": printed["iv"],
-        "delta": printed["delta"],
-        "classification": printed["classification"],
+        "volume": kept.volume,
+        "iv": kept.iv,
+        "delta": kept.delta,
+        "classification": kept.landed,
         "expiry": contract.expiry,
         "type": contract.side,
         "strike": contract.strike,
@@ -236,17 +202,17 @@ def tape_row(printed: TapePrint, contract: OptionContract) -> TapeRow:
         # the strike, the prices, the premium, the sizes, the day's volume, open interest, IV and
         # delta as the screen shows them
         "strike_text": strike_text(contract.strike),
-        "bid_text": price_text(printed["bid"]),
-        "ask_text": price_text(printed["ask"]),
-        "trade_text": price_text(printed["trade"]),
-        "delta_text": fixed_text(printed["delta"], 3),
+        "bid_text": price_text(kept.bid),
+        "ask_text": price_text(kept.ask),
+        "trade_text": price_text(kept.price),
+        "delta_text": fixed_text(kept.delta, 3),
         "premium_text": dollars_text(premium),
-        "bid_size_text": count_text(printed["bid_size"]),
-        "ask_size_text": count_text(printed["ask_size"]),
+        "bid_size_text": count_text(kept.bid_size),
+        "ask_size_text": count_text(kept.ask_size),
         "size_text": count_text(size),
-        "volume_text": count_text(printed["volume"]),
+        "volume_text": count_text(kept.volume),
         "oi_text": count_text(contract.open_interest),
-        "iv_text": iv_text(printed["iv"]),
+        "iv_text": iv_text(kept.iv),
     }
 
 

@@ -1,4 +1,4 @@
-"""The Options Flow tape: the live state's prints (state.push_level_one), as history names them.
+"""The Options Flow tape: the live state's prints (state.push_level_one), as the tape shows them.
 
 Discrete TRADE prints built from the LEVELONE_OPTIONS records the console's intake hands it.
 Locked to the operator's own required schema: Time/Symbol/Expiry/Type/Strike/Bid x Size/Ask x
@@ -26,9 +26,10 @@ from datetime import datetime
 
 import live_market_plane as lmp
 from app.options.order_flow import history, state
-from app.options.order_flow.history import recent_prints, tape_row
+from app.options.order_flow.history import tape_row
 from app.options.order_flow.state import OrderFlowState, read_book
 from app.options.order_flow.streaming import _ingest_pushed
+from calc.l1_trade_observation import KeptPrint
 from option_contract import read_contract
 from push import contract as push_contract
 from push import tape as push_tape
@@ -72,9 +73,9 @@ def _fed(contract: str, rows: list[tuple[float, dict]]) -> OrderFlowState:
     return live
 
 
-def _tape(contract: str, rows: list[tuple[float, dict]], limit: int = 50) -> list[dict]:
-    """Return the tape's newest `limit` prints of `contract` after `rows`, newest first."""
-    return recent_prints(contract, _fed(contract, rows).prints(contract), limit)
+def _tape(contract: str, rows: list[tuple[float, dict]]) -> list[KeptPrint]:
+    """Return the prints a fresh live state kept of `contract` after `rows`, newest first."""
+    return _fed(contract, rows).prints(contract)[::-1]
 
 
 def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
@@ -93,7 +94,7 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     assert len(rows) == 4 and len(_tape(CALL, sent[:1])) == 1
     assert sent[0][1]["TRADE_TIME_MILLIS"] < sent[0][0] * 1000
     assert sent[0][1]["OPEN_INTEREST"] == 1888
-    r = tape_row(rows[0], LISTED[CALL])
+    r = tape_row(CALL, rows[0], LISTED[CALL])
     assert r["symbol"] == CALL
     assert r["expiry"] == "2026-10-23" and r["type"] == "CALL" and r["strike"] == 761
     assert r["bid"] == 2.03 and r["bid_size"] == 56
@@ -185,8 +186,8 @@ def test_a_partial_update_with_size_but_no_price_never_produces_a_null_trade_row
     assert [(c["LAST_SIZE"], c["TOTAL_VOLUME"]) for c in size_only] == [(4, 486829), (1, 486836)]
     rows = _tape(SIZE_ONLY, sent)
     assert len(rows) == 4, "each new trade time is a print, its price unchanged"
-    assert all(r["trade"] is not None for r in rows), "no row may ever report trade=None"
-    assert [(r["trade"], r["size"]) for r in rows] == [(0.02, 1), (0.02, 4), (0.02, 1), (0.03, 5)]
+    assert all(r.price is not None for r in rows), "no row may ever report trade=None"
+    assert [(r.price, r.size) for r in rows] == [(0.02, 1), (0.02, 4), (0.02, 1), (0.03, 5)]
 
 
 def test_context_is_carried_forward_from_the_most_recent_full_tick():
@@ -199,7 +200,7 @@ def test_context_is_carried_forward_from_the_most_recent_full_tick():
     assert "STRIKE_TYPE" in sent[0][1] and "STRIKE_TYPE" not in sent[2][1]
     rows = _tape(CALL, sent)
     assert len(rows) == 3
-    newest = tape_row(rows[0], LISTED[CALL])  # newest-first
+    newest = tape_row(CALL, rows[0], LISTED[CALL])  # newest-first
     assert newest["trade"] == 2.02 and newest["size"] == 10
     assert newest["expiry"] == "2026-10-23" and newest["type"] == "CALL"
     assert newest["strike"] == 761 and newest["premium"] == 2.02 * 10 * 100
@@ -216,11 +217,11 @@ def test_a_print_without_a_size_or_a_multiplier_has_no_premium():
     sent = _sent(CALL)[:2]
     assert sent[1][1]["LAST_PRICE"] == 2.07 and "LAST_SIZE" not in sent[1][1]
     unchanged_size, sized = _tape(CALL, sent)
-    assert tape_row(unchanged_size, LISTED[CALL])["premium"] == 2.07 * 1 * 100
+    assert tape_row(CALL, unchanged_size, LISTED[CALL])["premium"] == 2.07 * 1 * 100
     chain = fixture_json("real_spy_option_contract_type_2026_10_23.json")["chain"]["contracts"]
     bare = read_contract({k: v for k, v in chain[0].items() if k != "multiplier"})
-    assert bare.symbol == CALL and tape_row(sized, bare)["premium"] is None
-    assert tape_row(sized, LISTED[CALL])["premium"] == 2.04 * 1 * 100
+    assert bare.symbol == CALL and tape_row(CALL, sized, bare)["premium"] is None
+    assert tape_row(CALL, sized, LISTED[CALL])["premium"] == 2.04 * 1 * 100
 
 
 def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
@@ -319,7 +320,7 @@ def test_classification_at_bid_at_ask_and_outside_spread_are_mechanical_not_aggr
         + _tape(PUT, _sent(PUT))
         + _tape(INSIDE, [(whole["ts_recv"], whole["native"])])
     )
-    landed = {(r["bid"], r["trade"], r["ask"]): r["classification"] for r in prints}
+    landed = {(r.bid, r.price, r.ask): r.landed for r in prints}
     assert landed[(2.03, 2.03, 2.04)] == "at_bid"
     assert landed[(2.03, 2.07, 2.04)] == "outside_spread_high"
     assert landed[(2.08, 2.02, 2.09)] == landed[(3.04, 3, 3.05)] == "outside_spread_low"
@@ -390,7 +391,7 @@ def test_a_print_is_placed_against_the_quote_in_force_when_it_traded():
     tape = _tape(FAST["symbol"], [(r["ts_recv"], r["item"]) for r in rows])[::-1]  # oldest first
     assert len(want) == 45
     assert sum(r["item"]["QUOTE_TIME_MILLIS"] > r["item"]["TRADE_TIME_MILLIS"] for r in rows) == 44
-    got = [(r["trade"], r["size"], r["bid"], r["ask"], r["classification"]) for r in tape]
+    got = [(r.price, r.size, r.bid, r.ask, r.landed) for r in tape]
     assert got == [w[:5] for w in want]
     # placed by hand from the messages: no quote before the first; the second's 2.50 against the
     # first message's 2.46 and 2.47; a trade at the ask its update's own quote calls at the bid;
@@ -402,26 +403,26 @@ def test_a_print_is_placed_against_the_quote_in_force_when_it_traded():
     assert want[24] == (2.64, 20, 2.64, 2.65, "at_bid", "outside_spread_low")
     assert want[39] == (3.11, 1, 3.1, 3.11, "at_ask", "at_ask")
     assert want[44] == (3.1, 1, 3.13, 3.14, "outside_spread_low", "inside_spread")
-    assert (tape[1]["bid_size"], tape[1]["ask_size"]) == (77, 8)  # the first message's sizes
+    assert (tape[1].bid_size, tape[1].ask_size) == (77, 8)  # the first message's sizes
     assert sum(w[4] != w[5] for w in want) == 36
 
 
-def test_newest_first_ordering_and_limit_bound():
+def test_prints_are_kept_in_receive_order_each_with_its_messages_receive_time():
     sent = _sent(CALL)
     received = [at for at, _ in sent]
-    rows = _tape(CALL, sent, 3)
-    assert len(rows) == 3
-    assert [r["ts_recv"] for r in rows] == [received[3], received[2], received[1]]
-    assert rows[0]["trade"] == 2.03  # the LAST (newest) genuine trade recorded
+    rows = _tape(CALL, sent)
+    assert len(rows) == 4
+    assert [r.server_received_ts for r in rows] == received[::-1]
+    assert rows[0].price == 2.03  # the LAST (newest) genuine trade recorded
 
 
 def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     (at, first), (later, second) = _sent(CALL)[:2]
     live = _fed(CALL, [(at, first)])
     live.push_level_one(OPT, "", second, ts_recv=later)
-    assert recent_prints(PUT, live.prints(PUT), 50) == []
-    assert recent_prints("", live.prints(""), 50) == []
-    assert len(recent_prints(CALL, live.prints(CALL), 50)) == 1
+    assert live.prints(PUT) == []
+    assert live.prints("") == []
+    assert len(live.prints(CALL)) == 1
 
 
 def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
@@ -434,9 +435,9 @@ def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
     _ingest_pushed(f"optquote.{CALL}", {"symbol": CALL, "ts_recv": at, "content": first})
     book = fixture_json("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
     history.BOOKS.record("SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"))
-    kept = recent_prints(CALL, state.prints(CALL), 50)
+    kept = state.prints(CALL)
     assert len(kept) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
     state.clear_symbol(CALL)
     state.clear_symbol("SPY")
-    gone = recent_prints(CALL, state.prints(CALL), 50)
+    gone = state.prints(CALL)
     assert gone == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []

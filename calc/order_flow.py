@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, TypedDict
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 
 from calc.l1_trade_observation import (
+    KeptPrint,
     compute_cum_delta_proxy,
     compute_tape_pressure,
     cum_delta_window,
@@ -91,7 +92,7 @@ class FlowInput:
 
     book: Book | None
     top: StreamedTop = NO_TOP
-    prints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    prints: list[KeptPrint] = field(default_factory=list[KeptPrint])
     book_live: bool | None = None
     exchange_quote_ts: float | None = None
 
@@ -975,7 +976,7 @@ def _window_start_ms(now: float, window_sec: float) -> float:
 
 
 def _compute_cum_delta_slope(
-    prints: list[dict[str, Any]], now: float, window_sec: float = 60.0
+    prints: list[KeptPrint], now: float, window_sec: float = 60.0
 ) -> float | None:
     """Slope of the estimated cumulative delta in receive order (l1_trade_observation's walk)."""
     points = iter_signed_cum_points(prints, _window_start_ms(now, window_sec))
