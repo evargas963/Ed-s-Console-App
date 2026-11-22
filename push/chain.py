@@ -22,7 +22,7 @@ from push.spot import resolve_spot
 from push.strike_rows import expiry_unreadable
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import level_store
-from state.level_store import PublishedLevels
+from state.level_store import GammaSurface, PublishedLevels
 from time_et import ct_label, et_date_str_from_ts_utc
 
 # the program's one log (capture._start_log: the day's file and the window)
@@ -36,7 +36,7 @@ COMPLETE_SINGLE_EXPIRY, SCOPE_UNAVAILABLE = "complete_single_expiry", "unavailab
 SCOPE_TEXT = {COMPLETE_SINGLE_EXPIRY: "complete (ALL)", SCOPE_UNAVAILABLE: "unavailable"}
 
 
-def _net_gex_column(surf: dict[str, Any] | None, expiry: str) -> dict[float, float | None] | None:
+def _net_gex_column(surf: GammaSurface | None, expiry: str) -> dict[float, float | None] | None:
     """Return the heatmap's net GEX by strike in `expiry`; None without a surface or its column."""
     if surf is None:
         return None

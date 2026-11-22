@@ -8,16 +8,109 @@ entry point (`requested`).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 import live_market_plane as lmp
 from calc.terrain_engine import nearest_strike
 from numeric_contract import count_text, dollars_text, strike_text
-from push.answers import unavailable
+from push.answers import NotAvailable, not_available
 from push.spot import resolve_spot
-from push.strike_rows import expiry_unreadable, window, window_asked
-from push.verdict import terrain_cache_get
+from push.strike_rows import WindowView, expiry_unreadable, window, window_asked
+from push.verdict import LevelsVerdict, terrain_cache_get
+from state.level_store import (
+    CallPutTotal,
+    GammaSurface,
+    GridCell,
+    SurfaceColumn,
+    SurfaceState,
+)
 from time_et import ET
+
+
+class Coverage(TypedDict):
+    """How many of the cells on screen stream (_stream_coverage), and the header's words for it.
+
+    The cells with a contract, how many are in each stream state, and the chip: its state, its
+    label and its tooltip.
+    """
+
+    cells: int
+    live: int
+    partial: int
+    stale: int
+    pending: int
+    unavailable: int
+    state: str
+    label: str
+    title: str
+
+
+class StampedColumn(SurfaceColumn):
+    """An expiration column as the page draws it (_stamp_columns): expired, and the front one."""
+
+    expired: bool
+    front: bool
+
+
+class ShownCell(GridCell):
+    """One strike's row of the window as the page draws it (_surface_view).
+
+    The grid's row cut to the columns drawn, then whether it is the row at the price, and the
+    strike and each measure's values as the screen shows them.
+    """
+
+    spot: bool
+    strike_text: str
+    text: dict[str, list[str | None]]
+
+
+class HeatView(WindowView):
+    """The heatmap's view (_surface_view): its window's, and what the header and the scale read.
+
+    The scope asked, the coverage of the cells on screen, each measure's largest |value| drawn
+    (the colour scale), and the selected expiry when the surface does not list it.
+    """
+
+    scope: str
+    coverage: Coverage
+    max_abs: dict[str, float | None]
+    missing_expiry: str | None
+
+
+class SurfacePanel(LevelsVerdict, SurfaceState):
+    """The `surface` panel (gamma_surface_payload): the heatmap's window of the published grid.
+
+    The levels' verdict, the chain's basis, the columns, strikes and cells drawn, the grid's own
+    counts, stream state and revision (SurfaceState), and the view.
+    """
+
+    ticker: str
+    symbol: str
+    available: Literal[True]
+    reason: None
+    source: str
+    chain_basis: str
+    expirations: list[StampedColumn]
+    strikes: list[float]
+    cells: list[ShownCell]
+    view: HeatView
+
+
+class NoSurface(TypedDict):
+    """The `surface` panel's answer with no live surface: why, and whether one is coming.
+
+    `warming`: a page shows the ticker and its chain is coming (it is on the watchlist);
+    `requested`: a page shows it.
+    """
+
+    ticker: str
+    available: Literal[False]
+    symbol: str
+    source: str
+    warming: bool
+    requested: bool
+    reason: str
+
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
 #: live (every visible heatmap cell is an exact option contract receiving streamed Schwab
@@ -31,23 +124,21 @@ COVERAGE_LIVE, COVERAGE_PARTIAL, COVERAGE_WARMING, COVERAGE_EXPIRED = (
 )
 
 
-def _stream_coverage(
-    cells: list[dict[str, Any]], cols: list[int], expired_only: bool
-) -> dict[str, Any]:
+def _stream_coverage(cells: list[ShownCell], cols: list[int], expired_only: bool) -> Coverage:
     """How many of the heatmap's `cells` (the window on screen, _surface_view) are live.
 
     Over the columns `cols` that can stream (an expired column's contracts never will;
-    `expired_only`: every column drawn has expired). Only cells with a contract count (a strike an
-    expiry does not list was never a data point). Returns the counts by cell state, the share live
-    rounded down (100 only when every cell is live), and the header's words: `state`, `label`,
-    `title`.
+    `expired_only`: every column drawn has expired). Only cells with a contract count: a strike an
+    expiry does not list was never a data point, and has no stream state. Returns the counts by
+    cell state, the share live rounded down (100 only when every cell is live), and the header's
+    words: `state`, `label`, `title`.
     """
     counts = {"live": 0, "partial": 0, "stale": 0, "pending": 0, "unavailable": 0}
     for cell in cells:
         for j in cols:
-            pair = cell["contracts"][j]
-            if pair["call"] or pair["put"]:
-                counts[cell["stream"][j]["state"]] += 1
+            stream = cell["stream"][j]
+            if stream is not None:
+                counts[stream["state"]] += 1
     cells_n = sum(counts.values())
     live_pct = 100 * counts["live"] // cells_n if cells_n else None
     if not cells_n and expired_only:
@@ -70,7 +161,11 @@ def _stream_coverage(
         title = f"{counts['live']} of {cells_n} cells streaming · {rest}"
     return {
         "cells": cells_n,
-        **counts,
+        "live": counts["live"],
+        "partial": counts["partial"],
+        "stale": counts["stale"],
+        "pending": counts["pending"],
+        "unavailable": counts["unavailable"],
         "state": state,
         "label": label,
         "title": title,
@@ -84,33 +179,32 @@ HEAT_MEASURES = ("gex", "dex", "oi", "volume")
 HEAT_TEXT = {"gex": dollars_text, "dex": dollars_text, "oi": count_text, "volume": count_text}
 
 
-def _measure_values(cell: dict[str, Any], measure: str) -> list[float | None]:
-    """One heatmap row's values of `measure`, a value or None per column."""
-    if measure in ("oi", "volume"):  # {call, put, total}, or None where not known (_legs)
-        return [cp if cp is None else cp["total"] for cp in cell[measure]]
-    return list(cell[measure])
+def _totals(legs: list[CallPutTotal | None]) -> list[float | None]:
+    """One heatmap row's totals of a {call, put, total} measure, None where not known (_legs)."""
+    return [None if cp is None else cp["total"] for cp in legs]
 
 
 def _surface_view(
-    surf: dict[str, Any],
+    surf: GammaSurface,
+    exps: list[StampedColumn],
     spot_strike: float | None,
     scope: str,
     centre: float | None,
     shift: int,
     cols: int | None,
     expiry: str | None,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Return the heatmap the page draws: (the surface cut to its window, the view).
+) -> tuple[list[StampedColumn], list[float], list[ShownCell], HeatView]:
+    """Return the heatmap the page draws: its columns, its strikes, its cells and the view.
 
     Rows: _window.
-    Columns: the selected `expiry` alone; else for Auto the nearest `cols` (as many as the page
-    fits) that have not expired, for Wider twice that, expired ones after, for All every one;
-    with none unexpired, the expired ones (drawn labelled EXPIRED, a past observation). Each cell:
-    `spot` (the row at the price). The view: the window's centre and note, the coverage,
-    each measure's largest |value| drawn (the colour scale), and `missing_expiry` when the
-    selected expiry is not in the surface.
+    Columns (of `exps`, the grid's stamped): the selected `expiry` alone; else for Auto the
+    nearest `cols` (as many as the page fits) that have not expired, for Wider twice that,
+    expired ones after, for All every one; with none unexpired, the expired ones (drawn labelled
+    EXPIRED, a past observation). Each cell: `spot` (the row at the price), its strike and each
+    measure's values as the screen shows them. The view: the window's centre and note, the
+    coverage, each measure's largest |value| drawn (the colour scale), and `missing_expiry` when
+    the selected expiry is not in the surface.
     """
-    exps = surf["expirations"]
     every = list(range(len(exps)))
     unexpired = [j for j in every if not exps[j]["expired"]]
     if expiry:
@@ -122,55 +216,81 @@ def _surface_view(
     else:
         picked = (unexpired or every)[:cols]
     lo, hi, view = window(surf["strikes"], spot_strike, scope, centre, shift)
-
-    def pick(v: Any) -> Any:
-        return [v[j] for j in picked] if isinstance(v, list) else v
-
-    cells: list[dict[str, Any]] = [
-        {**{k: pick(v) for k, v in cell.items()}, "spot": cell["strike"] == spot_strike}
-        for cell in surf["cells"][lo : hi + 1]
-    ]
-    for cell in cells:  # its strike and each measure's values as the screen shows them
-        cell["strike_text"] = strike_text(cell["strike"])
-        cell["text"] = {
-            m: [HEAT_TEXT[m](v) for v in _measure_values(cell, m)] for m in HEAT_MEASURES
+    cells: list[ShownCell] = []
+    #: every value drawn, by measure: the colour scale reads them
+    drawn: dict[str, list[float | None]] = {m: [] for m in HEAT_MEASURES}
+    for cell in surf["cells"][lo : hi + 1]:
+        oi = [cell["oi"][j] for j in picked]
+        volume = [cell["volume"][j] for j in picked]
+        # each measure's value per column: GEX and DEX as held, open interest and volume in total
+        values: dict[str, list[float | None]] = {
+            "gex": [cell["gex"][j] for j in picked],
+            "dex": [cell["dex"][j] for j in picked],
+            "oi": _totals(oi),
+            "volume": _totals(volume),
         }
+        for m in HEAT_MEASURES:
+            drawn[m] += values[m]
+        cells.append(
+            {
+                "strike": cell["strike"],
+                "gex": values["gex"],
+                "dex": values["dex"],
+                "vanna": [cell["vanna"][j] for j in picked],
+                "oi": oi,
+                "volume": volume,
+                "contracts": [cell["contracts"][j] for j in picked],
+                "stream": [cell["stream"][j] for j in picked],
+                "spot": cell["strike"] == spot_strike,
+                # its strike and each measure's values as the screen shows them
+                "strike_text": strike_text(cell["strike"]),
+                "text": {m: [HEAT_TEXT[m](v) for v in values[m]] for m in HEAT_MEASURES},
+            }
+        )
     streams = [i for i, j in enumerate(picked) if not exps[j]["expired"]]
     max_abs: dict[str, float | None] = {}
     for m in HEAT_MEASURES:
-        known = [abs(v) for cell in cells for v in _measure_values(cell, m) if v is not None]
+        known = [abs(v) for v in drawn[m] if v is not None]
         max_abs[m] = max(known) if known else None
-    shown = {
-        **surf,
-        "strikes": surf["strikes"][lo : hi + 1],
-        "expirations": [exps[j] for j in picked],
-        "cells": cells,
-    }
-    return shown, {
-        **view,
-        "scope": scope,
-        "coverage": _stream_coverage(cells, streams, bool(picked) and not streams),
-        "max_abs": max_abs,
-        "missing_expiry": expiry if expiry and not picked else None,
-    }
+    return (
+        [exps[j] for j in picked],
+        surf["strikes"][lo : hi + 1],
+        cells,
+        {
+            **view,
+            "scope": scope,
+            "coverage": _stream_coverage(cells, streams, bool(picked) and not streams),
+            "max_abs": max_abs,
+            "missing_expiry": expiry if expiry and not picked else None,
+        },
+    )
 
 
-def _stamp_columns(surface: dict[str, Any], now: datetime) -> dict[str, Any]:
-    """Stamp the surface's expiration columns at `now` (ET; a browser never decides what day it is).
+def _stamp_columns(columns: list[SurfaceColumn], now: datetime) -> list[StampedColumn]:
+    """Stamp the grid's expiration `columns` at `now` (ET; a browser never decides what day it is).
 
     `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
     expired, by Schwab's daysToExpiration). No cell value is touched.
     """
     today = now.strftime("%Y-%m-%d")
-    exps = [dict(e, expired=e["expiry"] < today) for e in surface["expirations"]]
-    live_cols = [e for e in exps if not e["expired"] and e["dte"] is not None]
-    front = min(live_cols, key=lambda e: e["dte"])["expiry"] if live_cols else None
-    return {**surface, "expirations": [dict(e, front=e["expiry"] == front) for e in exps]}
+    dated = [
+        (e["dte"], e["expiry"]) for e in columns if e["expiry"] >= today and e["dte"] is not None
+    ]
+    front = min(dated, key=lambda nearest: nearest[0])[1] if dated else None
+    return [
+        {
+            "expiry": e["expiry"],
+            "dte": e["dte"],
+            "expired": e["expiry"] < today,
+            "front": e["expiry"] == front,
+        }
+        for e in columns
+    ]
 
 
 def gamma_surface(
     ticker: str, now: float, params: dict[str, Any], *, requested: bool
-) -> dict[str, Any]:
+) -> SurfacePanel | NoSurface | NotAvailable:
     """Return the heatmap: the strike x expiration surface the levels producer projected.
 
     The `surface` panel. Cell = net_gex_1pct, compute_exposures_by_strike; cut to the window the
@@ -182,15 +302,15 @@ def gamma_surface(
     """
     asked = window_asked(params)
     if isinstance(asked, str):
-        return unavailable(ticker, asked)
+        return not_available(ticker, asked)
     if "cols" not in params:
-        return unavailable(ticker, "the heatmap's window names no cols")
+        return not_available(ticker, "the heatmap's window names no cols")
     cols = params["cols"]
     if cols is not None and (isinstance(cols, bool) or not isinstance(cols, int) or cols < 1):
-        return unavailable(ticker, f"cols {cols!r} is not a whole number of columns")
+        return not_available(ticker, f"cols {cols!r} is not a whole number of columns")
     unreadable = expiry_unreadable(params)
     if unreadable is not None:
-        return unavailable(ticker, unreadable)
+        return not_available(ticker, unreadable)
     return gamma_surface_payload(
         ticker, *asked, cols, params["expiry"], datetime.fromtimestamp(now, ET), requested=requested
     )
@@ -206,7 +326,7 @@ def gamma_surface_payload(
     now: datetime,
     *,
     requested: bool,
-) -> dict[str, Any]:
+) -> SurfacePanel | NoSurface:
     """Return the heatmap's answer for ticker `tk` at `now` (the `surface` panel).
 
     With no live surface the answer is "unavailable" with the reason; there is no second source.
@@ -220,8 +340,15 @@ def gamma_surface_payload(
         spot_strike = nearest_strike(surf["strikes"], resolve_spot(tk, now=now.timestamp())[0])
         # the surface's state is the levels' (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE);
         # whether the cells on screen are streaming is the view's coverage
-        shown, view = _surface_view(
-            _stamp_columns(surf, now), spot_strike, scope, centre, shift, cols, expiry
+        columns, strikes, cells, view = _surface_view(
+            surf,
+            _stamp_columns(surf["expirations"], now),
+            spot_strike,
+            scope,
+            centre,
+            shift,
+            cols,
+            expiry,
         )
         return {
             # every cell Schwab listed is drawn: a cell without a value is None, drawn "-"
@@ -232,7 +359,16 @@ def gamma_surface_payload(
             "source": "terrain_live_cache",
             **verdict,
             "chain_basis": live.chain_basis,
-            **shown,
+            "expirations": columns,
+            "strikes": strikes,
+            "cells": cells,
+            "contracts_total": surf["contracts_total"],
+            "contracts_used": surf["contracts_used"],
+            "stream_overlay_contracts": surf["stream_overlay_contracts"],
+            "stream_overlay_symbols": surf["stream_overlay_symbols"],
+            "stream_overlay_computed_ts_utc": surf["stream_overlay_computed_ts_utc"],
+            "stream_by_expiry": surf["stream_by_expiry"],
+            "surface_seq": surf["surface_seq"],
             "view": view,
         }
 
@@ -260,11 +396,12 @@ def gamma_surface_payload(
         _why = ["the surface is projected when the daemon delivers this ticker's chain"]
     else:
         _why = ["no chain is fetched for this ticker: it is not on the watchlist"]
-    return unavailable(
-        tk,
-        " — ".join(r for r in _why if r),
-        symbol=tk,
-        source="unavailable",
-        warming=requested and _warming,
-        requested=requested,
-    )
+    return {
+        "ticker": tk,
+        "available": False,
+        "symbol": tk,
+        "source": "unavailable",
+        "warming": requested and _warming,
+        "requested": requested,
+        "reason": " — ".join(r for r in _why if r),
+    }
