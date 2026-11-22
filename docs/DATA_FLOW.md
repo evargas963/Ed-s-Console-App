@@ -359,12 +359,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   listed expiry's rows are its contracts alone, by Schwab's expirationDate
   (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the whole book, its
   charm the expiry's own charm map); All Expirations (null) is the whole book; an expiry the chain
-  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). The
-  migration compares the same expiry on the prior day; where that day did not list it, no strike is
-  compared and the migration says why. No fixed DTE bucket of ours stands in for the choice. The
-  walls, the flip and their moves since the prior close stay the whole book's: they are defined over
-  every contract, and Key Levels says all-exp beside a chosen expiry. Enforced by:
-  `tests/test_strikes_follow_the_expiry_v1.py`, `tests/test_data_path_confluence_v1.py`,
+  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). One
+  rule reads the expiry a request asks for, for every panel that takes one
+  (`push.strike_rows.expiry_unreadable`): a request that names no expiry is answered with why, never
+  read as one whose expiry is null. The migration compares the same expiry on the prior day; where
+  that day did not list it, no strike is compared and the migration says why. No fixed DTE bucket of
+  ours stands in for the choice. The walls, the flip and their moves since the prior close stay the
+  whole book's: they are defined over every contract, and Key Levels says all-exp beside a chosen
+  expiry. Enforced by: `tests/test_strikes_follow_the_expiry_v1.py`,
+  `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_data_path_confluence_v1.py`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
 - **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept

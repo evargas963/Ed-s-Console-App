@@ -15,7 +15,7 @@ from calc.terrain_engine import nearest_strike
 from numeric_contract import count_text, dollars_text, strike_text
 from push.answers import unavailable
 from push.spot import resolve_spot
-from push.strike_rows import window, window_asked
+from push.strike_rows import expiry_unreadable, window, window_asked
 from push.verdict import terrain_cache_get
 from time_et import ET
 
@@ -181,17 +181,18 @@ def gamma_surface(
     saying which. `ticker` is the levels' own key; `requested`, whether a page has it selected.
     """
     asked = window_asked(params)
-    cols, expiry = params.get("cols"), params.get("expiry")
     if isinstance(asked, str):
         return unavailable(ticker, asked)
-    if "cols" not in params or "expiry" not in params:
-        return unavailable(ticker, "the heatmap's window names no cols or no expiry")
+    if "cols" not in params:
+        return unavailable(ticker, "the heatmap's window names no cols")
+    cols = params["cols"]
     if cols is not None and (isinstance(cols, bool) or not isinstance(cols, int) or cols < 1):
         return unavailable(ticker, f"cols {cols!r} is not a whole number of columns")
-    if expiry is not None and not isinstance(expiry, str):
-        return unavailable(ticker, f"expiry {expiry!r} is not an expiry date")
+    unreadable = expiry_unreadable(params)
+    if unreadable is not None:
+        return unavailable(ticker, unreadable)
     return gamma_surface_payload(
-        ticker, *asked, cols, expiry, datetime.fromtimestamp(now, ET), requested=requested
+        ticker, *asked, cols, params["expiry"], datetime.fromtimestamp(now, ET), requested=requested
     )
 
 

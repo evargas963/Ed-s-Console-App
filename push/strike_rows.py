@@ -186,10 +186,14 @@ def served(row: BarRow, measure: str, marks: Mapping[str, float | None]) -> Serv
 def expiry_unreadable(params: dict[str, Any]) -> str | None:
     """Return why `params` name no expiry choice; None when they do.
 
-    The page sends `expiry`: an expiry date, or None for All Expirations (null).
+    The page sends `expiry`: an expiry date, or None (null) for the panel's own choice of no one
+    expiry (All Expirations; the chain's front one). An expiry not sent is not an expiry of None:
+    the request names none. Every panel that takes an expiry reads it by this one rule.
     """
-    expiry = params.get("expiry")
-    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
+    if "expiry" not in params:
+        return "the request names no expiry"
+    expiry = params["expiry"]
+    if not (expiry is None or isinstance(expiry, str)):
         return f"expiry {expiry!r} is not an expiry date or null"
     return None
 

@@ -855,7 +855,7 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     assert (asked["available"], asked["expiry"]) == (False, "2026-10-09")
     assert asked["reason"] == "the chain lists no open contracts for 2026-10-09"
     assert "rows" not in asked
-    assert unread["reason"] == "expiry None is not an expiry date or null"
+    assert unread["reason"] == "the request names no expiry"
 
 
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():

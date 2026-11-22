@@ -27,6 +27,7 @@ import time_et
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
 from calc.math_levels import compute_charm_by_strike
 from option_contract import read_chain
+from push import chain as push_chain
 from push import strike_bars as push_strike_bars
 from push import strikes as push_strikes
 from push import surface as push_surface
@@ -94,6 +95,7 @@ def test_charm_by_strike_unavailable_with_no_cached_chain():
         ({"centre": None, "shift": 0}, "scope None is not one of auto, wider, all"),
         ({"scope": "auto", "centre": None}, "shift None is not a whole number of rows"),
         ({"scope": "auto", "shift": 0, "expiry": None}, "the window names no centre"),
+        ({"scope": "auto", "centre": None, "shift": 0}, "the request names no expiry"),
         ({**AUTO, "expiry": 20261016}, "expiry 20261016 is not an expiry date or null"),
         ({**AUTO, "expiry": "2026-10-17"}, "the chain lists no contracts for 2026-10-17"),
     ],
@@ -129,6 +131,34 @@ def test_a_window_that_names_no_centre_is_said_never_read_as_following_the_price
     heat = push_surface.gamma_surface(TK, at, {**AUTO, "cols": None}, requested=False)
     assert heat["available"] is True and len(heat["cells"]) == 11
     assert push_surface.gamma_surface(TK, at, {**no_centre, "cols": None}, requested=False) == said
+
+
+def test_a_request_that_names_no_expiry_is_said_by_every_panel_in_the_same_words():
+    """One rule reads the expiry a request asks for (strike_rows.expiry_unreadable).
+
+    The page sends `expiry` with every such request, null for the panel's own choice of no one
+    expiry (ed-core.js windowAtExpiry). The strikes panel, both bar panels, the heatmap and the
+    chain's reader each answer a request without it with the rule's words, and an expiry that is
+    no date with its other words; a null expiry is read as before. The heatmap's `cols` is its
+    own key: without it the heatmap says so.
+    """
+    _put_live_chain()
+    at = CRWD.now.timestamp()
+    no_expiry = {"scope": "auto", "centre": None, "shift": 0}
+    missing, wrong = "the request names no expiry", "expiry 20261016 is not an expiry date or null"
+    assert push_strikes.strikes(TK, at, no_expiry)["reason"] == missing
+    for key in ("vanna", "charm"):
+        assert push_strike_bars.strike_bars(key, TK, at, no_expiry)["reason"] == missing
+    heat = {**no_expiry, "cols": None}
+    assert push_surface.gamma_surface(TK, at, heat, requested=False)["reason"] == missing
+    not_a_date = push_surface.gamma_surface(TK, at, {**heat, "expiry": 20261016}, requested=False)
+    assert not_a_date["reason"] == wrong
+    no_cols = push_surface.gamma_surface(TK, at, AUTO, requested=False)
+    assert no_cols["reason"] == "the heatmap's window names no cols"
+    assert push_chain.expiry_asked(TK, at, {}).reason == missing
+    assert push_chain.expiry_asked(TK, at, {"expiry": 20261016}).reason == wrong
+    front = push_chain.expiry_asked(TK, at, {"expiry": None})
+    assert front.reason is None and front.contracts
 
 
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():

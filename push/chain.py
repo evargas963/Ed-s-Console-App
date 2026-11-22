@@ -19,6 +19,7 @@ from calc.terrain_engine import LadderRow, chain_ladder
 from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
 from option_contract import OptionContract, chain_row
 from push.spot import resolve_spot
+from push.strike_rows import expiry_unreadable
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import level_store
 from state.level_store import PublishedLevels
@@ -179,8 +180,9 @@ def expiry_asked(t: str, now: float, params: dict[str, Any]) -> ExpiryAsked:
     def why(reason: str) -> ExpiryAsked:
         return ExpiryAsked(held, verdict, resolved, [], reason)
 
-    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
-        return why(f"expiry {expiry!r} is not an expiry date or null")
+    unreadable = expiry_unreadable(params)
+    if unreadable is not None:
+        return why(unreadable)
     if held is None:
         return why(level_store.chain_failure(t) or NO_CHAIN_YET)
     if not held.priced_chain:
