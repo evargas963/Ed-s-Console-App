@@ -344,7 +344,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Strike windows.** Every per-strike panel shows the rows `calc.terrain_engine.strike_window`
   picks: Auto 11 strikes, Wider 23, All every one, centred on the strike nearest the live price or
   the strike the operator panned to; with neither, the middle of the chain, with the note
-  `push.strike_rows.WINDOW_NO_PRICE`. The page sends the scope and pan and picks nothing.
+  `push.strike_rows.WINDOW_NO_PRICE`. The page sends the scope and pan and picks nothing: the scope,
+  the centre (a strike, or null to follow the price) and the shift with every window
+  (`EdShell.windowParams`). A request that names no centre is answered with why, never read as one
+  that follows the price (`push.strike_rows.window_asked`). Enforced by:
+  `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`.
 - **One expiry choice.** The strike views follow the expiry the operator picks in the one expiry
   dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`), shown on the
   Options and the Trade Desk bars: the heatmap, GEX by Strike, the Chart's GEX, DEX and OI profiles,
