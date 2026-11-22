@@ -15,9 +15,7 @@ does with a limit, Schwab to the stream's held contracts: tests/test_option_cont
 
 from __future__ import annotations
 
-import contextlib
 import json
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -96,11 +94,12 @@ def test_a_service_schwab_has_stated_no_limit_for_has_none(tmp_path, recorded, l
 
 
 def test_a_database_without_the_record_states_no_limit_and_holds_no_watchlist(tmp_path):
-    """A database that holds neither table yet (a first start reads before the writer writes)."""
+    """INDUCED: a database file with no table in it, as a start that ended before its writer wrote.
+
+    The record's tables are not there to read: no limit is stated and the watchlist is empty.
+    """
     db = tmp_path / "ed.db"
-    with contextlib.closing(sqlite3.connect(db)) as conn:
-        conn.execute("CREATE TABLE other (x)")
-        conn.commit()
+    db.touch()
     assert capture.stored_limits(db) == {} and capture.stored_watchlist(db) == []
 
 
