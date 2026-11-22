@@ -367,15 +367,10 @@ def test_a_windows_first_chains_request_that_fails_is_asked_again_by_the_next_ch
     assert delivered == ["2026-11-02 07:31", "2026-11-02 09:33"]
 
 
-def test_the_next_quotes_request_is_sent_as_an_answer_is_taken(tmp_path, schwab):
-    """Operator 2026-11-22: no request Schwab would take is left unasked.
+def _mrvl_queued(tmp_path, schwab):
+    """The sweep with MRVL's 2,432 contracts, none streamed, queued for their quotes.
 
-    MRVL's 2,432 contracts, none streamed, are nine quotes requests. INDUCED: Schwab's host
-    answers the second only once a fifth has arrived, and 503 after 5 seconds without one. The
-    fifth is sent as the first's answer is taken, while the second is still with Schwab, so
-    every request is answered and the chain is delivered. Sent four at a time with the next
-    four only after all four answers, the second would never be answered. The session holds no
-    more than REQUESTS_AT_ONCE (tests/test_instant_ui_blockers_a_v1.py).
+    Nine requests. Returns the sweep, what it publishes, its client and the queued symbols.
     """
     clock = et_ts("2026-10-01 10:00")
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock)
@@ -385,6 +380,20 @@ def test_the_next_quotes_request_is_sent_as_an_answer_is_taken(tmp_path, schwab)
     sweep.take_greeks(chain)
     queued = [ct["symbol"] for _chain, ct in sweep._queue]
     assert len(queued) == len(_MRVL) == 2432
+    return sweep, published, client, queued
+
+
+def test_the_next_quotes_request_is_sent_as_an_answer_is_taken(tmp_path, schwab):
+    """Operator 2026-11-22: no request Schwab would take is left unasked.
+
+    MRVL's nine quotes requests. INDUCED: Schwab's host answers the second only once a fifth has
+    arrived, and 503 after 5 seconds without one. The fifth is sent as the first's answer is
+    taken, while the second is still with Schwab, so every request is answered and the chain is
+    delivered. Sent four at a time with the next four only after all four answers, the second
+    would never be answered. The session holds no more than REQUESTS_AT_ONCE
+    (tests/test_instant_ui_blockers_a_v1.py).
+    """
+    sweep, published, client, queued = _mrvl_queued(tmp_path, schwab)
     schwab.quotes_hold = (queued[sc.QUOTES_BATCH_MAX], sc.REQUESTS_AT_ONCE + 1)
     sweep.send_quotes(client, threading.Event(), part_full=True)
     quotes = [r for r in schwab.requests if r[0] == QUOTES]
@@ -394,6 +403,24 @@ def test_the_next_quotes_request_is_sent_as_an_answer_is_taken(tmp_path, schwab)
     assert sum(1 for r in quotes if r[2] < held[3]) >= sc.REQUESTS_AT_ONCE + 1, (
         "a fifth request was sent while the second was still with Schwab"
     )
+
+
+def test_a_stop_sends_no_quotes_request_more_and_the_answers_asked_for_are_taken(tmp_path, schwab):
+    """A stop asked while quotes requests are with Schwab.
+
+    MRVL's nine quotes requests; the stop comes as the first answer is taken. The four already
+    sent are answered and taken, no fifth is sent, the contracts not asked for stay queued, and
+    nothing fails.
+    """
+    sweep, published, client, queued = _mrvl_queued(tmp_path, schwab)
+    stop = threading.Event()
+    publish = sweep.publish
+    sweep.publish = lambda topic, msg: (publish(topic, msg), topic == "optquotes" and stop.set())
+    sweep.send_quotes(client, stop, part_full=True)
+    assert len(schwab.asked(QUOTES)) == sc.REQUESTS_AT_ONCE
+    assert len([t for t, _m in published if t == "optquotes"]) == sc.REQUESTS_AT_ONCE
+    assert len(sweep._queue) == len(queued) - sc.REQUESTS_AT_ONCE * sc.QUOTES_BATCH_MAX
+    assert [m for _t, m in published if "failed" in m or "contracts" in m] == []
 
 
 def test_an_added_ticker_joins_the_rotation_in_its_turn(tmp_path, schwab):
