@@ -40331,7 +40331,8 @@
             "source_text": "Schwab NYSE_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "NYSE"
           },
           "NASDAQ_BOOK": {
             "status": "ok",
@@ -41010,7 +41011,8 @@
             "source_text": "Schwab NASDAQ_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Nasdaq"
           },
           "COMPOSITE": {
             "status": "ok",
@@ -41689,7 +41691,8 @@
             "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Composite"
           }
         },
         "disagree": {
@@ -42558,7 +42561,8 @@
             "source_text": "Schwab NYSE_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "NYSE"
           },
           "NASDAQ_BOOK": {
             "status": "ok",
@@ -43237,7 +43241,8 @@
             "source_text": "Schwab NASDAQ_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Nasdaq"
           },
           "COMPOSITE": {
             "status": "ok",
@@ -43916,7 +43921,8 @@
             "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Composite"
           }
         },
         "disagree": {

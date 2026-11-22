@@ -59,6 +59,7 @@ class ServedVenue(VenueCard):
     no_number_text: str | None
     no_number_head: str | None
     dedup_partial_text: str | None
+    name: str
 
 
 class LiquidityCard(TypedDict):
@@ -200,6 +201,8 @@ _AUCTION_TEXT: dict[str | None, str | None] = {
 
 #: the readout before any book has arrived: every venue no_book
 _NO_BOOKS = book_readout(dict.fromkeys(BOOK_VENUES))
+#: each venue of the Liquidity card as the card names it (the hover of its dot)
+VENUE_NAMES = {"NYSE_BOOK": "NYSE", "NASDAQ_BOOK": "Nasdaq", COMPOSITE: "Composite"}
 _LIVE_BOOK = "live book"
 
 
@@ -315,6 +318,7 @@ def liquidity_readout(t: str, now: float) -> LiquidityCard:
                 if r["dedup_partial"]
                 else None
             ),
+            "name": VENUE_NAMES[v],
         }
     return {
         "venues": venues,

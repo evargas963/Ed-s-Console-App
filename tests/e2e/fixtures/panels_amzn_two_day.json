@@ -76510,7 +76510,8 @@
             "source_text": "Schwab NYSE_BOOK \u00b7 no book for this symbol right now",
             "no_number_text": "No book for this symbol right now",
             "no_number_head": "NO BOOK",
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "NYSE"
           },
           "NASDAQ_BOOK": {
             "status": "ok",
@@ -77189,7 +77190,8 @@
             "source_text": "Schwab NASDAQ_BOOK \u00b7 live book",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Nasdaq"
           },
           "COMPOSITE": {
             "status": "ok",
@@ -77868,7 +77870,8 @@
             "source_text": "Schwab NASDAQ_BOOK \u00b7 composite, newest quote of each exchange \u00b7 book Thu 11/12 09:39 AM CT \u00b7 2s old \u00b7 not live",
             "no_number_text": null,
             "no_number_head": null,
-            "dedup_partial_text": null
+            "dedup_partial_text": null,
+            "name": "Composite"
           }
         },
         "disagree": {

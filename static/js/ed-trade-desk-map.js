@@ -707,7 +707,6 @@
   // The served order-imbalance readout (the book panel's `readout`): every number,
   // word, sentence and flag is the server's; the card picks the venue and depth to show and places
   // the dots, bars and lines on its boxes.
-  var LIQ_NAME = { NYSE_BOOK: "NYSE", NASDAQ_BOOK: "Nasdaq", COMPOSITE: "Composite" };
   function liqKey() {
     return S.liqVenue === "COMPOSITE" ? "COMPOSITE" : window.EdShell.getState().bookVenue;
   }
@@ -915,7 +914,7 @@
                 '" style="left:' +
                 liqLeft(p) +
                 '" title="' +
-                LIQ_NAME[k] +
+                esc(rd.venues[k].name) + // served: the venue as the card names it
                 " " +
                 esc(rd.venues[k].views[view].pct_text) +
                 '"></i>';

@@ -281,18 +281,39 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
   }) => {
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
-    for (const k of ["NYSE_BOOK", "NASDAQ_BOOK", "COMPOSITE"]) {
+    for (const [k, name] of [
+      ["NYSE_BOOK", "NYSE"],
+      ["NASDAQ_BOOK", "Nasdaq"],
+      ["COMPOSITE", "Composite"],
+    ]) {
       const dot = card(page).locator(".liq-dot." + k);
-      await expect(dot).toHaveAttribute(
-        "style",
-        "left:" + left(READOUT_LIVE.readout.venues[k].views["5"].pct),
-      );
+      const venue = READOUT_LIVE.readout.venues[k];
+      await expect(dot).toHaveAttribute("style", "left:" + left(venue.views["5"].pct));
+      // the dot's hover: the venue as the server names it, with its served percent
+      expect(venue.name).toBe(name);
+      await expect(dot).toHaveAttribute("title", name + " " + venue.views["5"].pct_text);
     }
     await expect(card(page).locator(".liq-dot.sel")).toHaveCount(1);
     await expect(card(page).locator(".liq-dot.COMPOSITE")).toHaveClass(/sel/);
     await expect(card(page).locator(".liq-gauge i")).toHaveAttribute(
       "style",
       "left:" + left(LIVE_COMP.touch_pct),
+    );
+    expect(errs).toEqual([]);
+  });
+
+  test("a venue dot's hover names the venue in the served words, whichever they are", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    // INDUCED: the live readout with NYSE_BOOK named in words the page has never held: the dot
+    // draws the served name and picks none
+    const renamed = JSON.parse(JSON.stringify(READOUT_LIVE));
+    renamed.readout.venues.NYSE_BOOK.name = "a name only the server says";
+    await openDesk(page, renamed);
+    await expect(card(page).locator(".liq-dot.NYSE_BOOK")).toHaveAttribute(
+      "title",
+      "a name only the server says " + renamed.readout.venues.NYSE_BOOK.views["5"].pct_text,
     );
     expect(errs).toEqual([]);
   });
