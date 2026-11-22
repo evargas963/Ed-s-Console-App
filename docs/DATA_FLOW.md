@@ -315,16 +315,21 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume
   profile's POC label (`volume_profile.poc_label`).
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
-  watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`),
-  taking those answers again for `chain_sweep.CHAINS_AGAIN_SEC`; `/chains` and `/quotes` requests go
-  `schwab_client.REQUESTS_AT_ONCE` together. A chain is asked while the option windows of Schwab's
-  /markets answer are open (`ChainSweep.chain_due`), and once more after the close. The rotation is
-  sorted, a ticker a page shows before each other one (`ChainSweep.rotation`). Greeks are never the
-  chain's (Schwab rounds them): a streamed contract takes the stream's, every other one its
-  `/quotes` answer, `schwab_client.QUOTES_BATCH_MAX` symbols a request (`ChainSweep.send_quotes`),
-  each answer to the console at once (`order_flow.state.push_rest_quotes`): every answer, since each
-  carries its own contracts (D3), and a contract keeps the answer received last. Each contract is
-  read once (`option_contract.read_chain`, in `chain_sweep.chain_messages`) → the bus in parts of
+  watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`) once
+  in an option window Schwab sends (its pre-market, then its regular session:
+  `time_et.option_window_began`) and once more after the ticker's option close, every other chain
+  taking those answers again (`ChainSweep.fetch_chain`): the contract list, terms and open interest
+  change once a day. `schwab_client.REQUESTS_AT_ONCE` of its `/chains` and `/quotes` requests are
+  with Schwab at a time, the next sent as an answer is taken (`ChainSweep.send_quotes`), and a
+  request answered 429 is sent once more (`chain_sweep.asked_again_if_refused`). A chain is asked
+  while the option windows of Schwab's /markets answer are open (`ChainSweep.chain_due`), and once
+  more after the close. The rotation is sorted, a ticker a page shows before each other one
+  (`ChainSweep.rotation`). Greeks are never the chain's (Schwab rounds them): a streamed contract
+  takes the stream's, every other one its `/quotes` answer, `schwab_client.QUOTES_BATCH_MAX` symbols
+  a request (`ChainSweep.send_quotes`), each answer to the console at once
+  (`order_flow.state.push_rest_quotes`): every answer, since each carries its own contracts (D3),
+  and a contract keeps the answer received last. Each contract is read once
+  (`option_contract.read_chain`, in `chain_sweep.chain_messages`) → the bus in parts of
   `chain_sweep.CHAIN_PART_CONTRACTS` → the console (`order_flow.streaming.assemble_chain_part`; a
   chain missing a part is never priced) → `server._on_chain` → the pricing thread. The first chain
   begun at or after a ticker's option close each day (`chain_sweep.capture_slot`) is the close

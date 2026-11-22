@@ -144,7 +144,10 @@ def chain_payload(ticker: str) -> dict:
 class LocalSchwab:
     """The local server, on HTTP/1.1.
 
-    `quotes_status`: the quotes endpoint's answer while not 200; `quotes_body`: while set, the
+    `quotes_status`: the quotes endpoint's answer while not 200; `throttle_quotes`: how many of
+    the next quotes requests are answered 429; `quotes_hold`: (a contract, n): the quotes request
+    that begins with it is answered only once n quotes requests have arrived, and 503 after 5
+    seconds without them; `quotes_body`: while set, the
     quotes endpoint answers 200 with these bytes as its body;
     `refuse_chain`: tickers whose next chain request is answered 502; `throttle_chain`: tickers
     whose next chain request is answered 429; `withheld`: symbols the
@@ -175,6 +178,10 @@ class LocalSchwab:
         self.expired: set[str] = set()
         self.edge = False
         self.quotes_status = 200
+        self.throttle_quotes = 0
+        self.quotes_hold: tuple[str, int] | None = None
+        self._quotes_arrived = threading.Condition()  # with how many quotes requests have come
+        self._quotes_seen = 0
         self.quotes_body: bytes | None = None
         self.refuse_chain: set[str] = set()
         self.throttle_chain: set[str] = set()
@@ -348,6 +355,19 @@ class LocalSchwab:
             return CHECKS[query["symbols"]]["status"], CHECKS[query["symbols"]]["body"]
         if self.quotes_status != 200:
             return self.quotes_status, {}
+        with self._quotes_arrived:
+            self._quotes_seen += 1
+            self._quotes_arrived.notify_all()
+            if self.throttle_quotes:
+                self.throttle_quotes -= 1
+                return 429, {}
+            hold = self.quotes_hold
+            if (
+                hold is not None
+                and query["symbols"].startswith(hold[0] + ",")
+                and not self._quotes_arrived.wait_for(lambda: self._quotes_seen >= hold[1], 5)
+            ):
+                return 503, {}
         if self.quotes_body is not None:
             return 200, self.quotes_body
         if self.quotes_together is not None:

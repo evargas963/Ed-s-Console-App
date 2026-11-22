@@ -260,14 +260,17 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   again changes what Schwab is asked and how fresh a start's first values are. Since
   `tests/test_data_path_rules_v1.py`
   `test_d5_a_ticker_selected_while_the_price_history_is_asked_has_its_own_next` the ticker on a page
-  no longer waits for the others' price history. `/chains` is asked again for each ticker and expiry
-  every `chain_sweep.CHAINS_AGAIN_SEC` (his setting: 22,297 requests for 202 ticker-expiries, 14
-  answered 429) though its contract list and open interest change once a day, but for a series an
-  exchange adds inside a session (`docs/SOURCES.md`, `sec-34-60365`). The 5-, 15- and 30-minute
-  price history is asked whole, ten days of bars, each time one bar completes (about 2,300
-  requests). `/quotes` is asked again with every chain for the symbols it named invalid (1,725 named
-  in 48 answers). Regular hours ran about 240 REST requests a minute, and Schwab support states 120
-  a minute for non-order endpoints (`schwab-support-2026-10-06`).
+  no longer waits for the others' price history. The 5-, 15- and 30-minute price history is asked
+  whole, ten days of bars, each time one bar completes (about 2,300 requests). `/quotes` is asked
+  again with every chain for the symbols it named invalid (1,725 named in 48 answers). The request
+  rate is his decision: raised until Schwab refuses a few requests, for every endpoint and every
+  pushed service, never held below what Schwab takes. Measured with four requests at once: 243 to
+  310 a minute in regular hours (2026-11-18 to 11-20), the four slots full 45% of the time before
+  `ChainSweep.send_quotes` kept them full; Schwab support states 120 a minute for non-order
+  endpoints (`schwab-support-2026-10-06`) and answered no `/quotes` request 429 at up to 515 in a
+  minute (1,339,785 requests, 2026-10-10 to 11-22). Next: a regular session measured at the full
+  four (429s, a round's time, the stream's lag), then `schwab_client.REQUESTS_AT_ONCE` up one step
+  at a time until Schwab refuses a few.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
   tolerance; depth to 5 levels); a book side with no levels has no depth total.

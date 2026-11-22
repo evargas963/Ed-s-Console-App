@@ -518,6 +518,12 @@ class _Swept:
                 break
         return time_et.elapsed()
 
+    def chain_requests(self, since: int) -> int:
+        """Return how many /chains requests Schwab's host received after its first `since`."""
+        return sum(
+            1 for path, *_ in self.schwab.requests[since:] if path == "/marketdata/v1/chains"
+        )
+
     def close(self) -> None:
         self.schwab.close()
 
@@ -748,33 +754,63 @@ def test_d5_at_the_option_close_a_ticker_is_fetched_once_more_then_nothing_until
     2026-10-08 counted a 15:59 request that arrived after the clock moved as one asked after
     the close.
     """
-
-    def chain_requests_since(mark: int) -> int:
-        return sum(
-            1 for path, *_ in swept.schwab.requests[mark:] if path == "/marketdata/v1/chains"
-        )
-
     swept = _Swept(tmp_path, "2026-10-02 16:14", ["SPY"])
     try:
         swept.until(2)
         closed = swept.move("2026-10-02 16:15:30")
         swept.until(len(swept.chains) + 2)
-        after_close = chain_requests_since(closed)
+        after_close = swept.chain_requests(closed)
         weekend = swept.move("2026-10-03 12:00")
         swept.until(len(swept.chains) + 1)
         swept.move("2026-10-05 09:29")
         swept.until(len(swept.chains) + 1)
-        quiet = chain_requests_since(weekend)
+        quiet = swept.chain_requests(weekend)
         opened, before_open = swept.move("2026-10-05 09:30"), len(swept.chains)
         swept.until(len(swept.chains) + 2)
         reopened = len(swept.chains) - before_open
-        asked_at_open = chain_requests_since(opened)
+        asked_at_open = swept.chain_requests(opened)
     finally:
         swept.close()
     assert after_close == 1, "one chain asked after the close: the close values"
     assert quiet == 0, "nothing asked through the weekend"
     assert reopened >= 2, "delivered again and again from Monday's option window"
     assert asked_at_open == 1, "its /chains answer asked once in the window, then taken again"
+
+
+def test_d5_the_list_and_the_open_interest_are_asked_once_in_an_option_window(tmp_path):
+    """Thursday 2026-10-01 into Friday: Schwab's /chains answer is asked once a window.
+
+    What the program reads of a /chains answer is the contract list, each contract's terms and
+    its open interest, which Schwab says is the prior trading day's all day
+    (docs/schwab/schwab_support_emails_2026_10_12.txt, item 5). It is asked at the first chain
+    of an option window and not again in that window, six minutes on or five minutes before the
+    close: every chain between takes it again and asks only for what moves, its quotes. It is
+    asked once more after the close, for the stored close values, and again at the next day's
+    window, for that day's open interest.
+    """
+    swept = _Swept(tmp_path, "2026-10-01 10:00", ["SPY"])
+    try:
+        swept.until(2)
+        at_first = swept.chain_requests(0)
+        later = swept.move("2026-10-01 10:06")
+        swept.until(len(swept.chains) + 2)
+        six_minutes_on = swept.chain_requests(later)
+        late = swept.move("2026-10-01 15:55")
+        swept.until(len(swept.chains) + 2)
+        before_the_close = swept.chain_requests(late)
+        closed = swept.move("2026-10-01 16:15:30")
+        swept.until(len(swept.chains) + 2)
+        after_the_close = swept.chain_requests(closed)
+        next_day, delivered = swept.move("2026-10-02 09:30"), len(swept.chains)
+        swept.until(len(swept.chains) + 2)
+        at_the_next_window = swept.chain_requests(next_day)
+        again = len(swept.chains) - delivered
+    finally:
+        swept.close()
+    assert at_first == 1, "asked at the window's first chain"
+    assert (six_minutes_on, before_the_close) == (0, 0), "not asked again in the same window"
+    assert after_the_close == 1, "asked once more for the close values"
+    assert (at_the_next_window, again) == (1, 2), "and once at the next window, for two chains"
 
 
 def test_d5_a_close_fetch_that_fails_is_tried_again_at_once_until_it_lands(tmp_path):
