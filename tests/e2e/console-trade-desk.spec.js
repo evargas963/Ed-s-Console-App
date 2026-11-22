@@ -36,6 +36,21 @@ const COMP = MICRO.readout.venues.COMPOSITE;
 const listed = (strikes) => strikes.today.map((r) => String(r.strike)).reverse();
 // the zone the price is inside (the liquidity panel's own spot_location)
 const INSIDE = LIQ.zones[LIQ.spot_location.inside];
+// the marks a panel of the levels' values is served with, as the page draws them: the price-level
+// snapshot's time and age, and the levels verdict (its state word, time and age)
+const snapshotMark = (d) => ["price levels", d.snapshot_time_ct, d.snapshot_age_text].join(" · ");
+const verdictMark = (d) =>
+  ["terrain", d.levels_state, d.levels_time_ct, d.levels_age_text].join(" · ");
+// push.liquidity.liquidity_snapshot's answer with no price levels published
+// (NO_PRICE_LEVELS_REASON): no zone, and why
+const NO_PRICE_LEVELS = {
+  ticker: "SPY",
+  available: false,
+  zones: [],
+  reason:
+    "no price levels published for this ticker for the market's session yet (they are " +
+    "built from its 1-minute bars on each new bar and at the console's start)",
+};
 // a level far above the candles' range: the GRC as the levels panel serves one
 const FAR_GRC = {
   id: "grc",
@@ -187,6 +202,13 @@ test("a level at 0 draws as a price: the map lists its zone, the desk its value 
       page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones),
     )
     .toBe(AT_ZERO.zones.length);
+  // no chain is published for the stand-in ticker, and the zones' marks say so as served: the
+  // snapshot's time and age, and the levels STALE with why on hover and no time to show
+  const asof = page.locator("#liqmSrc .asof");
+  expect([AT_ZERO.levels_time_ct, AT_ZERO.levels_age_text]).toEqual([null, null]);
+  await expect(asof).toHaveText([snapshotMark(AT_ZERO), "terrain · " + AT_ZERO.levels_state]);
+  await expect(asof.nth(1)).toHaveClass("asof stale");
+  await expect(asof.nth(1)).toHaveAttribute("title", AT_ZERO.levels_stale_reason);
   // each level type's hold rate as served, and what it is on hover
   const hold = page.locator(".liqm-hold");
   await expect(hold).toHaveAttribute("title", AT_ZERO.hold_note);
@@ -207,25 +229,23 @@ test("a level at 0 draws as a price: the map lists its zone, the desk its value 
 test("Liquidity map: a failed request is named, and an empty snapshot shows the served reason", async ({
   page,
 }) => {
-  // push.liquidity.liquidity_snapshot's answer with no price levels published (NO_PRICE_LEVELS_REASON), and
-  // the bars panel not produced (the program's words on the socket): the map says so for each,
-  // never draws a failure as an empty answer
-  const REASON =
-    "no price levels published for this ticker for the market's session yet (they are " +
-    "built from its 1-minute bars on each new bar and at the console's start)";
+  // the liquidity panel's answer with no price levels published, and the bars panel not produced
+  // (the program's words on the socket): the map says so for each, never draws a failure as an
+  // empty answer
   const barsWords = "the program could not produce this panel: RuntimeError: bars lock timed out";
   const liqWords = "the program could not produce this panel: KeyError: 'SPY'";
   const errs = watchErrors(page);
   await intercept(page);
-  deskPanels().liquidity = { ticker: "SPY", available: false, zones: [], reason: REASON };
+  deskPanels().liquidity = NO_PRICE_LEVELS;
   deskPanels().bars = { failed: barsWords };
   await openView(page, "liquidity", "map");
-  await expect(page.locator(".liqm-zones")).toContainText(REASON);
+  await expect(page.locator(".liqm-zones")).toContainText(NO_PRICE_LEVELS.reason);
   await expect(page.locator(".liqm-empty")).toHaveText(barsWords);
   deskPanels().liquidity = { failed: liqWords };
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".liqm-zones .sm")).toHaveText("-"); // no zones known: never "no zones for this session yet"
   await expect(page.locator(".liqm-empty")).toHaveText(liqWords + " · " + barsWords);
+  await expect(page.locator("#liqmSrc .asof")).toHaveCount(0); // no zones drawn: nothing to mark
   expect(errs).toEqual([]);
 });
 
@@ -246,6 +266,76 @@ test("Liquidity map: a list with no zone says the served words, words only the s
   deskPanels().liquidity = noZone("Words ONLY the server knows");
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".liqm-zones .sm")).toHaveText("Words ONLY the server knows");
+  expect(errs).toEqual([]);
+});
+
+test("Liquidity map: what the zones are made of is marked as served, live and after it stopped arriving", async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  const sock = await intercept(page);
+  await openView(page, "liquidity", "map");
+  const asof = page.locator("#liqmSrc .asof");
+  const zones = () =>
+    page.evaluate(() => window.EdLiquidityMap.state() && window.EdLiquidityMap.state().zones);
+  // SPY's zones during its session, served with the time and age of the price-level snapshot they
+  // are built from and the verdict of the option levels fused into them
+  expect(LIQ.levels_state).toBe("LIVE");
+  await expect(asof).toHaveText([snapshotMark(LIQ), verdictMark(LIQ)]);
+  await expect(asof.nth(1)).toHaveClass("asof live");
+  await expect.poll(zones).toBe(LIQ.zones.length);
+  // INDUCED: the same zones ten minutes on with no chain, bar, trade or heartbeat since (the keys
+  // that read differently, held to the route by tests/test_e2e_panels_two_day_v1.py). The last
+  // values stand; the verdict reads STALE with the chain's time, its age and why, and the
+  // snapshot is ten minutes older
+  const later = Object.assign({}, LIQ, REAL.later.liquidity);
+  expect([later.levels_state, later.levels_age_text]).toEqual(["STALE", "10m"]);
+  expect(later.snapshot_age_text).not.toBe(LIQ.snapshot_age_text);
+  deskPanels().liquidity = later;
+  sock.changed("liquidity");
+  await expect(asof).toHaveText([snapshotMark(later), verdictMark(later)]);
+  await expect(asof.nth(1)).toHaveClass("asof stale");
+  await expect(asof.nth(1)).toHaveAttribute("title", later.levels_stale_reason);
+  expect(await zones()).toBe(LIQ.zones.length);
+  // no price levels published: no zone is drawn, so nothing is marked
+  deskPanels().liquidity = NO_PRICE_LEVELS;
+  sock.changed("liquidity");
+  await expect(asof).toHaveCount(0);
+  await expect.poll(zones).toBe(0);
+  expect(errs).toEqual([]);
+});
+
+test("Liquidity map: a ticker switch leaves nothing of the last ticker: its zones, lines, price and badges", async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await intercept(page);
+  await routeWatchlist(page, ["SPY", "QQQ"]);
+  // the program sends SPY's panels and holds QQQ's back
+  const spyOnly = (panel) => (key, params, name) =>
+    key === "SPY" ? panel(key, params, name) : undefined;
+  const sent = deskPanels();
+  sent.liquidity = spyOnly(() => LIQ);
+  sent.levels = spyOnly(sent.levels);
+  sent.bars = spyOnly(sent.bars);
+  await openView(page, "liquidity", "map");
+  // the zones, whether a reference level is drawn (a line, or named at the pane's edge), the live
+  // price and whether bars are drawn
+  const drawn = () =>
+    page.evaluate(() => {
+      const s = window.EdLiquidityMap.state();
+      const edges = ["top", "bot"]
+        .map((e) => document.querySelector("#liqmBody .tvc-edge-" + e).textContent)
+        .join("");
+      return s && [s.zones, s.levels.length > 0 || edges !== "", s.livePrice, s.bars > 0];
+    });
+  await expect.poll(drawn).toEqual([LIQ.zones.length, true, SPOT, true]);
+  await expect(page.locator("#liqmSrc .asof")).toHaveCount(2);
+  await page.evaluate(() => window.EdShell.setTicker("QQQ"));
+  await expect.poll(drawn).toEqual([0, false, null, false]);
+  await expect(page.locator("#liqmSrc .asof")).toHaveCount(0);
+  await expect(page.locator(".liqm-zones .sm")).toHaveText("-");
+  await expect(page.locator(".liqm-hold")).toHaveCount(0);
   expect(errs).toEqual([]);
 });
 
@@ -1303,6 +1393,63 @@ test.describe("Trade Desk renders served values", () => {
     // the busiest strikes 757 and 760 against the put wall at 760: one below it, one at it, so
     // where they sit is not one place and is not known ("-"), never "inside" by default
     await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
+    expect(errs).toEqual([]);
+  });
+
+  test("Right Now: each card of levels shows their marks as served, live and after they stopped arriving", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "right-now");
+    const asof = (card) => page.locator("#tdBody " + card + " .asof");
+    const FRAME = ".td-stage.td-accent-green .chart-asof",
+      CONFIRM = ".td-stage.td-accent-amber .chart-asof",
+      MIGRATION = "#tdMigration .mig-chips";
+    // SPY's panels during its session (Right Now asks the levels at 1 minute). Frame's rows are
+    // the session's price levels and the gamma levels carried beside them: the snapshot's time
+    // and age and the levels verdict. Confirm and the migration: the verdict their own panel is
+    // served with. Detect draws no level and has no as-of line
+    const levels = REAL.levels["1"];
+    await expect(asof(FRAME)).toHaveText([snapshotMark(levels), verdictMark(levels)]);
+    await expect(asof(CONFIRM)).toHaveText([verdictMark(TERRAIN)]);
+    await expect(asof(MIGRATION)).toHaveText([verdictMark(STRIKES)]);
+    for (const card of [FRAME, CONFIRM, MIGRATION])
+      await expect(asof(card).last()).toHaveClass("asof live");
+    await expect(page.locator("#tdBody .td-stage.td-accent-blue .chart-asof")).toHaveCount(0);
+    // INDUCED: the same panels ten minutes on with no chain, bar, trade or heartbeat since: the
+    // levels' and the terrain's own later answers (the keys that read differently, held to the
+    // route by tests/test_e2e_panels_two_day_v1.py), and the strikes with that later verdict (the
+    // one verdict every panel serves). The last values stand, each card's marked STALE with the
+    // chain's time, its age and why
+    const laterLevels = Object.assign({}, levels, REAL.later.levels);
+    const laterTerrain = Object.assign({}, TERRAIN, REAL.later.terrain);
+    const laterStrikes = Object.assign({}, STRIKES, {
+      levels_state: laterTerrain.levels_state,
+      levels_stale_reason: laterTerrain.levels_stale_reason,
+      levels_age_text: laterTerrain.levels_age_text,
+    });
+    expect([laterTerrain.levels_state, laterTerrain.levels_age_text]).toEqual(["STALE", "10m"]);
+    deskPanels().levels = levelsAt(laterLevels);
+    deskPanels().terrain = laterTerrain;
+    deskPanels().strikes = laterStrikes;
+    for (const kind of ["levels", "terrain", "strikes"]) sock.changed(kind);
+    await expect(asof(FRAME)).toHaveText([snapshotMark(laterLevels), verdictMark(laterLevels)]);
+    await expect(asof(CONFIRM)).toHaveText([verdictMark(laterTerrain)]);
+    await expect(asof(MIGRATION)).toHaveText([verdictMark(laterStrikes)]);
+    for (const card of [FRAME, CONFIRM, MIGRATION]) {
+      await expect(asof(card).last()).toHaveClass("asof stale");
+      await expect(asof(card).last()).toHaveAttribute("title", laterTerrain.levels_stale_reason);
+    }
+    const body = page.locator("#tdBody");
+    await expect(body).toContainText("Max pain 757.00"); // SPY's nearest level, as before
+    await expect(body).toContainText("Call wall" + TERRAIN.call_wall_text);
+    // a ticker switch leaves nothing of the last ticker: its cards' values and their marks
+    for (const kind of ["book", "levels", "liquidity", "terrain", "strikes"])
+      deskPanels()[kind] = () => undefined; // the new ticker's panels are not sent yet
+    await page.evaluate(() => window.EdShell.setTicker("QQQ"));
+    await expect(page.locator("#tdBody .td-stage.td-accent-green .td-hero")).toHaveText("-");
+    await expect(page.locator("#tdBody .asof")).toHaveCount(0);
     expect(errs).toEqual([]);
   });
 

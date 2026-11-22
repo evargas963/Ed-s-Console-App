@@ -33,7 +33,9 @@
   // tilt's name as served (order_flow.TILT_WORDS); a hero with no tilt has neither
   var TILT_GLYPH = { BID_HEAVY: "▲", BALANCED: "", OFFER_HEAVY: "▼" };
   var TILT_CLS = { BID_HEAVY: "pos", BALANCED: "", OFFER_HEAVY: "neg" };
-  function stage(n, accentCls, title, hero, heroUnit, heroTilt, rows, badgeText, badgeCls) {
+  // `asof`: the as-of badges of the levels the card draws (served: their time, age and verdict),
+  // on their own line under the title; none for a card that draws no level
+  function stage(n, accentCls, title, hero, heroUnit, heroTilt, rows, badgeText, badgeCls, asof) {
     var dirGlyph = heroTilt ? TILT_GLYPH[heroTilt] : "";
     var dirCls = heroTilt ? TILT_CLS[heroTilt] : "";
     var h =
@@ -56,6 +58,7 @@
           "</span>"
         : "") +
       "</div>" +
+      (asof ? '<div class="chart-asof">' + asof + "</div>" : "") +
       '<div class="td-hero"><span class="' +
       dirCls +
       '">' +
@@ -191,6 +194,8 @@
       return [r.label, r.price_text, r.evidence_tier];
     });
     var heroVal = nearest.label + " " + nearest.price_text; // served: every level has its name
+    // the rows are the session's price levels and the gamma levels carried beside them: the
+    // snapshot's time and age and the levels verdict, each served with them
     return stage(
       2,
       "td-accent-green",
@@ -200,6 +205,9 @@
       null,
       rows,
       null,
+      null,
+      window.EdShell.snapshotBadge(levelsD, "price levels") +
+        window.EdShell.verdictBadge(levelsD, "terrain"),
     );
   }
 
@@ -233,7 +241,8 @@
     ];
     if (d.flip_note != null) rows.push(["Γ flip note", d.flip_note]); // served: the flip's note
     // the hero is the regime's name as the terrain panel serves it in words (regime_name), the
-    // Desk's Options card's own; the page draws no code
+    // Desk's Options card's own; the page draws no code. The levels verdict served with them is
+    // the card's badge
     return stage(
       3,
       "td-accent-amber",
@@ -242,6 +251,9 @@
       "",
       null,
       rows,
+      null,
+      null,
+      window.EdShell.verdictBadge(d, "terrain"),
     );
   }
 
@@ -525,14 +537,17 @@
           .join("") +
         "</div>";
     });
-    // the expiry these rows are (the one choice, made in the Options bar), and the ghost's switch
+    // the expiry these rows are (the one choice, made in the Options bar), the ghost's switch, and
+    // the levels verdict the rows are served with
     var chips =
       '<div class="mig-chips"><span class="mig-exp">' +
       esc(strikesD.expiry_text) +
       "</span>" +
       '<span class="mig-chip' +
       (_migGhost ? " on" : "") +
-      '" data-mig-ghost="1">GHOST</span></div>';
+      '" data-mig-ghost="1">GHOST</span>' +
+      window.EdShell.verdictBadge(strikesD, "terrain") +
+      "</div>";
     // what a session volume of 0 means, served (push.strikes._shown_migration)
     var volZero = mig.volume_zero_text;
     var volNote = volZero

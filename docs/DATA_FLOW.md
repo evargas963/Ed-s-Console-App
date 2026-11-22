@@ -313,7 +313,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   with each price row (`server.PRICED_PANELS`), since each level's distance and each zone's side are
   from the live price. What the Trade Desk chart draws from them is served whole: the prior
   session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume
-  profile's POC label (`volume_profile.poc_label`).
+  profile's POC label (`volume_profile.poc_label`). Both panels serve the snapshot's time and age
+  with its levels (`push.levels.snapshot_stamp`), and every screen that draws them shows both: the
+  Levels view in its two homes, Key Levels' price levels, the Liquidity map, Right Now's Frame and
+  the Desk's LEVELS pill. Enforced by: `tests/test_e2e_panels_two_day_v1.py`,
+  `tests/test_data_path_snapshot_time_v1.py`, `tests/e2e/console-gamma-levels.spec.js`,
+  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`.
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
   watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`) once
   in an option window Schwab sends (its pre-market, then its regular session:
@@ -352,11 +357,14 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   chain is valued at that close (`time_et.valuation_instant`) and the close values stand until the
   next open. The verdict (`push.verdict.terrain_staleness`): LIVE, CLOSE, STALE past two of the
   sweep's rounds, or NOT LIVE, with the levels' time and age. Each panel that serves the levels'
-  values serves that verdict with them and its tab shows it as its badge: Key Levels, the heatmap,
-  GEX by strike, Vanna and Charm by strike, the Chain, Strike Detail, Structures and the Options
-  Book (`tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`,
+  values serves that verdict with them and its screen shows it as its badge: Key Levels, the
+  heatmap, GEX by strike, Vanna and Charm by strike, the Chain, Strike Detail, Structures, the
+  Options Book, the Levels view in its two homes, the Liquidity map (its zones hold the option
+  levels) and Right Now's Frame, Confirm and migration (`tests/test_vanna_charm_by_strike_v1.py`,
+  `tests/test_option_book_v1.py`, `tests/test_e2e_panels_two_day_v1.py`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-options-book.spec.js`,
-  `tests/e2e/console-gamma-heatmap.spec.js`). Enforced by: `tests/test_instant_ui_blockers_a_v1.py`,
+  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-gamma-levels.spec.js`,
+  `tests/e2e/console-trade-desk.spec.js`). Enforced by: `tests/test_instant_ui_blockers_a_v1.py`,
   `tests/test_one_levels_producer_v1.py`, `tests/test_data_path_silent_price_v1.py`,
   `tests/test_data_path_startup_v1.py`, `tests/test_data_path_confluence_v1.py`,
   `tests/test_rest_quotes_reach_the_levels_v1.py`, `tests/test_data_path_chain_spot_v1.py`,

@@ -83,6 +83,15 @@
         return p.failed;
       });
     var zones = snap ? snap.zones : [];
+    // what the zones are made of, as served with them: the price-level snapshot's time and age
+    // and the option levels' verdict (its state, time and age, why on hover); none with no zones
+    // served (not sent yet, not produced, or no price levels published)
+    var src = document.getElementById("liqmSrc"),
+      marked = snap && snap.available !== false ? snap : null;
+    if (src)
+      src.innerHTML =
+        window.EdShell.snapshotBadge(marked, "price levels") +
+        window.EdShell.verdictBadge(marked, "terrain");
     c.setBars(
       barsD ? barsD.bars : [],
       barsD ? barsD.tf : _tf,
@@ -173,11 +182,15 @@
   var _panels = {},
     _panelsTicker = null;
   function load() {
-    var on = isMap();
+    var on = isMap(),
+      h = host();
     if (_panelsTicker !== ticker()) {
       _panelsTicker = ticker();
       _panels = {};
     }
+    // the map as held for the ticker on screen: of a new ticker nothing yet, so nothing of the
+    // last one's stays (its zones, lines, price and badges)
+    if (on && h) render(h, ticker());
     window.EdShell.showPanel("liquidity:map", on ? {} : null);
     window.EdShell.showPanel("levels:liquidity", on ? { tf: "1" } : null);
     window.EdShell.showPanel(

@@ -1881,6 +1881,11 @@
         border-top: none;
         padding-top: 0;
       }
+      /* a section's as-of badge: the served time and age, in their own case */
+      .kl-sec .asof {
+        margin-left: 6px;
+        text-transform: none;
+      }
       /* dealer-regime callout at the foot of the rail (matches the approved reference) */
       /* Key Levels tab chrome (Key Levels active; Details/Metrics/Context are IA shells) */
       .kl-h {
@@ -2780,7 +2785,8 @@
         overflow: hidden;
         padding: 0;
       }
-      #opbSrc {
+      #opbSrc,
+      #liqmSrc {
         display: flex;
         gap: 7px;
       }
@@ -3703,7 +3709,7 @@
                       ><span class="v" id="kl0PutCharm">-</span>
                     </div>
                     <div class="kl-scope" id="klFlipNote"></div>
-                    <div class="kl-sec">Price levels</div>
+                    <div class="kl-sec">Price levels<span id="klPriceSrc"></span></div>
                     <div class="kl-row">
                       <span class="k">Prior day high</span><span class="v" id="klPdh">-</span>
                     </div>
@@ -4242,7 +4248,9 @@
                 <div class="panel-h">
                   <span class="hticker" id="liqmTicker">-</span><span class="t">Liquidity Map</span
                   ><span class="sub">confluence-scored zones · reference levels · spot</span>
-                  <div class="r"><span class="prov derived">LIQUIDITY SNAPSHOT</span></div>
+                  <div class="r">
+                    <span id="liqmSrc"></span><span class="prov derived">LIQUIDITY SNAPSHOT</span>
+                  </div>
                 </div>
                 <div class="panel-b" id="liqmBody">
                   <div class="placeholder">

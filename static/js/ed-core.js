@@ -640,20 +640,37 @@
       '<span class="' + cls + '" title="' + _escBadge(title) + '">' + parts.join(" · ") + "</span>"
     );
   }
-  // A chain answer's badge: its served scope, in the words served with it, and the levels verdict
-  // served with it; '' after a failed read (null: no answer).
-  function chainScopeBadge(d) {
-    if (d === null) return "";
-    var sc = d.scope,
-      kind = sc.kind;
+  // The levels verdict a panel is served with (levels_state, the levels' time and age, why on
+  // hover; `title` when there is no why), as its badge under `label`; '' with no panel to read it
+  // from. Every screen that draws the levels' values draws it.
+  function verdictBadge(d, label, title) {
+    if (!d) return "";
     return asOfBadge({
-      label: "vendor · " + sc.kind_text,
+      label: label,
       state: d.levels_state,
       when: d.levels_time_ct,
       age: d.levels_age_text,
       reason: d.levels_stale_reason,
-      title: "chain scope: " + kind + (sc.reason ? " — " + sc.reason : ""),
+      title: title,
     });
+  }
+  // The price-level snapshot's time and age a panel is served with (snapshot_time_ct,
+  // snapshot_age_text), as its badge under `label`; '' with no panel to read them from, or with
+  // no snapshot published (no time served).
+  function snapshotBadge(d, label) {
+    if (!d || d.snapshot_time_ct == null) return "";
+    return asOfBadge({ label: label, when: d.snapshot_time_ct, age: d.snapshot_age_text });
+  }
+  // A chain answer's badge: its served scope, in the words served with it, and the levels verdict
+  // served with it; '' after a failed read (null: no answer).
+  function chainScopeBadge(d) {
+    if (d === null) return "";
+    var sc = d.scope;
+    return verdictBadge(
+      d,
+      "vendor · " + sc.kind_text,
+      "chain scope: " + sc.kind + (sc.reason ? " — " + sc.reason : ""),
+    );
   }
 
   // ================= watchlist: the one list, kept by the capture daemon =================
@@ -1818,6 +1835,8 @@
     panServed: panServed,
     wireStrikeAxis: wireStrikeAxis,
     asOfBadge: asOfBadge,
+    verdictBadge: verdictBadge,
+    snapshotBadge: snapshotBadge,
     chainScopeBadge: chainScopeBadge,
     chainEmptyText: chainEmptyText,
     placeholder: placeholder,
