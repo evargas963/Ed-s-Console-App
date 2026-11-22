@@ -149,6 +149,7 @@
     "server_received_ts": 1788202221.7171052
   },
   "put_call": null,
+  "put_call_text": null,
   "quote_time_ct": "Mon 08/31 01:50 PM CT",
   "quote_when_age_text": "Mon 08/31 01:50 PM CT \u00b7 0s",
   "spread_pts": 0.030000000000000027,
@@ -166,7 +167,9 @@
       },
       "replay": "not connected"
     },
-    "subscription_state": "SUBSCRIBED"
+    "subscription_active": false,
+    "subscription_state": "SUBSCRIBED",
+    "subscription_text": "NOT LIVE"
   },
   "strike_text": null,
   "top_feed_label": "NOT LIVE",

@@ -274,6 +274,11 @@ def test_flow_e2e_fixture_is_the_route_contract():
         fixture["status"] == "ok"
         and fixture["streaming_plane"]["subscription_state"] == "SUBSCRIBED"
     )
+    # held while its option market is not trading: the badge is served as that feed's own state,
+    # never ACTIVE, and the page picks no words
+    plane = fixture["streaming_plane"]
+    assert plane["feed_health"]["l1"]["state"] == "NOT LIVE"
+    assert (plane["subscription_active"], plane["subscription_text"]) == (False, "NOT LIVE")
     for k in (
         "tape_pressure_30s",
         "tape_pressure_2m",
@@ -293,10 +298,15 @@ def test_side_e2e_fixture_is_the_route_contract():
     assert _same(fixture, build_side_e2e_fixture_response()["sides"]), (
         "E2E side fixture drifted from the route; regenerate with write_flow_e2e_fixture()"
     )
-    assert {k: v["put_call"] for k, v in fixture.items()} == {
-        "SPY   261023C00761000": "CALL",
-        "SPY   261023P00762000": "PUT",
+    assert {k: (v["put_call"], v["put_call_text"]) for k, v in fixture.items()} == {
+        "SPY   261023C00761000": ("CALL", "Call"),
+        "SPY   261023P00762000": ("PUT", "Put"),
     }
+    # each held in regular hours with its feed live: the badge is served ACTIVE
+    assert {
+        (v["streaming_plane"]["subscription_active"], v["streaming_plane"]["subscription_text"])
+        for v in fixture.values()
+    } == {(True, "ACTIVE")}
 
 
 def test_the_chain_e2e_panels_are_the_producers_own():
@@ -338,7 +348,10 @@ def test_the_flow_header_is_served_from_the_contracts_chain_record():
     what is served and reads nothing from its own state.
     """
     served = build_side_e2e_fixture_response()["sides"]
-    assert {k: (v["put_call"], v["strike_text"], v["expiry"]) for k, v in served.items()} == {
-        "SPY   261023C00761000": ("CALL", "761", "2026-10-23"),
-        "SPY   261023P00762000": ("PUT", "762", "2026-10-23"),
+    assert {
+        k: (v["put_call"], v["put_call_text"], v["strike_text"], v["expiry"])
+        for k, v in served.items()
+    } == {
+        "SPY   261023C00761000": ("CALL", "Call", "761", "2026-10-23"),
+        "SPY   261023P00762000": ("PUT", "Put", "762", "2026-10-23"),
     }

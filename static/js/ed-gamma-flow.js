@@ -63,23 +63,13 @@
     else if (d.contract === _selected) render(h, _selected, d);
   });
 
-  // the queried contract's subscription, served (streaming_plane.subscription_state): ACTIVE
-  // only while the daemon holds it and that feed is live. A held contract that is not live reads
-  // its served state (OFFLINE: its feed down; NOT LIVE: its market not trading). The numbers stay.
-  // Anything else shows the served words.
-  function subState(plane) {
-    var s = plane.subscription_state,
-      l1 = plane.feed_health.l1; // each always served (streaming.get_option_contract_streaming_diagnostics)
-    if (s === "SUBSCRIBED" && l1.state === "LIVE") return { label: "ACTIVE", cls: "live" };
-    if (s === "SUBSCRIBED") return { label: l1.state, cls: "stale" };
-    return { label: s, cls: "stale" };
-  }
-
   function render(h, desired, d) {
     // each always served: streaming_plane (push.contract.options_microstructure), the book
-    // (engine.compute_book_microstructure) and the ONE flow block (live_payload.flow_block)
+    // (engine.compute_book_microstructure) and the ONE flow block (live_payload.flow_block).
+    // The queried contract's subscription is served as the badge says it
+    // (streaming_plane.subscription_text) with whether it is active (subscription_active: the
+    // daemon holds it and that feed is live); the page picks neither. The numbers stay.
     var plane = d.streaming_plane;
-    var ss = subState(plane);
     var tob = d.top_of_book;
     var depth = d.depth;
     var flow = d.flow; // the ONE flow block (never flattened)
@@ -176,7 +166,7 @@
       ],
     ];
     var fh = plane.feed_health; // served: the selected contract's three feeds
-    var dim = ss.label === "ACTIVE" ? "" : " fl-dim"; // not-active data recedes (never presented as live)
+    var dim = plane.subscription_active ? "" : " fl-dim"; // not-active data recedes (never presented as live)
     // Book/quote ages are served as text from the engine's `ages` block (classified); feed health
     // is the streaming plane — a binding/health fact with no classification (key undefined = no tag).
     var fresh = [
@@ -197,7 +187,7 @@
       ["Book upstream", fh.book.text, "streaming_plane.feed_health.book", undefined],
     ];
     h.innerHTML =
-      header(desired, ss, d) +
+      header(desired, plane, d) +
       '<div class="fl-grid">' +
       section("Top of book" + (d.top_outage ? " · " + d.top_feed_label : ""), rowsTob, "") +
       section("Book microstructure", rowsBook, dim) +
@@ -211,9 +201,9 @@
       "</div>";
   }
 
-  function header(desired, ss, d) {
-    // the chain record's side, strike and expiry, as the contract panel serves them
-    var putCall = d && d.put_call,
+  function header(desired, plane, d) {
+    // the chain record's side in words, strike and expiry, as the contract panel serves them
+    var side = d && d.put_call_text,
       strike = d && d.strike_text,
       expiry = d && d.expiry;
     return (
@@ -222,14 +212,14 @@
       esc(orDash(desired)) +
       "</span>" +
       '<span class="fl-meta">' +
-      (putCall === "CALL" ? "Call" : putCall === "PUT" ? "Put" : "-") +
+      esc(orDash(side)) + // served: the side as the header says it
       (strike != null ? " · " + strike : "") +
       (expiry ? " · " + esc(expiry) : "") +
       "</span></div>" +
       '<div class="fl-sub"><span class="fl-lab">Subscription</span><span class="fl-badge ' +
-      ss.cls +
+      (plane.subscription_active ? "live" : "stale") +
       '">' +
-      ss.label +
+      esc(plane.subscription_text) + // served: the badge's words
       "</span></div></div>"
     );
   }

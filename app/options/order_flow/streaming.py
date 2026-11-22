@@ -246,10 +246,13 @@ class FeedHealth(TypedDict):
 class StreamingPlane(TypedDict):
     """Whether the daemon streams a contract and is receiving it.
 
-    Built by get_option_contract_streaming_diagnostics.
+    Built by get_option_contract_streaming_diagnostics. `subscription_active`: it is held and its
+    LEVELONE_OPTIONS feed is live; `subscription_text`: the Flow panel's badge for it.
     """
 
     subscription_state: str
+    subscription_active: bool
+    subscription_text: str
     feed_health: FeedHealth
 
 
@@ -461,8 +464,9 @@ async def _beat_loop() -> None:
 
 #: a contract's subscription, as the Flow panel shows it: the daemon's option rule holds it on
 #: LEVELONE_OPTIONS, or it does not (capture.Daemon.pick_options streams each ticker's contracts
-#: the heatmap shows first)
+#: the heatmap shows first); and the badge's word for one held while its feed is live
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
+ACTIVE = "ACTIVE"
 
 
 def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> StreamingPlane:
@@ -472,16 +476,21 @@ def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> 
     (SUBSCRIBED / NOT STREAMED, from the symbols on the latest beat), and each feed by the one
     live rule
     (live_market_plane.live_state). A missing beat keeps that last subscription.
-    The feed health says whether it is live. The page paints ACTIVE only while that feed is live.
+    The feed health says whether it is live. The badge the page draws is served with it: ACTIVE
+    only while the contract is held and its LEVELONE_OPTIONS feed is live; a held contract whose
+    feed is not live reads that feed's state (OFFLINE: its feed down; NOT LIVE: its market not
+    trading); one not held reads NOT STREAMED.
     """
     c = ticker_storage_key(for_contract)
     levelone = _lmp.feed_now(now).held.get("LEVELONE_OPTIONS")
     l1 = _service_feed(c, "LEVELONE_OPTIONS", now)
     healthy = bool(FEED.running and l1["state"] == _lmp.LIVE)
+    subscribed = levelone is not None and c in levelone
+    active = subscribed and l1["state"] == _lmp.LIVE
     return {
-        "subscription_state": SUBSCRIBED
-        if levelone is not None and c in levelone
-        else NOT_STREAMED,
+        "subscription_state": SUBSCRIBED if subscribed else NOT_STREAMED,
+        "subscription_active": active,
+        "subscription_text": ACTIVE if active else l1["state"] if subscribed else NOT_STREAMED,
         "feed_health": {
             "replay": "healthy" if healthy else "stale" if FEED.running else "not connected",
             "l1": l1,
