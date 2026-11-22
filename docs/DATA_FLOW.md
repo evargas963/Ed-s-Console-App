@@ -344,7 +344,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Strike windows.** Every per-strike panel shows the rows `calc.terrain_engine.strike_window`
   picks: Auto 11 strikes, Wider 23, All every one, centred on the strike nearest the live price or
   the strike the operator panned to; with neither, the middle of the chain, with the note
-  `push.strike_rows.WINDOW_NO_PRICE`. The page sends the scope and pan and picks nothing.
+  `push.strike_rows.WINDOW_NO_PRICE`. The page sends the scope and pan and picks nothing: the scope,
+  the centre (a strike, or null to follow the price) and the shift with every window
+  (`EdShell.windowParams`). A request that names no centre is answered with why, never read as one
+  that follows the price (`push.strike_rows.window_asked`). Enforced by:
+  `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`.
 - **One expiry choice.** The strike views follow the expiry the operator picks in the one expiry
   dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`), shown on the
   Options and the Trade Desk bars: the heatmap, GEX by Strike, the Chart's GEX, DEX and OI profiles,
@@ -355,12 +359,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   listed expiry's rows are its contracts alone, by Schwab's expirationDate
   (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the whole book, its
   charm the expiry's own charm map); All Expirations (null) is the whole book; an expiry the chain
-  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). The
-  migration compares the same expiry on the prior day; where that day did not list it, no strike is
-  compared and the migration says why. No fixed DTE bucket of ours stands in for the choice. The
-  walls, the flip and their moves since the prior close stay the whole book's: they are defined over
-  every contract, and Key Levels says all-exp beside a chosen expiry. Enforced by:
-  `tests/test_strikes_follow_the_expiry_v1.py`, `tests/test_data_path_confluence_v1.py`,
+  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). One
+  rule reads the expiry a request asks for, for every panel that takes one
+  (`push.strike_rows.expiry_unreadable`): a request that names no expiry is answered with why, never
+  read as one whose expiry is null. The migration compares the same expiry on the prior day; where
+  that day did not list it, no strike is compared and the migration says why. No fixed DTE bucket of
+  ours stands in for the choice. The walls, the flip and their moves since the prior close stay the
+  whole book's: they are defined over every contract, and Key Levels says all-exp beside a chosen
+  expiry. Enforced by: `tests/test_strikes_follow_the_expiry_v1.py`,
+  `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_data_path_confluence_v1.py`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
 - **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept

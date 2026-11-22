@@ -266,6 +266,20 @@ def test_with_no_chain_held_the_panel_says_why():
     assert panel["available"] is False and panel["reason"]
 
 
+def test_a_window_that_names_no_centre_is_said_never_drawn_around_the_price():
+    """A request with no `centre` is not one whose centre is null (follow the price).
+
+    The page sends `centre` with every window (ed-core.js windowParams). Without it the panel
+    says which key the window does not name; with `centre` null it is Auto's 11 strikes around
+    the price, as before.
+    """
+    with held():
+        said = push_option_book.option_book(TK, AT, {"scope": "auto", "shift": 0, "expiry": None})
+        panel = push_option_book.option_book(TK, AT, AUTO)
+    assert said == {"ticker": TK, "available": False, "reason": "the window names no centre"}
+    assert panel["available"] is True and len(panel["rows"]) == 11
+
+
 @pytest.mark.parametrize(
     ("lean_value", "zone"),
     [

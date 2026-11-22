@@ -186,10 +186,14 @@ def served(row: BarRow, measure: str, marks: Mapping[str, float | None]) -> Serv
 def expiry_unreadable(params: dict[str, Any]) -> str | None:
     """Return why `params` name no expiry choice; None when they do.
 
-    The page sends `expiry`: an expiry date, or None for All Expirations (null).
+    The page sends `expiry`: an expiry date, or None (null) for the panel's own choice of no one
+    expiry (All Expirations; the chain's front one). An expiry not sent is not an expiry of None:
+    the request names none. Every panel that takes an expiry reads it by this one rule.
     """
-    expiry = params.get("expiry")
-    if "expiry" not in params or not (expiry is None or isinstance(expiry, str)):
+    if "expiry" not in params:
+        return "the request names no expiry"
+    expiry = params["expiry"]
+    if not (expiry is None or isinstance(expiry, str)):
         return f"expiry {expiry!r} is not an expiry date or null"
     return None
 
@@ -204,11 +208,14 @@ def window_asked(params: dict[str, Any]) -> tuple[str, float | None, int] | str:
 
     The page sends all three: the scope, one of SCOPES; the centre, a strike or None (follow the
     price); the shift, a whole number of rows. Parameters that ask for none of these: the words
-    saying which.
+    saying which. A centre not sent is not a centre of None: the window names none.
     """
-    scope, centre, shift = params.get("scope"), params.get("centre"), params.get("shift")
+    scope, shift = params.get("scope"), params.get("shift")
     if scope not in SCOPES:
         return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
+    if "centre" not in params:
+        return "the window names no centre"
+    centre = params["centre"]
     if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):
         return f"centre {centre!r} is not a strike"
     if isinstance(shift, bool) or not isinstance(shift, int):

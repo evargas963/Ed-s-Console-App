@@ -27,6 +27,7 @@ from numeric_contract import (
     strike_text,
 )
 from option_contract import OptionContract, StreamedGreeks, StreamedTop
+from push.answers import NotAvailable, not_available
 from time_et import ct_clock, ct_label, ct_ticks
 
 log = logging.getLogger(__name__)
@@ -98,14 +99,6 @@ class TapeRow(TypedDict):
     volume_text: str | None
     oi_text: str | None
     iv_text: str | None
-
-
-class NoHeatmap(TypedDict):
-    """The heatmap's answer when there is no book to draw: why."""
-
-    ticker: str
-    available: Literal[False]
-    reason: str
 
 
 class BookHeatmap(TypedDict):
@@ -401,7 +394,7 @@ def _heatmap_cells(
 
 def book_heatmap_for_ticker(
     ticker: str, venue: str, *, minutes: float = 60.0, books: RecentBooks = BOOKS
-) -> BookHeatmap | NoHeatmap:
+) -> BookHeatmap | NotAvailable:
     """Return the book-depth heatmap for one Schwab book of a ticker, `venue`.
 
     `venue` is NYSE_BOOK or NASDAQ_BOOK; the two are never merged. Its recent books binned into
@@ -409,18 +402,15 @@ def book_heatmap_for_ticker(
     a sum (a book is a full snapshot, so an unchanged resting level comes again with every other
     change). Every time is Schwab's BOOK_TIME (seconds): the window ends at the newest book's,
     never the wall clock, so outside market hours the last real session shows with its own
-    time. No interpolated cell.
+    time. No interpolated cell. With no book to draw: that there is none, and why
+    (push.answers.not_available).
     """
     sym = ticker_storage_key(ticker)
     if not sym:
-        return {"ticker": ticker, "available": False, "reason": "empty ticker"}
+        return not_available(ticker, "empty ticker")
     rows = books.window(sym, venue, minutes)
     if not rows:
-        return {
-            "ticker": sym,
-            "available": False,
-            "reason": f"no {venue} book with a price level since the console started",
-        }
+        return not_available(sym, f"no {venue} book with a price level since the console started")
 
     t0 = rows[0][0]
     span = rows[-1][0] - t0  # binning floors at 1s below; no invented span
