@@ -36,6 +36,7 @@ from calc.option_book import ZONES, lean, split
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
 from push import option_book as push_option_book
+from push import strike_rows
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
 from tests.feed_live_helper import ROUND_SEC, daemon_status, pushed
@@ -49,6 +50,9 @@ AT = REAL["at"]
 #: the windows the page asks: Auto and Wider, following the price, at the front expiry
 AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 WIDER = {**AUTO, "scope": "wider"}
+#: how long after AT the panel is read again with nothing renewed (INDUCED): ten minutes, past
+#: two of the daemon's chain rounds, so the levels read STALE
+LATER = 600.0
 #: each contract's newest stored book and option quote, as Schwab sent them
 BOOKS = {b["symbol"]: b["item"] for b in REAL["books"]}
 QUOTES = {q["symbol"]: q["item"] for q in REAL["option_quotes"]}
@@ -67,20 +71,21 @@ def _clear() -> None:
 
 
 @contextmanager
-def held(*, books_held: bool = True) -> Iterator[None]:
+def held(*, books_held: bool = True, priced: bool = True) -> Iterator[None]:
     """SPY's chain published and its messages taken in, as the console holds them at AT.
 
     `books_held` False: the daemon's status holds no contract on OPTIONS_BOOK (the books stand,
-    not live).
+    not live). `priced` False: SPY's price message is not taken in (no live price is held).
     """
     sessions = time_et.HELD.sessions
     time_et.HELD.sessions = {}  # the day's own answer, whatever else a test run holds
     _clear()
     try:
         time_et.record_markets(REAL["markets"]["body"])
-        lmp.record_from_level_one_equity(
-            TK, REAL["equity"]["item"], received_ts=REAL["equity"]["ts_recv"]
-        )
+        if priced:
+            lmp.record_from_level_one_equity(
+                TK, REAL["equity"]["item"], received_ts=REAL["equity"]["ts_recv"]
+            )
         lmp.record_feed_heartbeat(
             daemon_status(
                 AT,
@@ -130,19 +135,22 @@ def held(*, books_held: bool = True) -> Iterator[None]:
 
 
 def build_option_book_panels() -> dict:
-    """Return the `option_book` panel at AT in the Auto and the Wider window, as sent on the socket.
+    """Return the `option_book` panel as sent on the socket, in each state the browser tests draw.
 
-    The Options Book subview and the Trade Desk card ask it at the front expiry.
+    At AT in the Auto and the Wider window: the Options Book subview and the Trade Desk card ask
+    it at the front expiry. INDUCED on the same captures: the Auto window read LATER seconds on
+    with no chain, book or heartbeat since (`stale`), and read at AT with no live price held
+    (`no_price`).
     """
     with held():
-        return json.loads(
-            json.dumps(
-                {
-                    "auto": push_option_book.option_book(TK, AT, AUTO),
-                    "wider": push_option_book.option_book(TK, AT, WIDER),
-                }
-            )
-        )
+        panels = {
+            "auto": push_option_book.option_book(TK, AT, AUTO),
+            "wider": push_option_book.option_book(TK, AT, WIDER),
+            "stale": push_option_book.option_book(TK, AT + LATER, AUTO),
+        }
+    with held(priced=False):
+        panels["no_price"] = push_option_book.option_book(TK, AT, AUTO)
+    return json.loads(json.dumps(panels))
 
 
 def write_option_book_panels() -> None:
@@ -259,6 +267,54 @@ def test_books_that_stopped_stand_marked_not_live():
         f"{x['symbol']} is not streamed on Schwab OPTIONS_BOOK" for x in legs
     }
     assert panel["book_oldest_text"].startswith("oldest book ")
+
+
+def test_a_chain_no_longer_delivered_stands_marked_stale_with_its_time_and_age():
+    """INDUCED: the panel read LATER seconds on, with no chain, book or heartbeat since.
+
+    Its volumes and its listing are the chain's, so the levels' verdict is served with them: the
+    rows are the ones the live panel showed (the last values stand), the verdict says STALE with
+    the time the levels were priced, their age and why, and the books say their own state. The
+    Book tab draws both (tests/e2e/console-options-book.spec.js).
+    """
+    panels = build_option_book_panels()
+    live, stale = panels["auto"], panels["stale"]
+    assert (live["levels_state"], live["levels_age_text"]) == (lmp.LIVE, "0s")
+    assert stale["levels_state"] == "STALE"
+    assert stale["levels_time_ct"] == live["levels_time_ct"] == time_et.ct_label(AT)
+    assert stale["levels_age_text"] == "10m"
+    assert stale["levels_stale_reason"].startswith("levels are ")
+
+    def stands(panel: dict) -> list:
+        return [
+            (r["strike"], x["symbol"], x["bid"], x["ask"], x["volume"])
+            for r in panel["rows"]
+            for x in (r["call"], r["put"])
+        ]
+
+    assert stands(stale) == stands(live) and len(stands(live)) == 22
+    assert stale["book_state"] == lmp.OFFLINE and live["book_state"] == lmp.LIVE
+    assert all(x["book_live"] is False for r in stale["rows"] for x in (r["call"], r["put"]))
+
+
+def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
+    """INDUCED: SPY's price message not taken in, so no live price is held.
+
+    The window cannot be around the price: it is the 11 strikes around the middle one of the 120
+    Schwab listed, no row is marked as the price's, and the view says why. The Book tab draws
+    that note (tests/e2e/console-options-book.spec.js).
+    """
+    panel = build_option_book_panels()["no_price"]
+    listed = sorted({float(c["strikePrice"]) for c in LISTED})
+    middle = listed[len(listed) // 2]
+    assert len(listed) == 120 and middle == 740.0
+    assert panel["view"] == {
+        "centre": middle,
+        "centre_text": "740",
+        "note": strike_rows.WINDOW_NO_PRICE,
+    }
+    assert [r["strike"] for r in panel["rows"]] == [middle + n for n in range(5, -6, -1)]
+    assert not [r for r in panel["rows"] if r["marks"]]
 
 
 def test_with_no_chain_held_the_panel_says_why():
