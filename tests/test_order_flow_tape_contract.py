@@ -67,7 +67,7 @@ def _data(messages: list[dict]) -> ofe.FlowInput:
     return ofe.FlowInput(book=None, prints=state.prints(key))  # LEVELONE messages: no book
 
 
-def _tape(messages: list[dict]) -> list[dict]:
+def _tape(messages: list[dict]) -> list[l1.KeptPrint]:
     """Return the tape the engine reads from `messages` (OrderFlowEngine.compute's prints)."""
     return _data(messages).prints
 

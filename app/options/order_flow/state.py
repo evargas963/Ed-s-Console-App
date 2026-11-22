@@ -13,20 +13,17 @@ import logging
 import threading
 from collections import defaultdict, deque
 from collections.abc import Iterable
-from dataclasses import asdict
 from typing import Any
 
 from app.options.order_flow import history
 from calc.l1_trade_observation import (
-    TAPE_CLASSIFICATION,
-    TAPE_COMPLETENESS,
     VENDOR_LAST_PRICE,
     VENDOR_LAST_SIZE,
     VENDOR_TRADE_TIME,
+    KeptPrint,
     extract_vendor_print,
     is_adjacent_restatement,
     quote_in_force,
-    vendor_triple,
 )
 from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
@@ -50,9 +47,7 @@ class OrderFlowState:
         # each symbol's newest book from each Schwab service, the newest arrival last: a book
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
-        self._tape: dict[str, deque[dict[str, Any]]] = {}
-        self._prev_trade: dict[str, tuple[int | None, float | None, float | None]] = {}
-        self._receive_seq: dict[str, int] = {}
+        self._tape: dict[str, deque[KeptPrint]] = {}
         #: the bus's current records (stream_spine.MessageBus.current, bind): each symbol's top of
         #: book, Greeks and volume are read from them, never kept here
         self.current: dict[str, tuple[str, Any]] = {}
@@ -61,7 +56,7 @@ class OrderFlowState:
         """Return what Schwab `service` last sent of `symbol`, from its record on the bus."""
         return streamed_record(self.current.get(held_key(service, ticker_storage_key(symbol))))
 
-    def _get_tape(self, symbol: str) -> deque[dict[str, Any]]:
+    def _get_tape(self, symbol: str) -> deque[KeptPrint]:
         with self._lock:
             if symbol not in self._tape:
                 self._tape[symbol] = deque(maxlen=MAX_TAPE_PRINTS)
@@ -116,41 +111,32 @@ class OrderFlowState:
         trade = extract_vendor_print(content_item)
         if trade is None:
             return
-        key = vendor_triple(trade.time_millis, trade.price, trade.size)
         # the symbol's record on the bus, taken once: its newest quote and the one that replaced,
         # read from the same version of it
         record = self.current.get(held_key(service, sym))
         sent = streamed_record(record)
         with self._lock:
+            tape = self._get_tape(sym)
             # an adjacent repeat of the same trade is a restatement (l1_trade_observation): a
-            # whole record, or the merged record on a quote change; never a second print
-            if is_adjacent_restatement(self._prev_trade.get(sym), key):
+            # whole record, or the merged record on a quote change; never a second print. The
+            # trade before it is the tape's last print
+            if is_adjacent_restatement(tape[-1] if tape else None, trade):
                 return
-            self._prev_trade[sym] = key
-            self._receive_seq[sym] = self._receive_seq.get(sym, 0) + 1
-            self._get_tape(sym).append(
-                {
-                    **asdict(trade),
-                    "receive_seq": self._receive_seq[sym],
+            tape.append(
+                history.quoted(
+                    trade,
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
                     # unchanged price carries a new time and size but no LAST_PRICE (Change)
-                    "server_received_ts": float(
-                        max(received(f) for f in _PRINT_FIELDS if f in content_item)
-                    ),
-                    "classification": TAPE_CLASSIFICATION,
-                    "completeness": TAPE_COMPLETENESS,
+                    float(max(received(f) for f in _PRINT_FIELDS if f in content_item)),
                     # the bid and ask in force when the trade was made, by Schwab's own quote and
                     # trade times (never the quote that followed it), and the record's Greeks
-                    **history.quoted(
-                        trade.price,
-                        quote_in_force(trade.time_millis, sent.top, quote_before(record)),
-                        sent.greeks,
-                    ),
-                }
+                    quote_in_force(trade.time_millis, sent.top, quote_before(record)),
+                    sent.greeks,
+                )
             )
 
-    def prints(self, symbol: str) -> list[dict[str, Any]]:
+    def prints(self, symbol: str) -> list[KeptPrint]:
         """Return the symbol's tape: each print it kept, in receive order."""
         sym = ticker_storage_key(symbol)
         with self._lock:
@@ -163,7 +149,7 @@ class OrderFlowState:
             return self._book[sym].get(venue)
 
     def clear_all(self) -> None:
-        """Drop tape/book/top/prev-print identity for every symbol."""
+        """Drop every symbol's tape and books; with a tape goes the trade a restatement repeats."""
         with self._lock:
             self._clear_all_session_state_unlocked()
 
@@ -173,8 +159,6 @@ class OrderFlowState:
             values.clear()
         for values in self._book.values():
             values.clear()
-        self._prev_trade.clear()
-        self._receive_seq.clear()
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
@@ -185,8 +169,6 @@ class OrderFlowState:
             self._book.pop(sym, None)
             if sym in self._tape:
                 self._tape[sym].clear()
-            self._prev_trade.pop(sym, None)
-            self._receive_seq.pop(sym, None)
 
 
 _LIVE_STATE = OrderFlowState()
@@ -255,7 +237,7 @@ def push_level_one(
     )
 
 
-def prints(symbol: str) -> list[dict[str, Any]]:
+def prints(symbol: str) -> list[KeptPrint]:
     """Return the live singleton's tape of `symbol`: each print it kept, in receive order."""
     return _LIVE_STATE.prints(symbol)
 
@@ -266,7 +248,7 @@ def newest_book(symbol: str, venue: str) -> Book | None:
 
 
 def clear_all_live_state() -> None:
-    """Drop tape/book/top/prev-print identity for every symbol.
+    """Drop every symbol's tape and books.
 
     Required on stream disconnect/reconnect. Leaving the last window resident
     mixes pre-disconnect restatements with the new session.

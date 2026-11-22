@@ -19,7 +19,6 @@ import live_market_plane as lmp
 from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.state import OrderFlowState, streamed_record
 from calc import order_flow as ofe
-from calc.order_flow import OrderFlowEngine
 from option_contract import NO_TOP, StreamedTop
 from push import book as push_book
 from stream_spine import MessageBus, held_key
@@ -410,17 +409,6 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     assert m2b["depth"] == m2["depth"]
 
 
-def test_engine_and_route_read_the_same_canonical_state():
-    """OrderFlowEngine.compute carries the SAME book_microstructure the route serializes.
-
-    One faucet, not two producers.
-    """
-    data = _data()
-    out = OrderFlowEngine().compute(_read(data), now=1787233772.0)
-    route = _micro(data, now_ts=1787233772.0)
-    assert out["book_microstructure"]["depth"] == route["depth"]
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Top of book is carried, not resolved: the engine reads data["top"] (bid, ask, bid_size,
 # ask_size, mark), supplied by the caller as Schwab last sent it -- the equity's price row, or
@@ -517,7 +505,7 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         sent = {"key": "O01EQ", "BID_PRICE": 100.0, "ASK_PRICE": 100.02, "BID_SIZE": 3}
         record = on_the_bus(bus, EQ, {**sent, "ASK_SIZE": 4, "MARK": 100.01}, 1_000.0)
         apply_record(ofls._LIVE_STATE, EQ, record)
-        assert not any("BID_PRICE" in row or "ASK_PRICE" in row for row in ofls.prints("O01EQ"))
+        assert ofls.prints("O01EQ") == []  # a quote with no trade: no print is kept of it
         assert ofls.newest_book("O01EQ", "OPTIONS_BOOK") is None
         assert ofls.option_top("O01EQ") is NO_TOP
     finally:

@@ -28,7 +28,7 @@ import logging
 import queue
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import live_market_plane as _lmp
 import time_et
@@ -228,7 +228,32 @@ def _flow(sym: str) -> None:
         FEED.on_flow(sym)
 
 
-def _service_feed(symbol: str, service: str, now: float) -> dict[str, str]:
+class ServiceFeed(TypedDict):
+    """One Schwab option service's feed for a contract, as the page shows it (_service_feed)."""
+
+    state: str
+    text: str
+
+
+class FeedHealth(TypedDict):
+    """A contract's three feeds on the Flow panel: the console's own, and Schwab's two services."""
+
+    replay: str
+    l1: ServiceFeed
+    book: ServiceFeed
+
+
+class StreamingPlane(TypedDict):
+    """Whether the daemon streams a contract and is receiving it.
+
+    Built by get_option_contract_streaming_diagnostics.
+    """
+
+    subscription_state: str
+    feed_health: FeedHealth
+
+
+def _service_feed(symbol: str, service: str, now: float) -> ServiceFeed:
     """One Schwab option service's feed for contract `symbol` at `now`, as the page shows it.
 
     Its state by the one live rule (live_market_plane.live_state: LIVE, OFFLINE or NOT LIVE), and
@@ -440,7 +465,7 @@ async def _beat_loop() -> None:
 SUBSCRIBED, NOT_STREAMED = "SUBSCRIBED", "NOT STREAMED"
 
 
-def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> dict[str, Any]:
+def get_option_contract_streaming_diagnostics(for_contract: str, now: float) -> StreamingPlane:
     """Whether the daemon streams `for_contract` and is receiving it at `now`.
 
     This is distinct from the book's own content ages (options_live_payload): its subscription

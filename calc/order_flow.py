@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, TypedDict
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 
 from calc.l1_trade_observation import (
+    KeptPrint,
     compute_cum_delta_proxy,
     compute_tape_pressure,
     cum_delta_window,
@@ -91,7 +92,7 @@ class FlowInput:
 
     book: Book | None
     top: StreamedTop = NO_TOP
-    prints: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
+    prints: list[KeptPrint] = field(default_factory=list[KeptPrint])
     book_live: bool | None = None
     exchange_quote_ts: float | None = None
 
@@ -150,7 +151,7 @@ def _resolve_quote_mark(data: FlowInput) -> float | None:
 # ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
 # book EXACTLY ONCE into a normalized state; every metric is derived from that single
 # result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` is its one
-# producer: the book panel (`push.book.book`) and the engine both call it.
+# producer: the book panel (`push.book.book`) and a contract's Flow panel both call it.
 # Every field is classified NATIVE (a Schwab wire field), DERIVED (a deterministic function of
 # NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
 # absorption/iceberg (see `deferred`). No opaque composite score.
@@ -411,7 +412,8 @@ def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
 def compute_book_microstructure(data: FlowInput, *, now_ts: float) -> BookMicrostructure:
     """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
 
-    The ONE producer the engine and the book panel (`push.book.book`) both read.
+    The ONE producer the book panel (`push.book.book`) and a contract's Flow panel
+    (`app.options.order_flow.live_payload.options_live_payload`) both call.
     `data.book` is the newest book of its Schwab service (app.options.order_flow.state
     .newest_book) and `data.top` the top of book; `data.exchange_quote_ts` (optional) is
     the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
@@ -975,7 +977,7 @@ def _window_start_ms(now: float, window_sec: float) -> float:
 
 
 def _compute_cum_delta_slope(
-    prints: list[dict[str, Any]], now: float, window_sec: float = 60.0
+    prints: list[KeptPrint], now: float, window_sec: float = 60.0
 ) -> float | None:
     """Slope of the estimated cumulative delta in receive order (l1_trade_observation's walk)."""
     points = iter_signed_cum_points(prints, _window_start_ms(now, window_sec))
@@ -994,11 +996,10 @@ def _compute_cum_delta_slope(
 class EngineFlow(TypedDict):
     """What OrderFlowEngine.compute returns for one symbol.
 
-    The book's microstructure, each flow number with its text as the screen shows it, and the
-    window the cumulative delta sums.
+    Each flow number with its text as the screen shows it, and the window the cumulative delta
+    sums.
     """
 
-    book_microstructure: BookMicrostructure
     top_book_pressure: float | None
     tape_pressure_30s: float | None
     tape_pressure_2m: float | None
@@ -1026,12 +1027,11 @@ class OrderFlowEngine:
     """Order Flow Engine: computes metrics from Schwab data using only identified field paths."""
 
     def compute(self, data: FlowInput, *, now: float) -> EngineFlow:
-        """Compute the book microstructure and the tape flow of one symbol at `now`.
+        """Compute the tape flow of one symbol at `now`.
 
-        `now` is in epoch seconds; missing data yields None.
+        `now` is in epoch seconds; missing data yields None. The symbol's book is
+        compute_book_microstructure's, which a panel that shows both calls beside this.
         """
-        # the book, by its one producer (the book panel calls the same one)
-        book_micro = compute_book_microstructure(data, now_ts=now)
         prints = data.prints  # the tape, in receive order
         cum_first, cum_last = cum_delta_window(prints)
         ms = now * 1000.0
@@ -1050,9 +1050,6 @@ class OrderFlowEngine:
         slope = _compute_cum_delta_slope(prints, now)
 
         return {
-            # Carry the single canonical microstructure state so the route serializes THIS
-            # computed result (same book) rather than recomputing from raw data.
-            "book_microstructure": book_micro,
             "top_book_pressure": top,
             "tape_pressure_30s": pressure_30s,
             "tape_pressure_2m": pressure_2m,

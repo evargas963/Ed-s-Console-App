@@ -199,7 +199,7 @@ def _received(ts):
 
     It is on SPY's tape with that receive time.
     """
-    return lambda: any(r["server_received_ts"] == ts for r in ofls.prints("SPY"))
+    return lambda: any(r.server_received_ts == ts for r in ofls.prints("SPY"))
 
 
 @pytest.mark.usefixtures("feed")
@@ -319,10 +319,9 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.01, ts))
         assert await _until(_received(ts))
-        assert not any(
-            item.get("CLOSE_PRICE") == 1.0 or item.get("LAST_PRICE") == 1.05
-            for item in ofls.prints("SPY")
-        ), "the console applied a non-Schwab value"
+        assert not any(item.price in (1.0, 1.05) for item in ofls.prints("SPY")), (
+            "the console applied a non-Schwab value"
+        )
         sub = bus.subscribe("", policy=LATEST)  # a second reader, as the console's _bus_loop
         try:
             while True:

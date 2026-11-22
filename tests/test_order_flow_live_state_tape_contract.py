@@ -45,14 +45,12 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
         content = live_state.prints(sym)
     finally:
         live_state.clear_symbol(sym)
-    tape = [item for item in content if item["time_millis"] == first["item"]["TRADE_TIME_MILLIS"]]
+    tape = [item for item in content if item.time_millis == first["item"]["TRADE_TIME_MILLIS"]]
 
     assert len(tape) == 1
-    assert tape[0]["price"] == first["item"]["LAST_PRICE"]
-    assert tape[0]["size"] is None
-    assert tape[0]["time_millis"] == first["item"]["TRADE_TIME_MILLIS"]
-    assert tape[0]["completeness"] == live_state.TAPE_COMPLETENESS
-    assert tape[0]["receive_seq"] == 1
+    assert tape[0].price == first["item"]["LAST_PRICE"]
+    assert tape[0].size is None
+    assert tape[0].time_millis == first["item"]["TRADE_TIME_MILLIS"]
     assert l1.compute_cum_delta_proxy(content) is None
 
 

@@ -30,7 +30,9 @@ from pathlib import Path
 import app.options.order_flow.state as state
 import app.options.order_flow.streaming as ofs
 import calc.l1_trade_observation as l1
+from app.options.order_flow import history
 from calc import order_flow as ofe
+from option_contract import NO_GREEKS, NO_TOP
 from stream_spine import SERVICE_TOPIC, MessageBus, held_key, quote_msg
 
 _MSGS = json.loads(
@@ -157,7 +159,7 @@ def _tape() -> list:
 def test_every_trade_is_a_print_received_when_its_message_was():
     prints = _tape()
     want = _expected_prints()
-    got = [(p["server_received_ts"], p["price"], p["size"], p["time_millis"]) for p in prints]
+    got = [(p.server_received_ts, p.price, p.size, p.time_millis) for p in prints]
     assert got == want[-state.MAX_TAPE_PRINTS :]
     unchanged = [
         m["ts_recv"]
@@ -185,7 +187,7 @@ def test_each_print_is_signed_against_the_quote_its_record_held():
     got = [(size, signed) for _x, size, signed in l1._signed_walk(prints, None)]
     assert got == want
     # the quote carried on each print is Schwab's quote in force when it traded
-    assert [(p["bid"], p["ask"]) for p in prints] == [w["in_force"] for w in walked]
+    assert [(p.bid, p.ask) for p in prints] == [w["in_force"] for w in walked]
     assert sum(w["later"] for w in walked) == 105
     assert [w["in_force"] for w in walked].count(_NO_QUOTE) == 1 and walked[0]["size"] is None
     assert sum(w["in_force"] != w["same"] for w in walked) == 102
@@ -211,8 +213,8 @@ def test_the_cumulative_delta_and_its_unsigned_share_are_served():
 def test_a_print_with_no_quote_is_unsigned_and_nothing_signed_is_no_value():
     """No bid and ask, no sign; a tape of only unsigned prints has no cumulative delta, never 0."""
     prints = [
-        {"price": 754.38, "size": 100, "time_millis": 1, "bid": None, "ask": None},
-        {"price": 754.40, "size": 50, "time_millis": 2, "bid": None, "ask": None},
+        history.quoted(l1.TradePrint(price, size, ms), 0.0, NO_TOP, NO_GREEKS)
+        for price, size, ms in ((754.38, 100, 1), (754.40, 50, 2))
     ]
     assert l1.compute_cum_delta_proxy(prints) is None
     assert l1.unsigned_share(prints) == 1.0

@@ -95,7 +95,7 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
     }
     _push_l1("SPY", native, ts_recv=time_et.now())
 
-    assert any(item["price"] == 450.0 for item in ofls.prints("SPY"))
+    assert any(item.price == 450.0 for item in ofls.prints("SPY"))
     assert lmp.get_quote("SPY") is lmp.NO_QUOTE  # the price is the daemon's row, not a copy here
 
 
@@ -167,7 +167,7 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
 
     def prices(sym: str) -> list:
-        return [i["price"] for i in ofls.prints(sym)]
+        return [i.price for i in ofls.prints(sym)]
 
     assert 380.0 not in prices("SPY")
     assert 380.0 in prices("QQQ")

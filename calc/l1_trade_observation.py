@@ -15,23 +15,19 @@ adjacent identical (time, price, size) is a restatement: a subscription's whole
 record, or the bus's merged record re-sent on a quote change
 (docs/derived_register.md, "A print on the tape").
 
-Local receive_seq / server_received_ts distinguish received updates. They
-are not native trade identity.
+The receive time kept with a print (KeptPrint.server_received_ts) distinguishes
+received updates. It is not native trade identity.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, overload
+from typing import Any, NamedTuple, overload
 
 from numeric_contract import schwab_count, schwab_number
 from option_contract import NO_TOP, StreamedTop
 from time_et import et_date_str_from_ts_utc
-
-# Source classification — mechanical, not aspirational.
-TAPE_CLASSIFICATION = "PROXY_LEE_READY_L1"
-TAPE_COMPLETENESS = "INCOMPLETE_OBSERVATION"
 
 #: what the tape's pressure and cumulative delta are, shown on hover beside them
 TAPE_NOTE = (
@@ -53,21 +49,6 @@ VENDOR_LAST_SIZE = "LAST_SIZE"
 def _schwab_int(val: Any) -> int | None:
     v = schwab_number(val)
     return int(v) if v is not None else None
-
-
-def vendor_triple(
-    trade_ms: Any, price: Any, size: Any
-) -> tuple[int | None, float | None, float | None]:
-    """Vendor last-print key. Not a native trade id."""
-    return (_schwab_int(trade_ms), schwab_number(price), schwab_count(size))
-
-
-def is_adjacent_restatement(
-    prev: tuple[Any, ...] | None,
-    curr: tuple[Any, ...],
-) -> bool:
-    """Return True only when the immediately previous observation equals this vendor triple."""
-    return prev is not None and prev == curr
 
 
 #: how each field of the last print is read, as Schwab sends it (AGENTS.md rule 2)
@@ -107,6 +88,41 @@ def extract_vendor_print(item: dict[str, Any]) -> TradePrint | None:
         return None
     return TradePrint(
         price=price, size=sent.get(VENDOR_LAST_SIZE), time_millis=sent.get(VENDOR_TRADE_TIME)
+    )
+
+
+class KeptPrint(NamedTuple):
+    """A print as the tape keeps it (app.options.order_flow.history.quoted), in receive order.
+
+    The trade Schwab sent (a TradePrint's three values); when the daemon received the message
+    that carried it; the bid and ask in force when it traded, with their sizes (quote_in_force);
+    the record's streamed volume, volatility and delta then; and where the trade landed against
+    that bid and ask (history.quoted's own words: a comparison, never a buy or a sell).
+    """
+
+    price: float
+    size: float | None
+    time_millis: int | None
+    server_received_ts: float
+    bid: float | None
+    bid_size: float | None
+    ask: float | None
+    ask_size: float | None
+    volume: float | None
+    iv: float | None
+    delta: float | None
+    landed: str
+
+
+def is_adjacent_restatement(prev: KeptPrint | None, trade: TradePrint) -> bool:
+    """Return whether `trade` restates `prev`, the print kept just before it (None: none kept).
+
+    The same time, price and size: Schwab's last-print values, not a native trade id.
+    """
+    return prev is not None and (prev.time_millis, prev.price, prev.size) == (
+        trade.time_millis,
+        trade.price,
+        trade.size,
     )
 
 
@@ -173,14 +189,12 @@ type _Walked[T] = tuple[T, float, float | None]
 
 @overload
 def _signed_walk(
-    prints: list[dict[str, Any]], cutoff_ms: float
+    prints: list[KeptPrint], cutoff_ms: float
 ) -> Iterator[_Walked[float]]: ...  # a window start: every print in it has a trade time
 @overload
+def _signed_walk(prints: list[KeptPrint], cutoff_ms: None) -> Iterator[_Walked[float | None]]: ...
 def _signed_walk(
-    prints: list[dict[str, Any]], cutoff_ms: None
-) -> Iterator[_Walked[float | None]]: ...
-def _signed_walk(
-    prints: list[dict[str, Any]], cutoff_ms: float | None
+    prints: list[KeptPrint], cutoff_ms: float | None
 ) -> Iterator[_Walked[float | None]]:
     """Walk the prints by Lee and Ready (trade_sign); THE one signed-size walk.
 
@@ -192,21 +206,18 @@ def _signed_walk(
     prev_price: float | None = None
     last: int | None = None
     for p in prints:
-        t: float | None = p.get("time_millis")
-        price: float | None = p.get("price")
-        size: float | None = p.get("size")
-        tick = tick_rule_sign(prev_price, price, last)
-        sign = trade_sign(price, p.get("bid"), p.get("ask"), tick)
+        t, size = p.time_millis, p.size
+        tick = tick_rule_sign(prev_price, p.price, last)
+        sign = trade_sign(p.price, p.bid, p.ask, tick)
         in_window = cutoff_ms is None or (t is not None and t >= cutoff_ms)
         if in_window and size is not None:
             yield t, size, None if sign is None else sign * float(size)
         if tick is not None:
             last = tick
-        if price is not None:
-            prev_price = price
+        prev_price = p.price
 
 
-def unsigned_share(prints: list[dict[str, Any]], cutoff_ms: float | None = None) -> float | None:
+def unsigned_share(prints: list[KeptPrint], cutoff_ms: float | None = None) -> float | None:
     """Return the share of the size traded at or after `cutoff_ms` that _signed_walk left unsigned.
 
     0 to 1; None when no size traded in it.
@@ -218,9 +229,7 @@ def unsigned_share(prints: list[dict[str, Any]], cutoff_ms: float | None = None)
     return sum(size for _x, size, signed in walk if signed is None) / total
 
 
-def iter_signed_cum_points(
-    prints: list[dict[str, Any]], cutoff_ms: float
-) -> list[tuple[float, float]]:
+def iter_signed_cum_points(prints: list[KeptPrint], cutoff_ms: float) -> list[tuple[float, float]]:
     """Return (trade time in seconds, cumulative signed size) at each print of the walk.
 
     It is for the slope of the cumulative delta: the prints traded at or after `cutoff_ms`
@@ -235,7 +244,7 @@ def iter_signed_cum_points(
     return points
 
 
-def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> float | None:
+def compute_cum_delta_proxy(prints: list[KeptPrint]) -> float | None:
     """Sum the signed size over every print with a size (a size of 0 adds 0).
 
     None when no print was signed: nothing classified is no value, never 0. The prints it sums
@@ -247,7 +256,7 @@ def compute_cum_delta_proxy(prints: list[dict[str, Any]]) -> float | None:
     return sum(signed for _x, _size, signed in walk if signed is not None)
 
 
-def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float | None]:
+def cum_delta_window(prints: list[KeptPrint]) -> tuple[float | None, float | None]:
     """(first, last) Schwab trade time, epoch seconds, of the prints compute_cum_delta_proxy sums.
 
     Those are the prints with a size and a trade time: the window the cumulative delta covers.
@@ -255,15 +264,13 @@ def cum_delta_window(prints: list[dict[str, Any]]) -> tuple[float | None, float 
     what the tape holds -- no clock resets it -- so it is served beside the number.
     """
     times = [
-        p["time_millis"] / 1000.0
-        for p in prints
-        if p.get("size") is not None and p.get("time_millis") is not None
+        p.time_millis / 1000.0 for p in prints if p.size is not None and p.time_millis is not None
     ]
     return (min(times), max(times)) if times else (None, None)
 
 
 def compute_tape_pressure(
-    prints: list[dict[str, Any]], window_sec: float, now_ms: float
+    prints: list[KeptPrint], window_sec: float, now_ms: float
 ) -> float | None:
     """Return the signed size over the size of the signed prints traded in the window.
 
