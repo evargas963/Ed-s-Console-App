@@ -21134,9 +21134,6 @@
     ],
     "contracts_total": 12996,
     "contracts_used": 12996,
-    "stream_overlay_contracts": 0,
-    "stream_overlay_symbols": [],
-    "stream_overlay_computed_ts_utc": 1794497441.934527,
     "stream_by_expiry": {
       "2026-11-12": "unavailable",
       "2026-11-13": "unavailable",
@@ -21414,9 +21411,6 @@
     ],
     "contracts_total": 12996,
     "contracts_used": 12996,
-    "stream_overlay_contracts": 0,
-    "stream_overlay_symbols": [],
-    "stream_overlay_computed_ts_utc": 1794497441.934527,
     "stream_by_expiry": {
       "2026-11-12": "unavailable",
       "2026-11-13": "unavailable",
@@ -22053,9 +22047,6 @@
     ],
     "contracts_total": 12996,
     "contracts_used": 12996,
-    "stream_overlay_contracts": 0,
-    "stream_overlay_symbols": [],
-    "stream_overlay_computed_ts_utc": 1794497441.934527,
     "stream_by_expiry": {
       "2026-11-12": "unavailable",
       "2026-11-13": "unavailable",

@@ -7,14 +7,14 @@ import logging
 import sqlite3
 import threading
 import time
-from collections.abc import AsyncGenerator, Callable, Collection, Iterable, Mapping
+from collections.abc import AsyncGenerator, Callable, Collection, Iterable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
-from typing import Annotated, Any, NamedTuple, TypedDict
+from typing import Annotated, Any, Literal, NamedTuple, TypedDict
 
 from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -92,7 +92,19 @@ from push.verdict import (
     terrain_cache_get,
 )
 from state import bar_store, capture_store, cross_store, level_store
-from state.level_store import PublishedLevels, published_levels
+from state.level_store import (
+    CallPutTotal,
+    CellContracts,
+    CellStream,
+    GammaSurface,
+    GridCell,
+    ProjectedCell,
+    ProjectedSurface,
+    PublishedLevels,
+    StreamLegs,
+    SurfaceColumn,
+    published_levels,
+)
 from state.price_level_store import (
     canonical_price_level_snapshot,
     materialize_price_level_snapshot,
@@ -473,6 +485,8 @@ def _overlaid_symbols(pre: list[OptionContract], post: list[OptionContract]) -> 
 
 
 _STREAM_STATE_ORDER = ("stale", "pending")
+#: a cell's two legs, by their key in its contracts and in its stream state
+_SIDES: tuple[Literal["call"], Literal["put"]] = ("call", "put")
 
 
 def _stream_state_of(states: list[str]) -> str:
@@ -506,15 +520,17 @@ def _stream_cell_title(state: str, ts_recv: float | None) -> str | None:
 
 
 def _stamp_gamma_surface_cell_stream_state(
-    surface: dict[str, Any],
+    grid: Sequence[ProjectedCell],
+    expirations: list[SurfaceColumn],
     streamed: dict[str, Streamed],
     overlay_symbols: Collection[str],
     held_symbols: Collection[str],
-) -> dict[str, Any]:
-    """`surface` with per-leg (call/put) and per-cell STREAM state on its cells and columns.
+) -> tuple[list[GridCell], dict[str, str]]:
+    """Return a grid's cells with their per-leg (call/put) and per-cell STREAM state.
 
-    It never touches a cell's computed value (project_gamma_surface is the one exposure
-    computation); it says whether a streamed Schwab value backs it now.
+    With them, each expiry column's state from its cells' (the column header's status). It never
+    touches a cell's computed value (project_gamma_surface is the one exposure computation); it
+    says whether a streamed Schwab value backs it now.
 
     `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
     ticker (order_flow.state.streamed_values); `overlay_symbols`: those the feed is delivering now
@@ -531,14 +547,17 @@ def _stamp_gamma_surface_cell_stream_state(
     partial when some are, else the first of stale > pending present, else unavailable. A strike
     the expiry does not list has no contract and so no state: its place in `stream` is None.
     """
-    cells: list[dict[str, Any]] = []
-    for cell in surface["cells"]:
-        state_row: list[dict[str, Any] | None] = []
-        for pair in cell["contracts"]:  # {call, put} for every column (_gamma_surface_cell_fields)
-            legs: dict[str, Any] = {}
+    cells: list[GridCell] = []
+    by_column: list[list[str]] = [[] for _ in expirations]  # each column's cell states
+    for cell in grid:
+        state_row: list[CellStream | None] = []
+        # {call, put} for every column (_gamma_surface_cell_fields)
+        for j, pair in enumerate(cell["contracts"]):
+            legs: StreamLegs = {}
             leg_states: list[str] = []
-            for side in ("call", "put"):
-                sym = pair.get(side)
+            received: list[float] = []
+            for side in _SIDES:
+                sym = pair[side]
                 if not sym:
                     continue
                 greeks = streamed[sym].greeks if sym in streamed else NO_GREEKS
@@ -551,29 +570,21 @@ def _stamp_gamma_surface_cell_stream_state(
                 else:
                     leg_state = "unavailable"
                 leg_states.append(leg_state)
-                legs[side] = {
-                    "symbol": sym,
-                    "state": leg_state,
-                    "ts_recv": greeks.newest_ts(),
-                }
+                ts_recv = greeks.newest_ts()
+                if ts_recv is not None:
+                    received.append(ts_recv)
+                legs[side] = {"symbol": sym, "state": leg_state, "ts_recv": ts_recv}
             if not leg_states:  # the expiry lists no contract at this strike: nothing streams
                 state_row.append(None)
                 continue
-            received = [leg["ts_recv"] for leg in legs.values() if leg["ts_recv"] is not None]
-            legs["state"] = _stream_state_of(leg_states)
-            legs["title"] = _stream_cell_title(legs["state"], min(received) if received else None)
-            state_row.append(legs)
+            state = _stream_state_of(leg_states)
+            title = _stream_cell_title(state, min(received) if received else None)
+            state_row.append({**legs, "state": state, "title": title})
+            by_column[j].append(state)
         cells.append({**cell, "stream": state_row})
-    return {
-        **surface,
-        "cells": cells,
-        # each expiry column's state, from its cells' states -- the column header's status
-        "stream_by_expiry": {
-            e["expiry"]: _stream_state_of(
-                [row["stream"][j]["state"] for row in cells if row["stream"][j]]
-            )
-            for j, e in enumerate(surface["expirations"])
-        },
+    return cells, {
+        e["expiry"]: _stream_state_of(states)
+        for e, states in zip(expirations, by_column, strict=True)
     }
 
 
@@ -655,7 +666,7 @@ def flow_changed(sym: str) -> None:
         live_ui.changed(app.state, tk, *(OPTION_PANELS if vendor_option_root(sym) else FLOW_PANELS))
 
 
-def _surface_symbols(surface: dict[str, Any]) -> list[str]:
+def _surface_symbols(surface: GammaSurface) -> list[str]:
     """Return every contract a heatmap's cells name."""
     return [
         s
@@ -707,8 +718,15 @@ def restamp_open_surfaces(now: float) -> None:
         held = key[1]
         streamed = streamed_values(symbols)
         live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
-        stamped = _stamp_gamma_surface_cell_stream_state(surface, streamed, live, held)
-        stamped["surface_seq"] = _next_gamma_surface_seq(tk, now)
+        cells, by_expiry = _stamp_gamma_surface_cell_stream_state(
+            surface["cells"], surface["expirations"], streamed, live, held
+        )
+        stamped: GammaSurface = {
+            **surface,
+            "cells": cells,
+            "stream_by_expiry": by_expiry,
+            "surface_seq": _next_gamma_surface_seq(tk, now),
+        }
         level_store.publish(tk, replace(levels, gamma_surface=stamped))
         _levels_changed(tk)
 
@@ -784,10 +802,7 @@ class _Priced(NamedTuple):
     """A chain priced with each contract's newest values, and what the pricing read."""
 
     priced: list[OptionContract]
-    #: the contracts given newer values than the chain's, and how many
-    live_syms: list[str]
-    n_live: int
-    #: when each of those newer values was received
+    #: when each value newer than the chain's was received
     received: list[float]
     #: one read of the heartbeat, the streamed values, which of them are live, which are held
     feed: lmp.FeedNow
@@ -815,11 +830,10 @@ def _price_chain_values(
     streamed = streamed_values(held)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     quoted = rest_quotes(listed, fetched_ts)
-    priced, n_live = (
-        overlay_streamed_contract_fields(chain, streamed, held, quoted)
-        if window_open
-        else (chain, 0)
+    priced = (
+        overlay_streamed_contract_fields(chain, streamed, held, quoted) if window_open else chain
     )
+    # the contracts given newer values than the chain's
     live_syms = _overlaid_symbols(chain, priced)
     pushed_ts = [
         ts
@@ -828,9 +842,7 @@ def _price_chain_values(
     ]
     # a contract the stream does not hold was given its /quotes answer: that answer's receive time
     quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
-    return _Priced(
-        priced, live_syms, n_live, pushed_ts + quoted_ts, feed, streamed, feed_live, held
-    )
+    return _Priced(priced, pushed_ts + quoted_ts, feed, streamed, feed_live, held)
 
 
 def _prior(
@@ -862,19 +874,24 @@ def _published_surface(
     p: _Priced,
     snap: TerrainSnapshot,
     now: datetime,
-) -> tuple[dict[str, Any], frozenset[str]]:
+) -> tuple[GammaSurface, frozenset[str]]:
     """Return the gamma surface of the priced chain (`snap`'s books), its cells stamped.
 
     With it, every contract its cells name (_surface_symbols), read once here.
     """
     projected = project_gamma_surface(p.priced, snap.books)
-    projected.update(
-        stream_overlay_contracts=p.n_live,
-        stream_overlay_symbols=p.live_syms,
-        stream_overlay_computed_ts_utc=now.timestamp(),
+    cells, by_expiry = _stamp_gamma_surface_cell_stream_state(
+        projected["cells"], projected["expirations"], p.streamed, p.feed_live, p.held
     )
-    surface = _stamp_gamma_surface_cell_stream_state(projected, p.streamed, p.feed_live, p.held)
-    surface["surface_seq"] = _next_gamma_surface_seq(tk, now.timestamp())
+    surface: GammaSurface = {
+        "expirations": projected["expirations"],
+        "strikes": projected["strikes"],
+        "cells": cells,
+        "contracts_total": projected["contracts_total"],
+        "contracts_used": projected["contracts_used"],
+        "stream_by_expiry": by_expiry,
+        "surface_seq": _next_gamma_surface_seq(tk, now.timestamp()),
+    }
     symbols = frozenset(_surface_symbols(surface))
     # a later beat that differs from this one restamps it (restamp_open_surfaces)
     _last_feed_stamp[tk] = _feed_stamp_key(p.feed, symbols, now.timestamp())
@@ -1499,7 +1516,7 @@ def _prior_day(tk: str, prior: StoredCapture) -> TerrainSnapshot | None:
     )
 
 
-def _legs(legs: tuple[float, float] | None) -> dict[str, float] | None:
+def _legs(legs: tuple[float, float] | None) -> CallPutTotal | None:
     """Return a cell's call/put pair and their total; None when not known."""
     if legs is None:
         return None
@@ -1507,14 +1524,14 @@ def _legs(legs: tuple[float, float] | None) -> dict[str, float] | None:
 
 
 def _gamma_surface_cell_fields(
-    bucket: Bucket | None, contracts: dict[str, str | None]
+    bucket: Bucket | None, contracts: CellContracts
 ) -> tuple[
     float | None,
     float | None,
     float | None,
-    dict[str, float] | None,
-    dict[str, float] | None,
-    dict[str, str | None],
+    CallPutTotal | None,
+    CallPutTotal | None,
+    CellContracts,
 ]:
     """ONE (strike, expiry) cell's gex/dex/vanna/oi/volume/contracts fields from its bucket.
 
@@ -1537,7 +1554,7 @@ def _gamma_surface_cell_fields(
 
 def project_gamma_surface(
     chain: list[OptionContract], books: dict[ExpiryKey, Book]
-) -> dict[str, Any]:
+) -> ProjectedSurface:
     """Shape the strike × expiry grid the gamma heatmap draws from `books`.
 
     `books` are the exposure_books compute_terrain priced `chain` into, so every cell is the
@@ -1571,22 +1588,25 @@ def project_gamma_surface(
     strike_set = {float(k) for ex in per_expiry.values() for k in ex}
     expiries = sorted(per_expiry)
     strikes = sorted(strike_set)
-    expirations = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
+    expirations: list[SurfaceColumn] = [{"expiry": e, "dte": exp_dte.get(e)} for e in expiries]
     # Each cell carries every measure its bucket already holds -- GEX, DEX, vanna (call - put,
     # the dealer convention of calc.math_exposure_core._finish_bucket), OI and volume -- so one grid
     # serves every heatmap measure; a measure with no value is None (_gamma_surface_cell_fields).
-    cells: list[dict[str, Any]] = []
+    cells: list[ProjectedCell] = []
     for k in strikes:
         row: list[float | None]
         dex_row: list[float | None]
         vanna_row: list[float | None]
-        oi_row: list[dict[str, float] | None]
-        vol_row: list[dict[str, float] | None]
-        contracts_row: list[dict[str, str | None]]
+        oi_row: list[CallPutTotal | None]
+        vol_row: list[CallPutTotal | None]
+        contracts_row: list[CellContracts]
         row, dex_row, vanna_row, oi_row, vol_row, contracts_row = [], [], [], [], [], []
         for e in expiries:
             bucket = per_expiry[e].get(k)  # every column is one of per_expiry's
-            legs = {"call": leg_symbol.get((e, k, "call")), "put": leg_symbol.get((e, k, "put"))}
+            legs: CellContracts = {
+                "call": leg_symbol.get((e, k, "call")),
+                "put": leg_symbol.get((e, k, "put")),
+            }
             gex, dex, vanna, oi, volume, contracts = _gamma_surface_cell_fields(bucket, legs)
             row.append(gex)
             dex_row.append(dex)

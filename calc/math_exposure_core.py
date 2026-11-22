@@ -750,7 +750,7 @@ def overlay_streamed_contract_fields(
     streamed_by_symbol: dict[str, Streamed],
     held: set[str],
     quoted: dict[str, tuple[float, dict[str, Any]]],
-) -> tuple[list[OptionContract], int]:
+) -> list[OptionContract]:
     """Give each contract its newest values: the stream's when it is held, else /quotes'.
 
     A contract Schwab does not stream (not in `held`) takes the values of its newest /quotes
@@ -767,8 +767,7 @@ def overlay_streamed_contract_fields(
     asked /quotes for because the stream had not sent them. Open interest is the chain's for
     every contract (the stream does not send it for every contract it streams).
 
-    Pure: a contract given values is a new record, every other the same one. Returns
-    (new_contracts, streamed_count).
+    Pure: a contract given values is a new record, every other the same one.
     """
     out: list[OptionContract] = []
     for c in contracts:
@@ -783,7 +782,7 @@ def overlay_streamed_contract_fields(
             out.append(replace(c, **pushed))
         else:
             out.append(replace(c, volume=None, bid=None, ask=None, money_intrinsic=None))
-    return out, sum(1 for c in contracts if c.symbol in held)
+    return out
 
 
 def strike_total_oi(bucket: Bucket) -> float | None:

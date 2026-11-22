@@ -9,11 +9,111 @@ from __future__ import annotations
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 from calc.terrain_engine import TerrainSnapshot
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
+
+
+class SurfaceColumn(TypedDict):
+    """One expiration column of the heatmap grid: its expiry and Schwab's daysToExpiration."""
+
+    expiry: str
+    dte: int | None
+
+
+class CallPutTotal(TypedDict):
+    """A cell's call and put values of one measure, and their total."""
+
+    call: float
+    put: float
+    total: float
+
+
+class CellContracts(TypedDict):
+    """The contracts behind one cell: its call's and its put's symbol, None where none is listed."""
+
+    call: str | None
+    put: str | None
+
+
+class StreamLeg(TypedDict):
+    """One contract of a cell on the stream: its state and when it was last received."""
+
+    symbol: str
+    state: str
+    ts_recv: float | None
+
+
+class StreamLegs(TypedDict, total=False):
+    """A cell's legs on the stream: the call's and the put's, each only where it is listed."""
+
+    call: StreamLeg
+    put: StreamLeg
+
+
+class CellStream(StreamLegs):
+    """A cell's stream state: its legs', the cell's own from them, and its tooltip (None: live)."""
+
+    state: str
+    title: str | None
+
+
+class ProjectedCell(TypedDict):
+    """One strike's row of the heatmap grid: each measure's value in every expiration column.
+
+    A value not known is None; `contracts` names each column's call and put.
+    """
+
+    strike: float
+    gex: list[float | None]
+    dex: list[float | None]
+    vanna: list[float | None]
+    oi: list[CallPutTotal | None]
+    volume: list[CallPutTotal | None]
+    contracts: list[CellContracts]
+
+
+class GridCell(ProjectedCell):
+    """A row of the grid with each column's stream state: None where the expiry lists none."""
+
+    stream: list[CellStream | None]
+
+
+class ProjectedSurface(TypedDict):
+    """The strike x expiry grid as server.project_gamma_surface shapes it from the priced books.
+
+    `contracts_total`: the chain's contracts; `contracts_used`: those given a column (a contract
+    with a missing or malformed expiry is counted and has none).
+    """
+
+    expirations: list[SurfaceColumn]
+    strikes: list[float]
+    cells: list[ProjectedCell]
+    contracts_total: int
+    contracts_used: int
+
+
+class SurfaceState(TypedDict):
+    """What the grid carries beside its cells: its counts, its stream state and its revision.
+
+    `stream_by_expiry`: each column's state from its cells'; `surface_seq`: the grid's revision,
+    new with every publication and restamp.
+    """
+
+    contracts_total: int
+    contracts_used: int
+    stream_by_expiry: dict[str, str]
+    surface_seq: int
+
+
+class GammaSurface(SurfaceState):
+    """The heatmap grid the levels hold: the projection, stamped with its cells' stream state."""
+
+    expirations: list[SurfaceColumn]
+    strikes: list[float]
+    cells: list[GridCell]
 
 
 @dataclass(frozen=True)
@@ -33,7 +133,7 @@ class PublishedLevels:
     #: the price as resolved for this publication: (price, source, time)
     priced_at: tuple[float | None, str, float | None]
     #: the heatmap grid (server.project_gamma_surface); None without a price or a book
-    gamma_surface: dict[str, Any] | None
+    gamma_surface: GammaSurface | None
     #: every contract the heatmap's cells name, read once as it is published: the beat's restamp
     #: (server.restamp_open_surfaces) reads it every second for every ticker
     surface_symbols: frozenset[str]

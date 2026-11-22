@@ -22,7 +22,7 @@ from push.spot import resolve_spot
 from push.strike_rows import expiry_unreadable
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import level_store
-from state.level_store import PublishedLevels
+from state.level_store import GammaSurface, PublishedLevels
 from time_et import ct_label, et_date_str_from_ts_utc
 
 # the program's one log (capture._start_log: the day's file and the window)
@@ -36,7 +36,7 @@ COMPLETE_SINGLE_EXPIRY, SCOPE_UNAVAILABLE = "complete_single_expiry", "unavailab
 SCOPE_TEXT = {COMPLETE_SINGLE_EXPIRY: "complete (ALL)", SCOPE_UNAVAILABLE: "unavailable"}
 
 
-def _net_gex_column(surf: dict[str, Any] | None, expiry: str) -> dict[float, float | None] | None:
+def _net_gex_column(surf: GammaSurface | None, expiry: str) -> dict[float, float | None] | None:
     """Return the heatmap's net GEX by strike in `expiry`; None without a surface or its column."""
     if surf is None:
         return None
@@ -65,13 +65,12 @@ def _newest(contracts: list[OptionContract], since: float, now: float) -> list[O
     feed = lmp.feed_now(now)
     streamed = streamed_values(lmp.held_option_symbols(syms, now, feed))
     live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
-    newest, _ = overlay_streamed_contract_fields(
+    return overlay_streamed_contract_fields(
         contracts,
         {s: streamed[s] for s in live},
         live,
         rest_quotes([s for s in syms if s not in streamed], since),
     )
-    return newest
 
 
 def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:

@@ -7,6 +7,7 @@ import live_market_plane as lmp
 import server
 from option_contract import read_chain
 from state import level_store
+from tests.feed_live_helper import repriced
 from tests.test_one_levels_producer_v1 import (
     _A,
     _AT,
@@ -48,7 +49,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
             if col and pair.get(side) == _A
         ]
         assert row[2] >= 999999
-        assert cached.gamma_surface["stream_overlay_contracts"] >= 1
+        assert repriced(cached) == [_A]
         assert states and "live" not in states
         assert lmp.feed_live_for(_A, "LEVELONE_OPTIONS", _T) is False
     finally:

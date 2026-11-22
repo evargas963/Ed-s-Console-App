@@ -30,7 +30,7 @@ from option_contract import LISTED, read_chain
 from push import chain as push_chain
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import daemon_status, pushed
+from tests.feed_live_helper import daemon_status, pushed, repriced
 from tests.page_on_socket import Pages
 from time_et import ET
 
@@ -216,7 +216,7 @@ def test_a_streamed_volume_newer_than_the_chain_is_overlaid():
     )
     body = _get(ticker="TSLA")
     overlaid = _served(body)[target["symbol"]]
-    assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
+    assert repriced(level_store.published_levels("TSLA")) == [target["symbol"]]
     assert overlaid["volume_text"] == f"{streamed:,.0f}"  # the streamed volume, as shown
     assert all(overlaid[k] == v for k, v in _as_shown([target])[0].items() if k != "volume_text")
     others = {s: c for s, c in _served(body).items() if s != target["symbol"]}
@@ -271,7 +271,7 @@ def test_a_later_streamed_gamma_does_not_replace_the_quote():
     assert overlaid["volume_text"] == f"{volume:,.0f}" and overlaid["gamma"] == target["gamma"]
     assert overlaid["gamma"] != gamma
     assert overlaid["oi_text"] == f"{target['openInterest']:,.0f}"  # the chain's
-    assert level_store.published_levels("TSLA").gamma_surface["stream_overlay_contracts"] == 1
+    assert repriced(level_store.published_levels("TSLA")) == [target["symbol"]]
 
 
 #: inside a window Schwab sent for the option markets (tests/conftest.MARKETS_ANSWERS: 2026-10-07)

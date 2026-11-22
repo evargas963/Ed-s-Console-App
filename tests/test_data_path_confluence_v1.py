@@ -42,7 +42,7 @@ from state import capture_store, level_store
 from stream_spine import verbatim_msg
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import ROUND_SEC, daemon_status, publish_capture
+from tests.feed_live_helper import ROUND_SEC, daemon_status, publish_capture, repriced
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -1387,7 +1387,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
             )
         publish_capture(tk, held["chain"], held["ts_utc"], held["spot"], "2026-10-16", after)
         book = level_store.published_levels(tk)
-        overlaid = book.gamma_surface["stream_overlay_contracts"]
+        overlaid = repriced(book)
         kept = {ct.symbol: ct.volume for ct in book.priced_chain if ct.symbol in traded}
         panel = push_chain.chain(
             tk, after.timestamp(), {"expiry": str(held["chain"][0]["expirationDate"])[:10]}
@@ -1401,7 +1401,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
     finally:
         ofls.clear_all_live_state()
         _forget(tk)
-    assert overlaid == 0
+    assert overlaid == []
     assert all(m["native"]["TOTAL_VOLUME"] == 0 for m in messages)
     assert all(traded[s] > 0 and kept[s] == traded[s] for s in symbols)
     # the chain panel shows the contracts as the levels priced them

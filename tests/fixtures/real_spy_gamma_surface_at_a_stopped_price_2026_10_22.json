@@ -726,9 +726,6 @@
  "stream_by_expiry": {
   "2026-10-22": "unavailable"
  },
- "stream_overlay_computed_ts_utc": 1792700224.362402,
- "stream_overlay_contracts": 0,
- "stream_overlay_symbols": [],
  "strikes": [
   768.0,
   769.0,

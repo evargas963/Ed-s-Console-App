@@ -7,6 +7,7 @@ from datetime import datetime
 import app.options.order_flow.state as ofls
 import server
 from option_contract import read_chain
+from tests.feed_live_helper import repriced
 from tests.test_one_levels_producer_v1 import (
     _A,
     _CONTRACTS,
@@ -54,7 +55,7 @@ def test_a_streamed_value_whose_feed_is_down_in_session_still_prices_the_levels(
     assert rth.snap.spot == _SPOT and rth.spot_source == server.SPOT_SOURCE_PLANE
     sent = sum(ct["totalVolume"] for ct in _CONTRACTS if round(ct["strikePrice"], 2) == strike)
     assert rth_row[2] >= 999999 and closed_row[2] == rth_row[2] != sent
-    assert rth.gamma_surface["stream_overlay_contracts"] >= 1
+    assert repriced(rth) == [_A]
     rth_states = states(rth.gamma_surface)
     assert rth_states and "live" not in rth_states
     assert closed.snap.spot == _SPOT

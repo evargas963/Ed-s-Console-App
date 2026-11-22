@@ -25,6 +25,7 @@ from db import LevelCrossEvent, StoredCross
 from feed import connection
 from option_contract import read_chain
 from state import bar_store, news_store, price_level_store
+from state.level_store import PublishedLevels
 from stream_spine import (
     CAPTURE_STORED,
     FIELD_DELTA,
@@ -285,6 +286,20 @@ def mark_feed_live(*tickers: str, now: float | None = None) -> None:
 
 def mark_feed_down() -> None:
     lmp.record_feed_down()
+
+
+def repriced(levels: PublishedLevels) -> list[str]:
+    """Return the contracts `levels`' pricing gave newer values than the chain's, in its order.
+
+    The pricing gives a contract its values in a new record and leaves every other the chain's
+    own (calc.math_exposure_core.overlay_streamed_contract_fields): outside the window every
+    contract is the chain's.
+    """
+    return [
+        priced.symbol
+        for sent, priced in zip(levels.chain, levels.priced_chain, strict=True)
+        if priced is not sent
+    ]
 
 
 def publish_capture(
