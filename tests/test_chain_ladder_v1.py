@@ -98,10 +98,10 @@ def test_a_streamed_contract_takes_the_streams_money_intrinsic_value():
     (contract,) = read_chain([raw])
     assert contract.money_intrinsic == 462.63
     sym = contract.symbol
-    (streamed,), held = overlay_streamed_contract_fields(
+    (streamed,) = overlay_streamed_contract_fields(
         [contract], {sym: Streamed(replace(NO_TOP, **streamed_top(content)), NO_GREEKS)}, {sym}, {}
     )
-    assert held == 1 and streamed.money_intrinsic == -1.645
+    assert streamed.money_intrinsic == -1.645
     rows, _ = _chain_ladder([streamed], SPY["spot"], [chain_row(streamed)])
     assert rows[0]["call_itm"] is False
     # the flag is the value's one use on the screen: the row carries no copy of the number

@@ -98,18 +98,12 @@ class ProjectedSurface(TypedDict):
 class SurfaceState(TypedDict):
     """What the grid carries beside its cells: its counts, its stream state and its revision.
 
-    `stream_overlay_contracts`: how many of the chain's contracts the stream held when it was
-    priced; `stream_overlay_symbols`: the contracts the pricing gave newer values than the
-    chain's; `stream_overlay_computed_ts_utc`: when it was priced; `stream_by_expiry`: each
-    column's state from its cells'; `surface_seq`: the grid's revision, new with every publication
-    and restamp.
+    `stream_by_expiry`: each column's state from its cells'; `surface_seq`: the grid's revision,
+    new with every publication and restamp.
     """
 
     contracts_total: int
     contracts_used: int
-    stream_overlay_contracts: int
-    stream_overlay_symbols: list[str]
-    stream_overlay_computed_ts_utc: float
     stream_by_expiry: dict[str, str]
     surface_seq: int
 

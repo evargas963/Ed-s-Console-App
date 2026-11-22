@@ -35,7 +35,7 @@ from push import spot as push_spot
 from push import surface as push_surface
 from state import level_store
 from stream_spine import MessageBus
-from tests.feed_live_helper import daemon_status, on_the_bus
+from tests.feed_live_helper import daemon_status, on_the_bus, repriced
 from tests.page_on_socket import pages
 from tests.real_chains import CRWD, TSLA
 from time_et import ET
@@ -547,7 +547,7 @@ def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
     assert job[0] == server.REPRICE
     states = _sym_states()
     assert states and set(states) == {"live"}
-    assert level_store.published_levels(TK).gamma_surface["stream_overlay_contracts"] == 1
+    assert repriced(level_store.published_levels(TK)) == [SYM]
 
 
 def test_the_beat_after_a_new_surface_stamps_it_whatever_beat_stamped_the_last():

@@ -65,13 +65,12 @@ def _newest(contracts: list[OptionContract], since: float, now: float) -> list[O
     feed = lmp.feed_now(now)
     streamed = streamed_values(lmp.held_option_symbols(syms, now, feed))
     live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now)
-    newest, _ = overlay_streamed_contract_fields(
+    return overlay_streamed_contract_fields(
         contracts,
         {s: streamed[s] for s in live},
         live,
         rest_quotes([s for s in syms if s not in streamed], since),
     )
-    return newest
 
 
 def _shown(contracts: list[OptionContract]) -> list[dict[str, Any]]:

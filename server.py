@@ -802,10 +802,7 @@ class _Priced(NamedTuple):
     """A chain priced with each contract's newest values, and what the pricing read."""
 
     priced: list[OptionContract]
-    #: the contracts given newer values than the chain's, and how many
-    live_syms: list[str]
-    n_live: int
-    #: when each of those newer values was received
+    #: when each value newer than the chain's was received
     received: list[float]
     #: one read of the heartbeat, the streamed values, which of them are live, which are held
     feed: lmp.FeedNow
@@ -833,11 +830,10 @@ def _price_chain_values(
     streamed = streamed_values(held)
     feed_live = lmp.live_symbols(feed, streamed, "LEVELONE_OPTIONS", now.timestamp())
     quoted = rest_quotes(listed, fetched_ts)
-    priced, n_live = (
-        overlay_streamed_contract_fields(chain, streamed, held, quoted)
-        if window_open
-        else (chain, 0)
+    priced = (
+        overlay_streamed_contract_fields(chain, streamed, held, quoted) if window_open else chain
     )
+    # the contracts given newer values than the chain's
     live_syms = _overlaid_symbols(chain, priced)
     pushed_ts = [
         ts
@@ -846,9 +842,7 @@ def _price_chain_values(
     ]
     # a contract the stream does not hold was given its /quotes answer: that answer's receive time
     quoted_ts = [quoted[s][0] for s in live_syms if s not in held]
-    return _Priced(
-        priced, live_syms, n_live, pushed_ts + quoted_ts, feed, streamed, feed_live, held
-    )
+    return _Priced(priced, pushed_ts + quoted_ts, feed, streamed, feed_live, held)
 
 
 def _prior(
@@ -895,9 +889,6 @@ def _published_surface(
         "cells": cells,
         "contracts_total": projected["contracts_total"],
         "contracts_used": projected["contracts_used"],
-        "stream_overlay_contracts": p.n_live,
-        "stream_overlay_symbols": p.live_syms,
-        "stream_overlay_computed_ts_utc": now.timestamp(),
         "stream_by_expiry": by_expiry,
         "surface_seq": _next_gamma_surface_seq(tk, now.timestamp()),
     }

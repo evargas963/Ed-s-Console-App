@@ -39,7 +39,7 @@ from push import terrain as push_terrain
 from state import level_store
 from stream_spine import verbatim_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import daemon_status, pushed
+from tests.feed_live_helper import daemon_status, pushed, repriced
 from tests.page_on_socket import Pages
 from tests.real_chains import CRWD
 from time_et import ET
@@ -292,7 +292,7 @@ def test_a_streamed_gamma_alone_does_not_replace_the_chains():
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     c = _cached()
-    assert c.gamma_surface["stream_overlay_contracts"] == 1
+    assert repriced(c) == [_A]
     assert (
         c.snap.per_strike
         == compute_terrain(TK, _RECORDS, _SPOT, now=_AT, sessions=time_et.sessions()).per_strike
@@ -313,7 +313,7 @@ def test_a_new_chain_does_not_turn_a_live_contracts_leg_stale():
     _streamed(_A, {"GAMMA": 0.9, "TOTAL_VOLUME": 0}, _T - 60.0)  # a minute ago
     _publish(chain, _T)
     surface = _cached().gamma_surface
-    assert surface["stream_overlay_symbols"] == [_A]  # the stream's volume, the chain newer
+    assert repriced(_cached()) == [_A]  # the stream's volume, the chain newer
     legs = [
         col[side]
         for cell in surface["cells"]
@@ -354,7 +354,7 @@ def test_repeated_reprices_start_from_the_raw_chain_never_a_prior_overlay():
     _publish()
     c = _cached()
     assert c.chain is _RECORDS and _RECORDS[0].gamma != 0.9
-    assert c.gamma_surface["stream_overlay_contracts"] == 0
+    assert repriced(c) == []
     assert (
         c.snap.per_strike
         == compute_terrain(TK, _RECORDS, _SPOT, now=_AT, sessions=time_et.sessions()).per_strike
@@ -396,7 +396,7 @@ def test_a_foreign_tickers_contract_never_overlays_this_chain():
     _streamed(foreign, {"GAMMA": 0.99}, _T)
     _put_chain(fetched_ts=_T - 5.0)
     assert lmp.held_option_symbols(_cached().contracts, _T) == []
-    assert _cached().gamma_surface["stream_overlay_contracts"] == 0
+    assert repriced(_cached()) == []
 
 
 # ── spot ─────────────────────────────────────────────────────────────────────────────────────
@@ -782,9 +782,11 @@ def test_a_delivered_chain_is_priced_at_the_pricing_jobs_own_instant():
     """The pricing job's instant is the one the levels carry: the producer reads no clock.
 
     CRWD's real chain delivered with its spot and priced by the job (server._price_chain) at the
-    capture's own time: the heatmap's stamp is that instant, never the wall clock read deep
-    inside the producer.
+    capture's own time: the heatmap's revision counts on from that instant in milliseconds (the
+    ticker's first, server._next_gamma_surface_seq), never from the wall clock read deep inside
+    the producer.
     """
+    server._gamma_surface_seq.pop(TK, None)
     server._price_chain(TK, server.DELIVERED, _RECORDS, _T, (_SPOT, _T), _AT)
     surface = level_store.published_levels(TK).gamma_surface
-    assert surface["stream_overlay_computed_ts_utc"] == _T
+    assert surface["surface_seq"] == int(_T * 1000) + 1

@@ -105,6 +105,9 @@ def test_the_live_surface_is_served_with_the_live_price():
         min(surface["strikes"], key=lambda k: abs(k - 206.0))
     ]
     assert not [k for k in d if k.startswith("priced_at_spot")]
+    # which contracts the pricing gave newer values is the levels' own record (chain,
+    # priced_chain): the panel and the grid carry no count, list or time of it
+    assert not [k for k in (*d, *surface) if k.startswith("stream_overlay")]
 
 
 @pytest.mark.usefixtures("published")

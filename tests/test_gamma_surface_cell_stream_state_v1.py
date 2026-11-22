@@ -28,7 +28,7 @@ from option_contract import read_chain
 from push import surface as push_surface
 from state import level_store
 from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status, forget_streamed, pushed
+from tests.feed_live_helper import daemon_status, forget_streamed, pushed, repriced
 from tests.real_chains import CRWD, MRVL
 from time_et import ET
 
@@ -149,7 +149,7 @@ def test_a_contract_that_streamed_reads_stale_while_schwabs_socket_is_closed():
     sym = CALLS[0]
     cov, surface = _publish([sym], [sym], at=_CLOSED, socket_open=False)
     assert [leg["state"] for leg in _legs(surface, sym)] == ["stale"]
-    assert surface["stream_overlay_symbols"] == []
+    assert repriced(level_store.published_levels(TK)) == []
     assert cov["stale"] == 1 and cov["live"] == 0
 
 
