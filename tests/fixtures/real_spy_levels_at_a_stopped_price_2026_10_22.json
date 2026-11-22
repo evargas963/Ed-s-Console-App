@@ -33,6 +33,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Net call \u0393 peak",
    "side": "ABOVE",
    "staleness": {
@@ -53,6 +54,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Key \u0394 strike",
    "side": "BELOW",
    "staleness": {
@@ -73,6 +75,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Put \u0394 wall",
    "side": "BELOW",
    "staleness": {
@@ -93,6 +96,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Max pain",
    "side": "BELOW",
    "staleness": {
@@ -113,6 +117,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Call wall",
    "side": "BELOW",
    "staleness": {
@@ -133,6 +138,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Abs \u0393",
    "side": "BELOW",
    "staleness": {
@@ -153,6 +159,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Put wall",
    "side": "BELOW",
    "staleness": {
@@ -173,6 +180,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Net put \u0393 peak",
    "side": "BELOW",
    "staleness": {
@@ -193,6 +201,7 @@
     "carried": true,
     "producer": "calc.terrain_engine.compute_terrain"
    },
+   "reference_line": false,
    "short": "Call \u0394 wall",
    "side": "BELOW",
    "staleness": {

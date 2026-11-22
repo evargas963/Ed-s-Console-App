@@ -11,9 +11,11 @@ from __future__ import annotations
 import pytest
 
 import live_market_plane as lmp
+import server as srv
 from calc.liquidity_models import ZONE_DISPLAY
 from push import levels as push_levels
 from push import liquidity as push_liquidity
+from state import price_level_store
 from tests.feed_live_helper import daemon_status
 from tests.liquidity_friday import FRIDAY, TK, friday_bars
 
@@ -23,6 +25,26 @@ def test_a_ticker_with_no_levels_published_gets_no_zones_and_the_reason():
     body = push_liquidity.liquidity_snapshot("ZZNOLV", FRIDAY)
     assert (body["available"], body["zones"]) == (False, [])
     assert body["reason"] == push_levels.NO_PRICE_LEVELS_REASON
+    assert "no_zones_text" not in body  # the reason is what the list says
+
+
+def test_levels_published_with_none_in_them_are_answered_with_the_lists_words():
+    """A ticker with no bar and no daily candle held, its levels published as a start does.
+
+    Every family of them is absent, so no level makes a zone: the answer is the available one
+    with an empty list, and it carries the words the map's zone list draws for that (the page
+    holds no such sentence). Stand-in: ticker ZZNONE, which Schwab has sent nothing for.
+    """
+    tk = "ZZNONE"
+    try:
+        srv._publish_missing_price_levels([tk], FRIDAY)  # as the levels loop does at a start
+        body = push_liquidity.liquidity_snapshot(tk, FRIDAY)
+    finally:
+        for key in [k for k in price_level_store._MATERIALIZED_SNAPSHOTS if k[0] == tk]:
+            del price_level_store._MATERIALIZED_SNAPSHOTS[key]
+        price_level_store._HOLD_COUNTS.pop(tk, None)
+    assert "available" not in body and body["zones"] == []
+    assert body["no_zones_text"] == "no zones for this session yet"
 
 
 @pytest.mark.usefixtures("published")
@@ -33,6 +55,7 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
     """
     body = push_liquidity.liquidity_snapshot(TK, FRIDAY)
     assert body["zones"]
+    assert body["no_zones_text"] is None  # a list with a zone has no words for none
     lows = [z["zone_low"] for z in body["zones"]]
     assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
     for z in body["zones"]:

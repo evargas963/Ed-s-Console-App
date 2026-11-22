@@ -76,6 +76,7 @@
       "interpretation_notes": "No live price: the side of the price is not known"
     }
   ],
+  "no_zones_text": null,
   "summary": {
     "value_state": "lower",
     "vwap_relation": "above_value",

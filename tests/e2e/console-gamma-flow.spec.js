@@ -3,8 +3,10 @@
  * D — Options/Gamma "Flow" subview: ONE explicitly-selected option contract (a Chain click), named to
  * the console so the daemon streams it (POST /api/flow-contract), observed through its `contract`
  * panel on the page's socket. The
- * badge is the served subscription state: ACTIVE while the daemon streams the contract live, its
- * served state (OFFLINE, NOT LIVE) while it streams it not live, NOT STREAMED otherwise; every NATIVE/DERIVED/PROXY tag is the backend's own classification;
+ * badge is served (streaming_plane.subscription_text, with subscription_active): ACTIVE while the
+ * daemon streams the contract live, its feed's state (OFFLINE, NOT LIVE) while it streams it not
+ * live, NOT STREAMED otherwise; the header's side is served in words (put_call_text); every
+ * NATIVE/DERIVED/PROXY tag is the backend's own classification;
  * native_aggressor_available=false => no signed flow.
  *
  * PAYLOAD CONTRACT — the `contract` panel's stand-in is the committed fixture
@@ -120,7 +122,10 @@ test.describe("D — Gamma Flow subview", () => {
     page,
   }) => {
     expect(FIXTURE.put_call).toBeNull(); // no chain held lists the TSLA contract
+    expect(FIXTURE.put_call_text).toBeNull();
     expect([SIDES[SPY_CALL].put_call, SIDES[SPY_PUT].put_call]).toEqual(["CALL", "PUT"]);
+    // the side as the header says it, served beside it: the page picks no words
+    expect([SIDES[SPY_CALL].put_call_text, SIDES[SPY_PUT].put_call_text]).toEqual(["Call", "Put"]);
     const ctx = makeContext();
     ctx.sides = true;
     await setup(page, ctx);
@@ -134,6 +139,9 @@ test.describe("D — Gamma Flow subview", () => {
     await page.locator("#subnav .tab", { hasText: "Flow" }).click();
     await expect(page.locator("#flowBody .fl-sym")).toHaveText(SPY_CALL);
     await expect(page.locator("#flowBody .fl-badge")).toHaveText("ACTIVE"); // 10-23 09:32 ET: held, regular hours
+    expect(SIDES[SPY_CALL].streaming_plane.subscription_text).toBe("ACTIVE"); // the badge, served
+    await expect(page.locator("#flowBody .fl-badge")).toHaveClass(/\blive\b/);
+    await expect(page.locator("#flowBody .fl-sec.fl-dim")).toHaveCount(0); // active: nothing recedes
     expect(SPY_CHAIN.contracts.map((c) => [c.symbol, c.strikePrice])).toEqual(
       expect.arrayContaining([
         [SPY_CALL, 761],
@@ -372,7 +380,11 @@ test.describe("D — Gamma Flow subview", () => {
 
   test("a held contract whose feed is down reads OFFLINE and keeps the bid", async ({ page }) => {
     const ctx = makeContext();
+    // INDUCED on the fixture's plane: the held contract with its feed down, the badge as the
+    // program serves it then (tests/test_data_path_silent_subscription_v1.py)
     ctx.plane = {
+      subscription_active: false,
+      subscription_text: "OFFLINE",
       feed_health: {
         l1: { state: "OFFLINE", text: "OFFLINE" },
         book: { state: "OFFLINE", text: "OFFLINE" },
@@ -389,7 +401,10 @@ test.describe("D — Gamma Flow subview", () => {
     page,
   }) => {
     const ctx = makeContext();
+    // the fixture's own state, staged again: held, its market not trading
     ctx.plane = {
+      subscription_active: false,
+      subscription_text: "NOT LIVE",
       feed_health: {
         l1: { state: "NOT LIVE", text: "NOT LIVE" },
         book: { state: "NOT LIVE", text: "NOT LIVE" },
@@ -404,7 +419,10 @@ test.describe("D — Gamma Flow subview", () => {
 
   test("an offline contract keeps Schwab's quote time and book time", async ({ page }) => {
     const ctx = makeContext();
+    // INDUCED on the fixture's plane: the held contract with its feed down, the badge as served
     ctx.plane = {
+      subscription_active: false,
+      subscription_text: "OFFLINE",
       feed_health: {
         l1: { state: "OFFLINE", text: "OFFLINE" },
         book: { state: "OFFLINE", text: "OFFLINE" },
@@ -430,11 +448,38 @@ test.describe("D — Gamma Flow subview", () => {
     page,
   }) => {
     const ctx = makeContext();
-    ctx.plane = { subscription_state: "NOT STREAMED" };
+    // INDUCED on the fixture's plane: a contract the daemon does not hold, the badge as the
+    // program serves it then (tests/test_options_order_flow_api_v1.py)
+    ctx.plane = {
+      subscription_state: "NOT STREAMED",
+      subscription_active: false,
+      subscription_text: "NOT STREAMED",
+    };
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator("#flowBody .fl-badge")).toHaveText("NOT STREAMED");
+    await expect(page.locator("#flowBody .fl-badge")).toHaveClass(/\bstale\b/);
     await expect(page.locator("#flowBody .fl-sec.fl-dim").first()).toBeVisible();
+  });
+
+  test("the header's side and the badge are the served words: one only the server knows is drawn", async ({
+    page,
+  }) => {
+    // INDUCED: a side and a badge no table on the page could hold. The page draws the words the
+    // program serves (put_call_text, streaming_plane.subscription_text) and picks the badge's
+    // class and the receding from the served subscription_active alone.
+    const ctx = makeContext();
+    ctx.plane = { subscription_active: true, subscription_text: "A BADGE ONLY THE SERVER KNOWS" };
+    ctx.mutate = (d) => {
+      d.put_call = "A_SIDE_ONLY_THE_SERVER_KNOWS";
+      d.put_call_text = "A side only the server knows";
+    };
+    await setup(page, ctx);
+    await selectCallAndOpenFlow(page);
+    await expect(page.locator("#flowBody .fl-badge")).toHaveText("A BADGE ONLY THE SERVER KNOWS");
+    await expect(page.locator("#flowBody .fl-badge")).toHaveClass(/\blive\b/);
+    await expect(page.locator("#flowBody .fl-sec.fl-dim")).toHaveCount(0);
+    await expect(page.locator("#flowBody .fl-meta")).toHaveText("A side only the server knows");
   });
 
   test("a ticker change releases the selection once; Flow -> Gamma -> Flow names nothing again", async ({

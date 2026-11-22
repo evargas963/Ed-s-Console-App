@@ -217,7 +217,7 @@ test("Liquidity map: a failed request is named, and an empty snapshot shows the 
   const liqWords = "the program could not produce this panel: KeyError: 'SPY'";
   const errs = watchErrors(page);
   await intercept(page);
-  deskPanels().liquidity = { ticker: "SPY", zones: [], reason: REASON };
+  deskPanels().liquidity = { ticker: "SPY", available: false, zones: [], reason: REASON };
   deskPanels().bars = { failed: barsWords };
   await openView(page, "liquidity", "map");
   await expect(page.locator(".liqm-zones")).toContainText(REASON);
@@ -226,6 +226,70 @@ test("Liquidity map: a failed request is named, and an empty snapshot shows the 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".liqm-zones .sm")).toHaveText("-"); // no zones known: never "no zones for this session yet"
   await expect(page.locator(".liqm-empty")).toHaveText(liqWords + " · " + barsWords);
+  expect(errs).toEqual([]);
+});
+
+test("Liquidity map: a list with no zone says the served words, words only the server knows too", async ({
+  page,
+}) => {
+  // push.liquidity.liquidity_snapshot's answer when the published levels make no zone: an empty
+  // list, no summary, and the words the list says for that (no_zones_text;
+  // tests/test_liquidity_snapshot_spot_identity_v1.py). INDUCED: SPY's own answer with its zones
+  // taken out and those words; then with words no page could hold
+  const noZone = (words) =>
+    Object.assign({}, LIQ, { zones: [], summary: null, spot_location: null, no_zones_text: words });
+  const errs = watchErrors(page);
+  await intercept(page);
+  deskPanels().liquidity = noZone("no zones for this session yet");
+  await openView(page, "liquidity", "map");
+  await expect(page.locator(".liqm-zones .sm")).toHaveText("no zones for this session yet");
+  deskPanels().liquidity = noZone("Words ONLY the server knows");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".liqm-zones .sm")).toHaveText("Words ONLY the server knows");
+  expect(errs).toEqual([]);
+});
+
+test("Liquidity map: the lines drawn are the levels the program marks, whatever their family", async ({
+  page,
+}) => {
+  // the levels panel marks the prior day's six and the overnight's two as the map's reference
+  // lines (reference_line; tests/test_e2e_panels_two_day_v1.py). INDUCED: that answer with the
+  // marks moved, the session's VWAP marked and none of the eight: the map draws the VWAP and
+  // none of them, for the choice is the program's and the page holds no list of families
+  const served = REAL.levels["1"]; // the map asks the 1-minute levels
+  const lines = served.levels.filter((l) => l.reference_line);
+  expect(lines.map((l) => l.id).sort()).toEqual([
+    "OVERNIGHT_HIGH",
+    "OVERNIGHT_LOW",
+    "PDC",
+    "PDH",
+    "PDL",
+    "PD_POC",
+    "PD_VAH",
+    "PD_VAL",
+  ]);
+  const errs = watchErrors(page);
+  await intercept(page);
+  deskPanels().levels = levelsAt(
+    Object.assign({}, served, {
+      levels: served.levels.map((l) => Object.assign({}, l, { reference_line: l.id === "VWAP" })),
+    }),
+  );
+  await openView(page, "liquidity", "map");
+  await expect(page.locator("#liqmBody .tvc-auto")).toBeVisible();
+  // a level is a line inside the candles' price range, else named at the pane's edge
+  const drawn = () =>
+    page.evaluate(
+      () =>
+        (window.EdLiquidityMap.state() || { levels: [] }).levels.join(" ") +
+        " " +
+        document.querySelector("#liqmBody .tvc-edge-top").textContent +
+        " " +
+        document.querySelector("#liqmBody .tvc-edge-bot").textContent,
+    );
+  await expect.poll(drawn).toContain("VWAP");
+  const text = await drawn();
+  for (const l of lines) expect(text, l.id).not.toContain(l.short);
   expect(errs).toEqual([]);
 });
 
@@ -808,7 +872,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect(page.locator("#tdmCardVol figcaption")).toHaveText(
       "ATM implied vol by expiry, nearest first",
     );
-    await expect(page.locator("#tdmAgree")).toContainText(COMP.views["5"].side_word.toLowerCase());
+    await expect(page.locator("#tdmAgree")).toContainText(COMP.views["5"].tilt_text); // served
     expect(errs).toEqual([]);
   });
 
@@ -1206,11 +1270,13 @@ test.describe("Trade Desk renders served values", () => {
     await intercept(page);
     await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
-    // the book's lean is the Liquidity readout's, served (one producer for the desk)
+    // the book's lean is the Liquidity readout's, served (one producer for the desk), its tilt in
+    // the words served for running text: the page changes no case
     const nq5 = MICRO.readout.venues.NASDAQ_BOOK.views["5"];
-    await expect(body).toContainText(
-      nq5.pct_text + nq5.side_word.toLowerCase() + " (NASDAQ_BOOK, depth 5)",
+    expect(nq5.tilt_text).toBe(
+      { BID_HEAVY: "bid heavy", BALANCED: "balanced", OFFER_HEAVY: "offer heavy" }[nq5.tilt],
     );
+    await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (NASDAQ_BOOK, depth 5)");
     // SPY's real levels (Right Now asks them at 1 minute): max pain is the nearest, 0.08 below
     // the price; the price is through the put wall, so both walls are above it
     const level = (id) => REAL.levels["1"].levels.find((r) => r.id === id);
@@ -1391,8 +1457,25 @@ test.describe("Trade Desk renders served values", () => {
     await expect(body).toContainText(BOOK_TIME + " · 1s");
     await expect(body).toContainText("757.05 × 757.07"); // Schwab's best bid and ask
     await expect(body).toContainText(
-      MICRO.readout.venues.NASDAQ_BOOK.views["5"].side_word.toLowerCase() +
-        " (NASDAQ_BOOK, depth 5)",
+      MICRO.readout.venues.NASDAQ_BOOK.views["5"].tilt_text + " (NASDAQ_BOOK, depth 5)",
+    );
+    expect(errs).toEqual([]);
+  });
+
+  test("Right Now: the book's tilt is drawn in the served words, words only the server knows too", async ({
+    page,
+  }) => {
+    // INDUCED on SPY's real book panel: the NASDAQ book's Top 5 view staged with words no script
+    // could hold. The page draws tilt_text beside the venue and depth and changes no case.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const book = JSON.parse(JSON.stringify(MICRO));
+    book.readout.venues.NASDAQ_BOOK.views["5"].tilt_text = "Words ONLY the server knows";
+    deskPanels().book = book;
+    await openView(page, "trade-desk", "right-now");
+    await expect(page.locator("#tdBody")).toContainText(
+      book.readout.venues.NASDAQ_BOOK.views["5"].pct_text +
+        "Words ONLY the server knows (NASDAQ_BOOK, depth 5)",
     );
     expect(errs).toEqual([]);
   });

@@ -113,6 +113,7 @@
       "server_received_ts": 1792762339.431057
     },
     "put_call": "CALL",
+    "put_call_text": "Call",
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
     "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
     "spread_pts": 0.009999999999999787,
@@ -130,7 +131,9 @@
         },
         "replay": "not connected"
       },
-      "subscription_state": "SUBSCRIBED"
+      "subscription_active": true,
+      "subscription_state": "SUBSCRIBED",
+      "subscription_text": "ACTIVE"
     },
     "strike_text": "761",
     "top_feed_label": "LIVE",
@@ -260,6 +263,7 @@
       "server_received_ts": 1792762339.4350789
     },
     "put_call": "PUT",
+    "put_call_text": "Put",
     "quote_time_ct": "Fri 10/23 08:32 AM CT",
     "quote_when_age_text": "Fri 10/23 08:32 AM CT \u00b7 1s",
     "spread_pts": 0.020000000000000018,
@@ -277,7 +281,9 @@
         },
         "replay": "not connected"
       },
-      "subscription_state": "SUBSCRIBED"
+      "subscription_active": true,
+      "subscription_state": "SUBSCRIBED",
+      "subscription_text": "ACTIVE"
     },
     "strike_text": "762",
     "top_feed_label": "LIVE",

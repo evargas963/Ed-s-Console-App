@@ -39678,6 +39678,7 @@
                 "pct_text": "-17%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 0,
                 "held_open": false,
                 "held_text": "HELD 0s",
@@ -39897,6 +39898,7 @@
                 "pct_text": "-55%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 11,
                 "held_open": false,
                 "held_text": "HELD 11s",
@@ -40116,6 +40118,7 @@
                 "pct_text": "-8%",
                 "tilt": "BALANCED",
                 "side_word": "BALANCED",
+                "tilt_text": "balanced",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -40358,6 +40361,7 @@
                 "pct_text": "+19%",
                 "tilt": "BID_HEAVY",
                 "side_word": "BID HEAVY",
+                "tilt_text": "bid heavy",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -40577,6 +40581,7 @@
                 "pct_text": "+11%",
                 "tilt": "BID_HEAVY",
                 "side_word": "BID HEAVY",
+                "tilt_text": "bid heavy",
                 "held_sec": 0,
                 "held_open": false,
                 "held_text": "HELD 0s",
@@ -40796,6 +40801,7 @@
                 "pct_text": "+17%",
                 "tilt": "BID_HEAVY",
                 "side_word": "BID HEAVY",
+                "tilt_text": "bid heavy",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -41038,6 +41044,7 @@
                 "pct_text": "-17%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 0,
                 "held_open": false,
                 "held_text": "HELD 0s",
@@ -41257,6 +41264,7 @@
                 "pct_text": "-55%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 4,
                 "held_open": false,
                 "held_text": "HELD 4s",
@@ -41476,6 +41484,7 @@
                 "pct_text": "-8%",
                 "tilt": "BALANCED",
                 "side_word": "BALANCED",
+                "tilt_text": "balanced",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -41908,6 +41917,7 @@
                 "pct_text": "-17%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 0,
                 "held_open": false,
                 "held_text": "HELD 0s",
@@ -42127,6 +42137,7 @@
                 "pct_text": "-55%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 11,
                 "held_open": false,
                 "held_text": "HELD 11s",
@@ -42346,6 +42357,7 @@
                 "pct_text": "-8%",
                 "tilt": "BALANCED",
                 "side_word": "BALANCED",
+                "tilt_text": "balanced",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -42588,6 +42600,7 @@
                 "pct_text": "+19%",
                 "tilt": "BID_HEAVY",
                 "side_word": "BID HEAVY",
+                "tilt_text": "bid heavy",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -42807,6 +42820,7 @@
                 "pct_text": "+11%",
                 "tilt": "BID_HEAVY",
                 "side_word": "BID HEAVY",
+                "tilt_text": "bid heavy",
                 "held_sec": 0,
                 "held_open": false,
                 "held_text": "HELD 0s",
@@ -43026,6 +43040,7 @@
                 "pct_text": "+17%",
                 "tilt": "BID_HEAVY",
                 "side_word": "BID HEAVY",
+                "tilt_text": "bid heavy",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -43268,6 +43283,7 @@
                 "pct_text": "-17%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 0,
                 "held_open": false,
                 "held_text": "HELD 0s",
@@ -43487,6 +43503,7 @@
                 "pct_text": "-55%",
                 "tilt": "OFFER_HEAVY",
                 "side_word": "OFFER HEAVY",
+                "tilt_text": "offer heavy",
                 "held_sec": 4,
                 "held_open": false,
                 "held_text": "HELD 4s",
@@ -43706,6 +43723,7 @@
                 "pct_text": "-8%",
                 "tilt": "BALANCED",
                 "side_word": "BALANCED",
+                "tilt_text": "balanced",
                 "held_sec": 1,
                 "held_open": false,
                 "held_text": "HELD 1s",
@@ -44159,6 +44177,7 @@
         "interpretation_notes": "Above the price"
       }
     ],
+    "no_zones_text": null,
     "summary": {
       "value_state": "lower",
       "vwap_relation": "inside_value",
@@ -44253,7 +44272,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "lvp",
@@ -44273,7 +44293,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "call_delta_wall",
@@ -44293,7 +44314,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "call_charm_wall",
@@ -44313,7 +44335,8 @@
           "distance": 7.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "7.92 above spot",
-          "price_text": "765.00"
+          "price_text": "765.00",
+          "reference_line": false
         },
         {
           "id": "PDH",
@@ -44337,7 +44360,8 @@
           },
           "distance": 5.434999999999945,
           "from_spot_text": "5.43 above spot",
-          "price_text": "762.51"
+          "price_text": "762.51",
+          "reference_line": true
         },
         {
           "id": "PD_VAH",
@@ -44361,7 +44385,8 @@
           },
           "distance": 4.544999999999959,
           "from_spot_text": "4.54 above spot",
-          "price_text": "761.62"
+          "price_text": "761.62",
+          "reference_line": true
         },
         {
           "id": "gamma_flip",
@@ -44381,7 +44406,8 @@
           "distance": 4.147505563218829,
           "side": "ABOVE",
           "from_spot_text": "4.15 above spot",
-          "price_text": "761.22"
+          "price_text": "761.22",
+          "reference_line": false
         },
         {
           "id": "OVERNIGHT_HIGH",
@@ -44405,7 +44431,8 @@
           },
           "distance": 3.4349999999999454,
           "from_spot_text": "3.43 above spot",
-          "price_text": "760.51"
+          "price_text": "760.51",
+          "reference_line": true
         },
         {
           "id": "PD_POC",
@@ -44429,7 +44456,8 @@
           },
           "distance": 3.324999999999932,
           "from_spot_text": "3.32 above spot",
-          "price_text": "760.40"
+          "price_text": "760.40",
+          "reference_line": true
         },
         {
           "id": "put_wall",
@@ -44449,7 +44477,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "absolute_gamma_strike",
@@ -44469,7 +44498,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "put_delta_wall",
@@ -44489,7 +44519,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "PDC",
@@ -44513,7 +44544,8 @@
           },
           "distance": 2.7349999999999,
           "from_spot_text": "2.73 above spot",
-          "price_text": "759.81"
+          "price_text": "759.81",
+          "reference_line": true
         },
         {
           "id": "PD_VAL",
@@ -44537,7 +44569,8 @@
           },
           "distance": 0.9349999999999454,
           "from_spot_text": "0.93 above spot",
-          "price_text": "758.01"
+          "price_text": "758.01",
+          "reference_line": true
         },
         {
           "id": "ORB_HIGH",
@@ -44561,7 +44594,8 @@
           },
           "distance": 0.80499999999995,
           "from_spot_text": "0.80 above spot",
-          "price_text": "757.88"
+          "price_text": "757.88",
+          "reference_line": false
         },
         {
           "id": "TODAY_VAH",
@@ -44585,7 +44619,8 @@
           },
           "distance": 0.7649999999999864,
           "from_spot_text": "0.76 above spot",
-          "price_text": "757.84"
+          "price_text": "757.84",
+          "reference_line": false
         },
         {
           "id": "max_pain",
@@ -44605,7 +44640,8 @@
           "distance": -0.07500000000004547,
           "side": "BELOW",
           "from_spot_text": "0.08 below spot",
-          "price_text": "757.00"
+          "price_text": "757.00",
+          "reference_line": false
         },
         {
           "id": "TODAY_POC",
@@ -44629,7 +44665,8 @@
           },
           "distance": -0.375,
           "from_spot_text": "0.38 below spot",
-          "price_text": "756.70"
+          "price_text": "756.70",
+          "reference_line": false
         },
         {
           "id": "VWAP",
@@ -44653,7 +44690,8 @@
           },
           "distance": -0.48996806278785243,
           "from_spot_text": "0.49 below spot",
-          "price_text": "756.59"
+          "price_text": "756.59",
+          "reference_line": false
         },
         {
           "id": "TODAY_VAL",
@@ -44677,7 +44715,8 @@
           },
           "distance": -1.0750000000000455,
           "from_spot_text": "1.08 below spot",
-          "price_text": "756.00"
+          "price_text": "756.00",
+          "reference_line": false
         },
         {
           "id": "pin_candidate",
@@ -44697,7 +44736,8 @@
           "distance": -1.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "1.08 below spot",
-          "price_text": "756.00"
+          "price_text": "756.00",
+          "reference_line": false
         },
         {
           "id": "ORB_MID",
@@ -44721,7 +44761,8 @@
           },
           "distance": -1.3000000000000682,
           "from_spot_text": "1.30 below spot",
-          "price_text": "755.77"
+          "price_text": "755.77",
+          "reference_line": false
         },
         {
           "id": "PDL",
@@ -44745,7 +44786,8 @@
           },
           "distance": -2.175000000000068,
           "from_spot_text": "2.18 below spot",
-          "price_text": "754.90"
+          "price_text": "754.90",
+          "reference_line": true
         },
         {
           "id": "ORB_LOW",
@@ -44769,7 +44811,8 @@
           },
           "distance": -3.4050000000000864,
           "from_spot_text": "3.41 below spot",
-          "price_text": "753.67"
+          "price_text": "753.67",
+          "reference_line": false
         },
         {
           "id": "OVERNIGHT_LOW",
@@ -44793,7 +44836,8 @@
           },
           "distance": -4.2549999999999955,
           "from_spot_text": "4.25 below spot",
-          "price_text": "752.82"
+          "price_text": "752.82",
+          "reference_line": true
         },
         {
           "id": "hvp",
@@ -44813,7 +44857,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         },
         {
           "id": "key_delta_strike",
@@ -44833,7 +44878,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         },
         {
           "id": "put_charm_wall",
@@ -44853,7 +44899,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         }
       ],
       "by_distance": [
@@ -45686,7 +45733,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "lvp",
@@ -45706,7 +45754,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "call_delta_wall",
@@ -45726,7 +45775,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "call_charm_wall",
@@ -45746,7 +45796,8 @@
           "distance": 7.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "7.92 above spot",
-          "price_text": "765.00"
+          "price_text": "765.00",
+          "reference_line": false
         },
         {
           "id": "PDH",
@@ -45770,7 +45821,8 @@
           },
           "distance": 5.434999999999945,
           "from_spot_text": "5.43 above spot",
-          "price_text": "762.51"
+          "price_text": "762.51",
+          "reference_line": true
         },
         {
           "id": "PD_VAH",
@@ -45794,7 +45846,8 @@
           },
           "distance": 4.544999999999959,
           "from_spot_text": "4.54 above spot",
-          "price_text": "761.62"
+          "price_text": "761.62",
+          "reference_line": true
         },
         {
           "id": "gamma_flip",
@@ -45814,7 +45867,8 @@
           "distance": 4.147505563218829,
           "side": "ABOVE",
           "from_spot_text": "4.15 above spot",
-          "price_text": "761.22"
+          "price_text": "761.22",
+          "reference_line": false
         },
         {
           "id": "OVERNIGHT_HIGH",
@@ -45838,7 +45892,8 @@
           },
           "distance": 3.4349999999999454,
           "from_spot_text": "3.43 above spot",
-          "price_text": "760.51"
+          "price_text": "760.51",
+          "reference_line": true
         },
         {
           "id": "PD_POC",
@@ -45862,7 +45917,8 @@
           },
           "distance": 3.324999999999932,
           "from_spot_text": "3.32 above spot",
-          "price_text": "760.40"
+          "price_text": "760.40",
+          "reference_line": true
         },
         {
           "id": "put_wall",
@@ -45882,7 +45938,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "absolute_gamma_strike",
@@ -45902,7 +45959,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "put_delta_wall",
@@ -45922,7 +45980,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "PDC",
@@ -45946,7 +46005,8 @@
           },
           "distance": 2.7349999999999,
           "from_spot_text": "2.73 above spot",
-          "price_text": "759.81"
+          "price_text": "759.81",
+          "reference_line": true
         },
         {
           "id": "PD_VAL",
@@ -45970,7 +46030,8 @@
           },
           "distance": 0.9349999999999454,
           "from_spot_text": "0.93 above spot",
-          "price_text": "758.01"
+          "price_text": "758.01",
+          "reference_line": true
         },
         {
           "id": "ORB_HIGH",
@@ -45994,7 +46055,8 @@
           },
           "distance": 0.80499999999995,
           "from_spot_text": "0.80 above spot",
-          "price_text": "757.88"
+          "price_text": "757.88",
+          "reference_line": false
         },
         {
           "id": "TODAY_VAH",
@@ -46018,7 +46080,8 @@
           },
           "distance": 0.7649999999999864,
           "from_spot_text": "0.76 above spot",
-          "price_text": "757.84"
+          "price_text": "757.84",
+          "reference_line": false
         },
         {
           "id": "max_pain",
@@ -46038,7 +46101,8 @@
           "distance": -0.07500000000004547,
           "side": "BELOW",
           "from_spot_text": "0.08 below spot",
-          "price_text": "757.00"
+          "price_text": "757.00",
+          "reference_line": false
         },
         {
           "id": "TODAY_POC",
@@ -46062,7 +46126,8 @@
           },
           "distance": -0.375,
           "from_spot_text": "0.38 below spot",
-          "price_text": "756.70"
+          "price_text": "756.70",
+          "reference_line": false
         },
         {
           "id": "VWAP",
@@ -46086,7 +46151,8 @@
           },
           "distance": -0.48996806278785243,
           "from_spot_text": "0.49 below spot",
-          "price_text": "756.59"
+          "price_text": "756.59",
+          "reference_line": false
         },
         {
           "id": "TODAY_VAL",
@@ -46110,7 +46176,8 @@
           },
           "distance": -1.0750000000000455,
           "from_spot_text": "1.08 below spot",
-          "price_text": "756.00"
+          "price_text": "756.00",
+          "reference_line": false
         },
         {
           "id": "pin_candidate",
@@ -46130,7 +46197,8 @@
           "distance": -1.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "1.08 below spot",
-          "price_text": "756.00"
+          "price_text": "756.00",
+          "reference_line": false
         },
         {
           "id": "ORB_MID",
@@ -46154,7 +46222,8 @@
           },
           "distance": -1.3000000000000682,
           "from_spot_text": "1.30 below spot",
-          "price_text": "755.77"
+          "price_text": "755.77",
+          "reference_line": false
         },
         {
           "id": "PDL",
@@ -46178,7 +46247,8 @@
           },
           "distance": -2.175000000000068,
           "from_spot_text": "2.18 below spot",
-          "price_text": "754.90"
+          "price_text": "754.90",
+          "reference_line": true
         },
         {
           "id": "ORB_LOW",
@@ -46202,7 +46272,8 @@
           },
           "distance": -3.4050000000000864,
           "from_spot_text": "3.41 below spot",
-          "price_text": "753.67"
+          "price_text": "753.67",
+          "reference_line": false
         },
         {
           "id": "OVERNIGHT_LOW",
@@ -46226,7 +46297,8 @@
           },
           "distance": -4.2549999999999955,
           "from_spot_text": "4.25 below spot",
-          "price_text": "752.82"
+          "price_text": "752.82",
+          "reference_line": true
         },
         {
           "id": "hvp",
@@ -46246,7 +46318,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         },
         {
           "id": "key_delta_strike",
@@ -46266,7 +46339,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         },
         {
           "id": "put_charm_wall",
@@ -46286,7 +46360,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         }
       ],
       "by_distance": [
@@ -47071,7 +47146,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "lvp",
@@ -47091,7 +47167,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "call_delta_wall",
@@ -47111,7 +47188,8 @@
           "distance": 17.924999999999955,
           "side": "ABOVE",
           "from_spot_text": "17.92 above spot",
-          "price_text": "775.00"
+          "price_text": "775.00",
+          "reference_line": false
         },
         {
           "id": "call_charm_wall",
@@ -47131,7 +47209,8 @@
           "distance": 7.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "7.92 above spot",
-          "price_text": "765.00"
+          "price_text": "765.00",
+          "reference_line": false
         },
         {
           "id": "PDH",
@@ -47155,7 +47234,8 @@
           },
           "distance": 5.434999999999945,
           "from_spot_text": "5.43 above spot",
-          "price_text": "762.51"
+          "price_text": "762.51",
+          "reference_line": true
         },
         {
           "id": "PD_VAH",
@@ -47179,7 +47259,8 @@
           },
           "distance": 4.544999999999959,
           "from_spot_text": "4.54 above spot",
-          "price_text": "761.62"
+          "price_text": "761.62",
+          "reference_line": true
         },
         {
           "id": "gamma_flip",
@@ -47199,7 +47280,8 @@
           "distance": 4.147505563218829,
           "side": "ABOVE",
           "from_spot_text": "4.15 above spot",
-          "price_text": "761.22"
+          "price_text": "761.22",
+          "reference_line": false
         },
         {
           "id": "OVERNIGHT_HIGH",
@@ -47223,7 +47305,8 @@
           },
           "distance": 3.4349999999999454,
           "from_spot_text": "3.43 above spot",
-          "price_text": "760.51"
+          "price_text": "760.51",
+          "reference_line": true
         },
         {
           "id": "PD_POC",
@@ -47247,7 +47330,8 @@
           },
           "distance": 3.324999999999932,
           "from_spot_text": "3.32 above spot",
-          "price_text": "760.40"
+          "price_text": "760.40",
+          "reference_line": true
         },
         {
           "id": "put_wall",
@@ -47267,7 +47351,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "absolute_gamma_strike",
@@ -47287,7 +47372,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "put_delta_wall",
@@ -47307,7 +47393,8 @@
           "distance": 2.9249999999999545,
           "side": "ABOVE",
           "from_spot_text": "2.92 above spot",
-          "price_text": "760.00"
+          "price_text": "760.00",
+          "reference_line": false
         },
         {
           "id": "PDC",
@@ -47331,7 +47418,8 @@
           },
           "distance": 2.7349999999999,
           "from_spot_text": "2.73 above spot",
-          "price_text": "759.81"
+          "price_text": "759.81",
+          "reference_line": true
         },
         {
           "id": "PD_VAL",
@@ -47355,7 +47443,8 @@
           },
           "distance": 0.9349999999999454,
           "from_spot_text": "0.93 above spot",
-          "price_text": "758.01"
+          "price_text": "758.01",
+          "reference_line": true
         },
         {
           "id": "ORB_HIGH",
@@ -47379,7 +47468,8 @@
           },
           "distance": 0.80499999999995,
           "from_spot_text": "0.80 above spot",
-          "price_text": "757.88"
+          "price_text": "757.88",
+          "reference_line": false
         },
         {
           "id": "TODAY_VAH",
@@ -47403,7 +47493,8 @@
           },
           "distance": 0.7649999999999864,
           "from_spot_text": "0.76 above spot",
-          "price_text": "757.84"
+          "price_text": "757.84",
+          "reference_line": false
         },
         {
           "id": "max_pain",
@@ -47423,7 +47514,8 @@
           "distance": -0.07500000000004547,
           "side": "BELOW",
           "from_spot_text": "0.08 below spot",
-          "price_text": "757.00"
+          "price_text": "757.00",
+          "reference_line": false
         },
         {
           "id": "TODAY_POC",
@@ -47447,7 +47539,8 @@
           },
           "distance": -0.375,
           "from_spot_text": "0.38 below spot",
-          "price_text": "756.70"
+          "price_text": "756.70",
+          "reference_line": false
         },
         {
           "id": "VWAP",
@@ -47471,7 +47564,8 @@
           },
           "distance": -0.48996806278785243,
           "from_spot_text": "0.49 below spot",
-          "price_text": "756.59"
+          "price_text": "756.59",
+          "reference_line": false
         },
         {
           "id": "TODAY_VAL",
@@ -47495,7 +47589,8 @@
           },
           "distance": -1.0750000000000455,
           "from_spot_text": "1.08 below spot",
-          "price_text": "756.00"
+          "price_text": "756.00",
+          "reference_line": false
         },
         {
           "id": "pin_candidate",
@@ -47515,7 +47610,8 @@
           "distance": -1.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "1.08 below spot",
-          "price_text": "756.00"
+          "price_text": "756.00",
+          "reference_line": false
         },
         {
           "id": "ORB_MID",
@@ -47539,7 +47635,8 @@
           },
           "distance": -1.3000000000000682,
           "from_spot_text": "1.30 below spot",
-          "price_text": "755.77"
+          "price_text": "755.77",
+          "reference_line": false
         },
         {
           "id": "PDL",
@@ -47563,7 +47660,8 @@
           },
           "distance": -2.175000000000068,
           "from_spot_text": "2.18 below spot",
-          "price_text": "754.90"
+          "price_text": "754.90",
+          "reference_line": true
         },
         {
           "id": "ORB_LOW",
@@ -47587,7 +47685,8 @@
           },
           "distance": -3.4050000000000864,
           "from_spot_text": "3.41 below spot",
-          "price_text": "753.67"
+          "price_text": "753.67",
+          "reference_line": false
         },
         {
           "id": "OVERNIGHT_LOW",
@@ -47611,7 +47710,8 @@
           },
           "distance": -4.2549999999999955,
           "from_spot_text": "4.25 below spot",
-          "price_text": "752.82"
+          "price_text": "752.82",
+          "reference_line": true
         },
         {
           "id": "hvp",
@@ -47631,7 +47731,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         },
         {
           "id": "key_delta_strike",
@@ -47651,7 +47752,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         },
         {
           "id": "put_charm_wall",
@@ -47671,7 +47773,8 @@
           "distance": -7.0750000000000455,
           "side": "BELOW",
           "from_spot_text": "7.08 below spot",
-          "price_text": "750.00"
+          "price_text": "750.00",
+          "reference_line": false
         }
       ],
       "by_distance": [

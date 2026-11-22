@@ -31,3 +31,6 @@ def test_a_missing_heartbeat_keeps_the_last_subscription():
     assert live["feed_health"]["l1"]["state"] == "LIVE"
     assert down["subscription_state"] == ofs.SUBSCRIBED
     assert down["feed_health"]["l1"]["state"] == "OFFLINE"
+    # the badge the page draws is served: ACTIVE while held and live, the feed's own state after
+    assert (live["subscription_active"], live["subscription_text"]) == (True, ofs.ACTIVE)
+    assert (down["subscription_active"], down["subscription_text"]) == (False, "OFFLINE")

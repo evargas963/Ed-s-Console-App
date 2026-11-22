@@ -134,3 +134,46 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
     )
     assert not_held["subscription_state"] == down["subscription_state"] == "NOT STREAMED"
     assert not_held["feed_health"]["l1"]["state"] == "NOT LIVE"
+    # the badge the Flow panel draws, served with it: ACTIVE only while held with its feed live
+    assert (held["subscription_active"], held["subscription_text"]) == (True, "ACTIVE")
+    for plane in (not_held, down):
+        assert (plane["subscription_active"], plane["subscription_text"]) == (False, "NOT STREAMED")
+
+
+def test_the_flow_header_says_the_side_in_words_and_nothing_where_none_is_named():
+    """The header's side as the chain record names it, served in the header's words.
+
+    SPY's 2026-10-07 0DTE chain, published as captured: a call reads Call and a put reads Put,
+    and before a chain lists the contract there is no side and no words. INDUCED: the same chain
+    with the put's putCall not sent, which Schwab has not sent us: its record names no side, and
+    the panel serves no words for it. The page draws the words and picks none.
+    """
+    at = SPY_0DTE.now.timestamp()
+    call = next(c["symbol"] for c in SPY_0DTE.chain if c["putCall"] == "CALL")
+    put = next(c["symbol"] for c in SPY_0DTE.chain if c["putCall"] == "PUT")
+    no_side = [
+        {k: v for k, v in c.items() if k != "putCall" or c["symbol"] != put} for c in SPY_0DTE.chain
+    ]
+
+    def said(symbol: str) -> tuple[str | None, str | None]:
+        body = push_contract.options_microstructure(symbol, at)
+        return body["put_call"], body["put_call_text"]
+
+    def publish(chain: list) -> None:
+        day = SPY_0DTE.now.date().isoformat()
+        publish_capture("SPY", chain, at, SPY_0DTE.spot, day, SPY_0DTE.now)
+
+    with level_store._lock:
+        level_store._levels.pop("SPY", None)
+    try:
+        unlisted = said(call)
+        publish(SPY_0DTE.chain)
+        listed = said(call), said(put)
+        publish(no_side)
+        unnamed = said(call), said(put)
+    finally:
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
+    assert unlisted == (None, None)
+    assert listed == (("CALL", "Call"), ("PUT", "Put"))
+    assert unnamed == (("CALL", "Call"), (None, None))

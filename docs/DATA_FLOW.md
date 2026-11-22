@@ -337,17 +337,27 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`flip_relation_text`), a level move's level and where the busiest strikes sit against the walls
   (`level_text`, `busiest_vs_walls_text`: `push.strikes`), where a tape print landed
   (`classification_text`: `history.LANDED_TEXT`), a chain answer's scope (`scope.kind_text`:
-  `push.chain.SCOPE_TEXT`), a venue of the Liquidity card (`name`: `push.book.VENUE_NAMES`), and the
+  `push.chain.SCOPE_TEXT`), a venue of the Liquidity card (`name`: `push.book.VENUE_NAMES`), the
   value area's and the VWAP's relations (`value_state_text`, `vwap_relation_text`:
-  `push.liquidity`). The page draws them and holds no table from a served state to words; a table
-  from a state to a colour, a tone or an arrow is drawing and stays on the page. Enforced by:
-  `tests/test_positioning_migration_v1.py`, `tests/test_options_flow_tape_v1.py`,
-  `tests/test_chain_api_v1.py`, `tests/test_liquidity_readout_v1.py`,
-  `tests/test_one_levels_producer_v1.py`, `tests/test_trade_desk_served_v1.py`,
-  `tests/test_data_path_liquidity_zero_v1.py`, `tests/e2e/console-trade-desk.spec.js`,
-  `tests/e2e/console-options-flow-tape.spec.js`, `tests/e2e/console-gamma-asof.spec.js`,
-  `tests/e2e/console-liquidity-card.spec.js`, `tests/e2e/console-gamma-heatmap.spec.js`,
-  `tests/e2e/console-confluence.spec.js`; that no page script holds such a table: no machine check,
+  `push.liquidity`), a contract's side (`put_call_text`: `push.contract.SIDE_TEXT`), the option
+  stream's badge for a contract (`subscription_text`, with `subscription_active` for its tone:
+  `app.options.order_flow.streaming`), a tilt as running text says it (`tilt_text`, beside the
+  headline's `side_word`: `calc.order_flow.TILT_WORDS`), and a zone list that lists none
+  (`no_zones_text`: `push.liquidity.NO_ZONES_TEXT`). A choice of what a screen draws is served the
+  same way: each level says whether the liquidity map draws it as a reference line
+  (`reference_line`: `push.levels.REFERENCE_LINE_FAMILIES`). The page draws them and holds no table
+  from a served state to words; a table from a state to a colour, a tone or an arrow is drawing and
+  stays on the page. Enforced by: `tests/test_positioning_migration_v1.py`,
+  `tests/test_options_flow_tape_v1.py`, `tests/test_chain_api_v1.py`,
+  `tests/test_liquidity_readout_v1.py`, `tests/test_one_levels_producer_v1.py`,
+  `tests/test_trade_desk_served_v1.py`, `tests/test_data_path_liquidity_zero_v1.py`,
+  `tests/test_options_order_flow_api_v1.py`, `tests/test_options_order_flow_production_v1.py`,
+  `tests/test_data_path_silent_subscription_v1.py`,
+  `tests/test_liquidity_snapshot_spot_identity_v1.py`, `tests/test_e2e_panels_two_day_v1.py`,
+  `tests/e2e/console-trade-desk.spec.js`, `tests/e2e/console-options-flow-tape.spec.js`,
+  `tests/e2e/console-gamma-asof.spec.js`, `tests/e2e/console-liquidity-card.spec.js`,
+  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-confluence.spec.js`,
+  `tests/e2e/console-gamma-flow.spec.js`; that no page script holds such a table: no machine check,
   ENF-12.
 - **Price relations.** Each level's distance and side from the live price, the walls' state and the
   side of the flip are computed when served, at the live price

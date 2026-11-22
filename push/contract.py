@@ -24,15 +24,22 @@ class ContractPanel(ContractFlow, BookTimes):
     """The `contract` panel (options_microstructure).
 
     The contract's book and flow, then the contract asked, its side, strike and expiry from its
-    chain record (None while no chain the console holds lists it), whether the daemon streams
-    it and is receiving it, and the two clocks as the screen shows them (BookTimes).
+    chain record (None while no chain the console holds lists it), the side as the header says
+    it (SIDE_TEXT), whether the daemon streams it and is receiving it, and the two clocks as the
+    screen shows them (BookTimes).
     """
 
     contract: str
     put_call: str | None
+    put_call_text: str | None
     strike_text: str | None
     expiry: str | None
     streaming_plane: StreamingPlane
+
+
+#: a contract's side (option_contract.OptionContract.side) as the Flow panel's header says it; no
+#: words where the chain record names neither
+SIDE_TEXT: dict[str | None, str | None] = {"CALL": "Call", "PUT": "Put", None: None}
 
 
 def contract_asked(params: dict[str, Any]) -> str:
@@ -59,6 +66,7 @@ def options_microstructure(c: str, now: float) -> ContractPanel:
         **live,
         "contract": c,
         "put_call": None if record is None else record.side,
+        "put_call_text": None if record is None else SIDE_TEXT[record.side],
         "strike_text": None if record is None else strike_text(record.strike),
         "expiry": None if record is None else record.expiry,
         # whether the daemon streams this contract (the option rule) and is receiving it
