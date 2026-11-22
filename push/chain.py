@@ -30,6 +30,10 @@ log = logging.getLogger("ed_server")
 
 #: the chain panel's reason while no chain of the ticker is held and no chain error is recorded
 NO_CHAIN_YET = "the daemon has not delivered this ticker's chain yet"
+#: a chain answer's scope (its `scope.kind`): every contract of one expiry, or no chain to answer
+#: from; and each as the chain's badge says it (`scope.kind_text`)
+COMPLETE_SINGLE_EXPIRY, SCOPE_UNAVAILABLE = "complete_single_expiry", "unavailable"
+SCOPE_TEXT = {COMPLETE_SINGLE_EXPIRY: "complete (ALL)", SCOPE_UNAVAILABLE: "unavailable"}
 
 
 def _net_gex_column(surf: dict[str, Any] | None, expiry: str) -> dict[float, float | None] | None:
@@ -218,7 +222,11 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
             "ladder": [],
             "status": "unavailable",
             **verdict,
-            "scope": {"kind": "unavailable", "reason": asked.reason},
+            "scope": {
+                "kind": SCOPE_UNAVAILABLE,
+                "reason": asked.reason,
+                "kind_text": SCOPE_TEXT[SCOPE_UNAVAILABLE],
+            },
         }
     response_contracts = asked.contracts
     shown = _shown(response_contracts)
@@ -243,5 +251,8 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> dict[str, Any]:
         "status": "ok",
         "ladder": served,
         "n_strikes": len({r["strike"] for r in ladder}),
-        "scope": {"kind": "complete_single_expiry"},
+        "scope": {
+            "kind": COMPLETE_SINGLE_EXPIRY,
+            "kind_text": SCOPE_TEXT[COMPLETE_SINGLE_EXPIRY],
+        },
     }

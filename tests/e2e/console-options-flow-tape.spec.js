@@ -71,7 +71,11 @@ async function intercept(page, tapeBody) {
       expiry: null,
       ladder: [],
       status: "unavailable",
-      scope: { kind: "unavailable", reason: "no listed expiry for this ticker" },
+      scope: {
+        kind: "unavailable",
+        reason: "no listed expiry for this ticker",
+        kind_text: "unavailable", // push.chain.SCOPE_TEXT
+      },
     },
     strikes: REAL.strikes,
   });

@@ -68,7 +68,7 @@ const PUT_SYM = "CRWD  260918P00272500";
 const CHAIN = {
   expiry: "2026-09-18",
   status: "ok",
-  scope: { kind: "complete_single_expiry" },
+  scope: { kind: "complete_single_expiry", kind_text: "complete (ALL)" }, // push.chain.SCOPE_TEXT
   // push.chain's ladder: the strike's call and put rows, no surface value (net_gex unknown)
   ladder: [
     {

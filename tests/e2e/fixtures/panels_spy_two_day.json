@@ -29631,7 +29631,8 @@
     ],
     "n_strikes": 129,
     "scope": {
-      "kind": "complete_single_expiry"
+      "kind": "complete_single_expiry",
+      "kind_text": "complete (ALL)"
     }
   },
   "chain_second_expiry": {
@@ -39474,7 +39475,8 @@
     ],
     "n_strikes": 171,
     "scope": {
-      "kind": "complete_single_expiry"
+      "kind": "complete_single_expiry",
+      "kind_text": "complete (ALL)"
     }
   },
   "book": {

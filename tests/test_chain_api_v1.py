@@ -143,7 +143,9 @@ def test_no_held_chain_is_unavailable_with_its_reason():
     assert body["status"] == "unavailable" and "contracts" not in body  # served once: the ladder
     assert body["ladder"] == []  # the page draws the ladder it is sent: no rows, not no key
     assert body["scope"]["reason"]
-    assert set(body["scope"]) == {"kind", "reason"}
+    assert set(body["scope"]) == {"kind", "reason", "kind_text"}
+    # the scope as the chain's badge says it, served: the page picks no words
+    assert (body["scope"]["kind"], body["scope"]["kind_text"]) == ("unavailable", "unavailable")
 
 
 def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
@@ -151,7 +153,7 @@ def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     body = _get(ticker="tsla")
     assert body["status"] == "ok" and body["expiry"] == _TSLA_EXPIRY
     # the expiry is served once (`expiry`), and no label of ours rides with the chain
-    assert body["scope"] == {"kind": "complete_single_expiry"}
+    assert body["scope"] == {"kind": "complete_single_expiry", "kind_text": "complete (ALL)"}
     assert _served(body) == _by_symbol(_as_shown(_TSLA_CONTRACTS))
     fractional = [
         c
