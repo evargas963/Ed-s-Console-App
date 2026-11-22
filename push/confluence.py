@@ -88,9 +88,8 @@ def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime) -> list[d
                     "price": row["price"],
                 }
             )
-    served = live.to_dict()
     for gid, label in OPTION_LEVELS:
-        price = served[gid]
+        price = live.level(gid)
         if price is not None:
             markers.append(
                 {

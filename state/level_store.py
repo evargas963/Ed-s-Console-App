@@ -9,9 +9,9 @@ from __future__ import annotations
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, TypedDict
+from typing import TypedDict
 
-from calc.terrain_engine import TerrainSnapshot
+from calc.terrain_engine import TerrainFields, TerrainSnapshot
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
 
@@ -116,6 +116,24 @@ class GammaSurface(SurfaceState):
     cells: list[GridCell]
 
 
+class SpotStamp(TypedDict):
+    """A price's source and its time, as the terrain panel carries them."""
+
+    spot_source: str
+    spot_as_of_ts_utc: float | None
+
+
+class ServedLevels(TerrainFields, SpotStamp):
+    """A ticker's published levels as the terrain panel sends them (PublishedLevels.served).
+
+    The snapshot's fields with the chain's time as `computed_ts_utc`, the newest option value's as
+    `levels_ts_utc`, and the price they were computed at.
+    """
+
+    levels_ts_utc: float
+    chain_basis: str
+
+
 @dataclass(frozen=True)
 class PublishedLevels:
     """A ticker's levels as server._publish_levels published them, with their inputs."""
@@ -147,9 +165,10 @@ class PublishedLevels:
     prior_day: TerrainSnapshot | None
     captures_key: tuple[float | None, str]
 
-    def served(self) -> dict[str, Any]:
+    def served(self) -> ServedLevels:
         """Return the levels as the terrain panel sends them, before the live price's relations."""
-        return self.snap.to_dict() | {
+        return {
+            **self.snap.to_dict(),
             "computed_ts_utc": self.computed_ts_utc,
             "levels_ts_utc": self.levels_ts_utc,
             "chain_basis": self.chain_basis,

@@ -10,9 +10,9 @@ import bisect
 import math
 import statistics
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, NamedTuple, TypedDict
+from typing import NamedTuple, TypedDict
 
 from calc.confluence_composite import iv_by_strike
 from calc.math_exposure_core import (
@@ -144,6 +144,77 @@ class PositioningMigration(TypedDict):
     volume_total: float | None
 
 
+class TerrainFields(TypedDict):
+    """A snapshot as the terrain panel carries it (TerrainSnapshot.to_dict).
+
+    Each field but the heavy maps as the snapshot holds it, then each number as the screen shows it.
+    """
+
+    ticker: str
+    spot: float | None
+    schema_version: int
+    regime: str
+    headline: str
+    headline_source: str
+    gamma_flip: float | None
+    call_wall: float | None
+    put_wall: float | None
+    absolute_gamma_strike: float | None
+    pin_candidate: float | None
+    pin_expected_moves: float | None
+    pin_strike_widths: float | None
+    pin_minutes_to_close: float | None
+    max_pain: float | None
+    max_pain_dte: float | None
+    call_charm_wall: float | None
+    put_charm_wall: float | None
+    key_delta_strike: float | None
+    hvp: float | None
+    lvp: float | None
+    net_gex_at_spot: float | None
+    gsf: float | None
+    grc: float | None
+    same_day: dict[str, float | None]
+    same_day_repriced_from: str | None
+    call_delta_wall: float | None
+    put_delta_wall: float | None
+    contracts_used: int
+    strikes_used: int
+    dollarized: bool
+    flip_note: str | None
+    error: str
+    pcr_by_expiry: dict[str, float | None]
+    atm_iv_pct_by_expiry: dict[str, float | None]
+    pcr_volume_by_expiry: dict[str, float | None]
+    pcr_all: float | None
+    pcr_volume_all: float | None
+    expiries: list[str]
+    expiry_dte: dict[str, float | None]
+    computed_ts_utc: float | None
+    net_gex_at_spot_text: str | None
+    contracts_used_text: str | None
+    call_wall_text: str | None
+    put_wall_text: str | None
+    gamma_flip_text: str | None
+    max_pain_text: str | None
+    absolute_gamma_strike_text: str | None
+    pin_candidate_text: str | None
+    gsf_text: str | None
+    grc_text: str | None
+    hvp_text: str | None
+    lvp_text: str | None
+    key_delta_strike_text: str | None
+    call_delta_wall_text: str | None
+    put_delta_wall_text: str | None
+    call_charm_wall_text: str | None
+    put_charm_wall_text: str | None
+    same_day_text: dict[str, str | None]
+    pcr_all_text: str | None
+    pcr_volume_all_text: str | None
+    pcr_by_expiry_text: dict[str, str | None]
+    pcr_volume_by_expiry_text: dict[str, str | None]
+
+
 @dataclass(frozen=True)
 class TerrainSnapshot:
     """Everything the terrain tab renders, computed from one chain."""
@@ -273,22 +344,79 @@ class TerrainSnapshot:
     #: an age on its face rather than implying "now".
     computed_ts_utc: float | None = None
 
-    def to_dict(self) -> dict[str, Any]:
+    def level(self, name: str) -> float | None:
+        """Return the option level `name`'s price (OPTION_LEVELS); None where it is not known."""
+        price: float | None = getattr(self, name)
+        return price
+
+    def to_dict(self) -> TerrainFields:
         """Return the per-poll payload.
 
-        It holds every field except the heavy maps (profile, per_strike, books,
-        charm_by_strike), which the server reads off the snapshot, and the net gamma at spot and
-        the contracts used as the screen shows them.
+        It holds every field except the heavy maps (profile, per_strike, books, charm_by_strike,
+        charm_by_expiry, iv_by_expiry), which the server reads off the snapshot, then the net
+        gamma at spot, the contracts used, each option level's price (and each on the 0DTE basis)
+        and the put/call ratios as the screen shows them.
         """
-        light = replace(self, **{n: None for n in _HEAVY_FIELDS})
         return {
-            **{k: v for k, v in asdict(light).items() if k not in _HEAVY_FIELDS},
+            "ticker": self.ticker,
+            "spot": self.spot,
+            "schema_version": self.schema_version,
+            "regime": self.regime,
+            "headline": self.headline,
+            "headline_source": self.headline_source,
+            "gamma_flip": self.gamma_flip,
+            "call_wall": self.call_wall,
+            "put_wall": self.put_wall,
+            "absolute_gamma_strike": self.absolute_gamma_strike,
+            "pin_candidate": self.pin_candidate,
+            "pin_expected_moves": self.pin_expected_moves,
+            "pin_strike_widths": self.pin_strike_widths,
+            "pin_minutes_to_close": self.pin_minutes_to_close,
+            "max_pain": self.max_pain,
+            "max_pain_dte": self.max_pain_dte,
+            "call_charm_wall": self.call_charm_wall,
+            "put_charm_wall": self.put_charm_wall,
+            "key_delta_strike": self.key_delta_strike,
+            "hvp": self.hvp,
+            "lvp": self.lvp,
+            "net_gex_at_spot": self.net_gex_at_spot,
+            "gsf": self.gsf,
+            "grc": self.grc,
+            "same_day": dict(self.same_day),
+            "same_day_repriced_from": self.same_day_repriced_from,
+            "call_delta_wall": self.call_delta_wall,
+            "put_delta_wall": self.put_delta_wall,
+            "contracts_used": self.contracts_used,
+            "strikes_used": self.strikes_used,
+            "dollarized": self.dollarized,
+            "flip_note": self.flip_note,
+            "error": self.error,
+            "pcr_by_expiry": dict(self.pcr_by_expiry),
+            "atm_iv_pct_by_expiry": dict(self.atm_iv_pct_by_expiry),
+            "pcr_volume_by_expiry": dict(self.pcr_volume_by_expiry),
+            "pcr_all": self.pcr_all,
+            "pcr_volume_all": self.pcr_volume_all,
+            "expiries": list(self.expiries),
+            "expiry_dte": dict(self.expiry_dte),
+            "computed_ts_utc": self.computed_ts_utc,
             "net_gex_at_spot_text": dollars_text(self.net_gex_at_spot),
             "contracts_used_text": count_text(self.contracts_used),
-            # each option level's price, and each on the 0DTE basis, as the screen shows it
-            **{f"{name}_text": price_text(getattr(self, name)) for name, _ in OPTION_LEVELS},
+            "call_wall_text": price_text(self.call_wall),
+            "put_wall_text": price_text(self.put_wall),
+            "gamma_flip_text": price_text(self.gamma_flip),
+            "max_pain_text": price_text(self.max_pain),
+            "absolute_gamma_strike_text": price_text(self.absolute_gamma_strike),
+            "pin_candidate_text": price_text(self.pin_candidate),
+            "gsf_text": price_text(self.gsf),
+            "grc_text": price_text(self.grc),
+            "hvp_text": price_text(self.hvp),
+            "lvp_text": price_text(self.lvp),
+            "key_delta_strike_text": price_text(self.key_delta_strike),
+            "call_delta_wall_text": price_text(self.call_delta_wall),
+            "put_delta_wall_text": price_text(self.put_delta_wall),
+            "call_charm_wall_text": price_text(self.call_charm_wall),
+            "put_charm_wall_text": price_text(self.put_charm_wall),
             "same_day_text": {name: price_text(v) for name, v in self.same_day.items()},
-            # the put/call ratios, over the whole book and each expiry, as the screen shows them
             "pcr_all_text": fixed_text(self.pcr_all, 2),
             "pcr_volume_all_text": fixed_text(self.pcr_volume_all, 2),
             "pcr_by_expiry_text": {ex: fixed_text(v, 2) for ex, v in self.pcr_by_expiry.items()},
@@ -296,16 +424,6 @@ class TerrainSnapshot:
                 ex: fixed_text(v, 2) for ex, v in self.pcr_volume_by_expiry.items()
             },
         }
-
-
-_HEAVY_FIELDS = (
-    "profile",
-    "per_strike",
-    "books",
-    "charm_by_strike",
-    "charm_by_expiry",
-    "iv_by_expiry",
-)
 
 
 def _unavailable(ticker: str, spot: float | None, reason: str) -> TerrainSnapshot:
@@ -676,6 +794,17 @@ def wall_geometry_state(spot: float | None, wall: float | None, side: str) -> st
     raise ValueError(f"side must be 'call' or 'put', got {side!r}")
 
 
+class RelationFields(TypedDict):
+    """A price's relations to the published levels as the terrain panel carries them."""
+
+    call_wall_state: str | None
+    put_wall_state: str | None
+    call_wall_lean: str | None
+    put_wall_lean: str | None
+    flip_relation: str | None
+    flip_relation_text: str | None
+
+
 @dataclass(frozen=True)
 class PriceRelations:
     """Every relation of a price to the published levels, as the routes serve it beside them.
@@ -690,11 +819,18 @@ class PriceRelations:
     flip_relation: str | None
     flip_relation_text: str | None
 
-    def to_dict(self) -> dict[str, str | float | None]:
-        return asdict(self)
+    def to_dict(self) -> RelationFields:
+        return {
+            "call_wall_state": self.call_wall_state,
+            "put_wall_state": self.put_wall_state,
+            "call_wall_lean": self.call_wall_lean,
+            "put_wall_lean": self.put_wall_lean,
+            "flip_relation": self.flip_relation,
+            "flip_relation_text": self.flip_relation_text,
+        }
 
 
-def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelations:
+def price_relations(terrain: TerrainFields, price: float | None) -> PriceRelations:
     """Return every relation of `price` to the published levels (`terrain`, a snapshot's to_dict).
 
     Each wall's state and label and the price's side of the flip. The levels are the
