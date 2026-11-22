@@ -92,7 +92,7 @@ def terrain(tk: str, now: float) -> dict[str, Any]:
         out["spot"], out["spot_source"], out["spot_as_of_ts_utc"] = resolve_spot(tk, now=now)
         out.update(price_relations(out, out["spot"]).to_dict())
         out.update(_atr_fields(tk, at))  # live: today's candle from the bars held now
-        out.update(_regime_words(out["regime"]))
+        out.update(_regime_words(cached.snap.regime))
         # the chain's verdict is levels_state, above. The live price the relations are computed from
         # is a separate fact: the numbers stay, marked with whether that price is live
         out.update(price_mark(tk, out["spot_as_of_ts_utc"], now))
