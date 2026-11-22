@@ -1,7 +1,8 @@
 """The `liquidity` panel: the session's liquidity and value zones, typed by their side of the price.
 
 Read from State: the price-level snapshot (state.price_level_store), the published levels' option
-levels (state.level_store), the bars and candles the bar writer holds and the live price.
+levels with their verdict (push.verdict), the bars and candles the bar writer holds and the live
+price.
 """
 
 from __future__ import annotations
@@ -24,10 +25,11 @@ from calc.liquidity_value_engine import (
 from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
-from push.levels import NO_PRICE_LEVELS_REASON
+from push.levels import NO_PRICE_LEVELS_REASON, SnapshotStamp, snapshot_stamp
 from push.spot import resolve_spot
+from push.verdict import LevelsVerdict, terrain_cache_get
 from state import bar_store
-from state.level_store import published_levels
+from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot, materialize_hold_counts
 from time_et import sessions
 
@@ -80,8 +82,12 @@ class HoldRate(TypedDict):
     text: str
 
 
-class LiquidityPanel(TypedDict):
-    """The `liquidity` panel: the session's zones nearest the price first, and the hold rates."""
+class LiquidityPanel(LevelsVerdict, SnapshotStamp):
+    """The `liquidity` panel: the session's zones nearest the price first, and the hold rates.
+
+    With what the zones are made of: the option levels' verdict (their state, time, age and why)
+    and the price-level snapshot's time and age.
+    """
 
     ticker: str
     zones: list[ZoneRow]
@@ -101,9 +107,8 @@ class NoLiquidity(TypedDict):
     reason: str
 
 
-def _liquidity_option_levels(tk: str) -> list[tuple[float, str]]:
-    """Return the ticker's option levels from its published terrain, tagged for liquidity zones."""
-    published = published_levels(tk)
+def _option_levels(published: PublishedLevels | None) -> list[tuple[float, str]]:
+    """Return the published terrain's option levels, tagged for liquidity zones; none before one."""
     return [
         (float(level), tag)
         for k, tag in OPTION_LEVEL_TAGS
@@ -227,14 +232,18 @@ def liquidity_snapshot(ticker: str, now: datetime) -> LiquidityPanel | NoLiquidi
 
     Built from the one price-level snapshot (canonical_price_level_snapshot, the same values the
     `levels` panel sends) with the terrain's option levels fused in, each zone typed by its side
-    of the live price. It computes no level of its own; the price is not a level. Levels that make
-    no zone are answered with the words the map's list says for that (`no_zones_text`).
+    of the live price. It computes no level of its own; the price is not a level. Served with the
+    zones: the option levels' verdict at `now` (terrain_cache_get: the one every screen shows) and
+    the snapshot's time and age (snapshot_stamp, the `levels` panel's own). Levels that make no
+    zone are answered with the words the map's list says for that (`no_zones_text`).
     """
     ticker_upper = ticker_storage_key(ticker)
+    at = now.timestamp()
     config = PlaybookConfig(max_zone_width=2.0)
-    extra = _liquidity_option_levels(ticker_upper)
+    published, verdict = terrain_cache_get(ticker_upper, at)
+    extra = _option_levels(published)
     # the one spot (resolve_spot), the header's own
-    spot_for_zones, _, _ = resolve_spot(ticker_upper, now=now.timestamp())
+    spot_for_zones, _, _ = resolve_spot(ticker_upper, now=at)
     _canon = canonical_price_level_snapshot(ticker_upper, now)
     if _canon is None:
         return _no_liquidity(ticker_upper)
@@ -269,6 +278,8 @@ def liquidity_snapshot(ticker: str, now: datetime) -> LiquidityPanel | NoLiquidi
         zones_payload.sort(key=lambda x: _distance_to_spot(x["zone_low"], x["zone_high"], spot))
     return {
         "ticker": out.ticker,
+        **verdict,
+        **snapshot_stamp(_canon, at),
         "zones": zones_payload,
         # the zone list's words when it lists none; with no levels published, `reason` says why
         "no_zones_text": None if zones_payload else NO_ZONES_TEXT,
