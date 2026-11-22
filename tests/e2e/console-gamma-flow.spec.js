@@ -378,19 +378,23 @@ test.describe("D — Gamma Flow subview", () => {
     await expect(page.locator("#flowBody .fl-est")).toContainText("Flow observations (estimated)"); // still named an estimate
   });
 
+  // the plane of a held contract whose feed is not live, the badge as the program serves it then
+  // (tests/test_data_path_silent_subscription_v1.py): OFFLINE with its feed down, NOT LIVE with
+  // its market not trading
+  const heldPlane = (state) => ({
+    subscription_active: false,
+    subscription_text: state,
+    feed_health: {
+      l1: { state, text: state },
+      book: { state, text: state },
+      replay: "stale",
+    },
+  });
+
   test("a held contract whose feed is down reads OFFLINE and keeps the bid", async ({ page }) => {
     const ctx = makeContext();
-    // INDUCED on the fixture's plane: the held contract with its feed down, the badge as the
-    // program serves it then (tests/test_data_path_silent_subscription_v1.py)
-    ctx.plane = {
-      subscription_active: false,
-      subscription_text: "OFFLINE",
-      feed_health: {
-        l1: { state: "OFFLINE", text: "OFFLINE" },
-        book: { state: "OFFLINE", text: "OFFLINE" },
-        replay: "stale",
-      },
-    };
+    // INDUCED on the fixture's plane: the held contract with its feed down
+    ctx.plane = heldPlane("OFFLINE");
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator("#flowBody .fl-badge")).toHaveText("OFFLINE");
@@ -402,15 +406,7 @@ test.describe("D — Gamma Flow subview", () => {
   }) => {
     const ctx = makeContext();
     // the fixture's own state, staged again: held, its market not trading
-    ctx.plane = {
-      subscription_active: false,
-      subscription_text: "NOT LIVE",
-      feed_health: {
-        l1: { state: "NOT LIVE", text: "NOT LIVE" },
-        book: { state: "NOT LIVE", text: "NOT LIVE" },
-        replay: "stale",
-      },
-    };
+    ctx.plane = heldPlane("NOT LIVE");
     await setup(page, ctx);
     await selectCallAndOpenFlow(page);
     await expect(page.locator("#flowBody .fl-badge")).toHaveText("NOT LIVE");
@@ -419,16 +415,8 @@ test.describe("D — Gamma Flow subview", () => {
 
   test("an offline contract keeps Schwab's quote time and book time", async ({ page }) => {
     const ctx = makeContext();
-    // INDUCED on the fixture's plane: the held contract with its feed down, the badge as served
-    ctx.plane = {
-      subscription_active: false,
-      subscription_text: "OFFLINE",
-      feed_health: {
-        l1: { state: "OFFLINE", text: "OFFLINE" },
-        book: { state: "OFFLINE", text: "OFFLINE" },
-        replay: "stale",
-      },
-    };
+    // INDUCED on the fixture's plane: the held contract with its feed down
+    ctx.plane = heldPlane("OFFLINE");
     ctx.mutate = (d) => {
       // as the server stamps a book and quote of 09/25 06:59 PM CT, 4 s old (push.book._when_age)
       d.quote_when_age_text = "Fri 09/25 06:59 PM CT · 4s";
