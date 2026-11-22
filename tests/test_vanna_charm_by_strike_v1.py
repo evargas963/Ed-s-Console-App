@@ -49,6 +49,11 @@ TK = server.ticker_storage_key("CRWD")
 #: the windows a page asks: Auto and All, following the price, at All Expirations
 AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 ALL = {**AUTO, "scope": "all"}
+#: how long after the chain's capture the panels are read again with nothing renewed (INDUCED):
+#: ten minutes, past two of the daemon's chain rounds, so the levels read STALE
+LATER = 600.0
+#: the levels' verdict a panel of the levels' values is served with (push.verdict.LevelsVerdict)
+VERDICT = ("levels_state", "levels_stale_reason", "levels_age_text", "levels_time_ct")
 
 
 def _clear():
@@ -218,11 +223,12 @@ def build_e2e_panels() -> dict:
     """Return the panels of CRWD's real chain as the page's socket sends them.
 
     Vanna, Charm and the per-strike rows every Gamma view reads (strikes), each in the page's
-    default window (Auto, following the price), with Schwab's CRWD price as the live price:
-    vanna and charm at the quote's own time, the strikes at the chain's (its verdict is of that
-    instant). At the chain's instant too: the strikes in the Wider and All windows, the levels
-    (terrain) and the heatmap (surface, Auto, every column and expiry). Regenerate the browser
-    tests' file with write_e2e_panels.
+    default window (Auto, following the price), with Schwab's CRWD price as the live price, at
+    the chain's instant (the levels' verdict served with each is of that instant). At that
+    instant too: the strikes in the Wider and All windows, the levels (terrain) and the heatmap
+    (surface, Auto, every column and expiry). INDUCED: Vanna and Charm read LATER seconds on with
+    no chain or heartbeat since (`vanna_stale`, `charm_stale`). Regenerate the browser tests'
+    file with write_e2e_panels.
     """
     _clear()
     try:
@@ -237,8 +243,14 @@ def build_e2e_panels() -> dict:
         return json.loads(
             json.dumps(
                 {
-                    "vanna": push_strike_bars.strike_bars("vanna", TK, at, AUTO),
-                    "charm": push_strike_bars.strike_bars("charm", TK, at, AUTO),
+                    "vanna": push_strike_bars.strike_bars("vanna", TK, chain_at, AUTO),
+                    "charm": push_strike_bars.strike_bars("charm", TK, chain_at, AUTO),
+                    "vanna_stale": push_strike_bars.strike_bars(
+                        "vanna", TK, chain_at + LATER, AUTO
+                    ),
+                    "charm_stale": push_strike_bars.strike_bars(
+                        "charm", TK, chain_at + LATER, AUTO
+                    ),
                     "strikes": push_strikes.strikes(TK, chain_at, AUTO),
                     "strikes_wider": push_strikes.strikes(TK, chain_at, {**AUTO, "scope": "wider"}),
                     "strikes_all": push_strikes.strikes(TK, chain_at, ALL),
@@ -270,6 +282,26 @@ def write_e2e_panels() -> None:
 
 def test_the_browser_tests_panels_are_the_producers_own():
     assert json.loads(E2E_PANELS.read_text(encoding="utf-8")) == build_e2e_panels()
+
+
+@pytest.mark.parametrize("key", ["vanna", "charm"])
+def test_the_bars_are_served_with_the_levels_verdict_and_stand_marked_stale(key):
+    """The rows are the published levels', so the levels' verdict is served with them.
+
+    At the chain's instant it is the one the strikes panel serves (one verdict, every screen):
+    LIVE, the chain's time, no age yet. INDUCED: read LATER seconds on with no chain or heartbeat
+    since, the same rows stand, and the verdict says STALE with that time, the age and why. The
+    tabs draw it (tests/e2e/console-options-vanna-charm.spec.js).
+    """
+    panels = build_e2e_panels()
+    live, stale = panels[key], panels[f"{key}_stale"]
+    at = CRWD.now.timestamp()
+    assert {k: live[k] for k in VERDICT} == {k: panels["strikes"][k] for k in VERDICT}
+    assert (live["levels_state"], live["levels_age_text"]) == (lmp.LIVE, "0s")
+    assert live["levels_time_ct"] == stale["levels_time_ct"] == time_et.ct_label(at)
+    assert (stale["levels_state"], stale["levels_age_text"]) == ("STALE", "10m")
+    assert stale["levels_stale_reason"].startswith("levels are 600s old")
+    assert stale["rows"] == live["rows"] and len(live["rows"]) == 11
 
 
 def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():

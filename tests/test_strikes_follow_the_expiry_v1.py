@@ -55,6 +55,11 @@ def _snap(contracts: list[dict], day: dict):
     )
 
 
+def _verdict(panel: dict) -> dict:
+    """Return the levels' verdict a panel is served with (its `levels_` keys)."""
+    return {k: v for k, v in panel.items() if k.startswith("levels_")}
+
+
 @pytest.fixture
 def published():
     """Friday's chain published by the one producer, Thursday's levels as its prior day."""
@@ -308,9 +313,18 @@ def test_an_expiry_with_no_value_known_has_no_bar_and_says_so():
         TK, read_chain(chain), at, chain_spot=(FRIDAY["spot"], at), now=_at(FRIDAY)
     )
     try:
+        # the levels' verdict at that instant, as the strikes panel serves it: one for every screen
+        verdict = _verdict(push_strikes.strikes(TK, at, {**EVERY, "expiry": blank}))
+        assert set(verdict) == {
+            "levels_state",
+            "levels_stale_reason",
+            "levels_age_text",
+            "levels_time_ct",
+        }
         for key, method in push_strike_bars.STRIKE_BAR_METHODS.items():
             body = push_strike_bars.strike_bars(key, TK, at, {**EVERY, "expiry": blank})
-            assert body == {
+            assert _verdict(body) == verdict, key
+            assert {k: v for k, v in body.items() if k not in verdict} == {
                 "ticker": TK,
                 "available": False,
                 "expiry": blank,
