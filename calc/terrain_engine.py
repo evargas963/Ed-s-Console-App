@@ -9,7 +9,7 @@ from __future__ import annotations
 import bisect
 import math
 import statistics
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import NamedTuple, TypedDict
@@ -667,74 +667,108 @@ def atm_sigma_by_expiry(
 ) -> dict[str | None, float | None]:
     """Return each expiry date's ATM implied vol as a fraction, over all its contracts.
 
-    At the money is the forward price: `spot` plus the interest to the expiry, at the chain's own
-    rate over Schwab's own days to it (interestRate, a percent; daysToExpiration). The value is
-    the mean volatility of the two listed strikes where the two sides of the forward meet
-    (_sigma_at_the_forward). A leg's IV is its first contract's at the strike; one with no IV
-    from Schwab (-999, or 0: no sigma) has none. Schwab `volatility` is a percent, converted by
-    schwab_iv_to_sigma. None for an expiry Schwab sent no rate or no days for.
+    Schwab sends one volatility for a strike, and a strike below the forward price and one above
+    it differ by a step the size of the interest to the expiry (docs/derived_register.md). The
+    value is the mean volatility of the two listed strikes that step lies between
+    (_sigma_at_the_step), one from each side of it. A strike's legs are its first call and its
+    first put. None for an expiry Schwab sent no rate or no days for (interestRate, a percent;
+    daysToExpiration).
     """
-    legs: dict[str | None, dict[tuple[float, str], float | None]] = {}
+    strikes: dict[str | None, dict[float, dict[str, OptionContract]]] = {}
     # each expiry's interest to it as a share of the price, by each contract that carries both
     interest: dict[str | None, set[float]] = {}
     for c in contracts:
-        sides = legs.setdefault(c.expiry, {})
+        legs = strikes.setdefault(c.expiry, {})
         if c.strike is None or c.side is None:
             continue
-        sides.setdefault((c.strike, c.side), schwab_iv_to_sigma(c.volatility))
+        legs.setdefault(c.strike, {}).setdefault(c.side, c)
         if c.interest_rate is not None and c.days_to_expiry is not None:
             interest.setdefault(c.expiry, set()).add(
                 c.interest_rate / 100.0 * c.days_to_expiry / _DAYS_PER_YEAR
             )
     out: dict[str | None, float | None] = {}
     # a contract with no expiry date keeps its own key (None), last
-    for k, sides in sorted(legs.items(), key=lambda kv: (kv[0] is None, kv[0])):
+    for k, legs in sorted(strikes.items(), key=lambda kv: (kv[0] is None, kv[0])):
         # one chain sends one rate and one count of days for an expiry: the least were there two
         out[k] = (
-            _sigma_at_the_forward(sides, float(spot) * (1.0 + min(interest[k])))
+            _sigma_at_the_step(legs, float(spot) * (1.0 + min(interest[k])))
             if k in interest
             else None
         )
     return out
 
 
-def _sigma_at_the_forward(
-    sides: dict[tuple[float, str], float | None], forward: float
+def _sigma_at_the_step(
+    legs: Mapping[float, Mapping[str, OptionContract]], by_interest: float
 ) -> float | None:
-    """Return the mean volatility of the two listed strikes where the forward's two sides meet.
+    """Return the mean volatility of the two listed strikes the volatility's step lies between.
 
-    Schwab's volatility of a strike below the forward and of one above it differ by a step the
-    size of the interest to the expiry (docs/derived_register.md: measured on every stored
-    chain), so one strike is taken from each side of that step: of the pair of neighbouring
-    strikes that holds the forward and the pair on each side of it, the pair across which the
-    volatility rises the most, or the forward's own pair when none rises. A strike's volatility
-    is the mean of its call's and its put's, both or none: one side's IV never stands in for the
-    mean. None when the forward's own pair lacks a strike or a volatility: the next pair's never
+    The step sits at the forward, between two readings of it: the one the expiry's own options
+    imply (the listed strike where the call's and the put's mid prices are nearest, the forward
+    at or above it when the call is the dearer and below it when the put is: Cboe's VIX
+    methodology, docs/SOURCES.md) and `by_interest`, the price plus the interest to the expiry.
+    Of the pairs of neighbouring strikes from one below the lower of those two to one above the
+    higher, the step is the pair across which the volatility rises the most, when it rises there
+    by more than across the pair on each side of it; with no such pair the value is the implied
+    forward's own pair's. A strike's volatility is the mean of its call's and its put's, both or
+    none: one side's IV never stands in for the mean. None when no strike has both legs quoted,
+    or the implied forward's own pair lacks a strike or a volatility: the next pair's never
     stands in for it.
     """
-    listed = sorted({strike for strike, _side in sides})
-    at = bisect.bisect_right(listed, forward) - 1  # the last strike at or below the forward
-    if at < 0 or at + 2 > len(listed):
+    listed = sorted(legs)
+    # by a strike's place in `listed`: its call's mid price less its put's, and its volatility
+    gaps: dict[int, float] = {}
+    sigmas: dict[int, float] = {}
+    for n, strike in enumerate(listed):
+        mids = _call_and_put(legs[strike], _mid)
+        vols = _call_and_put(legs[strike], lambda c: schwab_iv_to_sigma(c.volatility))
+        if mids is not None:
+            gaps[n] = mids[0] - mids[1]
+        if vols is not None:
+            sigmas[n] = (vols[0] + vols[1]) / 2.0
+    if not gaps:
         return None
-
-    def sigma(strike: float) -> float | None:
-        if (strike, "CALL") not in sides or (strike, "PUT") not in sides:
-            return None
-        call, put = sides[strike, "CALL"], sides[strike, "PUT"]
-        return None if call is None or put is None else (call + put) / 2.0
-
-    # each pair's rise and its mean, the forward's own pair first: it wins an equal rise
-    pairs: dict[int, tuple[float, float]] = {}
-    for low in (at, at - 1, at + 1):
-        if low < 0 or low + 2 > len(listed):
-            continue
-        below, above = sigma(listed[low]), sigma(listed[low + 1])
-        if below is not None and above is not None:
-            pairs[low] = (above - below, (below + above) / 2.0)
-    if at not in pairs:
+    nearest = min(gaps, key=lambda n: (abs(gaps[n]), n))
+    implied = nearest if gaps[nearest] >= 0.0 else nearest - 1
+    interest = bisect.bisect_right(listed, by_interest) - 1
+    # each pair of neighbouring strikes' rise in volatility, by its lower strike's place
+    rises = {low: sigmas[low + 1] - sigmas[low] for low in sigmas if low + 1 in sigmas}
+    if implied not in rises:
         return None
-    rise, mean = max(pairs.values(), key=lambda pair: pair[0])
-    return mean if rise > 0.0 else pairs[at][1]
+    searched = range(min(implied, interest) - 1, max(implied, interest) + 2)
+    # the largest rise, the pair nearest the implied forward's own on a tie
+    step = max(
+        (low for low in searched if low in rises),
+        key=lambda low: (rises[low], -abs(low - implied)),
+    )
+    stands_out = (
+        step - 1 in rises
+        and step + 1 in rises
+        and rises[step] > max(0.0, rises[step - 1], rises[step + 1])
+    )
+    read = step if stands_out else implied
+    return (sigmas[read] + sigmas[read + 1]) / 2.0
+
+
+def _call_and_put(
+    legs: Mapping[str, OptionContract], read: Callable[[OptionContract], float | None]
+) -> tuple[float, float] | None:
+    """Return a strike's call's and its put's value by `read`, or None unless both have one."""
+    if "CALL" not in legs or "PUT" not in legs:
+        return None
+    call, put = read(legs["CALL"]), read(legs["PUT"])
+    return None if call is None or put is None else (call, put)
+
+
+def _mid(c: OptionContract) -> float | None:
+    """Return a contract's mid price, or None without a bid and an ask above 0.
+
+    The price of an option in Cboe's VIX methodology is the midpoint of its bid and its ask,
+    and only an option with a non-zero bid is counted (docs/SOURCES.md); an ask of 0 is no ask.
+    """
+    if c.bid is None or c.ask is None or c.bid <= 0.0 or c.ask <= 0.0:
+        return None
+    return (c.bid + c.ask) / 2.0
 
 
 def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:

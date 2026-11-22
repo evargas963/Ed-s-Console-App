@@ -92,8 +92,10 @@ def test_every_value_is_what_it_was():
     `far` DTE buckets the one expiry choice deleted; the whole book's rows are now `gex`, and each
     expiry's own (`by_expiry`, new) are proved in tests/test_strikes_follow_the_expiry_v1.py. It
     was written, too, while each expiry's ATM IV was its strike nearest the price's; it is read
-    where the two sides of the forward meet now (ATM_IV: its expiries and their order are what
-    they were, its values are proved on the real chains in tests/test_terrain_engine_v1.py).
+    where the two sides of the forward meet now, which takes the contracts' quotes, and these
+    chains were stored without them (ATM_IV: its expiries and their order are what they were;
+    its values are proved on real chains kept with their quotes in
+    tests/test_terrain_engine_v1.py).
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)

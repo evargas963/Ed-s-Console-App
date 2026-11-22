@@ -2,7 +2,7 @@
  "absolute_gamma_strike": 765.0,
  "absolute_gamma_strike_text": "765.00",
  "atm_iv_pct_by_expiry": {
-  "2026-10-22": 19.748369715
+  "2026-10-22": null
  },
  "atr_daily": null,
  "atr_daily_text": null,
