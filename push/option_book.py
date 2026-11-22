@@ -29,7 +29,7 @@ from calc.option_book import (
 )
 from calc.order_flow import Book, book_age_sec
 from calc.terrain_engine import nearest_strike
-from numeric_contract import count_text, price_text, strike_text
+from numeric_contract import count_text, strike_text
 from push.answers import NotAvailable, not_available
 from push.book import when_age
 from push.chain import expiry_asked
@@ -129,16 +129,15 @@ class ServedSummary(TypedDict):
 class OptionBookPanel(LevelsVerdict):
     """The `option_book` panel (option_book): the Options Book of one expiry.
 
-    The expiry answered, the live price, the levels' verdict, the window's view, the rows with
-    their bars' scales, the summary, the lean with its zones' names, and the books' state: how
-    many contracts shown have one, whether they are live, why not, and the oldest one's time.
+    The expiry answered, the levels' verdict, the window's view, the rows with their bars'
+    scales, the summary, the lean with its zones' names, and the books' state: how many
+    contracts shown have one, whether they are live, why not, and the oldest one's time. The
+    live price is not served here: the row at it carries its mark.
     """
 
     ticker: str
     available: Literal[True]
     expiry: str | None
-    spot: float | None
-    spot_text: str | None
     view: WindowView
     rows: list[ServedBookRow]
     scales: BarScales
@@ -341,8 +340,6 @@ def option_book(
         "ticker": ticker,
         "available": True,
         "expiry": asked.expiry,
-        "spot": spot,
-        "spot_text": price_text(spot),
         **asked.verdict,
         "view": view,
         "rows": [_served_row(r, spot_strike, books, live, now) for r in rows],
