@@ -23,11 +23,11 @@
     },
     {
       "category": "needs market",
-      "item": "every watchlist ticker's screen values against Schwab's own numbers: the watchlist's prices and changes matched Schwab's exactly (2026-11-18 13:34 CT, all 9); the chain ladder's Schwab fields lag (next item); the levels and Greeks of every ticker against Schwab still to check"
+      "item": "every watchlist ticker's screen values against Schwab's own numbers: the watchlist's prices and changes matched Schwab's exactly (2026-11-18 13:34 CT, all 9); the chain ladder's Schwab fields lagged that day (next item, fixed since); the levels and Greeks of every ticker against Schwab still to check"
     },
     {
       "category": "needs market",
-      "item": "live update speed: the chain ladder showed SPY's 730 call a median 4.4 s (max 8.8 s) behind Schwab, 23 changes measured 2026-11-18 13:55 CT, marked LIVE; its fields are Schwab's own but served from the last reprice, and a full SPY reprice takes 1.4-2.7 s on a pricing thread 90% busy. The fix (serve them from the stream as received) is the operator's decision"
+      "item": "live update speed: the chain ladder showed SPY's 730 call a median 4.4 s (max 8.8 s) behind Schwab, 23 changes measured 2026-11-18 13:55 CT, marked LIVE: its fields were Schwab's own but served from the last reprice, and a full SPY reprice took 1.4-2.7 s on a pricing thread 90% busy. Fixed 2026-11-19 by #1194 (e1bce7008: the chain screens show each value Schwab streams when it arrives, not at the next pricing); what is left is the same measurement on a live session after the fix"
     }
   ]
 }
