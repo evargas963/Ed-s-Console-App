@@ -35,7 +35,7 @@ from push import contract as push_contract
 from push import tape as push_tape
 from state import level_store
 from stream_spine import MessageBus, verbatim_msg
-from tests.feed_live_helper import apply_record, on_the_bus, publish_capture
+from tests.feed_live_helper import BUS, apply_record, forget_streamed, on_the_bus, publish_capture
 from tests.shared_helpers import fixture_json
 from time_et import ET
 
@@ -405,6 +405,68 @@ def test_a_print_is_placed_against_the_quote_in_force_when_it_traded():
     assert want[44] == (3.1, 1, 3.13, 3.14, "outside_spread_low", "inside_spread")
     assert (tape[1].bid_size, tape[1].ask_size) == (77, 8)  # the first message's sizes
     assert sum(w[4] != w[5] for w in want) == 36
+
+
+def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_last():
+    """Schwab -> the console's intake -> the `tape` panel: newest trade first, TAPE_ROWS at most.
+
+    The fast contract's 45 captured messages, each its own trade, are applied as the console
+    takes them, under SPY's 2026-11-20 chain. INDUCED, of the same captured messages: a second
+    contract of that chain whose message carries no TRADE_TIME_MILLIS (its print comes after
+    every timed one), and the 45 received twice more, each a minute later, so the tape holds
+    more prints than it shows.
+    """
+    nov20 = fixture_json("real_spy_2026_11_20_chain_and_quotes.json")
+    fast, rows = FAST["symbol"], FAST["rows"]
+    other = next(c["symbol"] for c in nov20["chain"] if c["symbol"] != fast)
+    captured = datetime.fromtimestamp(nov20["capture_ts_utc"], ET)
+    at = rows[-1]["ts_recv"] + 120.0
+    times = [r["item"]["TRADE_TIME_MILLIS"] for r in rows]
+    assert times == sorted(set(times)) and times[-1] - times[0] < 60_000
+    state.clear_all_live_state()
+    forget_streamed()
+    try:
+        publish_capture(
+            "SPY",
+            nov20["chain"],
+            nov20["capture_ts_utc"],
+            nov20["spot"],
+            captured.date().isoformat(),
+            captured,
+        )
+        lmp.record_feed_heartbeat(
+            {"ts": at, "schwab_socket_open": True, "held": {OPT: [fast, other]}}
+        )
+        for r in rows:
+            sent = {**r["item"], "key": fast}
+            _ingest_pushed(*on_the_bus(BUS, OPT, sent, r["ts_recv"], r["schwab_ts"]))
+        untimed = {k: v for k, v in rows[0]["item"].items() if k != "TRADE_TIME_MILLIS"}
+        _ingest_pushed(*on_the_bus(BUS, OPT, {**untimed, "key": other}, rows[-1]["ts_recv"] + 1.0))
+        few = push_tape.tape("SPY", at)["rows"]
+        for later in (60_000, 120_000):
+            for r in rows:
+                sent = {**r["item"], "key": fast}
+                for clock in ("TRADE_TIME_MILLIS", "QUOTE_TIME_MILLIS"):
+                    if clock in sent:
+                        sent[clock] += later
+                received = r["ts_recv"] + later / 1000
+                _ingest_pushed(*on_the_bus(BUS, OPT, sent, received, r["schwab_ts"] + later))
+        many = push_tape.tape("SPY", at)["rows"]
+    finally:
+        with level_store._lock:
+            level_store._levels.pop("SPY", None)
+        lmp.record_feed_down()
+        state.clear_all_live_state()
+        forget_streamed()
+    assert [(r["symbol"], r["trade_time_ms"]) for r in few] == [
+        *((fast, t) for t in times[::-1]),
+        (other, None),
+    ]
+    every = sorted((t + later for later in (0, 60_000, 120_000) for t in times), reverse=True)
+    assert len(every) == 135 > push_tape.TAPE_ROWS == len(many)
+    assert [(r["symbol"], r["trade_time_ms"]) for r in many] == [
+        (fast, t) for t in every[: push_tape.TAPE_ROWS]
+    ]
 
 
 def test_prints_are_kept_in_receive_order_each_with_its_messages_receive_time():
