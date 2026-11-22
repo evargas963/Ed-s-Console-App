@@ -112,6 +112,27 @@ def test_where_the_busiest_strikes_sit_is_said_only_when_it_is_known(two_days):
     )
 
 
+def test_where_the_busiest_strikes_sit_is_served_in_the_screens_words(two_days):
+    """The same INDUCED walls around PCG's real rows: each place is served as the screen says it.
+
+    The page draws `busiest_vs_walls_text` and picks no words itself: above the call wall, below
+    the put wall, inside both, and no words (None) where the place is not known.
+    """
+    (_prior, _), (today, _snap) = two_days
+    rows = today["gex"]
+    low, high = positioning_migration(rows, [], None, None)["busiest"]
+
+    def said(call: float | None, put: float | None) -> str | None:
+        migration = positioning_migration(rows, [], call, put)
+        return push_strikes._shown_migration(migration, None, "LIVE")["busiest_vs_walls_text"]
+
+    assert said(low - 1, None) == "ABOVE the call wall"
+    assert said(None, high + 1) == "BELOW the put wall"
+    assert said(high, low) == "inside the wall range"
+    assert said(high, None) is None
+    assert said((low + high) / 2, low - 1) is None
+
+
 def _prior_gex(body: dict) -> dict:
     """Return the prior day's net GEX the migration compared, by strike."""
     rows = body["migration"]["rows"]

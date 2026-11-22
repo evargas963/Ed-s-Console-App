@@ -11,6 +11,9 @@ from collections.abc import Sequence
 from typing import Any, Literal, TypedDict
 
 from calc.terrain_engine import (
+    ABOVE_CALL_WALL,
+    BELOW_PUT_WALL,
+    INSIDE_WALLS,
     LevelMove,
     MigrationRow,
     PositioningMigration,
@@ -52,13 +55,15 @@ class ShownMigrationRow(TypedDict):
 class ShownLevelMove(TypedDict):
     """One level's move since the prior day as the screen shows it (served_level_move).
 
-    The level, each day's strike and the change between them, then each as its text.
+    The level, each day's strike and the change between them, then each as its text: the level
+    as the screen names it (LEVEL_TEXT).
     """
 
     level: str
     prior: float | None
     today: float | None
     change: float | None
+    level_text: str
     prior_text: str | None
     today_text: str | None
     change_text: str | None
@@ -68,8 +73,9 @@ class ShownMigration(TypedDict):
     """The day-over-day migration as the screen shows it (_shown_migration).
 
     positioning_migration's answer with each row as the page draws it, then the strikes that
-    grew, shrank and traded most as the screen lists them, why it compares nothing (None when
-    it compares) and what a session volume of 0 means (None unless 0).
+    grew, shrank and traded most as the screen lists them, where the busiest sit against the
+    walls as the screen says it (BUSIEST_VS_WALLS_TEXT; None with no such place), why it compares
+    nothing (None when it compares) and what a session volume of 0 means (None unless 0).
     """
 
     rows: list[ShownMigrationRow]
@@ -82,6 +88,7 @@ class ShownMigration(TypedDict):
     grew_text: str
     shrank_text: str
     busiest_text: str
+    busiest_vs_walls_text: str | None
     note: str | None
     volume_zero_text: str | None
 
@@ -134,6 +141,16 @@ class NotListed(LevelsVerdict):
     reason: str
 
 
+#: each level compared day over day as the screen names it (terrain_engine.LEVELS_COMPARED)
+LEVEL_TEXT = {"call_wall": "Call wall", "put_wall": "Put wall", "gamma_flip": "Γ flip"}
+#: where the busiest strikes sit against the walls, as the screen says it
+BUSIEST_VS_WALLS_TEXT = {
+    ABOVE_CALL_WALL: "ABOVE the call wall",
+    BELOW_PUT_WALL: "BELOW the put wall",
+    INSIDE_WALLS: "inside the wall range",
+}
+
+
 def _served_migration(row: MigrationRow) -> ShownMigrationRow:
     """Return a migration row as the page draws it: its fields by name, its change's text."""
     return {
@@ -155,6 +172,7 @@ def served_level_move(move: LevelMove) -> ShownLevelMove:
         "prior": move.prior,
         "today": move.today,
         "change": move.change,
+        "level_text": LEVEL_TEXT[move.level],
         "prior_text": strike_text(move.prior),
         "today_text": strike_text(move.today),
         "change_text": level_change_text(move.change),
@@ -234,6 +252,7 @@ def _shown_migration(
     zero = None
     if m["volume_total"] == 0:
         zero = ZERO_VOLUME_STALE if levels_state == LEVELS_STALE else ZERO_VOLUME
+    where = m["busiest_vs_walls"]
     return {
         "rows": [_served_migration(r) for r in m["rows"]],
         "compared": m["compared"],
@@ -245,6 +264,7 @@ def _shown_migration(
         "grew_text": "/".join(map(strike_text, m["grew"])),
         "shrank_text": "/".join(map(strike_text, m["shrank"])),
         "busiest_text": "–".join(map(strike_text, m["busiest"])),
+        "busiest_vs_walls_text": None if where is None else BUSIEST_VS_WALLS_TEXT[where],
         "note": note,
         "volume_zero_text": zero,
     }

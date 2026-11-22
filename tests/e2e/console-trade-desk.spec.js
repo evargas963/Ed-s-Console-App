@@ -1240,6 +1240,37 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Right Now: where the busiest strikes sit is said in the served words, each place", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "right-now");
+    const body = page.locator("#tdBody");
+    // SPY's real panel: the place is not known, and no words are served for it
+    expect(STRIKES.migration.busiest_vs_walls_text).toBeNull();
+    await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
+    // INDUCED: that panel with each place the server serves and the words it serves with it
+    // (push.strikes.BUSIEST_VS_WALLS_TEXT), then with a place and words the page has never held:
+    // the page draws the served words, whichever they are, and picks none
+    for (const [place, words] of [
+      ["ABOVE_CALL_WALL", "ABOVE the call wall"],
+      ["BELOW_PUT_WALL", "BELOW the put wall"],
+      ["INSIDE_WALLS", "inside the wall range"],
+      ["A_PLACE_ONLY_THE_SERVER_KNOWS", "where only the server says"],
+    ]) {
+      deskPanels().strikes = Object.assign({}, STRIKES, {
+        migration: Object.assign({}, STRIKES.migration, {
+          busiest_vs_walls: place,
+          busiest_vs_walls_text: words,
+        }),
+      });
+      sock.changed("strikes");
+      await expect(body).toContainText("Heaviest option trading at 757–760That is " + words + ".");
+    }
+    expect(errs).toEqual([]);
+  });
+
   test("Right Now: the book age keeps Schwab's book time", async ({ page }) => {
     const errs = watchErrors(page);
     const BOOK_TIME = "Fri 09/25 06:59 PM CT";

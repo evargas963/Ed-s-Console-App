@@ -353,12 +353,11 @@
     return '<span class="mig-mark ' + cls + '">' + esc(txt) + "</span>";
   }
 
-  var LEVEL_WORDS = { call_wall: "Call wall", put_wall: "Put wall", gamma_flip: "Γ flip" };
-  // one served level move with its texts: 'Call wall 755 → 760 (+5)'; a side not known is '-',
-  // and a change is said only when both days are known
+  // one served level move with its texts, the level's name served with them: 'Call wall 755 → 760
+  // (+5)'; a side not known is '-', and a change is said only when both days are known
   function levelMove(v) {
     return (
-      LEVEL_WORDS[v.level] +
+      v.level_text +
       " " +
       orDash(v.prior_text) +
       " → " +
@@ -366,11 +365,6 @@
       (v.change_text == null ? "" : " (" + v.change_text + ")")
     );
   }
-  var WALL_WORDS = {
-    ABOVE_CALL_WALL: "ABOVE the call wall",
-    BELOW_PUT_WALL: "BELOW the put wall",
-    INSIDE_WALLS: "inside the wall range",
-  };
   // m: the served positioning_migration of the expiry chosen; moves: the served level_moves
   function migrationCoach(m, moves) {
     var out = "";
@@ -394,7 +388,7 @@
         m.busiest_text +
         "</b>" +
         "That is " +
-        esc(orDash(WALL_WORDS[m.busiest_vs_walls])) +
+        esc(orDash(m.busiest_vs_walls_text)) + // served: where they sit against the walls
         ".</div>";
     }
     return out;

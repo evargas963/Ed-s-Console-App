@@ -3794,6 +3794,7 @@
       "grew_text": "775/770",
       "shrank_text": "756/760",
       "busiest_text": "757\u2013760",
+      "busiest_vs_walls_text": null,
       "note": null,
       "volume_zero_text": null
     },
@@ -3803,6 +3804,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
+        "level_text": "Call wall",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -3812,6 +3814,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
+        "level_text": "Put wall",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -3821,6 +3824,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
+        "level_text": "\u0393 flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -7902,6 +7906,7 @@
       "grew_text": "775/770",
       "shrank_text": "756/760",
       "busiest_text": "757\u2013760",
+      "busiest_vs_walls_text": null,
       "note": null,
       "volume_zero_text": null
     },
@@ -7911,6 +7916,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
+        "level_text": "Call wall",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -7920,6 +7926,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
+        "level_text": "Put wall",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -7929,6 +7936,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
+        "level_text": "\u0393 flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -9499,6 +9507,7 @@
       "grew_text": "766/740",
       "shrank_text": "760/755",
       "busiest_text": "756\u2013757",
+      "busiest_vs_walls_text": "BELOW the put wall",
       "note": null,
       "volume_zero_text": null
     },
@@ -9508,6 +9517,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
+        "level_text": "Call wall",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -9517,6 +9527,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
+        "level_text": "Put wall",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -9526,6 +9537,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
+        "level_text": "\u0393 flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
