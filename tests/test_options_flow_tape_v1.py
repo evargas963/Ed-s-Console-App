@@ -103,12 +103,13 @@ def test_a_genuine_trade_print_is_shaped_to_the_operators_exact_schema():
     assert r["premium"] == 2.03 * 1 * 100
     assert r["volume"] == 4423 and r["oi"] == 843
     assert r["iv"] == 27.03127864 and r["delta"] == 0.4662257
-    assert r["classification"] == "at_bid"
+    assert (r["classification"], r["classification_text"]) == ("at_bid", "at bid")
     assert sent[3][1]["QUOTE_TIME_MILLIS"] > sent[3][1]["TRADE_TIME_MILLIS"]
     assert r["trade_time_ms"] == sent[3][1]["TRADE_TIME_MILLIS"] == 1792762337329  # Schwab's own
     # 13:32:17.329 UTC on 2026-10-23 is 08:32:17.329 in Chicago (CDT, UTC-5)
     assert r["trade_time_ct"] == "08:32:17.329 CT"
     assert set(r) == {"trade_time_ms", "symbol", "expiry", "type", "strike", "bid", "bid_size"} | {
+        "classification_text",
         "trade_time_ct",
         "ask",
         "ask_size",
@@ -405,6 +406,26 @@ def test_a_print_is_placed_against_the_quote_in_force_when_it_traded():
     assert want[44] == (3.1, 1, 3.13, 3.14, "outside_spread_low", "inside_spread")
     assert (tape[1].bid_size, tape[1].ask_size) == (77, 8)  # the first message's sizes
     assert sum(w[4] != w[5] for w in want) == 36
+
+
+def test_where_a_print_landed_is_served_in_the_tapes_words():
+    """The fast contract's 45 real prints as the tape shows them: each place with its words.
+
+    Every place history.quoted names occurs in the capture. The row serves the "vs Market"
+    column's words for it, and the page picks none: no words where no quote in force is known.
+    """
+    nov20 = fixture_json("real_spy_2026_11_20_chain_and_quotes.json")
+    contract = read_contract(next(c for c in nov20["chain"] if c["symbol"] == FAST["symbol"]))
+    kept = _tape(FAST["symbol"], [(r["ts_recv"], r["item"]) for r in FAST["rows"]])
+    shown = [tape_row(FAST["symbol"], p, contract) for p in kept]
+    assert {(r["classification"], r["classification_text"]) for r in shown} == {
+        ("at_bid", "at bid"),
+        ("at_ask", "at ask"),
+        ("inside_spread", "inside"),
+        ("outside_spread_low", "below bid"),
+        ("outside_spread_high", "above ask"),
+        ("unknown", None),
+    }
 
 
 def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_last():

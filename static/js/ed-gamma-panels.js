@@ -856,14 +856,6 @@
   // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
   // every contract of the ticker the daemon streams (its option rule), never a fabricated
   // buy/sell side.
-  var OF_CLS_LABEL = {
-    at_bid: "at bid",
-    at_ask: "at ask",
-    inside_spread: "inside",
-    outside_spread_low: "below bid",
-    outside_spread_high: "above ask",
-    unknown: "-",
-  };
   function renderOf(host, d) {
     var src = document.getElementById("ofSrc");
     if (src) src.textContent = "";
@@ -931,7 +923,7 @@
           '<td><span class="of-cls ' +
           esc(r.classification || "unknown") +
           '">' +
-          esc(orDash(OF_CLS_LABEL[r.classification])) +
+          esc(orDash(r.classification_text)) + // served: where the print landed, in words
           "</span></td></tr>"
         );
       })
