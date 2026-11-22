@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.options.order_flow.history import (
-    BOOKS_KEPT_SEC,
-    BookHeatmap,
-    NoHeatmap,
-    book_heatmap_for_ticker,
-)
+from app.options.order_flow.history import BOOKS_KEPT_SEC, BookHeatmap, book_heatmap_for_ticker
+from push.answers import NotAvailable
 from push.asked import venue_asked
 
 
-def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NoHeatmap:
+def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NotAvailable:
     """Return the `bookmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
 
     history.book_heatmap_for_ticker bins the venue's recent books in the console's memory into a

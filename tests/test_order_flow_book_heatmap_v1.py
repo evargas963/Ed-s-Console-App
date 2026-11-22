@@ -201,6 +201,34 @@ def test_no_book_at_all_fails_closed_with_a_plain_reason():
     assert d["reason"] == "no NASDAQ_BOOK book with a price level since the console started"
 
 
+def test_with_no_book_to_draw_the_whole_answer_is_the_ticker_that_it_is_not_and_why():
+    """A ticker with no book kept, and an empty one: the whole answer, key by key, in its order.
+
+    The ticker as the console keys it, that the heatmap is not available, and why: the three
+    keys every panel's not-available answer has (push.answers.not_available) and nothing else,
+    from the heatmap's own builder and from the `bookmap` panel over it.
+    """
+    none_kept = RecentBooks()
+    no_book = book_heatmap_for_ticker("spy", NYSE, minutes=60, books=none_kept)
+    assert no_book == {
+        "ticker": SYM,
+        "available": False,
+        "reason": "no NYSE_BOOK book with a price level since the console started",
+    }
+    assert list(no_book) == ["ticker", "available", "reason"]
+    for blank in ("", "   "):
+        empty = book_heatmap_for_ticker(blank, NYSE, books=none_kept)
+        assert empty == {"ticker": blank, "available": False, "reason": "empty ticker"}
+        assert list(empty) == ["ticker", "available", "reason"]
+    panel = push_bookmap.bookmap("ZZZZ", {"venue": "NASDAQ_BOOK", "minutes": 5})
+    assert panel == {
+        "ticker": "ZZZZ",
+        "available": False,
+        "reason": "no NASDAQ_BOOK book with a price level since the console started",
+    }
+    assert list(panel) == ["ticker", "available", "reason"]
+
+
 def test_books_with_every_level_array_empty_fail_closed_not_a_fabricated_grid():
     """Induced: Schwab's first NASDAQ book with both of its level arrays emptied.
 
