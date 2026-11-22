@@ -14,10 +14,15 @@ NFLX:     NFLX's 2026-10-16, 2027-12-17 and 2028-01-21 expiries at 10:32:20 ET; 
 SPY_FULL: SPY's whole chain, every expiry, production's complete capture of 2026-11-09 11:06 ET.
 SPY_CLOSE: SPY's 2026-10-22 expiry from the close capture begun 2026-10-22 16:17:04 ET, with SPY's
           LEVELONE_EQUITIES prints after it as the daemon received them.
+quoted:   AMZN's and SPY's whole chains of 2026-11-12 (10:39:18 and 10:30:41 ET; 24 and 34
+          expiries), every contract with the quote the chain sweep took for it. The chains above
+          were stored before a chain was kept with its quotes: their contracts carry no bid or ask.
 """
 
 from __future__ import annotations
 
+import functools
+import gzip
 import json
 import math
 from dataclasses import dataclass
@@ -221,6 +226,25 @@ CRWD = _load("real_crwd_complete_chain_2026_10_07.json")
 TSLA = _load("real_tsla_complete_chain_2026_10_07.json")
 MRVL = _load("real_mrvl_full_chain_2026_10_07.json")
 NFLX = _load("real_nflx_chain_2026_10_07_three_expiries.json")
+
+
+@functools.cache
+def quoted(name: str) -> RealChain:
+    """Return a ticker's ("amzn", "spy") whole chain of 2026-11-12, each contract with its quote.
+
+    The second of its two stored captures (tests/test_e2e_panels_two_day_v1.py), every expiry's
+    rows as stored, at the capture's own price (chain_spot). Read when first asked for.
+    """
+    two_days = json.loads(
+        gzip.decompress((_FX / f"real_{name}_two_day_captures_2026_11_12.json.gz").read_bytes())
+    )
+    capture = two_days["captures"][1]
+    return RealChain(
+        two_days["ticker"],
+        [contract for row in capture["rows"] for contract in row["contracts"]],
+        float(capture["chain_spot"]),
+        datetime.fromtimestamp(capture["ts_utc"], ET),
+    )
 
 
 def crwd_exposures(chain: list[dict]) -> dict[float, dict]:
