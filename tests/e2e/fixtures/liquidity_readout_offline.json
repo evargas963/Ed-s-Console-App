@@ -312,6 +312,7 @@
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 1160.0,
             "total_text": "1,160"
           },
@@ -440,6 +441,7 @@
             "span_ask_text": "0.03",
             "span_bid_text": "0.03",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 4000.0,
             "total_text": "4,000"
           },
@@ -568,6 +570,7 @@
             "span_ask_text": "0.30",
             "span_bid_text": "0.42",
             "tilt": "BALANCED",
+            "tilt_text": "balanced",
             "total_depth": 4400.0,
             "total_text": "4,400"
           }
@@ -719,6 +722,7 @@
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "BID_HEAVY",
+            "tilt_text": "bid heavy",
             "total_depth": 150.0,
             "total_text": "150"
           },
@@ -846,6 +850,7 @@
             "span_ask_text": "6.86",
             "span_bid_text": "6.81",
             "tilt": "BID_HEAVY",
+            "tilt_text": "bid heavy",
             "total_depth": 310.0,
             "total_text": "310"
           },
@@ -974,6 +979,7 @@
             "span_ask_text": "14.87",
             "span_bid_text": "15.05",
             "tilt": "BID_HEAVY",
+            "tilt_text": "bid heavy",
             "total_depth": 530.0,
             "total_text": "530"
           }
@@ -1123,6 +1129,7 @@
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 1160.0,
             "total_text": "1,160"
           },
@@ -1251,6 +1258,7 @@
             "span_ask_text": "0.03",
             "span_bid_text": "0.03",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 4000.0,
             "total_text": "4,000"
           },
@@ -1379,6 +1387,7 @@
             "span_ask_text": "0.30",
             "span_bid_text": "0.42",
             "tilt": "BALANCED",
+            "tilt_text": "balanced",
             "total_depth": 4400.0,
             "total_text": "4,400"
           }

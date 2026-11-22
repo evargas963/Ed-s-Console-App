@@ -113,13 +113,13 @@
       ["Depth 1 imbalance", orDash(depth["1"].imbalance_text), classOf(cls, "depth.*.imbalance")],
       ["Book age", bookAge, classOf(cls, "ages.book_age_sec")],
     ];
-    // the Liquidity readout's served headline and side word for this book at depth 5: the one
-    // producer of a book's lean (the Desk card shows the same)
+    // the Liquidity readout's served headline and tilt for this book at depth 5, the tilt in the
+    // words served for running text (tilt_text): the one producer of a book's lean (the Desk card
+    // shows the same)
     var r5 = d.readout && d.readout.venues[d.venue] && d.readout.venues[d.venue].views["5"];
     var tilt = r5 ? r5.tilt : null;
     var heroVal = r5 && r5.pct_text != null ? r5.pct_text : "-";
-    var heroUnit =
-      tilt == null ? "" : r5.side_word.toLowerCase() + " (" + esc(d.venue) + ", depth 5)";
+    var heroUnit = tilt == null ? "" : r5.tilt_text + " (" + esc(d.venue) + ", depth 5)";
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
     // no book age served reads AGE UNKNOWN, never live
     var bs = d.ages.book_stale;

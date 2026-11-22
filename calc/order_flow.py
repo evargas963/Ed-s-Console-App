@@ -505,6 +505,8 @@ OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
 )
 #: the one-second values kept: the longest window
 OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC)
+#: a tilt as the card's headline says it (`side_word`); the same words in lower case are how
+#: running text says it (`tilt_text`), each served so the page changes no case
 TILT_WORDS = {"BID_HEAVY": "BID HEAVY", "BALANCED": "BALANCED", "OFFER_HEAVY": "OFFER HEAVY"}
 #: a tilt's side, for flips: BALANCED is none
 _SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
@@ -826,6 +828,7 @@ class CardView(TypedDict):
     pct_text: str | None
     tilt: str | None
     side_word: str | None
+    tilt_text: str | None
     held_sec: int | None
     held_open: bool
     held_text: str | None
@@ -890,6 +893,8 @@ def _card_view(r: Readout, points: Points, v: str, view: str, last: int) -> Card
         "pct_text": percent_text(sm[-1]),
         "tilt": tilt,
         "side_word": TILT_WORDS[tilt] if tilt else None,
+        # the same words as running text says them (the Desk's strip, Right Now's unit)
+        "tilt_text": TILT_WORDS[tilt].lower() if tilt else None,
         "held_sec": held,
         "held_open": since is not None and since == known_from,
         "held_text": None if held is None else f"HELD {'≥' if since == known_from else ''}{held}s",
@@ -921,7 +926,8 @@ def readout_card(
 
     The headline (the percentage standing at
     the venue's end second: now while its book is live, else its last value's), its
-    tilt and side word, the seconds the tilt has held (held_open: at
+    tilt, its side word and the tilt as running text says it, the seconds the tilt has held
+    (held_open: at
     least that long, the tilt standing since the first value known), the flat totals, the
     sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
     in two minutes, and the 2m and 5m lean series. `readout`: the newest; `points`: the readouts

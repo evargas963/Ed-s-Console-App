@@ -405,6 +405,7 @@
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 360.0,
             "total_text": "360"
           },
@@ -624,6 +625,7 @@
             "span_ask_text": "0.02",
             "span_bid_text": "0.02",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 2480.0,
             "total_text": "2,480"
           },
@@ -843,6 +845,7 @@
             "span_ask_text": "0.19",
             "span_bid_text": "0.04",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 2960.0,
             "total_text": "2,960"
           }
@@ -1085,6 +1088,7 @@
             "span_ask_text": null,
             "span_bid_text": null,
             "tilt": null,
+            "tilt_text": null,
             "total_depth": null,
             "total_text": null
           },
@@ -1304,6 +1308,7 @@
             "span_ask_text": null,
             "span_bid_text": null,
             "tilt": null,
+            "tilt_text": null,
             "total_depth": null,
             "total_text": null
           },
@@ -1523,6 +1528,7 @@
             "span_ask_text": null,
             "span_bid_text": null,
             "tilt": null,
+            "tilt_text": null,
             "total_depth": null,
             "total_text": null
           }
@@ -1765,6 +1771,7 @@
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 360.0,
             "total_text": "360"
           },
@@ -1984,6 +1991,7 @@
             "span_ask_text": "0.02",
             "span_bid_text": "0.02",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 2480.0,
             "total_text": "2,480"
           },
@@ -2203,6 +2211,7 @@
             "span_ask_text": "0.19",
             "span_bid_text": "0.04",
             "tilt": "OFFER_HEAVY",
+            "tilt_text": "offer heavy",
             "total_depth": 2960.0,
             "total_text": "2,960"
           }

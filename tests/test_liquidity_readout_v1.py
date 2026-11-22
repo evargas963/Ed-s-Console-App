@@ -604,6 +604,13 @@ def test_the_tilt_turns_at_10_percent(row, venue, view, pct, tilt):
     # each case is stated to three decimals: half the last one
     assert w["pct"] == pytest.approx(pct, abs=5e-4)
     assert (w["tilt"], w["side_word"]) == (tilt, e.TILT_WORDS[tilt])
+    # the tilt as the headline says it and as running text says it, each served: the Desk's
+    # strip and Right Now's unit draw the second and change no case
+    assert (w["side_word"], w["tilt_text"]) == {
+        "BALANCED": ("BALANCED", "balanced"),
+        "BID_HEAVY": ("BID HEAVY", "bid heavy"),
+        "OFFER_HEAVY": ("OFFER HEAVY", "offer heavy"),
+    }[tilt]
 
 
 _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text(encoding="utf-8"))[
@@ -633,6 +640,7 @@ def test_the_tilts_on_the_books_nearest_the_line(case, line, pct, tilt):
 def test_no_value_has_no_tilt():
     w = _steady(_NO_BOOK, "NYSE_BOOK", "5")
     assert (w["pct"], w["tilt"]) == (None, None)
+    assert (w["side_word"], w["tilt_text"]) == (None, None)  # and no words for one
 
 
 def test_the_sentence_four_cases_from_the_flat_shares():

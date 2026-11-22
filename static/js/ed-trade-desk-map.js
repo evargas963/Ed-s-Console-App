@@ -1043,15 +1043,12 @@
     var m = S.micro,
       t = S.terrain,
       l = S.liq;
-    // the Liquidity card's served side word, for its venue and depth
+    // the Liquidity card's tilt for its venue and depth, in the words served for running text
+    // (tilt_text): the page changes no case
     var lv = m && m.readout && m.readout.venues[liqKey()],
       lt = lv && lv.views[S.liqView] && lv.views[S.liqView].tilt;
     var cells = [
-      [
-        "LIQUIDITY",
-        lt ? lv.views[S.liqView].side_word.toLowerCase() : "No book",
-        lt ? TILT_ARROW[lt] : "",
-      ],
+      ["LIQUIDITY", lt ? lv.views[S.liqView].tilt_text : "No book", lt ? TILT_ARROW[lt] : ""],
       [
         "VALUE",
         l && l.summary ? orDash(l.summary.value_state_text) : "-", // served, in words

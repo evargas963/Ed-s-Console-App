@@ -808,7 +808,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect(page.locator("#tdmCardVol figcaption")).toHaveText(
       "ATM implied vol by expiry, nearest first",
     );
-    await expect(page.locator("#tdmAgree")).toContainText(COMP.views["5"].side_word.toLowerCase());
+    await expect(page.locator("#tdmAgree")).toContainText(COMP.views["5"].tilt_text); // served
     expect(errs).toEqual([]);
   });
 
@@ -1206,11 +1206,13 @@ test.describe("Trade Desk renders served values", () => {
     await intercept(page);
     await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
-    // the book's lean is the Liquidity readout's, served (one producer for the desk)
+    // the book's lean is the Liquidity readout's, served (one producer for the desk), its tilt in
+    // the words served for running text: the page changes no case
     const nq5 = MICRO.readout.venues.NASDAQ_BOOK.views["5"];
-    await expect(body).toContainText(
-      nq5.pct_text + nq5.side_word.toLowerCase() + " (NASDAQ_BOOK, depth 5)",
+    expect(nq5.tilt_text).toBe(
+      { BID_HEAVY: "bid heavy", BALANCED: "balanced", OFFER_HEAVY: "offer heavy" }[nq5.tilt],
     );
+    await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (NASDAQ_BOOK, depth 5)");
     // SPY's real levels (Right Now asks them at 1 minute): max pain is the nearest, 0.08 below
     // the price; the price is through the put wall, so both walls are above it
     const level = (id) => REAL.levels["1"].levels.find((r) => r.id === id);
@@ -1391,8 +1393,25 @@ test.describe("Trade Desk renders served values", () => {
     await expect(body).toContainText(BOOK_TIME + " · 1s");
     await expect(body).toContainText("757.05 × 757.07"); // Schwab's best bid and ask
     await expect(body).toContainText(
-      MICRO.readout.venues.NASDAQ_BOOK.views["5"].side_word.toLowerCase() +
-        " (NASDAQ_BOOK, depth 5)",
+      MICRO.readout.venues.NASDAQ_BOOK.views["5"].tilt_text + " (NASDAQ_BOOK, depth 5)",
+    );
+    expect(errs).toEqual([]);
+  });
+
+  test("Right Now: the book's tilt is drawn in the served words, words only the server knows too", async ({
+    page,
+  }) => {
+    // INDUCED on SPY's real book panel: the NASDAQ book's Top 5 view staged with words no script
+    // could hold. The page draws tilt_text beside the venue and depth and changes no case.
+    const errs = watchErrors(page);
+    await intercept(page);
+    const book = JSON.parse(JSON.stringify(MICRO));
+    book.readout.venues.NASDAQ_BOOK.views["5"].tilt_text = "Words ONLY the server knows";
+    deskPanels().book = book;
+    await openView(page, "trade-desk", "right-now");
+    await expect(page.locator("#tdBody")).toContainText(
+      book.readout.venues.NASDAQ_BOOK.views["5"].pct_text +
+        "Words ONLY the server knows (NASDAQ_BOOK, depth 5)",
     );
     expect(errs).toEqual([]);
   });

@@ -271,7 +271,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator(".liq-body")).toContainText("TOP 5 HEADLINE");
     await expect(card(page).locator(".liq-pct")).toHaveText(v.pct_text);
     await expect(page.locator("#tdmAgree .tdm-ag").first()).toContainText(
-      "LIQUIDITY" + v.side_word.toLowerCase(),
+      "LIQUIDITY" + v.tilt_text, // served: the tilt as running text says it
     );
     expect(errs).toEqual([]);
   });
@@ -360,6 +360,8 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     // balanced gold with no arrow
     const tone = { BID_HEAVY: "bid", BALANCED: "bal", OFFER_HEAVY: "ask" };
     const arrow = { BID_HEAVY: "up", BALANCED: "", OFFER_HEAVY: "dn" };
+    // the tilt as running text says it, served beside the headline's word (tilt_text)
+    const text = { BID_HEAVY: "bid heavy", BALANCED: "balanced", OFFER_HEAVY: "offer heavy" };
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
     const seen = new Set();
@@ -373,10 +375,42 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       await expect(card(page).locator(".liq-pct")).toHaveClass("liq-pct " + tone[v.tilt]);
       await expect(card(page).locator(".liq-word")).toHaveClass("liq-word " + tone[v.tilt]);
       const cell = page.locator("#tdmAgree .tdm-ag").first();
-      await expect(cell).toContainText("LIQUIDITY" + v.side_word.toLowerCase());
+      expect(v.tilt_text).toBe(text[v.tilt]);
+      await expect(cell).toHaveText("LIQUIDITY" + v.tilt_text);
       await expect(cell.locator("b")).toHaveClass(arrow[v.tilt]);
     }
     expect(seen.size, "the real books lean more than one way across the depths").toBeGreaterThan(1);
+    expect(errs).toEqual([]);
+  });
+
+  test("the agreement strip draws the tilt in the served words: every tilt, and words only the server knows", async ({
+    page,
+  }) => {
+    // INDUCED on SPY's real readout: the composite's Top 5 view staged with each tilt as the
+    // program serves it (calc.order_flow.TILT_WORDS, tests/test_liquidity_readout_v1.py), then
+    // with words no script could hold. The strip draws tilt_text as served and changes no case;
+    // the card's headline draws side_word.
+    const errs = watchErrors(page);
+    for (const [tilt, word, words] of [
+      ["BID_HEAVY", "BID HEAVY", "bid heavy"],
+      ["BALANCED", "BALANCED", "balanced"],
+      ["OFFER_HEAVY", "OFFER HEAVY", "offer heavy"],
+      ["BID_HEAVY", "BID HEAVY", "Words ONLY the server knows"],
+    ]) {
+      const body = JSON.parse(JSON.stringify(READOUT_LIVE));
+      Object.assign(body.readout.venues.COMPOSITE.views["5"], {
+        tilt: tilt,
+        side_word: word,
+        tilt_text: words,
+      });
+      await openDesk(page, body);
+      await card(page).locator('[data-liqview="5"]').click();
+      await expect(card(page).locator(".liq-word")).toHaveText(word);
+      await expect(page.locator("#tdmAgree .tdm-ag").first()).toHaveText("LIQUIDITY" + words);
+    }
+    // with no book the composite has no tilt: the strip's own words, as before
+    await openDesk(page, READOUT_NO_BOOK);
+    await expect(page.locator("#tdmAgree .tdm-ag").first()).toHaveText("LIQUIDITYNo book");
     expect(errs).toEqual([]);
   });
 
