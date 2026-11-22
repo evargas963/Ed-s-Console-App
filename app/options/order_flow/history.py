@@ -12,10 +12,10 @@ from __future__ import annotations
 import logging
 import threading
 from collections import defaultdict, deque
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypedDict
 
-from calc.order_flow import OF_LEAN_KEPT_SEC, Book
+from calc.order_flow import OF_LEAN_KEPT_SEC, Book, Readout
 from instrument_identity import ticker_storage_key
 from numeric_contract import (
     count_text,
@@ -355,9 +355,11 @@ class RecentLean:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # every ticker's series, empty until its first readout
-        self._points: defaultdict[str, deque[tuple[float, dict[str, Any]]]] = defaultdict(deque)
+        self._points: defaultdict[str, deque[tuple[float, Mapping[str, Readout]]]] = defaultdict(
+            deque
+        )
 
-    def record(self, ticker: str, ts_recv: float, readout: dict[str, Any]) -> None:
+    def record(self, ticker: str, ts_recv: float, readout: Mapping[str, Readout]) -> None:
         sym = ticker_storage_key(ticker)
         if not sym:
             return
@@ -375,7 +377,7 @@ class RecentLean:
         with self._lock:
             self._points.pop(ticker_storage_key(ticker), None)
 
-    def points(self, ticker: str) -> list[tuple[float, dict[str, Any]]]:
+    def points(self, ticker: str) -> list[tuple[float, Mapping[str, Readout]]]:
         """Return the ticker's kept values, oldest first."""
         with self._lock:
             return list(self._points[ticker_storage_key(ticker)])

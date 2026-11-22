@@ -12,10 +12,10 @@ from typing import Any
 import live_market_plane as lmp
 from app.options.order_flow.state import newest_book, option_top, prints
 from calc.l1_trade_observation import TAPE_NOTE
-from calc.order_flow import FlowInput, OrderFlowEngine
+from calc.order_flow import EngineFlow, FlowInput, OrderFlowEngine
 
 
-def flow_block(of: dict[str, Any]) -> dict[str, Any]:
+def flow_block(of: EngineFlow) -> dict[str, Any]:
     """Return the labeled PROXY tape flow out of one OrderFlowEngine.compute result.
 
     Every flow number the engine computed, each with its text, and the window the cumulative

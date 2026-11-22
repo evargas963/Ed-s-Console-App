@@ -12,7 +12,7 @@ from app.options.order_flow.live_payload import options_live_payload
 from app.options.order_flow.streaming import get_option_contract_streaming_diagnostics
 from instrument_identity import ticker_storage_key
 from numeric_contract import strike_text
-from push.book import stamp_book_times
+from push.book import book_times
 from state import level_store
 from state.level_store import published_levels
 
@@ -43,5 +43,5 @@ def options_microstructure(c: str, now: float) -> dict[str, Any]:
     payload["expiry"] = None if record is None else record.expiry
     # whether the daemon streams this contract (the option rule) and is receiving it
     payload["streaming_plane"] = get_option_contract_streaming_diagnostics(c, now)
-    stamp_book_times(payload)
+    payload.update(book_times(payload["provenance"], payload["ages"]))
     return payload

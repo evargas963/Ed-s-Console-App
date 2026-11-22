@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple, TypedDict
 
 import numpy as np
 
@@ -54,6 +54,8 @@ type Json = dict[str, Json] | list[Json] | str | float | None
 
 #: one level of a book: (price, TOTAL_VOLUME, the level's per-exchange rows), as Schwab sent them
 Level = tuple[float, float, Exchanges | None]
+#: one side of a book as the engine reads it: each level's (price, TOTAL_VOLUME), best first
+Levels = list[tuple[float, float]]
 
 
 @dataclass(frozen=True)
@@ -147,9 +149,8 @@ def _resolve_quote_mark(data: FlowInput) -> float | None:
 # ─────────────────────────────────────────────────────────────────────────────
 # ONE canonical book path. `_extract_canonical_book` walks + validates + SORTS the live
 # book EXACTLY ONCE into a normalized state; every metric is derived from that single
-# result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` memoizes the
-# structural state per (ticker, BOOK_TIME), so the book panel (`push.book.book`) and the engine
-# SERIALIZE the same computed state rather than recomputing it independently.
+# result. Nothing re-walks or re-sums the raw book. `compute_book_microstructure` is its one
+# producer: the book panel (`push.book.book`) and the engine both call it.
 # Every field is classified NATIVE (a Schwab wire field), DERIVED (a deterministic function of
 # NATIVE fields), or PROXY (temporal inference). STATIC book state only — no aggressor/CVD/
 # absorption/iceberg (see `deferred`). No opaque composite score.
@@ -176,7 +177,26 @@ def _sorted_valid_levels(
     return valid
 
 
-def _extract_canonical_book(data: FlowInput) -> dict[str, Any]:
+class CanonicalBook(NamedTuple):
+    """The live book of one symbol, read and normalized once (_extract_canonical_book).
+
+    Whether a book is held and its Schwab service, the top of book as Schwab last sent it, each
+    side's valid levels best first, and Schwab's BOOK_TIME and MARK.
+    """
+
+    has_book: bool
+    venue: str | None
+    bid: float | None
+    ask: float | None
+    bid_size: float | None
+    ask_size: float | None
+    bid_levels: Levels
+    ask_levels: Levels
+    book_time_ms: float | None
+    mark: float | None
+
+
+def _extract_canonical_book(data: FlowInput) -> CanonicalBook:
     """Extract and normalize the live book: THE single extraction/normalization.
 
     Reads the book (``data.book``, the newest of its Schwab service; a one-sided one included:
@@ -192,18 +212,18 @@ def _extract_canonical_book(data: FlowInput) -> dict[str, Any]:
     bid_levels = _sorted_valid_levels(snapshot.pairs("BIDS"), descending=True) if snapshot else []
     ask_levels = _sorted_valid_levels(snapshot.pairs("ASKS"), descending=False) if snapshot else []
     mark = _resolve_quote_mark(data)
-    return {
-        "has_book": snapshot is not None,
-        "venue": snapshot.service if snapshot else None,
-        "bid": bid,
-        "ask": ask,
-        "bid_size": bid_size,
-        "ask_size": ask_size,
-        "bid_levels": bid_levels,
-        "ask_levels": ask_levels,
-        "book_time_ms": snapshot.book_time_ms if snapshot else None,
-        "mark": mark,
-    }
+    return CanonicalBook(
+        has_book=snapshot is not None,
+        venue=snapshot.service if snapshot else None,
+        bid=bid,
+        ask=ask,
+        bid_size=bid_size,
+        ask_size=ask_size,
+        bid_levels=bid_levels,
+        ask_levels=ask_levels,
+        book_time_ms=snapshot.book_time_ms if snapshot else None,
+        mark=mark,
+    )
 
 
 def _microprice(
@@ -224,14 +244,25 @@ def _microprice(
     return (bid * ask_size + ask * bid_size) / denom
 
 
-def _book_pressure_curve(
-    levels: list[tuple[float, float]], max_levels: int
-) -> list[dict[str, float | str | None]]:
+class PressureLevel(TypedDict):
+    """One level of the depth-pressure curve: its price and size, each with its text.
+
+    `cum` is the size shown from the best level to this one.
+    """
+
+    price: float
+    price_text: str | None
+    volume: float
+    volume_text: str | None
+    cum: float
+
+
+def _book_pressure_curve(levels: Levels, max_levels: int) -> list[PressureLevel]:
     """Cumulative displayed depth per level (best-first): the depth-pressure curve.
 
     Each level's size with its text as the screen shows it (count_text).
     """
-    out: list[dict[str, float | str | None]] = []
+    out: list[PressureLevel] = []
     cum = 0.0
     for price, vol in levels[:max_levels]:
         cum += vol
@@ -277,39 +308,132 @@ _BOOK_DEFERRED = (
 )
 
 
-def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
-    """Return everything derivable from a single canonical book snapshot, no wall-clock `now`.
+class TopOfBook(TypedDict):
+    """The top of book as Schwab last sent it, each price and size with its text."""
 
-    Age fields and the per-serialization timestamps are stamped by `compute_book_microstructure`,
-    so this structural state is safe to carry/memoize per (ticker, BOOK_TIME).
+    bid: float | None
+    ask: float | None
+    bid_size: float | None
+    ask_size: float | None
+    bid_size_text: str | None
+    ask_size_text: str | None
+    bid_text: str | None
+    ask_text: str | None
+
+
+class DepthTotals(TypedDict):
+    """One step of the depth ladder: each side's total over its best levels and their imbalance."""
+
+    bid_total: float | None
+    ask_total: float | None
+    bid_total_text: str | None
+    ask_total_text: str | None
+    imbalance: float | None
+    imbalance_text: str | None
+
+
+class DepthPressure(TypedDict):
+    """The depth-pressure curve of each side, and the ladder's scale.
+
+    `max_volume` is the largest size of the levels it draws; None with none.
     """
-    bid, ask = cb["bid"], cb["ask"]
-    bid_size, ask_size = cb["bid_size"], cb["ask_size"]
-    bid_levels, ask_levels = cb["bid_levels"], cb["ask_levels"]
+
+    bid: list[PressureLevel]
+    ask: list[PressureLevel]
+    max_volume: float | None
+
+
+class BookProvenance(TypedDict):
+    """Where a book's numbers come from: Schwab's clocks, the levels held and the book's service."""
+
+    book_time_ms: float | None
+    n_bid_levels: int
+    n_ask_levels: int
+    book_source: str | None
+    exchange_quote_ts: float | None
+    server_received_ts: float
+
+
+class BookAges(TypedDict):
+    """The book's and the quote's age at the time served, and whether the book is not live."""
+
+    book_age_sec: float | None
+    quote_age_sec: float | None
+    book_stale: bool | None
+
+
+class BookMicrostructure(TypedDict):
+    """The canonical L2 book microstructure of one symbol (compute_book_microstructure)."""
+
+    status: str
+    top_of_book: TopOfBook
+    crossed: bool | None
+    mark: float | None
+    microprice: float | None
+    spread_pts: float | None
+    mark_text: str | None
+    microprice_text: str | None
+    spread_pts_text: str | None
+    depth: dict[str, DepthTotals]
+    depth_pressure: DepthPressure
+    classification: dict[str, str]
+    deferred: list[str]
+    provenance: BookProvenance
+    ages: BookAges
+
+
+def _depth_ladder(bid_levels: Levels, ask_levels: Levels) -> dict[str, DepthTotals]:
+    """Return the depth ladder, each step with its texts.
+
+    The readout's flat views (`_views`, the one producer of a book's top-N totals and
+    imbalance), carried.
+    """
+    ladder = _views(bid_levels, ask_levels)
+    depth: dict[str, DepthTotals] = {}
+    for n in OF_MICRO_DEPTH_LADDER:
+        lv = ladder[str(n)]
+        depth[str(n)] = {
+            "bid_total": lv.bid_total,
+            "ask_total": lv.ask_total,
+            "bid_total_text": count_text(lv.bid_total),
+            "ask_total_text": count_text(lv.ask_total),
+            "imbalance": lv.imbalance,
+            "imbalance_text": fixed_text(lv.imbalance, 3),
+        }
+    return depth
+
+
+def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
+    """Seconds from Schwab's BOOK_TIME to `now`; None with no book time."""
+    return None if book_time_ms is None else now - book_time_ms / 1000.0
+
+
+def compute_book_microstructure(data: FlowInput, *, now_ts: float) -> BookMicrostructure:
+    """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
+
+    The ONE producer the engine and the book panel (`push.book.book`) both read.
+    `data.book` is the newest book of its Schwab service (app.options.order_flow.state
+    .newest_book) and `data.top` the top of book; `data.exchange_quote_ts` (optional) is
+    the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
+    service (absent: not live). Pure: computed from the book given on every call (about 30 us on
+    a real book). Only the ages and the provenance's `server_received_ts` depend on `now`.
+    Fail-closed: no book snapshot -> status 'no_book' with null metrics (no fabricated values).
+    """
+    now = now_ts
+    cb = _extract_canonical_book(data)
+    bid, ask = cb.bid, cb.ask
+    bid_size, ask_size = cb.bid_size, cb.ask_size
+    bid_levels, ask_levels = cb.bid_levels, cb.ask_levels
     # unknown without both quotes
     crossed = None if bid is None or ask is None else bid > ask
 
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = None if bid is None or ask is None else ask - bid
-    mark = cb["mark"]
-
-    # Depth ladder: the readout's flat views (`_readout`, the one producer of a book's top-N
-    # totals and imbalance), carried.
-    ladder = _readout(bid_levels, ask_levels, cb["book_time_ms"])["views"]
-    depth: dict[str, dict[str, float | str | None]] = {}
-    for n in OF_MICRO_DEPTH_LADDER:
-        lv = ladder[str(n)]
-        depth[str(n)] = {
-            "bid_total": lv["bid_total"],
-            "ask_total": lv["ask_total"],
-            "bid_total_text": count_text(lv["bid_total"]),
-            "ask_total_text": count_text(lv["ask_total"]),
-            "imbalance": lv["imbalance"],
-            "imbalance_text": fixed_text(lv["imbalance"], 3),
-        }
-
+    mark = cb.mark
+    exch_ts = float_finite_or_none(data.exchange_quote_ts)
+    age = book_age_sec(cb.book_time_ms, now)
     return {
-        "status": "ok" if cb["has_book"] else "no_book",
+        "status": "ok" if cb.has_book else "no_book",
         "top_of_book": {
             "bid": bid,
             "ask": ask,
@@ -327,7 +451,7 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
         "mark_text": price_text(mark),
         "microprice_text": price_text(microprice),
         "spread_pts_text": price_text(spread_pts),
-        "depth": depth,
+        "depth": _depth_ladder(bid_levels, ask_levels),
         "depth_pressure": {
             "bid": _book_pressure_curve(bid_levels, OF_BOOK_DEPTH_DEEP),
             "ask": _book_pressure_curve(ask_levels, OF_BOOK_DEPTH_DEEP),
@@ -337,55 +461,24 @@ def _microstructure_structural(cb: dict[str, Any]) -> dict[str, Any]:
                 default=None,
             ),
         },
-        "provenance_structural": {
-            "book_time_ms": cb["book_time_ms"],
-            "n_bid_levels": len(bid_levels),
-            "n_ask_levels": len(ask_levels),
-            "book_source": cb["venue"] if cb["has_book"] else "unavailable",
-        },
         "classification": dict(_BOOK_CLASSIFICATION),
         "deferred": list(_BOOK_DEFERRED),
+        "provenance": {
+            "book_time_ms": cb.book_time_ms,
+            "n_bid_levels": len(bid_levels),
+            "n_ask_levels": len(ask_levels),
+            "book_source": cb.venue if cb.has_book else "unavailable",
+            "exchange_quote_ts": exch_ts,  # NATIVE (plane quote clock)
+            "server_received_ts": now,  # DERIVED (server wall clock at serialization)
+        },
+        "ages": {
+            "book_age_sec": age,
+            "quote_age_sec": None if exch_ts is None else now - exch_ts,
+            # the live rule (live_market_plane.feed_live_for on the book's service), which the
+            # caller passes as data.book_live; None with no book
+            "book_stale": None if age is None else data.book_live is not True,
+        },
     }
-
-
-def book_age_sec(book_time_ms: float | None, now: float) -> float | None:
-    """Seconds from Schwab's BOOK_TIME to `now`; None with no book time."""
-    return None if book_time_ms is None else now - book_time_ms / 1000.0
-
-
-def compute_book_microstructure(data: FlowInput, *, now_ts: float) -> dict[str, Any]:
-    """Compute the canonical L2 book microstructure for one symbol at `now_ts` (epoch seconds).
-
-    The ONE producer the engine and the book panel (`push.book.book`) both read.
-    `data.book` is the newest book of its Schwab service (app.options.order_flow.state
-    .newest_book) and `data.top` the top of book; `data.exchange_quote_ts` (optional) is
-    the plane's exchange quote clock; `data.book_live` is the live rule's answer for the book's
-    service (absent: not live). Pure: computed from the book given on every call (about 90 us on
-    a real book). Only the age fields depend on `now`. Fail-closed: no book snapshot -> status
-    'no_book' with null metrics (no fabricated values).
-    """
-    now = now_ts
-    cb = _extract_canonical_book(data)
-    book_time_ms = cb["book_time_ms"]
-    structural = _microstructure_structural(cb)
-
-    # Ages + per-serialization stamps are the only wall-clock-dependent fields.
-    exch_ts = float_finite_or_none(data.exchange_quote_ts)
-    payload = dict(structural)
-    prov = dict(structural["provenance_structural"])
-    prov["exchange_quote_ts"] = exch_ts  # NATIVE (plane quote clock)
-    prov["server_received_ts"] = now  # DERIVED (server wall clock at serialization)
-    payload.pop("provenance_structural", None)
-    payload["provenance"] = prov
-    age = book_age_sec(book_time_ms, now)
-    payload["ages"] = {
-        "book_age_sec": age,
-        "quote_age_sec": None if exch_ts is None else now - exch_ts,
-        # the live rule (live_market_plane.feed_live_for on the book's service), which the caller
-        # passes as data.book_live; None with no book
-        "book_stale": None if age is None else data.book_live is not True,
-    }
-    return payload
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -431,9 +524,7 @@ READOUT_DETAIL = {
     " NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
 }
 _CROSSED_SENTENCE = "Book crossed — the best bid is above the best offer."
-_TOUCH_FLAG: dict[str | None, str] = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
-
-Levels = list[tuple[float, float]]
+_TOUCH_FLAG = {"CROSSED": "BOOK CROSSED", "LOCKED": "BOOK LOCKED"}
 
 
 def _composite_side(books: dict[str, Book], side: str) -> tuple[Levels, bool]:
@@ -497,82 +588,126 @@ _ONE_SIDED = {
 }
 
 
-def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> dict[str, Any]:
+class ReadoutView(NamedTuple):
+    """One view of a book: its best levels' totals, their imbalance and how far they reach.
+
+    Each None where the book has no number for it: a side with no levels has no total, and a
+    book without both sides has no imbalance, difference or depth.
+    """
+
+    imbalance: float | None
+    pct: float | None
+    bid_total: float | None
+    ask_total: float | None
+    difference: float | None
+    total_depth: float | None
+    span_bid: float | None
+    span_ask: float | None
+
+
+#: the views of no book: no number in any
+_NO_VIEWS: Mapping[str, ReadoutView] = dict.fromkeys(
+    READOUT_VIEWS, ReadoutView(None, None, None, None, None, None, None, None)
+)
+
+
+class Readout(NamedTuple):
+    """The imbalance readout of one Schwab book, or of the composite (book_readout).
+
+    `status`: "ok", "one_sided" (one side has no levels), "empty" (neither has) or "no_book"
+    (none held: no number in any view, and no touch, count of levels or one-sided words).
+    `levels`: the count of its bid and of its ask levels. `books` and `dedup_partial` are the
+    composite's alone: the books it is built from, and whether a level or a quote could not be
+    told apart between them.
+    """
+
+    status: str
+    book_time_ms: float | None
+    views: Mapping[str, ReadoutView]
+    touch_state: str | None = None
+    one_sided_text: str | None = None
+    levels: tuple[int, int] | None = None
+    books: list[str] | None = None
+    dedup_partial: bool | None = None
+
+
+#: the readouts kept: (receive time, each venue's readout), oldest first
+Points = Sequence[tuple[float, Mapping[str, Readout]]]
+
+
+def _views(bids: Levels, asks: Levels) -> dict[str, ReadoutView]:
     """Return one book's views.
 
     The totals of its best 1, 3 and 5 levels, their imbalance and its percentage (the one
     producer of a book's depth ladder: the bars, difference and sentence here, and the
     microstructure's `depth`).
     """
-    views: dict[str, dict[str, float | None]] = {}
+    views: dict[str, ReadoutView] = {}
     for view in READOUT_VIEWS:
         depth = int(view)
         bt, at = _book_side_depth_total(bids, depth), _book_side_depth_total(asks, depth)
         imb = _book_imbalance_from_totals(bt, at)
-        views[view] = {
-            "imbalance": imb,
-            "pct": _pct(imb),
-            "bid_total": bt,
-            "ask_total": at,
-            "difference": None if bt is None or at is None else abs(bt - at),
-            "total_depth": None if bt is None or at is None else bt + at,
-            "span_bid": _span(bids, depth),
-            "span_ask": _span(asks, depth),
-        }
+        views[view] = ReadoutView(
+            imbalance=imb,
+            pct=_pct(imb),
+            bid_total=bt,
+            ask_total=at,
+            difference=None if bt is None or at is None else abs(bt - at),
+            total_depth=None if bt is None or at is None else bt + at,
+            span_bid=_span(bids, depth),
+            span_ask=_span(asks, depth),
+        )
+    return views
+
+
+def _readout(bids: Levels, asks: Levels, book_time_ms: float | None) -> Readout:
+    """Return one book's readout: its views, its touch and the count of its levels."""
     touch = None
     if bids and asks:
         touch = (
             "CROSSED" if bids[0][0] > asks[0][0] else "LOCKED" if bids[0][0] == asks[0][0] else None
         )
     status = "ok" if bids and asks else "one_sided" if bids or asks else "empty"
-    return {
-        "status": status,
-        "book_time_ms": book_time_ms,
-        "touch_state": touch,
-        "one_sided_text": _ONE_SIDED["BIDS" if bids else "ASKS"] if status == "one_sided" else None,
-        "levels": {"bid": len(bids), "ask": len(asks)},
-        "views": views,
-    }
+    return Readout(
+        status=status,
+        book_time_ms=book_time_ms,
+        views=_views(bids, asks),
+        touch_state=touch,
+        one_sided_text=_ONE_SIDED["BIDS" if bids else "ASKS"] if status == "one_sided" else None,
+        levels=(len(bids), len(asks)),
+    )
 
 
-def book_readout(books: dict[str, Book | None]) -> dict[str, dict[str, Any]]:
-    """Return the imbalance readout of each Schwab book and of their composite.
+def book_readout(books: Mapping[str, Book | None]) -> Mapping[str, Readout]:
+    """Return the imbalance readout of each Schwab book and of their composite, by venue.
 
     Read from each venue's newest book (`state.newest_book`, every venue of BOOK_VENUES; None:
     no book). The composite is of the books held (`books` names them): with one, that book; with
     none, no_book, `books` naming the two it reads. Its time is its older book's.
     """
-    out: dict[str, dict[str, Any]] = {}
+    out: dict[str, Readout] = {}
     held: dict[str, Book] = {}
     for v in BOOK_VENUES:
         book = books[v]
         if book is None:
-            out[v] = {"status": "no_book", "book_time_ms": None}
+            out[v] = Readout("no_book", None, _NO_VIEWS)
             continue
         held[v] = book
         bids = _sorted_valid_levels(book.pairs("BIDS"), descending=True)
         asks = _sorted_valid_levels(book.pairs("ASKS"), descending=False)
         out[v] = _readout(bids, asks, book.book_time_ms)
     if not held:
-        out[COMPOSITE] = {"status": "no_book", "book_time_ms": None, "books": list(BOOK_VENUES)}
+        out[COMPOSITE] = Readout("no_book", None, _NO_VIEWS, books=list(BOOK_VENUES))
         return out
     times = [t for b in held.values() if (t := b.book_time_ms) is not None]
     (bids, bid_partial), (asks, ask_partial) = (_composite_side(held, s) for s in ("BIDS", "ASKS"))
     # its time is its older book's; a book with no time leaves it none
-    out[COMPOSITE] = _readout(bids, asks, min(times) if len(times) == len(held) else None)
-    out[COMPOSITE]["books"] = list(held)
-    out[COMPOSITE]["dedup_partial"] = bid_partial or ask_partial
+    composite = _readout(bids, asks, min(times) if len(times) == len(held) else None)
+    out[COMPOSITE] = composite._replace(books=list(held), dedup_partial=bid_partial or ask_partial)
     return out
 
 
-def _headline(readout: dict[str, dict[str, Any]], venue: str, view: str) -> float | None:
-    r = readout[venue]
-    return r["views"][view]["pct"] if "views" in r else None
-
-
-def _standing(
-    points: list[tuple[float, dict[str, Any]]], venue: str, view: str, first: int, last: int
-) -> list[float | None]:
+def _standing(points: Points, venue: str, view: str, first: int, last: int) -> list[float | None]:
     """Return the headline percentage of `venue` and `view` standing in each second first..last.
 
     Each whole second's value is the newest readout received by that second's end (Schwab sends
@@ -583,7 +718,7 @@ def _standing(
     out, i, cur = [], 0, None
     for sec in range(first, last + 1):
         while i < len(points) and points[i][0] < sec + 1:
-            cur = _headline(points[i][1], venue, view)
+            cur = points[i][1][venue].views[view].pct
             i += 1
         out.append(cur)
     return out
@@ -665,40 +800,106 @@ def _opposite(a: float | None, b: float | None) -> bool:
     return a is not None and b is not None and a * b < 0
 
 
-def _card_view(
-    r: dict[str, Any],
-    snap: dict[str, Any],
-    points: list[tuple[float, dict[str, Any]]],
-    v: str,
-    view: str,
-    last: int,
-) -> dict[str, Any]:
+class LeanSeries(TypedDict):
+    """One lean sparkline of a view: its window and step in seconds, its side, and its values.
+
+    `lean` is BID_HEAVY or OFFER_HEAVY while every value known is on that side, else MIXED; None
+    with no value known.
+    """
+
+    seconds: int
+    step: int
+    lean: str | None
+    values: list[float | None]
+
+
+class CardView(TypedDict):
+    """One venue's view on the Liquidity card, standing at its end second (_card_view)."""
+
+    bid_total: float | None
+    ask_total: float | None
+    difference: float | None
+    total_depth: float | None
+    pct: float | None
+    pct_text: str | None
+    tilt: str | None
+    side_word: str | None
+    held_sec: int | None
+    held_open: bool
+    held_text: str | None
+    sentence: str | None
+    flips_2m: int
+    bid_text: str | None
+    ask_text: str | None
+    difference_text: str | None
+    total_text: str | None
+    span_bid_text: str | None
+    span_ask_text: str | None
+    lean: dict[str, LeanSeries]
+
+
+class NoView(TypedDict):
+    """A venue's view with no end second: no value."""
+
+    pct: None
+    tilt: None
+
+
+class VenueCard(TypedDict):
+    """One venue on the Liquidity card (readout_card): its readout's state, and its views."""
+
+    status: str
+    book_time_ms: float | None
+    touch_state: str | None
+    one_sided_text: str | None
+    books: list[str] | None
+    dedup_partial: bool | None
+    touch_pct: float | None
+    touch_text: str | None
+    touch_flag: str | None
+    levels_text: str | None
+    views: dict[str, CardView | NoView]
+
+
+class ReadoutCard(TypedDict):
+    """The Liquidity card's values (readout_card): each venue, and where the two books disagree."""
+
+    venues: dict[str, VenueCard]
+    disagree: dict[str, bool]
+    detail: dict[str, str]
+
+
+def _card_view(r: Readout, points: Points, v: str, view: str, last: int) -> CardView:
     """Return one venue's view on the Liquidity card, standing at its end second `last`."""
     first = last - OF_LEAN_KEPT_SEC
     sm = _standing(points, v, view, first, last)
     shown = _tilts(sm, first)
     tilt, since = shown[-1]
     known_from = next((first + k for k, s in enumerate(sm) if s is not None), None)
-    bid, ask = snap.get("bid_total"), snap.get("ask_total")
+    snap = r.views[view]
+    bid, ask = snap.bid_total, snap.ask_total
     held = None if since is None else last - since
     return {
-        **{k: snap.get(k) for k in ("bid_total", "ask_total", "difference", "total_depth")},
+        "bid_total": bid,
+        "ask_total": ask,
+        "difference": snap.difference,
+        "total_depth": snap.total_depth,
         "pct": sm[-1],
         "pct_text": percent_text(sm[-1]),
         "tilt": tilt,
-        "side_word": TILT_WORDS.get(tilt) if tilt else None,
+        "side_word": TILT_WORDS[tilt] if tilt else None,
         "held_sec": held,
         "held_open": since is not None and since == known_from,
         "held_text": None if held is None else f"HELD {'≥' if since == known_from else ''}{held}s",
-        "sentence": _CROSSED_SENTENCE if r.get("touch_state") == "CROSSED" else _sentence(bid, ask),
+        "sentence": _CROSSED_SENTENCE if r.touch_state == "CROSSED" else _sentence(bid, ask),
         "flips_2m": _flips(shown, first, last),
         "bid_text": count_text(bid),
         "ask_text": count_text(ask),
-        "difference_text": count_text(snap.get("difference")),
-        "total_text": count_text(snap.get("total_depth")),
+        "difference_text": count_text(snap.difference),
+        "total_text": count_text(snap.total_depth),
         # how far the book's levels reach in price
-        "span_bid_text": price_text(snap.get("span_bid")),
-        "span_ask_text": price_text(snap.get("span_ask")),
+        "span_bid_text": price_text(snap.span_bid),
+        "span_ask_text": price_text(snap.span_ask),
         "lean": {
             name: {
                 "seconds": window,
@@ -712,10 +913,8 @@ def _card_view(
 
 
 def readout_card(
-    readout: dict[str, dict[str, Any]],
-    points: list[tuple[float, dict[str, Any]]],
-    ends: Mapping[str, float | None],
-) -> dict[str, Any]:
+    readout: Mapping[str, Readout], points: Points, ends: Mapping[str, float | None]
+) -> ReadoutCard:
     """Return the Liquidity card's values, every venue and view.
 
     The headline (the percentage standing at
@@ -727,35 +926,28 @@ def readout_card(
     kept, (receive time,
     readout) oldest first; `ends`: venue -> its end time, None with no value.
     """
-    venues: dict[str, dict[str, Any]] = {}
+    venues: dict[str, VenueCard] = {}
     for v, r in readout.items():
-        end = ends.get(v)
-        views: dict[str, dict[str, Any]] = {}
+        end = ends[v]
+        views: dict[str, CardView | NoView] = {}
         for view in READOUT_VIEWS:
-            snap: dict[str, Any] = r["views"][view] if "views" in r else {}
             if end is None:
                 views[view] = {"pct": None, "tilt": None}
                 continue
-            views[view] = _card_view(r, snap, points, v, view, int(end))
-        touch = r["views"]["1"]["pct"] if "views" in r else None
-        levels = r.get("levels")
+            views[view] = _card_view(r, points, v, view, int(end))
+        touch = r.views["1"].pct
         venues[v] = {
-            **{
-                k: r.get(k)
-                for k in (
-                    "status",
-                    "book_time_ms",
-                    "touch_state",
-                    "one_sided_text",
-                    "books",
-                    "dedup_partial",
-                )
-            },
+            "status": r.status,
+            "book_time_ms": r.book_time_ms,
+            "touch_state": r.touch_state,
+            "one_sided_text": r.one_sided_text,
+            "books": r.books,
+            "dedup_partial": r.dedup_partial,
             "touch_pct": touch,
             "touch_text": percent_text(touch),
-            "touch_flag": _TOUCH_FLAG.get(r.get("touch_state")),
-            "levels_text": f"Levels available: bids {levels['bid']} · asks {levels['ask']}"
-            if levels and min(levels.values()) < OF_BOOK_DEPTH_DEEP
+            "touch_flag": None if r.touch_state is None else _TOUCH_FLAG[r.touch_state],
+            "levels_text": f"Levels available: bids {r.levels[0]} · asks {r.levels[1]}"
+            if r.levels is not None and min(r.levels) < OF_BOOK_DEPTH_DEEP
             else None,
             "views": views,
         }
@@ -799,10 +991,41 @@ def _compute_cum_delta_slope(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+class EngineFlow(TypedDict):
+    """What OrderFlowEngine.compute returns for one symbol.
+
+    The book's microstructure, each flow number with its text as the screen shows it, and the
+    window the cumulative delta sums.
+    """
+
+    book_microstructure: BookMicrostructure
+    top_book_pressure: float | None
+    tape_pressure_30s: float | None
+    tape_pressure_2m: float | None
+    tape_pressure_5m: float | None
+    tape_unsigned_30s: float | None
+    tape_unsigned_2m: float | None
+    tape_unsigned_5m: float | None
+    cum_delta_unsigned: float | None
+    cum_delta_proxy: float | None
+    cum_delta_slope: float | None
+    top_book_pressure_text: str | None
+    tape_pressure_30s_text: str | None
+    tape_pressure_2m_text: str | None
+    tape_pressure_5m_text: str | None
+    tape_unsigned_30s_text: str | None
+    tape_unsigned_2m_text: str | None
+    tape_unsigned_5m_text: str | None
+    cum_delta_unsigned_text: str | None
+    cum_delta_proxy_text: str | None
+    cum_delta_slope_text: str | None
+    cum_delta_window: str | None
+
+
 class OrderFlowEngine:
     """Order Flow Engine: computes metrics from Schwab data using only identified field paths."""
 
-    def compute(self, data: FlowInput, *, now: float) -> dict[str, Any]:
+    def compute(self, data: FlowInput, *, now: float) -> EngineFlow:
         """Compute the book microstructure and the tape flow of one symbol at `now`.
 
         `now` is in epoch seconds; missing data yields None.
@@ -812,38 +1035,46 @@ class OrderFlowEngine:
         prints = data.prints  # the tape, in receive order
         cum_first, cum_last = cum_delta_window(prints)
         ms = now * 1000.0
-        # each flow number and the decimals the screen shows it with: the pressures, each
-        # value's unsigned share of the size it covers, the cumulative delta
-        flow = {
-            # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
-            "top_book_pressure": (_compute_top_book_pressure(data), 3),
-            "tape_pressure_30s": (compute_tape_pressure(prints, OF_TAPE_WINDOW_30S_SEC, ms), 3),
-            "tape_pressure_2m": (compute_tape_pressure(prints, OF_TAPE_WINDOW_2M_SEC, ms), 3),
-            "tape_pressure_5m": (compute_tape_pressure(prints, OF_TAPE_WINDOW_5M_SEC, ms), 3),
-            "tape_unsigned_30s": (
-                unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_30S_SEC)),
-                2,
-            ),
-            "tape_unsigned_2m": (
-                unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_2M_SEC)),
-                2,
-            ),
-            "tape_unsigned_5m": (
-                unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_5M_SEC)),
-                2,
-            ),
-            "cum_delta_unsigned": (unsigned_share(prints), 2),
-            "cum_delta_proxy": (compute_cum_delta_proxy(prints), 1),
-            "cum_delta_slope": (_compute_cum_delta_slope(prints, now), 3),
-        }
+        # each flow number: the pressures, each value's unsigned share of the size it covers,
+        # the cumulative delta
+        # top-of-book SIZE pressure (streamed BID_SIZE / ASK_SIZE), not a depth imbalance
+        top = _compute_top_book_pressure(data)
+        pressure_30s = compute_tape_pressure(prints, OF_TAPE_WINDOW_30S_SEC, ms)
+        pressure_2m = compute_tape_pressure(prints, OF_TAPE_WINDOW_2M_SEC, ms)
+        pressure_5m = compute_tape_pressure(prints, OF_TAPE_WINDOW_5M_SEC, ms)
+        unsigned_30s = unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_30S_SEC))
+        unsigned_2m = unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_2M_SEC))
+        unsigned_5m = unsigned_share(prints, _window_start_ms(now, OF_TAPE_WINDOW_5M_SEC))
+        unsigned = unsigned_share(prints)
+        proxy = compute_cum_delta_proxy(prints)
+        slope = _compute_cum_delta_slope(prints, now)
 
         return {
             # Carry the single canonical microstructure state so the route serializes THIS
             # computed result (same book) rather than recomputing from raw data.
             "book_microstructure": book_micro,
-            # each flow number, and beside it its text as the screen shows it
-            **{name: value for name, (value, _places) in flow.items()},
-            **{f"{name}_text": fixed_text(value, places) for name, (value, places) in flow.items()},
+            "top_book_pressure": top,
+            "tape_pressure_30s": pressure_30s,
+            "tape_pressure_2m": pressure_2m,
+            "tape_pressure_5m": pressure_5m,
+            "tape_unsigned_30s": unsigned_30s,
+            "tape_unsigned_2m": unsigned_2m,
+            "tape_unsigned_5m": unsigned_5m,
+            "cum_delta_unsigned": unsigned,
+            "cum_delta_proxy": proxy,
+            "cum_delta_slope": slope,
+            # beside each number its text as the screen shows it, to the decimals of its kind:
+            # a pressure and the slope 3, an unsigned share 2, the cumulative delta 1
+            "top_book_pressure_text": fixed_text(top, 3),
+            "tape_pressure_30s_text": fixed_text(pressure_30s, 3),
+            "tape_pressure_2m_text": fixed_text(pressure_2m, 3),
+            "tape_pressure_5m_text": fixed_text(pressure_5m, 3),
+            "tape_unsigned_30s_text": fixed_text(unsigned_30s, 2),
+            "tape_unsigned_2m_text": fixed_text(unsigned_2m, 2),
+            "tape_unsigned_5m_text": fixed_text(unsigned_5m, 2),
+            "cum_delta_unsigned_text": fixed_text(unsigned, 2),
+            "cum_delta_proxy_text": fixed_text(proxy, 1),
+            "cum_delta_slope_text": fixed_text(slope, 3),
             # the window the cumulative delta sums: the tape's first and last print (Schwab trade
             # time), served beside the number
             "cum_delta_window": (
