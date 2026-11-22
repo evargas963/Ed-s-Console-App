@@ -197,6 +197,64 @@ def test_with_no_prior_day_the_migration_says_so(published):
     assert not m["compared"] and m["note"] == push_strikes.NO_PRIOR_DAY
 
 
+def test_a_prior_day_with_no_value_known_at_any_strike_says_so(published):
+    """INDUCED: Thursday's chain with no open interest sent.
+
+    The prior day lists the expiry and no strike's net GEX is known that day, so nothing is
+    compared, and the migration says that reason: not that no prior day is held, nor that the
+    prior day's chain does not list the expiry.
+    """
+    thursday = [{k: v for k, v in c.items() if k != "openInterest"} for c in THURSDAY["contracts"]]
+    level_store.publish(TK, replace(published, prior_day=_snap(thursday, THURSDAY)))
+    m = _strikes(CHOSEN)["migration"]
+    assert len(m["rows"]) > 10
+    assert all(r["prior"] is None and r["change"] is None for r in m["rows"])
+    assert not m["compared"] and (m["grew"], m["shrank"]) == ([], [])
+    assert m["note"] == "No strike has a net GEX on both days."
+
+
+def test_each_level_is_served_against_the_prior_days_own_with_its_texts(published):
+    """PCG's call wall moved from 13 to 12 between the two captures and its put wall stood.
+
+    Neither day has a gamma flip. Each level is served with both days' strikes and the move as
+    the screen shows them: a move down signed, none as "unchanged", an unknown level as nothing.
+    """
+    today, prior = published.snap, published.prior_day
+    assert (prior.call_wall, today.call_wall) == (13.0, 12.0)
+    assert (prior.put_wall, today.put_wall) == (13.0, 13.0)
+    assert prior.gamma_flip is None and today.gamma_flip is None
+    for expiry in (None, CHOSEN):  # the levels are the book's, whichever expiry is shown
+        assert _strikes(expiry)["level_moves"] == [
+            {
+                "level": "call_wall",
+                "prior": 13.0,
+                "today": 12.0,
+                "change": -1.0,
+                "prior_text": "13",
+                "today_text": "12",
+                "change_text": "-1",
+            },
+            {
+                "level": "put_wall",
+                "prior": 13.0,
+                "today": 13.0,
+                "change": 0.0,
+                "prior_text": "13",
+                "today_text": "13",
+                "change_text": "unchanged",
+            },
+            {
+                "level": "gamma_flip",
+                "prior": None,
+                "today": None,
+                "change": None,
+                "prior_text": None,
+                "today_text": None,
+                "change_text": None,
+            },
+        ]
+
+
 def _bars(key: str, expiry: str | None) -> dict[float, float]:
     body = push_strike_bars.strike_bars(key, TK, FRIDAY["ts_utc"], {**EVERY, "expiry": expiry})
     assert body["expiry"] == expiry
@@ -228,3 +286,48 @@ def test_vanna_and_charm_by_strike_are_the_chosen_expirys_alone(published):
         )["reason"]
         == f"the chain lists no contracts for {NOT_LISTED}"
     )
+
+
+def test_an_expiry_with_no_value_known_has_no_bar_and_says_so():
+    """INDUCED: Friday's chain with the 2026-10-30 expiry's open interest not sent.
+
+    No vanna or charm of that expiry is known: each bar panel has no row and says so, while the
+    expiry beside it is answered as before; the GEX rows of that expiry stand with no value,
+    never 0, and its DEX and open interest profiles have no row.
+    """
+    blank = "2026-10-30"
+    chain = [
+        {k: v for k, v in c.items() if k != "openInterest" or c["expirationDate"][:10] != blank}
+        for c in FRIDAY["contracts"]
+    ]
+    at = FRIDAY["ts_utc"]
+    server._publish_levels(
+        TK, read_chain(chain), at, chain_spot=(FRIDAY["spot"], at), now=_at(FRIDAY)
+    )
+    try:
+        for key, method in push_strike_bars.STRIKE_BAR_METHODS.items():
+            body = push_strike_bars.strike_bars(key, TK, at, {**EVERY, "expiry": blank})
+            assert body == {
+                "ticker": TK,
+                "available": False,
+                "expiry": blank,
+                "rows": [],
+                "view": {"centre": None, "centre_text": None, "note": None, "max_abs": None},
+                "scope": "all",
+                "reason": "no usable strikes for this chain",
+                "method": method,
+            }, key
+            beside = push_strike_bars.strike_bars(key, TK, at, {**EVERY, "expiry": CHOSEN})
+            assert beside["available"] and beside["reason"] is None, key
+            assert beside["rows"] and all(
+                set(r) == {"strike", "value", "strike_text", "text", "marks"}
+                for r in beside["rows"]
+            ), key
+        gex = push_strikes.strikes(TK, at, {**EVERY, "expiry": blank})
+        assert len(gex["today"]) > 10
+        assert all(r["value"] is None and r["text"] is None for r in gex["today"])
+        assert gex["max_abs_row"] is None and gex["view"]["max_abs"] is None
+        assert all(w["rows"] == [] and w["max_abs_row"] is None for w in gex["measures"].values())
+    finally:
+        with level_store._lock:
+            level_store._levels.pop(TK, None)
