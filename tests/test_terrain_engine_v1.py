@@ -292,6 +292,27 @@ def test_real_chain_wall_states_agree_with_the_geometry() -> None:
     assert d.put_wall_state in (WALL_CONTAINS, WALL_BREACHED)
 
 
+def test_the_prices_side_of_the_flip_is_served_in_the_strips_words() -> None:
+    """SPY's 0DTE book and its flip: the price's side of it, in the Desk strip's words.
+
+    The price is INDUCED above, at and below the flip the real chain publishes; with no price
+    there is no side and no words. The page draws the words and picks none.
+    """
+    chain, spot = spy_0dte_book()
+    published = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions()).to_dict()
+    flip = published["gamma_flip"]
+    assert flip is not None
+
+    def said(price: float | None) -> tuple[str | None, str | None]:
+        relations = price_relations(published, price)
+        return relations.flip_relation, relations.flip_relation_text
+
+    assert said(flip + 1) == ("ABOVE", "Above Γ flip")
+    assert said(flip) == ("AT", "At Γ flip")
+    assert said(flip - 1) == ("BELOW", "Below Γ flip")
+    assert said(None) == (None, None)
+
+
 def test_unavailable_terrain_does_not_fabricate_pin_score_stamps() -> None:
     snap = compute_terrain("SPY", None, SPY_0DTE.spot, now=NOW, sessions=sessions())
     assert snap.absolute_gamma_strike is None

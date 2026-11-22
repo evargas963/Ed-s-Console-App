@@ -1271,6 +1271,79 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  test("Desk: the agreement strip says the value area, the VWAP and the flip in the served words", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    await openView(page, "trade-desk", "desk");
+    const strip = page.locator("#tdmAgree");
+    // SPY's real panels, each state with the words served beside it
+    await expect(strip).toContainText("VALUE" + LIQ.summary.value_state_text);
+    await expect(strip).toContainText("VWAP" + LIQ.summary.vwap_relation_text);
+    await expect(strip).toContainText("GAMMA" + TERRAIN.flip_relation_text);
+    // INDUCED: those panels with every state the server serves and the words it serves with it
+    // (push.liquidity.VALUE_STATE_TEXT, VWAP_RELATION_TEXT; calc.terrain_read.FLIP_RELATION_TEXT),
+    // then none known (no words: the dash), then states the page has never held: the strip draws
+    // the served words and picks none. Each row: the state, its served words, the cell as drawn.
+    for (const [value, vwap, flip] of [
+      [
+        ["unchanged", "unchanged", "unchanged"],
+        ["above_value", "above value", "above value"],
+        ["ABOVE", "Above Γ flip", "Above Γ flip"],
+      ],
+      [
+        ["higher", "higher", "higher"],
+        ["below_value", "below value", "below value"],
+        ["AT", "At Γ flip", "At Γ flip"],
+      ],
+      [
+        ["inside", "inside", "inside"],
+        ["inside_value", "inside value", "inside value"],
+        ["BELOW", "Below Γ flip", "Below Γ flip"],
+      ],
+      [
+        ["outside", "outside", "outside"],
+        [null, null, "-"],
+        [null, null, "-"],
+      ],
+      [
+        ["overlapping_higher", "overlapping higher", "overlapping higher"],
+        ["above_value", "above value", "above value"],
+        ["ABOVE", "Above Γ flip", "Above Γ flip"],
+      ],
+      [
+        ["overlapping_lower", "overlapping lower", "overlapping lower"],
+        ["below_value", "below value", "below value"],
+        ["BELOW", "Below Γ flip", "Below Γ flip"],
+      ],
+      [
+        [null, null, "-"],
+        ["a_state_only_the_server_knows", "as only the server says", "as only the server says"],
+        ["ELSEWHERE", "Where only the server says", "Where only the server says"],
+      ],
+    ]) {
+      deskPanels().liquidity = Object.assign({}, LIQ, {
+        summary: {
+          value_state: value[0],
+          vwap_relation: vwap[0],
+          value_state_text: value[1],
+          vwap_relation_text: vwap[1],
+        },
+      });
+      deskPanels().terrain = Object.assign({}, TERRAIN, {
+        flip_relation: flip[0],
+        flip_relation_text: flip[1],
+      });
+      sock.changed("liquidity");
+      sock.changed("terrain");
+      await expect(strip).toContainText("VALUE" + value[2]);
+      await expect(strip).toContainText("VWAP" + vwap[2]);
+      await expect(strip).toContainText("GAMMA" + flip[2]);
+    }
+    expect(errs).toEqual([]);
+  });
+
   test("Right Now: where the busiest strikes sit is said in the served words, each place", async ({
     page,
   }) => {

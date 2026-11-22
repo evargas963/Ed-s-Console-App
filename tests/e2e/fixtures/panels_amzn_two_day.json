@@ -3390,6 +3390,7 @@
     "call_wall_lean": null,
     "put_wall_lean": "BREACHED \u2014 spot below",
     "flip_relation": "ABOVE",
+    "flip_relation_text": "Above \u0393 flip",
     "atr_daily": 9.452408341900341,
     "atr_weekly": 17.39414267906555,
     "atr_monthly": 32.792381399428905,
@@ -78187,7 +78188,9 @@
     ],
     "summary": {
       "value_state": "higher",
-      "vwap_relation": "inside_value"
+      "vwap_relation": "inside_value",
+      "value_state_text": "higher",
+      "vwap_relation_text": "inside value"
     },
     "spot_location": {
       "inside": null,

@@ -1054,21 +1054,19 @@
       ],
       [
         "VALUE",
-        l && l.summary ? String(orDash(l.summary.value_state)).replace(/_/g, " ") : "-",
+        l && l.summary ? orDash(l.summary.value_state_text) : "-", // served, in words
         "",
       ],
       [
         "VWAP",
-        l && l.summary ? String(orDash(l.summary.vwap_relation)).replace(/_/g, " ") : "-",
+        l && l.summary ? orDash(l.summary.vwap_relation_text) : "-", // served, in words
         "",
       ],
       ["OPTIONS", t && !why(t) && t.regime ? t.regime_text : "-", ""], // served: the regime in words
       [
         "GAMMA",
-        t && t.flip_relation
-          ? { ABOVE: "Above Γ flip", AT: "At Γ flip", BELOW: "Below Γ flip" }[t.flip_relation] +
-            notLive(t)
-          : "-",
+        // served: the price's side of the flip, in words
+        t && t.flip_relation ? t.flip_relation_text + notLive(t) : "-",
         t && t.flip_relation === "ABOVE" ? "up" : t && t.flip_relation === "BELOW" ? "dn" : "",
       ],
     ];

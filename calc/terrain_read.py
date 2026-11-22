@@ -174,6 +174,14 @@ REGIME_NAME = {
     REGIME_SHORT_GAMMA: "SHORT GAMMA TREND",
     REGIME_UNAVAILABLE: "UNAVAILABLE",
 }
+#: where the price sits against the gamma flip (price_side), as the Desk's agreement strip says
+#: it; no words where it is not known
+FLIP_RELATION_TEXT: dict[str | None, str | None] = {
+    LEVEL_ABOVE: "Above Γ flip",
+    LEVEL_AT: "At Γ flip",
+    LEVEL_BELOW: "Below Γ flip",
+    None: None,
+}
 
 
 def build_terrain_read(*, spot: float | None, gamma_at_spot: float | None = None) -> TerrainRead:

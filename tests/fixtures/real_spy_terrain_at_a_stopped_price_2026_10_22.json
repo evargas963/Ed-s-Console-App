@@ -32,6 +32,7 @@
  },
  "flip_note": null,
  "flip_relation": null,
+ "flip_relation_text": null,
  "gamma_flip": null,
  "gamma_flip_text": null,
  "grc": null,
@@ -88,6 +89,8 @@
  "put_wall_state": "contains",
  "put_wall_text": "764.00",
  "regime": "SHORT_GAMMA_TREND",
+ "regime_name": "SHORT GAMMA TREND",
+ "regime_text": "Dealer \u0393 \u2212",
  "same_day": {
   "absolute_gamma_strike": 765.0,
   "call_charm_wall": null,

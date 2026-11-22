@@ -49,6 +49,7 @@ from calc.math_levels import (
     repriced_to_close,
 )
 from calc.terrain_read import (
+    FLIP_RELATION_TEXT,
     LEVEL_ABOVE,
     LEVEL_BELOW,
     build_terrain_read,
@@ -674,13 +675,17 @@ def wall_geometry_state(spot: float | None, wall: float | None, side: str) -> st
 
 @dataclass(frozen=True)
 class PriceRelations:
-    """Every relation of a price to the published levels, as the routes serve it beside them."""
+    """Every relation of a price to the published levels, as the routes serve it beside them.
+
+    The price's side of the flip is served with its words (terrain_read.FLIP_RELATION_TEXT).
+    """
 
     call_wall_state: str | None
     put_wall_state: str | None
     call_wall_lean: str | None
     put_wall_lean: str | None
     flip_relation: str | None
+    flip_relation_text: str | None
 
     def to_dict(self) -> dict[str, str | float | None]:
         return asdict(self)
@@ -694,12 +699,14 @@ def price_relations(terrain: dict[str, Any], price: float | None) -> PriceRelati
     distance from the price is served with the level (the levels panel).
     """
     call, put, flip = terrain["call_wall"], terrain["put_wall"], terrain["gamma_flip"]
+    of_flip = price_side(flip, price)
     return PriceRelations(
         call_wall_state=wall_geometry_state(price, call, "call"),
         put_wall_state=wall_geometry_state(price, put, "put"),
         call_wall_lean=wall_lean(call, price, "call"),
         put_wall_lean=wall_lean(put, price, "put"),
-        flip_relation=price_side(flip, price),
+        flip_relation=of_flip,
+        flip_relation_text=FLIP_RELATION_TEXT[of_flip],
     )
 
 
