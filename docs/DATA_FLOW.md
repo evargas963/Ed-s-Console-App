@@ -321,12 +321,14 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   taking those answers again (`ChainSweep.fetch_chain`): the contract list, terms and open interest
   change once a day. `schwab_client.REQUESTS_AT_ONCE` of its `/chains` and `/quotes` requests are
   with Schwab at a time, the next sent as an answer is taken (`ChainSweep.send_quotes`), and a
-  request answered 429 is sent once more (`chain_sweep.asked_again_if_refused`). A chain is asked
-  while the option windows of Schwab's /markets answer are open (`ChainSweep.chain_due`), and once
-  more after the close. The rotation is sorted, a ticker a page shows before each other one
-  (`ChainSweep.rotation`). Greeks are never the chain's (Schwab rounds them): a streamed contract
-  takes the stream's, every other one its `/quotes` answer, `schwab_client.QUOTES_BATCH_MAX` symbols
-  a request (`ChainSweep.send_quotes`), each answer to the console at once
+  request answered 429 is sent again at once, then after 1 and 2 seconds
+  (`chain_sweep.REFUSED_WAITS_SEC`), keeping its place meanwhile, so the rate falls to what Schwab
+  takes (`chain_sweep.asked_again_if_refused`). A chain is asked while the option windows of
+  Schwab's /markets answer are open (`ChainSweep.chain_due`), and once more after the close. The
+  rotation is sorted, a ticker a page shows before each other one (`ChainSweep.rotation`). Greeks
+  are never the chain's (Schwab rounds them): a streamed contract takes the stream's, every other
+  one its `/quotes` answer, `schwab_client.QUOTES_BATCH_MAX` symbols a request
+  (`ChainSweep.send_quotes`), each answer to the console at once
   (`order_flow.state.push_rest_quotes`): every answer, since each carries its own contracts (D3),
   and a contract keeps the answer received last. Each contract is read once
   (`option_contract.read_chain`, in `chain_sweep.chain_messages`) → the bus in parts of

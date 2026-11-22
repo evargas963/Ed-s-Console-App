@@ -222,17 +222,17 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    once a day (a chain's contract list, its terms and its open interest) is asked once in an option
    window Schwab sends, and once more after the close for the stored capture. The requests Schwab
    takes are spent on what moves: their rate is raised until Schwab refuses a few (the operator's
-   decision), and a refused request is sent once more. Enforced by:
-   `tests/test_data_path_rest_one_connection_v1.py`: a contract Schwab streams is not asked for on
-   /quotes and takes the stream's Greeks as one set, an option record ends with its connection, and
-   a quotes request answered 429 is sent once more (in force); `tests/test_chain_history_v1.py`,
-   `tests/test_data_path_rules_v1.py`: `/chains` asked once in an option window, and the next quotes
-   request sent as an answer is taken (in force); the rate at which Schwab refuses — no machine
-   check, ONE-ASK; a streamed contract's open interest, volume and quote fields, which `/chains`
-   still sends — STREAM-ONE; every other REST request for a field the stream sends — no machine
-   check, ENF-12; `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a
-   second reader (in force); the fields already read by more than one module
-   (`python -m tools.check_one_reader --list`) — ENF-23
+   decision), and a refused request is sent again, holding its place, before its ticker fails.
+   Enforced by: `tests/test_data_path_rest_one_connection_v1.py`: a contract Schwab streams is not
+   asked for on /quotes and takes the stream's Greeks as one set, an option record ends with its
+   connection, and a quotes request answered 429 is sent again (in force);
+   `tests/test_chain_history_v1.py`, `tests/test_data_path_rules_v1.py`: `/chains` asked once in an
+   option window, and the next quotes request sent as an answer is taken (in force); the rate at
+   which Schwab refuses — no machine check, ONE-ASK; a streamed contract's open interest, volume and
+   quote fields, which `/chains` still sends — STREAM-ONE; every other REST request for a field the
+   stream sends — no machine check, ENF-12; `tools/check_one_reader.py` in `hardening` refuses a
+   pull request that adds a second reader (in force); the fields already read by more than one
+   module (`python -m tools.check_one_reader --list`) — ENF-23
 4. **The page draws; it computes nothing** (serves 8). Every number, total, choice, comparison and
    date it shows is served. It gets data only from the one push. Enforced by: ESLint's
    `no-restricted-globals`: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport

@@ -94,15 +94,26 @@ def capture_slot(now_ts: float, ticker: str) -> float | None:
     return close if now_ts >= close else None
 
 
-def asked_again_if_refused(ask: Callable[[], Answer]) -> Answer:
-    """Return Schwab's answer to the request `ask` sends, sent once more when it is a 429.
+#: seconds a request Schwab answered 429 waits before each time it is sent again. At once first:
+#: Schwab answers nine in ten of the /chains requests it refused when they are sent again at
+#: once (measured). Then spaced: its 429 names no time to wait (no Retry-After; an empty body).
+REFUSED_WAITS_SEC = (0.0, 1.0, 2.0)
 
-    Schwab's 429 names no time to wait (no Retry-After; its body is empty), so the request goes
-    again at once, one time: a refused request does not cost its ticker a round. A second 429 is
-    the answer.
+
+def asked_again_if_refused(ask: Callable[[], Answer], stop: threading.Event) -> Answer:
+    """Return Schwab's answer to the request `ask` sends, sent again while it is a 429.
+
+    It is sent again after each of REFUSED_WAITS_SEC; a 429 after the last is the answer, and a
+    stop ends the wait. A waiting request keeps its place among the REQUESTS_AT_ONCE, so the
+    more Schwab refuses the fewer requests are sent: the rate settles at what Schwab takes, and
+    a refused request does not cost its ticker a round.
     """
     resp = ask()
-    return ask() if resp.status_code == 429 else resp
+    for wait in REFUSED_WAITS_SEC:
+        if resp.status_code != 429 or stop.wait(wait):
+            break
+        resp = ask()
+    return resp
 
 
 #: contracts per chain message to the console: one message is encoded and decoded whole, so a
@@ -720,9 +731,11 @@ class ChainSweep:
         return self.take_greeks(chain)
 
     @staticmethod
-    def ask_quotes(schwab_client: _SchwabClient, symbols: list[str]) -> Answer:
+    def ask_quotes(
+        schwab_client: _SchwabClient, symbols: list[str], stop: threading.Event
+    ) -> Answer:
         """One /quotes answer for `symbols` (send_quotes), the client built on the asking thread."""
-        return asked_again_if_refused(partial(safe_get_quotes, schwab_client(), symbols))
+        return asked_again_if_refused(partial(safe_get_quotes, schwab_client(), symbols), stop)
 
     @staticmethod
     def ask_expiry(
@@ -734,7 +747,8 @@ class ChainSweep:
         return asked_again_if_refused(
             partial(
                 safe_get_chain, client, ticker, strike_range="ALL", from_date=expiry, to_date=expiry
-            )
+            ),
+            stop,
         )
 
     def take_greeks(self, chain: _Chain) -> None:
@@ -789,7 +803,8 @@ class ChainSweep:
             ):
                 batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
                 symbols: list[str] = [ct["symbol"] for _chain, ct in batch]
-                asked.append((batch, self._asking.submit(self.ask_quotes, schwab_client, symbols)))
+                ask = self._asking.submit(self.ask_quotes, schwab_client, symbols, stop)
+                asked.append((batch, ask))
             if not asked:
                 return
             self.take_quotes(*asked.popleft())
