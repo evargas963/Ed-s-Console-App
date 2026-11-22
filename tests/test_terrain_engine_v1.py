@@ -37,7 +37,7 @@ NOW = SPY_0DTE.now
 
 @functools.cache
 def _quoted(name: str) -> tuple[list[OptionContract], float]:
-    """A quoted real chain's contracts as the one reader reads them, and its price."""
+    """Return a quoted real chain's contracts as the one reader reads them, and its price."""
     real = quoted(name)
     return read_chain(real.chain), real.spot
 
