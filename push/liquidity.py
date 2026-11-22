@@ -67,6 +67,8 @@ VWAP_RELATION_TEXT: dict[str | None, str | None] = {
     "inside_value": "inside value",
     None: None,
 }
+#: what the map's zone list says when the session's levels make no zone
+NO_ZONES_TEXT = "no zones for this session yet"
 #: what the hold rates are, shown on hover beside them
 HOLD_NOTE = (
     f"Over the last {HOLD_WINDOW_SESSIONS} completed sessions held: a touch is a 1-minute bar "
@@ -139,7 +141,8 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
 
     Built from the one price-level snapshot (canonical_price_level_snapshot, the same values the
     `levels` panel sends) with the terrain's option levels fused in, each zone typed by its side
-    of the live price. It computes no level of its own; the price is not a level.
+    of the live price. It computes no level of its own; the price is not a level. Levels that make
+    no zone are answered with the words the map's list says for that (`no_zones_text`).
     """
     ticker_upper = ticker_storage_key(ticker)
     config = PlaybookConfig(max_zone_width=2.0)
@@ -181,6 +184,8 @@ def liquidity_snapshot(ticker: str, now: datetime) -> dict[str, Any]:
     return {
         "ticker": out.ticker,
         "zones": zones_payload,
+        # the zone list's words when it lists none; with no levels published, `reason` says why
+        "no_zones_text": None if zones_payload else NO_ZONES_TEXT,
         "summary": out.summary
         and {
             "value_state": out.summary.value_state,

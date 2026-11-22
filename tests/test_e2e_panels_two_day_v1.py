@@ -338,7 +338,28 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     # the desk: Schwab's books at the price, zones and session levels built from its bars
     assert {book["status"] for book in panels["book"].values()} == {"ok"}
     assert panels["liquidity"]["zones"]
+    assert panels["liquidity"]["no_zones_text"] is None  # a list with a zone has no words for none
     assert all(levels["levels"] for levels in panels["levels"].values())
+    # each level says whether the liquidity map draws it as a reference line: the prior day's six
+    # and the overnight's two, at every timeframe; the session's own levels and the terrain's
+    # carried beside them are not (the page holds no list of families)
+    for levels in panels["levels"].values():
+        assert {row["id"] for row in levels["levels"] if row["reference_line"]} == {
+            "PDH",
+            "PDL",
+            "PDC",
+            "PD_POC",
+            "PD_VAH",
+            "PD_VAL",
+            "OVERNIGHT_HIGH",
+            "OVERNIGHT_LOW",
+        }
+        assert {row["family"] for row in levels["levels"] if not row["reference_line"]} == {
+            "vwap",
+            "opening_range",
+            "value_area",
+            "gamma",
+        }
     assert all(bars["bars"] for bars in panels["bars"].values()) and panels["bars_flow"]["bars"]
     # the queue's crosses are the day's recorded ones, inside the timeframe's window
     recorded = {f"x{row['cross_id']}" for row in real.desk["crosses"]}

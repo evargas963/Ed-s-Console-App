@@ -217,7 +217,7 @@ test("Liquidity map: a failed request is named, and an empty snapshot shows the 
   const liqWords = "the program could not produce this panel: KeyError: 'SPY'";
   const errs = watchErrors(page);
   await intercept(page);
-  deskPanels().liquidity = { ticker: "SPY", zones: [], reason: REASON };
+  deskPanels().liquidity = { ticker: "SPY", available: false, zones: [], reason: REASON };
   deskPanels().bars = { failed: barsWords };
   await openView(page, "liquidity", "map");
   await expect(page.locator(".liqm-zones")).toContainText(REASON);
@@ -226,6 +226,70 @@ test("Liquidity map: a failed request is named, and an empty snapshot shows the 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator(".liqm-zones .sm")).toHaveText("-"); // no zones known: never "no zones for this session yet"
   await expect(page.locator(".liqm-empty")).toHaveText(liqWords + " · " + barsWords);
+  expect(errs).toEqual([]);
+});
+
+test("Liquidity map: a list with no zone says the served words, words only the server knows too", async ({
+  page,
+}) => {
+  // push.liquidity.liquidity_snapshot's answer when the published levels make no zone: an empty
+  // list, no summary, and the words the list says for that (no_zones_text;
+  // tests/test_liquidity_snapshot_spot_identity_v1.py). INDUCED: SPY's own answer with its zones
+  // taken out and those words; then with words no page could hold
+  const noZone = (words) =>
+    Object.assign({}, LIQ, { zones: [], summary: null, spot_location: null, no_zones_text: words });
+  const errs = watchErrors(page);
+  await intercept(page);
+  deskPanels().liquidity = noZone("no zones for this session yet");
+  await openView(page, "liquidity", "map");
+  await expect(page.locator(".liqm-zones .sm")).toHaveText("no zones for this session yet");
+  deskPanels().liquidity = noZone("Words ONLY the server knows");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator(".liqm-zones .sm")).toHaveText("Words ONLY the server knows");
+  expect(errs).toEqual([]);
+});
+
+test("Liquidity map: the lines drawn are the levels the program marks, whatever their family", async ({
+  page,
+}) => {
+  // the levels panel marks the prior day's six and the overnight's two as the map's reference
+  // lines (reference_line; tests/test_e2e_panels_two_day_v1.py). INDUCED: that answer with the
+  // marks moved, the session's VWAP marked and none of the eight: the map draws the VWAP and
+  // none of them, for the choice is the program's and the page holds no list of families
+  const served = REAL.levels["1"]; // the map asks the 1-minute levels
+  const lines = served.levels.filter((l) => l.reference_line);
+  expect(lines.map((l) => l.id).sort()).toEqual([
+    "OVERNIGHT_HIGH",
+    "OVERNIGHT_LOW",
+    "PDC",
+    "PDH",
+    "PDL",
+    "PD_POC",
+    "PD_VAH",
+    "PD_VAL",
+  ]);
+  const errs = watchErrors(page);
+  await intercept(page);
+  deskPanels().levels = levelsAt(
+    Object.assign({}, served, {
+      levels: served.levels.map((l) => Object.assign({}, l, { reference_line: l.id === "VWAP" })),
+    }),
+  );
+  await openView(page, "liquidity", "map");
+  await expect(page.locator("#liqmBody .tvc-auto")).toBeVisible();
+  // a level is a line inside the candles' price range, else named at the pane's edge
+  const drawn = () =>
+    page.evaluate(
+      () =>
+        (window.EdLiquidityMap.state() || { levels: [] }).levels.join(" ") +
+        " " +
+        document.querySelector("#liqmBody .tvc-edge-top").textContent +
+        " " +
+        document.querySelector("#liqmBody .tvc-edge-bot").textContent,
+    );
+  await expect.poll(drawn).toContain("VWAP");
+  const text = await drawn();
+  for (const l of lines) expect(text, l.id).not.toContain(l.short);
   expect(errs).toEqual([]);
 });
 

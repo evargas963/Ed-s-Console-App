@@ -26,6 +26,9 @@ NO_PRICE_LEVELS_REASON = (
     "no price levels published for this ticker for the market's session yet (they are "
     "built from its 1-minute bars on each new bar and at the console's start)"
 )
+#: the level families the liquidity map draws as reference lines beside its zones: the prior
+#: day's and the overnight's. Each level says whether it is one (`reference_line`)
+REFERENCE_LINE_FAMILIES = frozenset({"prior_day", "overnight"})
 
 
 def same_day_note(snap: TerrainSnapshot) -> str | None:
@@ -217,7 +220,8 @@ def _gamma(
 def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
     """Return the levels panel at `now`: the published price-level snapshot for the session.
 
-    The terrain's levels carried beside it, each with its distance from the live price.
+    The terrain's levels carried beside it, each with its distance from the live price and
+    whether the liquidity map draws it as a reference line.
     """
     served_ts = now.timestamp()
     spot, spot_source, spot_ts = resolve_spot(tk, now=served_ts)
@@ -240,6 +244,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> dict[str, Any]:
         row["side"] = level_side(price, spot)
         row["from_spot_text"] = from_spot_text(row["distance"], row["side"])
         row["price_text"] = price_text(price)
+        row["reference_line"] = row["family"] in REFERENCE_LINE_FAMILIES
     # the ladder in price order (highest first, unpriced last), and the order by distance to spot
     levels = sorted(
         (r for r in levels if r.get("price") is not None), key=lambda r: r["price"], reverse=True

@@ -2,8 +2,9 @@
    The zones the `liquidity` panel carries (support / resistance / value bands, each with its
    served label, side and confluence score) on the one TradingView-style chart every chart in the
    console uses (ed-tv-chart.js), over the price (the `bars` panel, completed Schwab bars, the toolbar's timeframe),
-   with the prior-day and overnight levels and the live price from the levels panel on the page's
-   socket -- the one level producer. The zone list below the chart names each zone's source levels. */
+   with the levels the levels panel marks as reference lines (the prior day's and the overnight's)
+   and the live price from that panel on the page's socket -- the one level producer. The zone list
+   below the chart names each zone's source levels. */
 (function () {
   "use strict";
 
@@ -18,8 +19,6 @@
   function host() {
     return document.getElementById("liqmBody");
   }
-  // the reference levels this map draws, by their served family
-  var REF_FAMILIES = { prior_day: 1, overnight: 1 };
 
   var _chart = null;
   // the map's timeframe (the toolbar's), kept per viewer
@@ -100,10 +99,11 @@
         };
       }),
     );
+    // the levels the program marks as this map's reference lines (served: reference_line)
     c.setLevels(
       (levels ? levels.levels : [])
         .filter(function (l) {
-          return REF_FAMILIES[l.family] && l.price != null;
+          return l.reference_line && l.price != null;
         })
         .map(function (l) {
           return {
@@ -126,7 +126,9 @@
     var empty = h.querySelector(".liqm-empty");
     empty.hidden = !words.length;
     empty.textContent = words.join(" · ");
-    var none = !snap ? "-" : snap.reason ? esc(snap.reason) : "no zones for this session yet";
+    // the list's words when it lists no zone, each served: why no levels are published (reason),
+    // else that they make none (no_zones_text)
+    var none = !snap ? "-" : orDash(esc(snap.reason || snap.no_zones_text));
     h.querySelector(".liqm-zones").innerHTML =
       '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored)</div>' +
       (zones.length ? zones.map(zoneRow).join("") : '<div class="sm">' + none + "</div>") +
