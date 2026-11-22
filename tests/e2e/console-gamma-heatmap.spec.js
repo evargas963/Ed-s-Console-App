@@ -987,6 +987,32 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#klPcrVolScope")).toContainText("volume");
   });
 
+  test("Key Levels' price levels stand with the time and age of the snapshot they are read from", async ({
+    page,
+  }) => {
+    // AMZN's levels panel during its session, as the route served it: beside the section's
+    // title, the price-level snapshot's time and age
+    const snap = REAL.levels["1"];
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const asof = page.locator("#klPriceSrc .asof");
+    await expect(page.locator("#klPdh")).toHaveText("274.87");
+    await expect(asof).toHaveText(snap.snapshot_time_ct + " · " + snap.snapshot_age_text);
+    // INDUCED: the same levels ten minutes on with no bar since (the keys that read differently,
+    // held to the route by tests/test_e2e_panels_two_day_v1.py): the last values stand with the
+    // snapshot's time, its age ten minutes more
+    const later = Object.assign({}, snap, REAL.later.levels);
+    expect(later.snapshot_age_text).not.toBe(snap.snapshot_age_text);
+    panels.levels = later;
+    sock.changed("levels");
+    await expect(asof).toHaveText(later.snapshot_time_ct + " · " + later.snapshot_age_text);
+    await expect(page.locator("#klPdh")).toHaveText("274.87");
+    // a ticker switch leaves nothing of the last ticker: its prices and their time
+    panels.levels = (key) => (key === "QQQ" ? undefined : snap); // QQQ's not sent yet
+    await page.evaluate(() => window.EdShell.setTicker("QQQ"));
+    await expect(page.locator("#klPdh")).toHaveText("-");
+    await expect(asof).toHaveCount(0);
+  });
+
   test("a level built from a price that has stopped stays, and the rail says OFFLINE", async ({
     page,
   }) => {

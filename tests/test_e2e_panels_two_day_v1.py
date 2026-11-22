@@ -13,6 +13,9 @@ The Trade Desk's panels of the same instant come from the ticker's book messages
 before it, its CHART_EQUITY bars of the day and Schwab's newest /pricehistory answers
 (tests/fixtures/real_<ticker>_desk_rows_2026_11_12.json.gz), each through the console's own
 intake: the book, the liquidity zones and the session's price levels.
+
+INDUCED: the levels, the zones and the price levels read again LATER on with nothing renewed, so
+the last values stand marked (the levels STALE, the price not live).
 """
 
 from __future__ import annotations
@@ -20,8 +23,9 @@ from __future__ import annotations
 import gzip
 import json
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -44,6 +48,7 @@ from push import strikes as push_strikes
 from push import surface as push_surface
 from push import tape as push_tape
 from push import terrain as push_terrain
+from push.verdict import LevelsVerdict
 from state import bar_store, cross_store, level_store, price_level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
@@ -70,6 +75,13 @@ DESK_TFS = ("5", "15")
 FLOW_BARS = {"tf": "1", "limit": 60}
 #: a chart span shorter than the desk's 15-minute window: the newest hour of 1-minute bars
 NEWEST_HOUR = 60
+#: how long after the capture the levels' panels are read again with nothing renewed (INDUCED):
+#: past two of the daemon's chain rounds, so the levels read STALE, and past the heartbeat's
+#: longest age, so the price is not live
+LATER = timedelta(minutes=10)
+#: the levels' verdict and the price-level snapshot's time and age, as a panel serves them
+VERDICT = tuple(LevelsVerdict.__annotations__)
+STAMP = tuple(push_levels.SnapshotStamp.__annotations__)
 
 
 @dataclass(frozen=True)
@@ -129,6 +141,15 @@ def _clear(tk: str) -> None:
         cross_store._crosses.pop(tk, None)
 
 
+def _changed(was: Mapping[str, object], again: Mapping[str, object]) -> dict[str, object]:
+    """Return the keys a panel read again answers differently, each with its new value.
+
+    The two readings carry the same keys.
+    """
+    assert was.keys() == again.keys()
+    return {key: value for key, value in again.items() if was[key] != value}
+
+
 def build_e2e_panels(real: RealSet, folder: Path) -> dict:
     """Return the panels of the ticker's real two days as the page's socket sends them.
 
@@ -137,8 +158,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
     every column and expiry; and asked for an expiry the chain does not list), the front and
     the second expiry's chains, and the Trade Desk's book of each venue and liquidity zones,
     and at each of its timeframes the bars, the price levels and the attention queue
-    (the day's level crosses held as a start loads them). Regenerate the browser tests' files with
-    write_e2e_panels.
+    (the day's level crosses held as a start loads them). INDUCED: what the levels (terrain), the
+    liquidity zones and the 1-minute price levels read differently LATER on with no chain, bar,
+    trade or heartbeat since (`later`: the keys that changed, each with its new value).
+    Regenerate the browser tests' files with write_e2e_panels.
     """
     tk = real.ticker
     db = folder / "ed_console.db"
@@ -159,6 +182,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
     # one instant for every reader, the newer capture's (a datetime keeps microseconds)
     now = datetime.fromtimestamp(captures[0].ts_utc, time_et.ET)
     at = now.timestamp()
+    later = now + LATER
     held = time_et.HELD.sessions
     time_et.HELD.sessions = {}  # the two days' own answers, whatever else a test run holds
     _clear(tk)
@@ -211,6 +235,10 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                 for r in real.desk["crosses"]
             ]
         server._publish_levels(tk, captures=captures, now=now)
+        terrain = push_terrain.terrain(tk, at)
+        liquidity = push_liquidity.liquidity_snapshot(tk, now)
+        # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
+        levels = {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS}
         return json.loads(
             json.dumps(
                 {
@@ -223,7 +251,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "strikes_missing_expiry": push_strikes.strikes(
                         tk, at, {**AUTO, "expiry": MISSING_EXPIRY}
                     ),
-                    "terrain": push_terrain.terrain(tk, at),
+                    "terrain": terrain,
                     "surface": push_surface.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
                     ),
@@ -259,9 +287,17 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "book": {
                         venue: push_book.book(tk, at, {"venue": venue}) for venue in real.venues
                     },
-                    "liquidity": push_liquidity.liquidity_snapshot(tk, now),
-                    # the levels at each chart's timeframe (Right Now and the maps ask 1 minute)
-                    "levels": {tf: push_levels.levels_payload(tk, tf, now) for tf in CHART_TFS},
+                    "liquidity": liquidity,
+                    "levels": levels,
+                    # INDUCED: what each of the three reads differently LATER on with no chain,
+                    # bar, trade or heartbeat since; every other key stands as it was
+                    "later": {
+                        "terrain": _changed(terrain, push_terrain.terrain(tk, later.timestamp())),
+                        "liquidity": _changed(
+                            liquidity, push_liquidity.liquidity_snapshot(tk, later)
+                        ),
+                        "levels": _changed(levels["1"], push_levels.levels_payload(tk, "1", later)),
+                    },
                     "desk": {
                         tf: push_desk.desk_events_payload(tk, tf, now, CHART_TFS[tf])
                         for tf in DESK_TFS
@@ -355,6 +391,35 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
             "gamma",
         }
     assert all(bars["bars"] for bars in panels["bars"].values()) and panels["bars_flow"]["bars"]
+    # the zones are made of the published levels and the session's price levels, so they are
+    # served with both marks: the levels' verdict (the one the strikes panel serves at that
+    # instant) and the price-level snapshot's time and age (the levels panel's own)
+    liquidity, levels = panels["liquidity"], panels["levels"]["1"]
+    assert {k: liquidity[k] for k in VERDICT} == {k: panels["strikes"][k] for k in VERDICT}
+    assert {k: liquidity[k] for k in STAMP} == {k: levels[k] for k in STAMP}
+    assert liquidity["snapshot_time_ct"] is not None and liquidity["snapshot_age_text"] is not None
+    # INDUCED: read LATER on with no chain, bar, trade or heartbeat since, the last values stand
+    # (every zone, hold rate, level and distance as it was) and only their marks change: the
+    # levels STALE with their age and why (their time stands), the snapshot older by as much,
+    # and the price not live with its last trade's time and age
+    later = panels["later"]
+    stale = {k: later["liquidity"][k] for k in VERDICT if k != "levels_time_ct"}
+    assert (stale["levels_state"], stale["levels_age_text"]) == ("STALE", "10m")
+    assert stale["levels_stale_reason"].startswith("levels are 600s old")
+    assert later["liquidity"] == {
+        **stale,
+        "snapshot_age_text": later["levels"]["snapshot_age_text"],
+    }
+    assert later["liquidity"]["snapshot_age_text"] != liquidity["snapshot_age_text"]
+    not_live = f"not live · last trade {levels['spot_time_ct']}, 10m old"
+    assert levels["spot_not_live_text"] is None
+    assert later["levels"] == {**later["liquidity"], "spot_not_live_text": not_live}
+    assert later["terrain"] == {
+        **stale,
+        "spot_not_live_text": not_live,
+        "levels_mark": "STALE",
+        "levels_mark_reason": stale["levels_stale_reason"],
+    }
     # the queue's crosses are the day's recorded ones, inside the timeframe's window
     recorded = {f"x{row['cross_id']}" for row in real.desk["crosses"]}
     for queue in panels["desk"].values():

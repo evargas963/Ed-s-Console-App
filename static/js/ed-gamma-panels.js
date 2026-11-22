@@ -72,7 +72,8 @@
     if (isGamma()) renderLevels(_levels);
   });
   // the card's price levels: each is the `levels` panel's own row of that id (push.levels.levels_payload),
-  // its price as served; a row not sent, or a panel not sent or failed, reads '-'
+  // its price as served; a row not sent, or a panel not sent or failed, reads '-'. Beside the
+  // section's title, the time and age of the snapshot they are read from, as served with them
   var PRICE_LEVELS = {
     PDH: "klPdh",
     PDL: "klPdl",
@@ -89,6 +90,8 @@
     Object.keys(PRICE_LEVELS).forEach(function (id) {
       txt(PRICE_LEVELS[id], orDash(sent[id]));
     });
+    var src = document.getElementById("klPriceSrc");
+    if (src) src.innerHTML = window.EdShell.snapshotBadge(window.EdShell.served(d));
   }
   function renderLevels(d) {
     // d: the panel as sent; undefined: none yet for this ticker
@@ -237,21 +240,10 @@
     _gbs = e.detail;
     drawGbs();
   });
-  // the levels verdict a per-strike panel is served with (levels_state, its time and age, why in
-  // the tooltip), as that panel's badge; '' with no panel to read it from
-  function terrainBadge(d) {
-    if (!d) return "";
-    return window.EdShell.asOfBadge({
-      label: "terrain",
-      state: d.levels_state,
-      when: d.levels_time_ct,
-      age: d.levels_age_text,
-      reason: d.levels_stale_reason,
-    });
-  }
+  // the levels verdict the panel is served with, as its badge; none with no panel to read it from
   function setGbsAsOf(d) {
     var el = document.getElementById("gbsSrc");
-    if (el) el.innerHTML = terrainBadge(d);
+    if (el) el.innerHTML = window.EdShell.verdictBadge(d, "terrain");
   }
   // A per-strike bar list (GEX, vanna, charm by strike): the window of `rows` the server sent
   // ({strike, value, text, ...}, ascending), drawn highest strike first, each bar's length its
@@ -532,7 +524,7 @@
       var src = document.getElementById(srcId),
         drawn = d.failed == null && d.available;
       // the rows are the published levels': their verdict, served with them, is the tab's badge
-      if (src) src.innerHTML = terrainBadge(drawn ? d : null);
+      if (src) src.innerHTML = window.EdShell.verdictBadge(drawn ? d : null, "terrain");
       if (!drawn) {
         // not produced, or nothing to draw: why
         window.EdShell.placeholder(host, d.failed != null ? d.failed : d.reason);

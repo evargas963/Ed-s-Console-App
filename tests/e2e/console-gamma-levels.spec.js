@@ -3,7 +3,10 @@
  * D — Options/Gamma "Levels" view. Serializes the canonical levels panel (per-level
  * price/family/evidence_tier/provenance/staleness + carried VWAP) verbatim; computes nothing.
  * Proves the table renders the contract, discloses VWAP/absent/degraded honestly, marks no
- * proximity, and a level click drives the shared strike selection. Offline.
+ * proximity, and a level click drives the shared strike selection; and that each home of the
+ * view (Options · Gamma · Levels, Liquidity · Levels) shows what its rows are made of, as
+ * served: the price-level snapshot's time and age, the gamma levels' verdict and the price's
+ * not-live mark. Offline.
  */
 const { test, expect } = require("@playwright/test");
 const { pushExpiries } = require("./fixtures/expiries");
@@ -11,6 +14,25 @@ const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
 // tests/test_vanna_charm_by_strike_v1.py)
 const REAL = require("./fixtures/vanna_charm_panels_crwd.json");
+// SPY's levels panel during its session, as the route served it, and (INDUCED) as it read ten
+// minutes on with no chain, bar, trade or heartbeat since: the keys that read differently
+// (`later`) laid over it (both held to the route by tests/test_e2e_panels_two_day_v1.py)
+const SPY = require("./fixtures/panels_spy_two_day.json");
+const SERVED = SPY.levels["1"];
+const LATER = Object.assign({}, SERVED, SPY.later.levels);
+// the view's two badges as the page draws them from a panel: the price-level snapshot's time and
+// age, and the gamma levels' verdict (its state word, time and age)
+function badges(d) {
+  return [
+    ["price levels", d.snapshot_time_ct, d.snapshot_age_text].join(" · "),
+    ["terrain", d.levels_state, d.levels_time_ct, d.levels_age_text].join(" · "),
+  ];
+}
+// the view's two homes: where each is, and the host it draws in
+const HOMES = [
+  ["Options · Gamma · Levels", "options", "gamma", "#levelsBody"],
+  ["Liquidity · Levels", "liquidity", "levels", "#lvlBody"],
+];
 
 // each price with its text as the server serves it (two decimals, numeric_contract.price_text)
 const LEVELS = {
@@ -178,13 +200,11 @@ test.describe("D — Gamma Levels view", () => {
   });
 
   test("the pin row shows the served note on hover", async ({ page }) => {
-    // SPY's levels panel during its session, as the route served it (held to the route by
-    // tests/test_e2e_panels_two_day_v1.py): its expiry closes that day with time left, so it has a
-    // pin (after the close a pin has no time left and no value)
-    const served = require("./fixtures/panels_spy_two_day.json").levels["1"];
-    const pin = served.levels.find((r) => r.id === "pin_candidate");
+    // SPY's levels panel during its session: its expiry closes that day with time left, so it has
+    // a pin (after the close a pin has no time left and no value)
+    const pin = SERVED.levels.find((r) => r.id === "pin_candidate");
     expect(pin.note).toContain("expected moves");
-    panels.levels = served;
+    panels.levels = SERVED;
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const row = page.locator("#levelsBody .lv-row", { hasText: "Pin candidate" });
     await expect(row).toHaveAttribute("title", pin.note);
@@ -226,5 +246,61 @@ test.describe("D — Gamma Levels view", () => {
     sock.changed("levels");
     await expect(page.locator("#levelsBody")).toContainText(words);
     expect(sock.subscribes.length).toBe(asked);
+  });
+
+  for (const [home, ws, sub, host] of HOMES) {
+    test(`${home}: the rows stand with their snapshot's time and age and the levels verdict, live and after they stopped arriving`, async ({
+      page,
+    }) => {
+      panels.levels = SERVED;
+      await page.addInitScript(
+        ([w, s]) => {
+          localStorage.setItem("ed_ws", w);
+          localStorage.setItem("ed_sub", s);
+        },
+        [ws, sub],
+      );
+      await page.goto("/", { waitUntil: "domcontentloaded" });
+      const asof = page.locator(host + " .chart-asof .asof");
+      const spot = page.locator(host + " .lv-spot");
+      const rows = page.locator(host + " .lv-row");
+      // SPY's levels during its session: the snapshot's time and age, the verdict LIVE, and the
+      // price with its last trade's time
+      expect([SERVED.levels_state, SERVED.spot_not_live_text]).toEqual(["LIVE", null]);
+      await expect(asof).toHaveText(badges(SERVED));
+      await expect(asof.nth(1)).toHaveClass("asof live");
+      await expect(spot).toHaveText(
+        `spot ${SERVED.spot_text} · ${SERVED.spot_source} · last trade ${SERVED.spot_time_ct}`,
+      );
+      const drawn = await rows.allTextContents();
+      expect(drawn.length).toBeGreaterThan(SERVED.zero_dte.length);
+      // INDUCED: the same levels ten minutes on with nothing renewed. The last values stand,
+      // every row as it was; the verdict reads STALE with the chain's time, its age and why, the
+      // snapshot is ten minutes older, and the price is marked not live with its time and age
+      panels.levels = LATER;
+      sock.changed("levels");
+      expect([LATER.levels_state, LATER.levels_age_text]).toEqual(["STALE", "10m"]);
+      await expect(asof).toHaveText(badges(LATER));
+      await expect(asof.nth(1)).toHaveClass("asof stale");
+      await expect(asof.nth(1)).toHaveAttribute("title", LATER.levels_stale_reason);
+      expect(LATER.spot_not_live_text).toContain("not live · last trade " + LATER.spot_time_ct);
+      await expect(spot).toHaveText(
+        `spot ${LATER.spot_text} · ${LATER.spot_source} · ${LATER.spot_not_live_text}`,
+      );
+      expect(await rows.allTextContents()).toEqual(drawn);
+    });
+  }
+
+  test("a ticker switch leaves nothing of the last ticker: its rows and its badges", async ({
+    page,
+  }) => {
+    await routeWatchlist(page, ["SPY", "QQQ"]);
+    panels.levels = (key) => (key === "SPY" ? SERVED : undefined); // QQQ's panel is not sent
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#levelsBody .chart-asof .asof")).toHaveText(badges(SERVED));
+    await page.evaluate(() => window.EdShell.setTicker("QQQ"));
+    await expect(page.locator("#levelsBody .placeholder")).toHaveText("-");
+    await expect(page.locator("#levelsBody .lv-row")).toHaveCount(0);
+    await expect(page.locator("#levelsBody .asof")).toHaveCount(0);
   });
 });

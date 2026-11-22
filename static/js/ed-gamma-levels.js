@@ -111,9 +111,11 @@
         "</div></div>";
       return;
     }
-    // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'
+    // null/'' spot is ABSENT: Number(null) is 0, which would draw 'spot 0.00'. A price that has
+    // stopped stands with the served mark (not live, its last trade's time and age)
     var trade = "";
-    if (d.spot_time_ct) trade = " · last trade " + esc(d.spot_time_ct);
+    if (d.spot_not_live_text) trade = " · " + esc(d.spot_not_live_text);
+    else if (d.spot_time_ct) trade = " · last trade " + esc(d.spot_time_ct);
     var source = "";
     if (d.spot_source) source = " · " + esc(d.spot_source);
     var head =
@@ -123,6 +125,9 @@
       source +
       trade +
       "</span></div>";
+    // what the rows are made of, each as served: the price-level snapshot's time and age, and the
+    // gamma levels' verdict (its state, time and age, why on hover)
+    var asof = '<div class="chart-asof">' + window.EdShell.levelsBadges(d) + "</div>";
     var table =
       '<table class="lv"><thead><tr><th>Level</th><th>Regular</th><th>0DTE</th>' +
       "</tr></thead><tbody>" +
@@ -151,7 +156,7 @@
       '<span class="lv-provsrc">the levels panel · schema v' +
       esc(d.schema_version) +
       "</span></div>";
-    host.innerHTML = head + table + foot;
+    host.innerHTML = head + asof + table + foot;
     // A canonical level PRICE (VWAP / value / liquidity / structural) is NOT necessarily a listed
     // option strike, so a level click must never write selStrike (that identity belongs to a real
     // option strike). Clicking only highlights the level locally — presentation, no global state,

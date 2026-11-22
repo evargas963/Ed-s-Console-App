@@ -128,13 +128,7 @@
           when: d.book_oldest_text,
           reason: d.book_outage,
         }),
-        window.EdShell.asOfBadge({
-          label: "chain",
-          state: d.levels_state,
-          when: d.levels_time_ct,
-          age: d.levels_age_text,
-          reason: d.levels_stale_reason,
-        }),
+        window.EdShell.verdictBadge(d, "chain"),
       ].join("");
     var sc = d.scales;
     var rows = d.rows

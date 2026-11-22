@@ -77437,6 +77437,12 @@
   },
   "liquidity": {
     "ticker": "AMZN",
+    "levels_state": "LIVE",
+    "levels_stale_reason": "",
+    "levels_age_text": "0s",
+    "levels_time_ct": "Thu 11/12 09:39 AM CT",
+    "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
+    "snapshot_age_text": "78s",
     "zones": [
       {
         "zone_label": "Resistance",
@@ -82262,6 +82268,29 @@
       "tf": "15",
       "families_absent": [],
       "degraded": []
+    }
+  },
+  "later": {
+    "terrain": {
+      "levels_state": "STALE",
+      "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
+      "levels_age_text": "10m",
+      "spot_not_live_text": "not live \u00b7 last trade Thu 11/12 09:39 AM CT, 10m old",
+      "levels_mark": "STALE",
+      "levels_mark_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)"
+    },
+    "liquidity": {
+      "levels_state": "STALE",
+      "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
+      "levels_age_text": "10m",
+      "snapshot_age_text": "11m"
+    },
+    "levels": {
+      "spot_not_live_text": "not live \u00b7 last trade Thu 11/12 09:39 AM CT, 10m old",
+      "snapshot_age_text": "11m",
+      "levels_state": "STALE",
+      "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
+      "levels_age_text": "10m"
     }
   },
   "desk": {

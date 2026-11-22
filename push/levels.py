@@ -152,11 +152,16 @@ class PriorValueArea(TypedDict):
     text: str
 
 
-class SessionFields(TypedDict):
-    """The price-level snapshot's own fields in the panel, each None when none is published."""
+class SnapshotStamp(TypedDict):
+    """The price-level snapshot's time and its age, each as the screen shows it (snapshot_stamp)."""
 
     snapshot_time_ct: str | None
     snapshot_age_text: str | None
+
+
+class SessionFields(SnapshotStamp):
+    """The price-level snapshot's own fields in the panel, each None when none is published."""
+
     bar_source: str | None
     vwap_series: list[list[float]] | None
     vwap_text: str | None
@@ -269,11 +274,22 @@ def _session_rows(snap: PriceLevelSnapshot, price: float | None) -> list[Session
     ]
 
 
-def _snapshot(snap: PriceLevelSnapshot, tf: str, served_ts: float) -> SessionFields:
-    """Return the price-level snapshot's own fields at `tf`."""
+def snapshot_stamp(snap: PriceLevelSnapshot, served_ts: float) -> SnapshotStamp:
+    """Return the price-level snapshot's time and its age at `served_ts`, as the screen shows them.
+
+    Served with every panel that serves the snapshot's levels (the `levels` panel, the liquidity
+    zones), so a snapshot no new bar has renewed stands with its time and age (AGENTS rule 5).
+    """
     return {
         "snapshot_time_ct": _ct(snap.as_of_ts_utc),
         "snapshot_age_text": _age(snap.as_of_ts_utc, served_ts),
+    }
+
+
+def _snapshot(snap: PriceLevelSnapshot, tf: str, served_ts: float) -> SessionFields:
+    """Return the price-level snapshot's own fields at `tf`."""
+    return {
+        **snapshot_stamp(snap, served_ts),
         "bar_source": snap.bar_source,
         # one point per chart bar of `tf`
         "vwap_series": aggregate_vwap(snap.vwap_series, tf),

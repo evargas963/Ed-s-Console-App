@@ -197,13 +197,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   every tick with no visible lag; the option rule's contracts held and updating; the heatmap chip's
   counts match its cells.
 - CARRIED-PRS (QUEUED): what the closed pull requests still wanted, each re-checked against main
-  first: the status push on its own clock; the Liquidity Map's option levels with their freshness;
-  the opening range from Schwab's open; settled contracts leave the book; a missing flip says what
-  was searched; the charts name a gap after a drop; a chain valued at Schwab's `quoteTimeInLong`
-  (operator call); the regime's reason and walls worded by their side of the price; one rule for
-  whether options are open, from Schwab's windows, for every reader; a pre-market real chain's
-  Greeks, volume and open interest; a half day's windows when Schwab sends one; a stock 0DTE chain
-  from 16:00 to 16:15 on a stock expiry day.
+  first: the status push on its own clock; the opening range from Schwab's open; settled contracts
+  leave the book; a missing flip says what was searched; the charts name a gap after a drop; a chain
+  valued at Schwab's `quoteTimeInLong` (operator call); the regime's reason and walls worded by
+  their side of the price; one rule for whether options are open, from Schwab's windows, for every
+  reader; a pre-market real chain's Greeks, volume and open interest; a half day's windows when
+  Schwab sends one; a stock 0DTE chain from 16:00 to 16:15 on a stock expiry day.
 - TU-05 (QUEUED, after the rest): Options → Multi-Map and Key Levels → Vanna Support, Charm
   Resistance: vanna and charm exposure in dollars per strike and expiry.
 - TU-08 (QUEUED, after the rest): Key Levels → Zero Gamma, Volatility Trigger: the regime dead-zone

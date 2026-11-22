@@ -226,20 +226,10 @@
   }
   function paintHead(el, lastBar, win, prof, sd, spotText, tradeTime) {
     var n = prof.name;
-    var ab = window.EdShell.asOfBadge;
     var asof =
       (lastBar
         ? '<span class="asof">price ' + tfLabel() + " · " + esc(lastBar.label) + "</span>"
-        : "") +
-      (sd && sd.failed == null
-        ? ab({
-            label: n + " terrain",
-            state: sd.levels_state,
-            when: sd.levels_time_ct,
-            age: sd.levels_age_text,
-            reason: sd.levels_stale_reason,
-          })
-        : "");
+        : "") + window.EdShell.verdictBadge(window.EdShell.served(sd), n + " terrain");
     var top = prof.max_abs_row; // served: the largest-magnitude row
     var shown = top ? orDash(top.text) + (prof.signed ? "" : " contracts") : "";
     el.innerHTML =

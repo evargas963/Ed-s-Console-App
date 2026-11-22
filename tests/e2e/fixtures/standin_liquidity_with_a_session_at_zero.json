@@ -1,5 +1,11 @@
 {
   "ticker": "ZZLIQ",
+  "levels_state": "STALE",
+  "levels_stale_reason": "no terrain snapshot has been computed yet",
+  "levels_age_text": null,
+  "levels_time_ct": null,
+  "snapshot_time_ct": "Fri 10/02 01:59 PM CT",
+  "snapshot_age_text": "60s",
   "zones": [
     {
       "zone_label": "-",
