@@ -343,17 +343,11 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     # each level says whether the liquidity map draws it as a reference line: the prior day's six
     # and the overnight's two, at every timeframe; the session's own levels and the terrain's
     # carried beside them are not (the page holds no list of families)
+    prior_day = {"PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL"}
+    overnight = {"OVERNIGHT_HIGH", "OVERNIGHT_LOW"}
     for levels in panels["levels"].values():
-        assert {row["id"] for row in levels["levels"] if row["reference_line"]} == {
-            "PDH",
-            "PDL",
-            "PDC",
-            "PD_POC",
-            "PD_VAH",
-            "PD_VAL",
-            "OVERNIGHT_HIGH",
-            "OVERNIGHT_LOW",
-        }
+        drawn = {row["id"] for row in levels["levels"] if row["reference_line"]}
+        assert drawn == prior_day | overnight
         assert {row["family"] for row in levels["levels"] if not row["reference_line"]} == {
             "vwap",
             "opening_range",
