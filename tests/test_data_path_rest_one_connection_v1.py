@@ -33,7 +33,7 @@ from app.market_data.schwab.streaming import capture
 from calc.math_exposure_core import compute_exposures_by_strike, put_call_volume_ratio
 from calibration.complete_chain_capture import last_capture_per_day
 from feed import schwab_client as sc
-from feed.chain_sweep import ChainSweep
+from feed.chain_sweep import REFUSED_WAITS_SEC, ChainSweep
 from json_blob_codec import decode_text_blob
 from option_contract import quote_values
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, held_key, verbatim_msg
@@ -392,28 +392,66 @@ def test_a_429_on_one_expiry_does_not_cost_the_ticker_its_round(tmp_path):
     assert [q["symbol"] for p, q, *_ in schwab.requests if p == CHAIN] == ["SPY", "SPY", "TSLA"]
 
 
-def test_a_refused_quotes_request_fails_each_ticker_in_it_and_the_next_request_goes_at_once(
-    tmp_path,
-):
+def test_a_429_on_one_quotes_request_does_not_cost_its_tickers_their_round(tmp_path):
+    """A 429 on one quotes request is sent again, and its tickers are delivered.
+
+    INDUCED: Schwab answered none of its 1,339,785 /quotes requests of 2026-10-10 to 2026-11-22
+    with a 429; the first quotes request here is. It goes again at once, as a refused expiry
+    does, so no ticker fails and every contract is quoted.
+    """
     schwab = LocalSchwab()
-    schwab.quotes_status = 429
+    schwab.throttle_quotes = 1
     _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
     try:
-        assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == set()
-        refused = list(schwab.requests)
-        schwab.quotes_status = 200
         assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"SPY", "TSLA"}
-        after = schwab.requests[len(refused) :]
+    finally:
+        schwab.close()
+    assert [msg["failed"] for _topic, msg in published if "failed" in msg] == []
+    asked = [q["symbols"] for q in schwab.asked(QUOTES)]
+    assert len(asked) == len(set(asked)) + 1, "the refused request, and no other, was sent again"
+
+
+def test_a_quotes_request_refused_each_time_fails_its_tickers_and_the_next_goes_at_once(
+    tmp_path,
+):
+    """A refused quotes request is sent again at once, then after 1 and 2 seconds, then fails.
+
+    INDUCED: Schwab's host answers the first four quotes requests 429, SPY's first request and
+    its three more tries (REFUSED_WAITS_SEC). SPY fails with the reason and its other contracts
+    are not asked for; the next request goes at once after the last refusal, and TSLA is
+    delivered.
+    """
+    schwab = LocalSchwab()
+    schwab.throttle_quotes = 1 + len(REFUSED_WAITS_SEC)
+    _daemon, sweep, client, published = _setup(tmp_path, schwab, et_ts("2026-08-28 09:05"))
+    try:
+        assert sweep.rotation(client, ["SPY", "TSLA"], threading.Event()) == {"TSLA"}
     finally:
         schwab.close()
     failed = [(topic, msg["failed"]) for topic, msg in published if "failed" in msg]
-    assert failed == [
-        ("chain.SPY", "quotes for 300 contracts returned HTTP 429"),
-        ("chain.TSLA", f"quotes for {len(TSLA['chain'])} contracts returned HTTP 429"),
-    ]
-    assert [p for p, *_ in refused].count(QUOTES) == 2, "SPY's other contracts are not asked for"
-    gaps = [b[2] - a[3] for a, b in zip(refused, refused[1:] + after[:1])]
-    assert max(gaps) < 1.0, f"a pause after Schwab's 429: {max(gaps):.2f} s"
+    assert failed == [("chain.SPY", "quotes for 300 contracts returned HTTP 429")]
+    quotes = [i for i, (path, *_) in enumerate(schwab.requests) if path == QUOTES]
+    assert len(quotes) == 5, "SPY's first request four times, then TSLA's: SPY's others not asked"
+    refused = [schwab.requests[i] for i in quotes[:4]]
+    waits = [b[2] - a[3] for a, b in zip(refused, refused[1:])]
+    assert all(wait >= least for wait, least in zip(waits, REFUSED_WAITS_SEC, strict=True)), waits
+    assert waits[0] < 1.0, f"the first is sent again at once: {waits[0]:.2f} s"
+    pause = schwab.requests[quotes[3] + 1][2] - refused[-1][3]
+    assert pause < 1.0, f"a pause after Schwab's last 429: {pause:.2f} s"
+
+
+def test_a_stop_ends_a_refused_requests_wait(tmp_path):
+    """A stop asked while Schwab refuses: the request is not sent again; its 429 is the answer."""
+    schwab = LocalSchwab()
+    schwab.quotes_status = 429
+    client = schwab.client(tmp_path)
+    stop = threading.Event()
+    stop.set()
+    try:
+        answer = ChainSweep.ask_quotes(lambda: client, [HELD], stop)
+    finally:
+        schwab.close()
+    assert answer.status_code == 429 and len(schwab.asked(QUOTES)) == 1
 
 
 def test_outside_the_option_session_every_watchlist_ticker_is_fetched_once_and_a_failed_one_again(

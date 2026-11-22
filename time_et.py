@@ -347,13 +347,20 @@ def options_opened(now: datetime) -> datetime | None:
 
 
 def option_window_began(now: datetime) -> datetime | None:
-    """Return the start of the option window Schwab sent that `now` is inside.
+    """Return when the option windows Schwab sent that `now` is inside began, with no break since.
 
+    Windows that overlap or meet are one: the stock options' post-market begins as their regular
+    window ends, inside the index options' regular window, and the options did not stop there.
     None outside every window, and when Schwab's answer for today is not held.
     """
     s = session(now.astimezone(ET).date().isoformat())
-    windows = s.option_hours if s else ()
-    return next((start for start, end in windows if start <= now < end), None)
+    unbroken: list[tuple[datetime, datetime]] = []
+    for start, end in sorted(s.option_hours if s else ()):
+        if unbroken and start <= unbroken[-1][1]:
+            unbroken[-1] = (unbroken[-1][0], max(end, unbroken[-1][1]))
+        else:
+            unbroken.append((start, end))
+    return next((start for start, end in unbroken if start <= now < end), None)
 
 
 def options_open(now: datetime) -> bool | None:
