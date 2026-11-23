@@ -45,30 +45,30 @@ def _confluence_expiries(books: dict[ExpiryKey, Book]) -> list[dict[str, Any]]:
     return [{"expiry": exp, "dte": dte} for exp, dte in sorted(found.items(), key=_expiry_order)]
 
 
-#: Pill text for the chain's option levels. Same-day copies take "0D " in front.
+#: Pill text for the chain's option levels. Same-day copies take "0DTE " in front.
 _OPTION_SHORT = {
-    "Call wall": "CW",
-    "Put wall": "PW",
-    "Γ flip": "Flip",
-    "Max pain": "Pain",
-    "Abs Γ": "Abs Γ",
-    "Pin candidate": "Pin",
+    "Call wall": "Call wall",
+    "Put wall": "Put wall",
+    "Gamma flip": "Gamma flip",
+    "Max pain": "Max pain",
+    "Largest total gamma strike": "Total Γ",
+    "Highest open interest strike near price": "High OI",
     "GSF": "GSF",
     "GRC": "GRC",
-    "Net put Γ peak": "Net PΓ",
-    "Net call Γ peak": "Net CΓ",
-    "Key Δ strike": "Key Δ",
-    "Call Δ wall": "CΔW",
-    "Put Δ wall": "PΔW",
-    "Call charm wall": "CCh",
-    "Put charm wall": "PCh",
+    "Largest negative net GEX strike": "−Net GEX",
+    "Largest positive net GEX strike": "+Net GEX",
+    "Largest total delta strike": "Total Δ",
+    "Largest call delta strike": "Call Δ",
+    "Largest put delta strike": "Put Δ",
+    "Largest call charm strike": "Call charm",
+    "Largest put charm strike": "Put charm",
 }
 
 
 def _option_abbrev(label: str, same_day: bool) -> str:
     base = _OPTION_SHORT[label] if label in _OPTION_SHORT else label
     if same_day:
-        return "0D " + base
+        return "0DTE " + base
     return base
 
 
@@ -173,13 +173,6 @@ def _rail(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str,
     return rail
 
 
-def _level_named(levels: list[dict[str, Any]], abbrev: str) -> dict[str, Any] | None:
-    for level in levels:
-        if level["abbrev"] == abbrev:
-            return level
-    return None
-
-
 def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) -> Matrix:
     """Return the ranking of one expiry of a priced chain: the one the matrix request shows.
 
@@ -251,8 +244,6 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
     markers = _confluence_markers(live, tk, now)
     levels = _screen_levels(markers)
-    flip = _level_named(levels, "Flip")
-    pin = _level_named(levels, "Pin")
     ranked = sorted(stored.ranked)
     lo, hi, view = window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
     body: dict[str, Any] = {
@@ -280,8 +271,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             **_rail(levels, body["rows"]),
             "regime": live.regime,
             "regime_text": REGIME_TEXT[live.regime],
-            "flip_text": None if flip is None else flip["price_text"],
-            "pin_text": None if pin is None else pin["price_text"],
+            "flip_text": price_text(live.gamma_flip),
+            "pin_text": price_text(live.pin_candidate),
             "pin_note": pin_note(live),
         }
     )

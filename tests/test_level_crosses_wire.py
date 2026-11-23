@@ -63,7 +63,7 @@ AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 #: both 765 (the put wall is at 764.00 itself). The close capture holds only the 2026-10-22
 #: expiry, settled at that close: no time left, so no gamma curve and no flip (operator
 #: 2026-11-15: no floor of ours on the time left; a value not known is "-")
-BETWEEN = {"Call wall", "Abs Γ"}
+BETWEEN = {"Call wall", "Largest total gamma strike"}
 
 
 def _cross(name: str = "Call wall", value: float | None = 765.0) -> LevelCrossEvent:
@@ -514,7 +514,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
     """
     writer = CaptureWriter(tmp_path / "level_crosses.db")
     edb = EdDB(tmp_path / "level_crosses.db")
-    sent = [asdict(_cross()), asdict(_cross("Γ flip", None))]
+    sent = [asdict(_cross()), asdict(_cross("Gamma flip", None))]
     msg = {"ticker": "SPY", "ts_utc": SPY_PRINT_A_STRIKE_AWAY["ts_recv"], "crosses": sent}
     assert writer.store_crosses(msg, 10.0) == (CAPTURE_REFUSED, ())
     assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == []

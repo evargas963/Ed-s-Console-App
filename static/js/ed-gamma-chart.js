@@ -180,7 +180,7 @@
           id: "gamma_flip",
           price: Number(t.gamma_flip),
           price_text: t.gamma_flip_text,
-          label: "Γ flip",
+          label: "Gamma flip",
           color: P.accent,
           style: 2,
           width: 1,

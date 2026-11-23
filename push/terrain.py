@@ -13,7 +13,7 @@ import live_market_plane as lmp
 from app.options.order_flow.streaming import price_state
 from calc.terrain_atr import Atr, compute_atrs
 from calc.terrain_engine import RelationFields, TerrainFields, compute_terrain, price_relations
-from calc.terrain_read import REGIME_NAME, REGIME_TEXT
+from calc.terrain_read import REGIME_TEXT
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
 from push.bars import daily_candles
@@ -42,19 +42,14 @@ class AtrFields(TypedDict):
     atr_monthly_text: str | None
 
 
-class RegimeWords(TypedDict):
-    """A regime as the screen says it: in short, and its name in words (terrain_read)."""
-
-    regime_text: str
-    regime_name: str
-
-
-class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, RegimeWords, PriceMark, LevelsMark):
+class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, PriceMark, LevelsMark):
     """What the terrain panel carries beside the levels' own fields, published or not.
 
-    The levels' verdict, the live price's relations to them and its mark, the ATRs, the regime's
-    words and the Key Levels line's word.
+    The levels' verdict, the live price's relations to them and its mark, the ATRs, the regime as
+    the screen says it (terrain_read) and the Key Levels line's word.
     """
+
+    regime_text: str
 
 
 class TerrainPanel(ServedLevels, BesideTheLevels):
@@ -110,11 +105,6 @@ def _atr_fields(tk: str, now: datetime) -> AtrFields:
     }
 
 
-def _regime_words(regime: str) -> RegimeWords:
-    """Return a regime as the screen says it: in short, and its name in words (terrain_read)."""
-    return {"regime_text": REGIME_TEXT[regime], "regime_name": REGIME_NAME[regime]}
-
-
 def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
     """Return `tk`'s published levels at `now`, at the live price (the `terrain` panel).
 
@@ -138,7 +128,7 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
             "spot_as_of_ts_utc": spot_ts,
             **price_relations(served, spot).to_dict(),
             **_atr_fields(tk, at),  # live: today's candle from the bars held now
-            **_regime_words(cached.snap.regime),
+            "regime_text": REGIME_TEXT[cached.snap.regime],
             # the chain's verdict is levels_state, above. The live price the relations are computed
             # from is a separate fact: the numbers stay, marked with whether that price is live
             **price_mark(tk, spot_ts, now),
@@ -154,7 +144,7 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
-        **_regime_words(empty["regime"]),
+        "regime_text": REGIME_TEXT[empty["regime"]],
         # not ready, with the producer's reason when it has one, and the levels' verdict
         "error": (
             "terrain_not_ready: no chain from the daemon yet for this ticker"

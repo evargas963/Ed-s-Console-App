@@ -321,7 +321,7 @@ def schwab_iv_to_sigma(iv: float | None) -> float | None:
 
 
 def book_net_gex(exposures: dict[float, Bucket]) -> float | None:
-    """Net dealer GEX per 1% move at spot: the sum of every strike's net_gex_1pct.
+    """Net GEX per 1% move at spot: the sum of every strike's net_gex_1pct.
 
     Schwab's gamma as sent, +call/-put. The one gamma at spot (regime, headline, pin gate). None
     when no strike carried a valid gamma.
@@ -629,8 +629,8 @@ def _sticky_sums(
 def _finish_bucket(b: Bucket) -> None:
     """Compute a strike bucket's net fields from its call and put legs, +call/-put.
 
-    Dealer-signed (the same convention as net GEX and the terrain's dex_dollars -- one meaning of
-    each on every screen): the one place they are computed, for a book and for a merge of books.
+    The same convention as net GEX and the terrain's dex_dollars (one meaning of each on every
+    screen): the one place they are computed, for a book and for a merge of books.
     A dollar field or vanna needs spot (`dollarized`): none without it.
     """
     b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
@@ -935,13 +935,12 @@ def strike_of_largest[B](
 
 
 def pick_absolute_gamma_strike(exposures: dict[float, Bucket]) -> float | None:
-    """Max TOTAL gamma — a GROSS GAMMA CONCENTRATION.
+    """Return the largest total gamma strike: call and put GEX$ added as magnitudes.
 
     NOT a demonstrated magnet.
 
     WHAT IT MEASURES. The strike carrying the largest absolute call GEX dollars plus
-    absolute put GEX dollars — i.e. where the most dealer re-hedging activity sits. This is
-    the quantity SpotGamma publishes as Absolute Gamma.
+    absolute put GEX dollars.
 
     WHAT IT DOES NOT ESTABLISH: that hedging MAGNITUDE pins price regardless of net sign, so
     calls-plus-puts is the magnet measure. That does not follow. Magnitude sets the SIZE of
@@ -957,7 +956,7 @@ def pick_absolute_gamma_strike(exposures: dict[float, Bucket]) -> float | None:
     It is not the pin, which is read on open interest (calc.terrain_engine.pin_by_open_interest).
 
     The NET book (calls minus puts) is a different question — where the signed book leans —
-    and lives under its own names, the net call and net put gamma peaks
+    and lives under its own names, the largest positive and negative net GEX strikes
     (pick_volatility_point_strikes below).
 
     Fail-closed: no dollarized GEX -> None, never a raw-gamma fallback.
@@ -971,7 +970,7 @@ def pick_absolute_gamma_strike(exposures: dict[float, Bucket]) -> float | None:
 
 
 def pick_key_delta_strike(exposures: dict[float, Bucket]) -> float | None:
-    """Key Delta Strike: largest total delta notional (|call DEX$| + |put DEX$|).
+    """Return the largest total delta strike: |call DEX$| + |put DEX$|.
 
     Institutional only — no raw-delta fallback: delta notional needs spot, and a
     unit mix here would rank strikes on incomparable numbers.
@@ -991,11 +990,10 @@ def pick_key_delta_strike(exposures: dict[float, Bucket]) -> float | None:
 def pick_volatility_point_strikes(
     exposures: dict[float, Bucket],
 ) -> tuple[float | None, float | None]:
-    """(net put gamma peak, net call gamma peak): the most NEGATIVE / most POSITIVE net GEX$.
+    """(largest negative net GEX strike, largest positive): the signed extremes of net GEX$.
 
-    Signed extremes, not magnitudes: the put peak exists only where net gamma is
-    actually negative at some strike, the call peak only where it is positive.
-    A one-sided chain returns None for the absent side.
+    The negative one exists only where net GEX is actually negative at some strike, the
+    positive one only where it is positive. A one-sided chain returns None for the absent side.
     """
     if not exposures_have_dollar_gex(exposures):
         return None, None

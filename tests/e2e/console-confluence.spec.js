@@ -200,19 +200,19 @@ const regimeCell = (page) =>
   page.locator("#cmBody .stat", { hasText: "GAMMA REGIME · CHAIN" }).locator("strong");
 
 test("the rail says MRVL's regime in the served words", async ({ page }) => {
-  // MRVL's real answer: dealer gamma at the price is positive
+  // MRVL's real answer: net GEX at the price is positive
   const body = served(FRONT);
-  expect([body.regime, body.regime_text]).toEqual(["LONG_GAMMA_CHOP", "Dealer Γ +"]);
+  expect([body.regime, body.regime_text]).toEqual(["POSITIVE_GAMMA", "Positive gamma"]);
   await mockPriceSocket(page, [], [], undefined, { confluence: body });
   await openMatrix(page);
-  await expect(regimeCell(page)).toHaveText("Dealer Γ +");
+  await expect(regimeCell(page)).toHaveText("Positive gamma");
 });
 
 // INDUCED: MRVL's answer with each other regime the server serves and the words it serves with it
 // (calc.terrain_read.REGIME_TEXT), then a regime and words the page has never held: the rail
 // draws the served words and picks none
 for (const [regime, words] of [
-  ["SHORT_GAMMA_TREND", "Dealer Γ −"],
+  ["NEGATIVE_GAMMA", "Negative gamma"],
   ["UNAVAILABLE", "unavailable"],
   ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
 ]) {

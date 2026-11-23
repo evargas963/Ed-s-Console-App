@@ -142,7 +142,7 @@ class NotListed(LevelsVerdict):
 
 
 #: each level compared day over day as the screen names it (terrain_engine.LEVELS_COMPARED)
-LEVEL_TEXT = {"call_wall": "Call wall", "put_wall": "Put wall", "gamma_flip": "Γ flip"}
+LEVEL_TEXT = {"call_wall": "Call wall", "put_wall": "Put wall", "gamma_flip": "Gamma flip"}
 #: where the busiest strikes sit against the walls, as the screen says it
 BUSIEST_VS_WALLS_TEXT = {
     ABOVE_CALL_WALL: "ABOVE the call wall",

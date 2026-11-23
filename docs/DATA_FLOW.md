@@ -370,15 +370,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_rest_quotes_reach_the_levels_v1.py`, `tests/test_data_path_chain_spot_v1.py`,
   `tests/test_data_path_charm_side_unknown_v1.py`.
 - **Served words.** A state the program serves is served with the words the screen shows for it,
-  from one table where the frame is built: the regime (`regime_text`, `regime_name`:
-  `calc.terrain_read.REGIME_TEXT`, `REGIME_NAME`), the price's side of the flip
-  (`flip_relation_text`), a level move's level and where the busiest strikes sit against the walls
-  (`level_text`, `busiest_vs_walls_text`: `push.strikes`), where a tape print landed
-  (`classification_text`: `history.LANDED_TEXT`), a chain answer's scope (`scope.kind_text`:
-  `push.chain.SCOPE_TEXT`), a venue of the Liquidity card (`name`: `push.book.VENUE_NAMES`), the
-  value area's and the VWAP's relations (`value_state_text`, `vwap_relation_text`:
-  `push.liquidity`), a contract's side (`put_call_text`: `push.contract.SIDE_TEXT`), the option
-  stream's badge for a contract (`subscription_text`, with `subscription_active` for its tone:
+  from one table where the frame is built: the regime (`regime_text`:
+  `calc.terrain_read.REGIME_TEXT`), the price's side of the flip (`flip_relation_text`), a level
+  move's level and where the busiest strikes sit against the walls (`level_text`,
+  `busiest_vs_walls_text`: `push.strikes`), where a tape print landed (`classification_text`:
+  `history.LANDED_TEXT`), a chain answer's scope (`scope.kind_text`: `push.chain.SCOPE_TEXT`), a
+  venue of the Liquidity card (`name`: `push.book.VENUE_NAMES`), the value area's and the VWAP's
+  relations (`value_state_text`, `vwap_relation_text`: `push.liquidity`), a contract's side
+  (`put_call_text`: `push.contract.SIDE_TEXT`), the option stream's badge for a contract
+  (`subscription_text`, with `subscription_active` for its tone:
   `app.options.order_flow.streaming`), a tilt as running text says it (`tilt_text`, beside the
   headline's `side_word`: `calc.order_flow.TILT_WORDS`), and a zone list that lists none
   (`no_zones_text`: `push.liquidity.NO_ZONES_TEXT`). A choice of what a screen draws is served the
@@ -550,8 +550,8 @@ them".
 - **10. Same-day levels, every ticker.** One producer, `calc.terrain_engine.same_day_levels`,
   defined in `docs/derived_register.md` "Same-day levels (0DTE)". Each level has one name, from
   `calc.terrain_engine.OPTION_LEVELS`, on every screen. The key levels rail draws the gamma flip,
-  the call and put walls, the largest gamma strike, the delta walls and the charm walls, each
-  regular and same-day, then the price levels of the `levels:kl` panel. Enforced by:
+  the call and put walls, the largest total gamma strike, the largest call and put delta and charm
+  strikes, each regular and same-day, then the price levels of the `levels:kl` panel. Enforced by:
   `tests/test_data_path_same_day_levels_v1.py`, `tests/test_level_names_one_list_v1.py`,
   `tests/test_data_path_charm_side_unknown_v1.py`.
 - **11. One header, the same on every page, in two rows.** The page has one header, drawn by the

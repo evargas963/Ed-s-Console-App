@@ -369,7 +369,7 @@
     var gamma = {
       call_wall: ["Call wall", P.up, 0, 2],
       put_wall: ["Put wall", P.down, 0, 2],
-      gamma_flip: ["Γ flip", P.accent, 0, 2],
+      gamma_flip: ["Gamma flip", P.accent, 0, 2],
       max_pain: ["Max pain", P.ink3, 3, 1],
     };
     var byId = {};
@@ -634,23 +634,23 @@
         src(c, "Schwab option chain · " + (t === undefined ? "loading…" : esc(why(t))));
         c.querySelector(".tdm-rows").innerHTML = "";
       } else {
-        // the regime's name as served in words, and its tone from the one regime table
+        // the regime in words as served, and its tone from the one regime table
         // (ed-gamma-panels.js)
         var rm = t.regime ? window.EdGammaRegime[t.regime] : null;
-        state(c, orDash(t.regime_name), t.levels_state !== "LIVE" ? "warn" : rm ? rm.tone : "");
+        state(c, orDash(t.regime_text), t.levels_state !== "LIVE" ? "warn" : rm ? rm.tone : "");
         var ng = t.net_gex_at_spot; // absent is uncoloured, never read as 0
         c.querySelector(".tdm-hero").innerHTML =
           '<span class="' +
           window.EdDraw.bySign(ng, "up", "dn", "") +
           '">' +
           orDash(t.net_gex_at_spot_text) +
-          "</span> <small>net dealer gamma at spot, per 1%</small>";
+          "</span> <small>net GEX at spot, $ per 1% move</small>";
         src(c, "Schwab option chain · " + esc(chainAgeLabel(t)));
         c.querySelector(".tdm-rows").innerHTML =
           row("Call wall", orDash(t.call_wall_text), "up") +
           row("Put wall", orDash(t.put_wall_text), "dn") +
-          row("Γ flip", orDash(t.gamma_flip_text)) +
-          (t.flip_note != null ? row("Γ flip note", esc(t.flip_note)) : "") +
+          row("Gamma flip", orDash(t.gamma_flip_text)) +
+          (t.flip_note != null ? row("Gamma flip note", esc(t.flip_note)) : "") +
           row("P/C OI", orDash(t.pcr_all_text)) +
           row("Max pain", orDash(t.max_pain_text)) +
           row("Contracts", orDash(t.contracts_used_text));

@@ -25,7 +25,7 @@
    "family": "gamma",
    "from_spot_text": "2.87 above spot",
    "id": "lvp",
-   "label": "Net call \u0393 peak",
+   "label": "Largest positive net GEX strike",
    "note": null,
    "price": 776.0,
    "price_text": "776.00",
@@ -34,7 +34,7 @@
     "producer": "calc.terrain_engine.compute_terrain"
    },
    "reference_line": false,
-   "short": "Net call \u0393 peak",
+   "short": "Largest positive net GEX strike",
    "side": "ABOVE",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT"
@@ -46,7 +46,7 @@
    "family": "gamma",
    "from_spot_text": "1.13 below spot",
    "id": "key_delta_strike",
-   "label": "Key \u0394 strike",
+   "label": "Largest total delta strike",
    "note": null,
    "price": 772.0,
    "price_text": "772.00",
@@ -55,7 +55,7 @@
     "producer": "calc.terrain_engine.compute_terrain"
    },
    "reference_line": false,
-   "short": "Key \u0394 strike",
+   "short": "Largest total delta strike",
    "side": "BELOW",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT"
@@ -67,7 +67,7 @@
    "family": "gamma",
    "from_spot_text": "1.13 below spot",
    "id": "put_delta_wall",
-   "label": "Put \u0394 wall",
+   "label": "Largest put delta strike",
    "note": null,
    "price": 772.0,
    "price_text": "772.00",
@@ -76,7 +76,7 @@
     "producer": "calc.terrain_engine.compute_terrain"
    },
    "reference_line": false,
-   "short": "Put \u0394 wall",
+   "short": "Largest put delta strike",
    "side": "BELOW",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT"
@@ -130,7 +130,7 @@
    "family": "gamma",
    "from_spot_text": "8.13 below spot",
    "id": "absolute_gamma_strike",
-   "label": "Abs \u0393",
+   "label": "Largest total gamma strike",
    "note": null,
    "price": 765.0,
    "price_text": "765.00",
@@ -139,7 +139,7 @@
     "producer": "calc.terrain_engine.compute_terrain"
    },
    "reference_line": false,
-   "short": "Abs \u0393",
+   "short": "Largest total gamma strike",
    "side": "BELOW",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT"
@@ -172,7 +172,7 @@
    "family": "gamma",
    "from_spot_text": "9.13 below spot",
    "id": "hvp",
-   "label": "Net put \u0393 peak",
+   "label": "Largest negative net GEX strike",
    "note": null,
    "price": 764.0,
    "price_text": "764.00",
@@ -181,7 +181,7 @@
     "producer": "calc.terrain_engine.compute_terrain"
    },
    "reference_line": false,
-   "short": "Net put \u0393 peak",
+   "short": "Largest negative net GEX strike",
    "side": "BELOW",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT"
@@ -193,7 +193,7 @@
    "family": "gamma",
    "from_spot_text": "10.13 below spot",
    "id": "call_delta_wall",
-   "label": "Call \u0394 wall",
+   "label": "Largest call delta strike",
    "note": null,
    "price": 763.0,
    "price_text": "763.00",
@@ -202,7 +202,7 @@
     "producer": "calc.terrain_engine.compute_terrain"
    },
    "reference_line": false,
-   "short": "Call \u0394 wall",
+   "short": "Largest call delta strike",
    "side": "BELOW",
    "staleness": {
     "as_of_time_ct": "Thu 10/22 03:17 PM CT"
@@ -256,7 +256,7 @@
    "carried": null,
    "carried_text": null,
    "id": "gamma_flip",
-   "label": "\u0393 flip",
+   "label": "Gamma flip",
    "note": null,
    "price": null,
    "price_text": null,
@@ -268,7 +268,7 @@
    "carried": 765.0,
    "carried_text": "765.00",
    "id": "absolute_gamma_strike",
-   "label": "Abs \u0393",
+   "label": "Largest total gamma strike",
    "note": null,
    "price": 765.0,
    "price_text": "765.00",
@@ -304,7 +304,7 @@
    "carried": 764.0,
    "carried_text": "764.00",
    "id": "hvp",
-   "label": "Net put \u0393 peak",
+   "label": "Largest negative net GEX strike",
    "note": null,
    "price": 764.0,
    "price_text": "764.00",
@@ -316,7 +316,7 @@
    "carried": 776.0,
    "carried_text": "776.00",
    "id": "lvp",
-   "label": "Net call \u0393 peak",
+   "label": "Largest positive net GEX strike",
    "note": null,
    "price": 776.0,
    "price_text": "776.00",
@@ -328,7 +328,7 @@
    "carried": 772.0,
    "carried_text": "772.00",
    "id": "key_delta_strike",
-   "label": "Key \u0394 strike",
+   "label": "Largest total delta strike",
    "note": null,
    "price": 772.0,
    "price_text": "772.00",
@@ -340,7 +340,7 @@
    "carried": 763.0,
    "carried_text": "763.00",
    "id": "call_delta_wall",
-   "label": "Call \u0394 wall",
+   "label": "Largest call delta strike",
    "note": null,
    "price": 763.0,
    "price_text": "763.00",
@@ -352,7 +352,7 @@
    "carried": 772.0,
    "carried_text": "772.00",
    "id": "put_delta_wall",
-   "label": "Put \u0394 wall",
+   "label": "Largest put delta strike",
    "note": null,
    "price": 772.0,
    "price_text": "772.00",
@@ -364,7 +364,7 @@
    "carried": null,
    "carried_text": null,
    "id": "call_charm_wall",
-   "label": "Call charm wall",
+   "label": "Largest call charm strike",
    "note": null,
    "price": null,
    "price_text": null,
@@ -376,7 +376,7 @@
    "carried": null,
    "carried_text": null,
    "id": "put_charm_wall",
-   "label": "Put charm wall",
+   "label": "Largest put charm strike",
    "note": null,
    "price": null,
    "price_text": null,

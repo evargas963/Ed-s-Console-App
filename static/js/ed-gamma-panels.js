@@ -33,10 +33,10 @@
   var ticker = window.EdShell.ticker;
 
   // each regime's colour on Key Levels and its tone on the Desk map, by the regime as served; its
-  // words are served with it (regime_text, regime_name)
+  // words are served with it (regime_text)
   var REGIME = {
-    LONG_GAMMA_CHOP: { c: "var(--ed-pos-ink)", tone: "up" },
-    SHORT_GAMMA_TREND: { c: "var(--ed-warn)", tone: "dn" },
+    POSITIVE_GAMMA: { c: "var(--ed-pos-ink)", tone: "up" },
+    NEGATIVE_GAMMA: { c: "var(--ed-warn)", tone: "dn" },
     UNAVAILABLE: { c: "var(--ed-ink-3)", tone: "" },
   };
   window.EdGammaRegime = REGIME;

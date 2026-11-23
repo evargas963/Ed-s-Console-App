@@ -934,13 +934,13 @@ test.describe("Ed Console shell + gamma heatmap", () => {
 
   test("Key Levels says the regime in the served words, each regime", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    // AMZN's real levels: dealer gamma at the price is positive
-    await expect(page.locator("#klRegime")).toHaveText("Dealer Γ +");
+    // AMZN's real levels: net GEX at the price is positive
+    await expect(page.locator("#klRegime")).toHaveText("Positive gamma");
     // INDUCED: those levels with each other regime the server serves and the words it serves
     // with it (calc.terrain_read.REGIME_TEXT), then a regime and words the page has never held:
     // Key Levels draws the served words and picks none
     for (const [regime, words] of [
-      ["SHORT_GAMMA_TREND", "Dealer Γ −"],
+      ["NEGATIVE_GAMMA", "Negative gamma"],
       ["UNAVAILABLE", "unavailable"],
       ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
     ]) {
@@ -957,7 +957,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#klCall")).toHaveText("270.00");
     await expect(page.locator("#klPut")).toHaveText("270.00");
     await expect(page.locator("#klNet")).toHaveText("$937.34M"); // served, two decimals
-    await expect(page.locator("#klRegime")).toContainText("Dealer Γ +"); // net GEX at the price > 0
+    await expect(page.locator("#klRegime")).toContainText("Positive gamma"); // net GEX at the price > 0
     // the price levels are the levels panel's own rows (AMZN's real set): the prior day's high,
     // low and close, and VWAP; no one-day move or its ±1σ band (operator 2026-11-20)
     await expect(page.locator(".kl-row", { hasText: "σ move" })).toHaveCount(0);
@@ -1186,7 +1186,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#hFeed")).toHaveText("OFFLINE", { timeout: 6000 });
     await expect(page.locator("#chartBody .gchart-head")).toContainText("last trade 14:00:01 CT");
     await expect.poll(async () => (await cs()).liveTitle).toBe("LAST · last trade 14:00:01 CT");
-    await expect.poll(async () => (await cs()).levels).toContain("Γ flip");
+    await expect.poll(async () => (await cs()).levels).toContain("Gamma flip");
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({
       path: require("path").join("test-results", "console-gamma-chart-2560x1440.png"),
@@ -1815,13 +1815,16 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#kl0Abs")).toHaveText("572.50");
     await expect(page.locator("#kl0CallCharm")).toHaveText("572.50");
     await expect(page.locator("#kl0PutCharm")).toHaveText("567.50");
-    await expect(page.locator("#klCallCharm")).toHaveText("275.00"); // the whole book's charm walls (AMZN's)
+    await expect(page.locator("#klCallCharm")).toHaveText("275.00"); // the whole book's charm strikes (AMZN's)
     await expect(page.locator("#klPutCharm")).toHaveText("260.00");
-    await expect(page.locator("#klCallDelta")).toHaveText("250.00"); // and its delta walls
+    await expect(page.locator("#klCallDelta")).toHaveText("250.00"); // and its delta strikes
     await expect(page.locator("#klPutDelta")).toHaveText("270.00");
-    await expect(page.locator("#kl0CallDelta")).toHaveText("577.50"); // and the same-day delta walls
+    await expect(page.locator("#kl0CallDelta")).toHaveText("577.50"); // and the same-day delta strikes
     await expect(page.locator("#kl0PutDelta")).toHaveText("562.50");
-    await expect(page.locator("#klBody")).not.toContainText("Γ peak"); // the two net peaks are off the card
+    // the two net GEX strikes are off the card
+    await expect(page.locator("#klBody")).not.toContainText("negative net GEX");
+    await expect(page.locator("#klBody")).not.toContainText("positive net GEX");
+    await expect(page.locator("#klBody")).not.toContainText("Γ peak");
     await expect(page.locator("#klBody")).not.toContainText("Net GEX peak");
     await expect(page.locator("#klNet")).toBeVisible();
   });

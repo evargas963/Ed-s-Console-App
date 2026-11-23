@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from calc.terrain_engine import compute_terrain
 from calc.terrain_read import (
-    REGIME_LONG_GAMMA,
-    REGIME_SHORT_GAMMA,
+    REGIME_NEGATIVE_GAMMA,
+    REGIME_POSITIVE_GAMMA,
     REGIME_UNAVAILABLE,
     build_terrain_read,
 )
@@ -23,8 +23,8 @@ INSTRUCTIONS = ("fade", "chase", "follow breaks", "stand aside", "chop", "trend 
 
 def test_positive_gamma_reads_as_an_estimate_of_smaller_swings_not_a_trade() -> None:
     r = build_terrain_read(spot=750.0, gamma_at_spot=2.5e8)
-    assert r.regime == REGIME_LONG_GAMMA
-    assert r.headline.startswith("Dealer gamma is positive")
+    assert r.regime == REGIME_POSITIVE_GAMMA
+    assert r.headline.startswith("Net GEX is positive")
     assert "long calls, short puts" in r.headline_source, "the model's assumption, on hover"
     assert "smaller price swings" in r.headline and "not to a trade direction" in r.headline
     assert not any(w in r.headline.lower() for w in INSTRUCTIONS), r.headline
@@ -32,8 +32,8 @@ def test_positive_gamma_reads_as_an_estimate_of_smaller_swings_not_a_trade() -> 
 
 def test_negative_gamma_reads_as_an_estimate_of_larger_swings_not_a_trade() -> None:
     r = build_terrain_read(spot=743.29, gamma_at_spot=-1.1e8)
-    assert r.regime == REGIME_SHORT_GAMMA
-    assert r.headline.startswith("Dealer gamma is negative")
+    assert r.regime == REGIME_NEGATIVE_GAMMA
+    assert r.headline.startswith("Net GEX is negative")
     assert "Baltussen" in r.headline_source, "the late-day continuation's source, on hover"
     assert "larger price swings" in r.headline and "not to a trade direction" in r.headline
     assert not any(w in r.headline.lower() for w in INSTRUCTIONS), r.headline
@@ -47,7 +47,7 @@ def test_regime_is_the_signed_gamma_at_spot_only() -> None:
     """
     for g in (None, 0.0):
         r = build_terrain_read(spot=750.0, gamma_at_spot=g)
-        assert r.regime not in (REGIME_LONG_GAMMA, REGIME_SHORT_GAMMA), g
+        assert r.regime not in (REGIME_POSITIVE_GAMMA, REGIME_NEGATIVE_GAMMA), g
 
 
 def test_missing_inputs_fail_closed() -> None:
@@ -77,6 +77,6 @@ def test_the_regime_is_read_by_one_rule_for_every_instrument():
         if not g:
             assert snap.regime == REGIME_UNAVAILABLE, tk
         else:
-            assert snap.regime == (REGIME_LONG_GAMMA if g > 0 else REGIME_SHORT_GAMMA), tk
+            assert snap.regime == (REGIME_POSITIVE_GAMMA if g > 0 else REGIME_NEGATIVE_GAMMA), tk
     assert got["CRWD"][1] != REGIME_UNAVAILABLE, "a single name's regime is issued"
     assert got["SPY"][1] != REGIME_UNAVAILABLE, "a chain of 20 strikes has its regime issued"
