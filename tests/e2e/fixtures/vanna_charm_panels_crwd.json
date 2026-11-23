@@ -430,7 +430,7 @@
         "marks": [
           {
             "kind": "call",
-            "label": "Call wall"
+            "label": "Largest call gamma strike"
           }
         ],
         "volume_text": "419"
@@ -527,49 +527,49 @@
         "rows": [
           {
             "strike": 257.5,
-            "value": 10814068.80470376,
+            "value": 6111897.028478641,
             "strike_text": "257.5",
-            "text": "$10.81M",
+            "text": "$6.11M",
             "marks": []
           },
           {
             "strike": 260.0,
-            "value": 77171094.29240184,
+            "value": 56603803.914109185,
             "strike_text": "260",
-            "text": "$77.17M",
+            "text": "$56.60M",
             "marks": [
               {
                 "kind": "call",
-                "label": "Call wall"
+                "label": "Largest call gamma strike"
               }
             ]
           },
           {
             "strike": 262.5,
-            "value": 10728222.94898664,
+            "value": 2920112.7634922396,
             "strike_text": "262.5",
-            "text": "$10.73M",
+            "text": "$2.92M",
             "marks": []
           },
           {
             "strike": 265.0,
-            "value": 21897010.67708256,
+            "value": 7684471.337184959,
             "strike_text": "265",
-            "text": "$21.90M",
+            "text": "$7.68M",
             "marks": []
           },
           {
             "strike": 267.5,
-            "value": 7076938.701002879,
+            "value": 4285350.669252479,
             "strike_text": "267.5",
-            "text": "$7.08M",
+            "text": "$4.29M",
             "marks": []
           },
           {
             "strike": 270.0,
-            "value": 41474844.6165312,
+            "value": 19298774.31948384,
             "strike_text": "270",
-            "text": "$41.47M",
+            "text": "$19.30M",
             "marks": [
               {
                 "kind": "spot",
@@ -579,37 +579,37 @@
           },
           {
             "strike": 272.5,
-            "value": 10848683.021628961,
+            "value": 7830946.69295472,
             "strike_text": "272.5",
-            "text": "$10.85M",
+            "text": "$7.83M",
             "marks": []
           },
           {
             "strike": 275.0,
-            "value": 18822926.336118482,
+            "value": 8185950.622525681,
             "strike_text": "275",
-            "text": "$18.82M",
+            "text": "$8.19M",
             "marks": []
           },
           {
             "strike": 277.5,
-            "value": 8486753.549764322,
+            "value": 4093267.5203150418,
             "strike_text": "277.5",
-            "text": "$8.49M",
+            "text": "$4.09M",
             "marks": []
           },
           {
             "strike": 280.0,
-            "value": 21595900.55566728,
+            "value": 13137584.748058803,
             "strike_text": "280",
-            "text": "$21.60M",
+            "text": "$13.14M",
             "marks": []
           },
           {
             "strike": 282.5,
-            "value": 7233257.505040802,
+            "value": 2146403.909944801,
             "strike_text": "282.5",
-            "text": "$7.23M",
+            "text": "$2.15M",
             "marks": []
           }
         ],
@@ -617,13 +617,13 @@
           "centre": 270.0,
           "centre_text": "270",
           "note": null,
-          "max_abs": 77171094.29240184
+          "max_abs": 56603803.914109185
         },
         "max_abs_row": {
           "strike": 117.5,
-          "value": 99584918.78366545,
+          "value": 99355165.17963216,
           "strike_text": "117.5",
-          "text": "$99.58M",
+          "text": "$99.36M",
           "marks": []
         }
       },
@@ -644,7 +644,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Call wall"
+                "label": "Largest call gamma strike"
               }
             ]
           },
@@ -1614,7 +1614,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
-      "busiest_vs_walls_text": "ABOVE the call wall",
+      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -1624,7 +1624,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
-        "level_text": "Call wall",
+        "level_text": "Largest call gamma strike",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -1634,7 +1634,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
-        "level_text": "Put wall",
+        "level_text": "Largest put gamma strike",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -1696,7 +1696,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Put wall"
+            "label": "Largest put gamma strike"
           }
         ],
         "volume_text": "312"
@@ -1737,7 +1737,7 @@
         "marks": [
           {
             "kind": "call",
-            "label": "Call wall"
+            "label": "Largest call gamma strike"
           }
         ],
         "volume_text": "419"
@@ -1888,96 +1888,96 @@
         "rows": [
           {
             "strike": 242.5,
-            "value": 31743079.921891924,
+            "value": 28347695.166536886,
             "strike_text": "242.5",
-            "text": "$31.74M",
+            "text": "$28.35M",
             "marks": []
           },
           {
             "strike": 245.0,
-            "value": 48978514.63639608,
+            "value": 45161808.51562248,
             "strike_text": "245",
-            "text": "$48.98M",
+            "text": "$45.16M",
             "marks": []
           },
           {
             "strike": 247.5,
-            "value": 8329213.560521521,
+            "value": 6584439.68783208,
             "strike_text": "247.5",
-            "text": "$8.33M",
+            "text": "$6.58M",
             "marks": []
           },
           {
             "strike": 250.0,
-            "value": 72926415.53341487,
+            "value": 42066785.939721115,
             "strike_text": "250",
-            "text": "$72.93M",
+            "text": "$42.07M",
             "marks": [
               {
                 "kind": "put",
-                "label": "Put wall"
+                "label": "Largest put gamma strike"
               }
             ]
           },
           {
             "strike": 252.5,
-            "value": 14614293.115913041,
+            "value": 4143099.44837448,
             "strike_text": "252.5",
-            "text": "$14.61M",
+            "text": "$4.14M",
             "marks": []
           },
           {
             "strike": 255.0,
-            "value": 17673311.044960562,
+            "value": 12327204.389509201,
             "strike_text": "255",
-            "text": "$17.67M",
+            "text": "$12.33M",
             "marks": []
           },
           {
             "strike": 257.5,
-            "value": 10814068.80470376,
+            "value": 6111897.028478641,
             "strike_text": "257.5",
-            "text": "$10.81M",
+            "text": "$6.11M",
             "marks": []
           },
           {
             "strike": 260.0,
-            "value": 77171094.29240184,
+            "value": 56603803.914109185,
             "strike_text": "260",
-            "text": "$77.17M",
+            "text": "$56.60M",
             "marks": [
               {
                 "kind": "call",
-                "label": "Call wall"
+                "label": "Largest call gamma strike"
               }
             ]
           },
           {
             "strike": 262.5,
-            "value": 10728222.94898664,
+            "value": 2920112.7634922396,
             "strike_text": "262.5",
-            "text": "$10.73M",
+            "text": "$2.92M",
             "marks": []
           },
           {
             "strike": 265.0,
-            "value": 21897010.67708256,
+            "value": 7684471.337184959,
             "strike_text": "265",
-            "text": "$21.90M",
+            "text": "$7.68M",
             "marks": []
           },
           {
             "strike": 267.5,
-            "value": 7076938.701002879,
+            "value": 4285350.669252479,
             "strike_text": "267.5",
-            "text": "$7.08M",
+            "text": "$4.29M",
             "marks": []
           },
           {
             "strike": 270.0,
-            "value": 41474844.6165312,
+            "value": 19298774.31948384,
             "strike_text": "270",
-            "text": "$41.47M",
+            "text": "$19.30M",
             "marks": [
               {
                 "kind": "spot",
@@ -1987,72 +1987,72 @@
           },
           {
             "strike": 272.5,
-            "value": 10848683.021628961,
+            "value": 7830946.69295472,
             "strike_text": "272.5",
-            "text": "$10.85M",
+            "text": "$7.83M",
             "marks": []
           },
           {
             "strike": 275.0,
-            "value": 18822926.336118482,
+            "value": 8185950.622525681,
             "strike_text": "275",
-            "text": "$18.82M",
+            "text": "$8.19M",
             "marks": []
           },
           {
             "strike": 277.5,
-            "value": 8486753.549764322,
+            "value": 4093267.5203150418,
             "strike_text": "277.5",
-            "text": "$8.49M",
+            "text": "$4.09M",
             "marks": []
           },
           {
             "strike": 280.0,
-            "value": 21595900.55566728,
+            "value": 13137584.748058803,
             "strike_text": "280",
-            "text": "$21.60M",
+            "text": "$13.14M",
             "marks": []
           },
           {
             "strike": 282.5,
-            "value": 7233257.505040802,
+            "value": 2146403.909944801,
             "strike_text": "282.5",
-            "text": "$7.23M",
+            "text": "$2.15M",
             "marks": []
           },
           {
             "strike": 285.0,
-            "value": 9920140.867865521,
+            "value": 6831377.375465522,
             "strike_text": "285",
-            "text": "$9.92M",
+            "text": "$6.83M",
             "marks": []
           },
           {
             "strike": 287.5,
-            "value": 5576739.887647921,
+            "value": 5232813.2278207205,
             "strike_text": "287.5",
-            "text": "$5.58M",
+            "text": "$5.23M",
             "marks": []
           },
           {
             "strike": 290.0,
-            "value": 14346455.4096672,
+            "value": 11047022.74634592,
             "strike_text": "290",
-            "text": "$14.35M",
+            "text": "$11.05M",
             "marks": []
           },
           {
             "strike": 292.5,
-            "value": 1130734.18206648,
+            "value": 1038793.84501752,
             "strike_text": "292.5",
-            "text": "$1.13M",
+            "text": "$1.04M",
             "marks": []
           },
           {
             "strike": 295.0,
-            "value": 2100250.9112527203,
+            "value": 1723470.65351448,
             "strike_text": "295",
-            "text": "$2.10M",
+            "text": "$1.72M",
             "marks": []
           },
           {
@@ -2067,13 +2067,13 @@
           "centre": 270.0,
           "centre_text": "270",
           "note": null,
-          "max_abs": 77171094.29240184
+          "max_abs": 56603803.914109185
         },
         "max_abs_row": {
           "strike": 117.5,
-          "value": 99584918.78366545,
+          "value": 99355165.17963216,
           "strike_text": "117.5",
-          "text": "$99.58M",
+          "text": "$99.36M",
           "marks": []
         }
       },
@@ -2108,7 +2108,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Put wall"
+                "label": "Largest put gamma strike"
               }
             ]
           },
@@ -2141,7 +2141,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Call wall"
+                "label": "Largest call gamma strike"
               }
             ]
           },
@@ -3153,7 +3153,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
-      "busiest_vs_walls_text": "ABOVE the call wall",
+      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -3163,7 +3163,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
-        "level_text": "Call wall",
+        "level_text": "Largest call gamma strike",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -3173,7 +3173,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
-        "level_text": "Put wall",
+        "level_text": "Largest put gamma strike",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -3964,7 +3964,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Put wall"
+            "label": "Largest put gamma strike"
           }
         ],
         "volume_text": "312"
@@ -4005,7 +4005,7 @@
         "marks": [
           {
             "kind": "call",
-            "label": "Call wall"
+            "label": "Largest call gamma strike"
           }
         ],
         "volume_text": "419"
@@ -4318,663 +4318,663 @@
         "rows": [
           {
             "strike": 45.0,
-            "value": 227451.93643176003,
+            "value": 203283.27310680004,
             "strike_text": "45",
-            "text": "$227.45K",
+            "text": "$203.28K",
             "marks": []
           },
           {
             "strike": 46.25,
-            "value": 407.95934208,
+            "value": -407.95934208,
             "strike_text": "46.25",
-            "text": "$408",
+            "text": "-$408",
             "marks": []
           },
           {
             "strike": 47.5,
-            "value": 109162.20839328002,
+            "value": 106140.21121248,
             "strike_text": "47.5",
-            "text": "$109.16K",
+            "text": "$106.14K",
             "marks": []
           },
           {
             "strike": 48.75,
-            "value": 3310.17426504,
+            "value": -3310.17426504,
             "strike_text": "48.75",
-            "text": "$3.31K",
+            "text": "-$3.31K",
             "marks": []
           },
           {
             "strike": 50.0,
-            "value": 166979.75886432,
+            "value": 45162.75150432,
             "strike_text": "50",
-            "text": "$166.98K",
+            "text": "$45.16K",
             "marks": []
           },
           {
             "strike": 52.5,
-            "value": 144770.78881824,
+            "value": 67250.01215904001,
             "strike_text": "52.5",
-            "text": "$144.77K",
+            "text": "$67.25K",
             "marks": []
           },
           {
             "strike": 55.0,
-            "value": 336228.95944992005,
+            "value": 308380.669944,
             "strike_text": "55",
-            "text": "$336.23K",
+            "text": "$308.38K",
             "marks": []
           },
           {
             "strike": 57.5,
-            "value": 221012.21086512005,
+            "value": 208611.22638672002,
             "strike_text": "57.5",
-            "text": "$221.01K",
+            "text": "$208.61K",
             "marks": []
           },
           {
             "strike": 60.0,
-            "value": 1725086.89275072,
+            "value": 1714759.2305951999,
             "strike_text": "60",
-            "text": "$1.73M",
+            "text": "$1.71M",
             "marks": []
           },
           {
             "strike": 62.5,
-            "value": 2311581.6071424,
+            "value": 2194894.4866214404,
             "strike_text": "62.5",
-            "text": "$2.31M",
+            "text": "$2.19M",
             "marks": []
           },
           {
             "strike": 65.0,
-            "value": 21458261.068344966,
+            "value": 21442188.390599042,
             "strike_text": "65",
-            "text": "$21.46M",
+            "text": "$21.44M",
             "marks": []
           },
           {
             "strike": 67.5,
-            "value": 341231.57745504007,
+            "value": 301680.55589664006,
             "strike_text": "67.5",
-            "text": "$341.23K",
+            "text": "$301.68K",
             "marks": []
           },
           {
             "strike": 70.0,
-            "value": 247018.52285376,
+            "value": 237537.32833632,
             "strike_text": "70",
-            "text": "$247.02K",
+            "text": "$237.54K",
             "marks": []
           },
           {
             "strike": 72.5,
-            "value": 627934.64534304,
+            "value": 216209.78713824003,
             "strike_text": "72.5",
-            "text": "$627.93K",
+            "text": "$216.21K",
             "marks": []
           },
           {
             "strike": 75.0,
-            "value": 1330360.8066225601,
+            "value": 936915.5553648002,
             "strike_text": "75",
-            "text": "$1.33M",
+            "text": "$936.92K",
             "marks": []
           },
           {
             "strike": 77.5,
-            "value": 2924256.77477448,
+            "value": 2134500.81277368,
             "strike_text": "77.5",
-            "text": "$2.92M",
+            "text": "$2.13M",
             "marks": []
           },
           {
             "strike": 80.0,
-            "value": 1644797.1451118402,
+            "value": 725042.4643425602,
             "strike_text": "80",
-            "text": "$1.64M",
+            "text": "$725.04K",
             "marks": []
           },
           {
             "strike": 82.5,
-            "value": 676019.69049456,
+            "value": 587111.42240784,
             "strike_text": "82.5",
-            "text": "$676.02K",
+            "text": "$587.11K",
             "marks": []
           },
           {
             "strike": 85.0,
-            "value": 2267433.58842528,
+            "value": 1309192.7700931202,
             "strike_text": "85",
-            "text": "$2.27M",
+            "text": "$1.31M",
             "marks": []
           },
           {
             "strike": 87.5,
-            "value": 3962766.5267349603,
+            "value": 3833997.10930104,
             "strike_text": "87.5",
-            "text": "$3.96M",
+            "text": "$3.83M",
             "marks": []
           },
           {
             "strike": 90.0,
-            "value": 14484359.907577442,
+            "value": 14420263.32186768,
             "strike_text": "90",
-            "text": "$14.48M",
+            "text": "$14.42M",
             "marks": []
           },
           {
             "strike": 92.5,
-            "value": 3172581.9641052,
+            "value": 2916943.3711332,
             "strike_text": "92.5",
-            "text": "$3.17M",
+            "text": "$2.92M",
             "marks": []
           },
           {
             "strike": 95.0,
-            "value": 3421921.4382715207,
+            "value": 2768501.9100542404,
             "strike_text": "95",
-            "text": "$3.42M",
+            "text": "$2.77M",
             "marks": []
           },
           {
             "strike": 97.5,
-            "value": 9016260.166695362,
+            "value": 8808561.413682243,
             "strike_text": "97.5",
-            "text": "$9.02M",
+            "text": "$8.81M",
             "marks": []
           },
           {
             "strike": 100.0,
-            "value": 4560819.6905246405,
+            "value": 4524788.54619024,
             "strike_text": "100",
-            "text": "$4.56M",
+            "text": "$4.52M",
             "marks": []
           },
           {
             "strike": 102.5,
-            "value": 5669796.2653032,
+            "value": 5609348.487242401,
             "strike_text": "102.5",
-            "text": "$5.67M",
+            "text": "$5.61M",
             "marks": []
           },
           {
             "strike": 105.0,
-            "value": 4985592.915550561,
+            "value": 4700819.46926448,
             "strike_text": "105",
-            "text": "$4.99M",
+            "text": "$4.70M",
             "marks": []
           },
           {
             "strike": 107.5,
-            "value": 17924343.206348166,
+            "value": 17577843.676106885,
             "strike_text": "107.5",
-            "text": "$17.92M",
+            "text": "$17.58M",
             "marks": []
           },
           {
             "strike": 110.0,
-            "value": 3966578.1288736807,
+            "value": 3930426.588601201,
             "strike_text": "110",
-            "text": "$3.97M",
+            "text": "$3.93M",
             "marks": []
           },
           {
             "strike": 112.5,
-            "value": 10317351.10658448,
+            "value": 10288392.429809758,
             "strike_text": "112.5",
-            "text": "$10.32M",
+            "text": "$10.29M",
             "marks": []
           },
           {
             "strike": 115.0,
-            "value": 17947156.7184216,
+            "value": 17902194.22415088,
             "strike_text": "115",
-            "text": "$17.95M",
+            "text": "$17.90M",
             "marks": []
           },
           {
             "strike": 117.5,
-            "value": 99584918.78366545,
+            "value": 99355165.17963216,
             "strike_text": "117.5",
-            "text": "$99.58M",
+            "text": "$99.36M",
             "marks": []
           },
           {
             "strike": 120.0,
-            "value": 10138627.82920368,
+            "value": 9957695.183505122,
             "strike_text": "120",
-            "text": "$10.14M",
+            "text": "$9.96M",
             "marks": []
           },
           {
             "strike": 122.5,
-            "value": 5470947.59519688,
+            "value": 5419834.3687111195,
             "strike_text": "122.5",
-            "text": "$5.47M",
+            "text": "$5.42M",
             "marks": []
           },
           {
             "strike": 125.0,
-            "value": 9340578.717543121,
+            "value": 9158601.07743816,
             "strike_text": "125",
-            "text": "$9.34M",
+            "text": "$9.16M",
             "marks": []
           },
           {
             "strike": 127.5,
-            "value": 3877713.305097121,
+            "value": 3551178.8716660812,
             "strike_text": "127.5",
-            "text": "$3.88M",
+            "text": "$3.55M",
             "marks": []
           },
           {
             "strike": 130.0,
-            "value": 8154389.690519041,
+            "value": 8075372.939539201,
             "strike_text": "130",
-            "text": "$8.15M",
+            "text": "$8.08M",
             "marks": []
           },
           {
             "strike": 132.5,
-            "value": 6550711.237486801,
+            "value": 6154751.009456401,
             "strike_text": "132.5",
-            "text": "$6.55M",
+            "text": "$6.15M",
             "marks": []
           },
           {
             "strike": 135.0,
-            "value": 5886362.951758082,
+            "value": 5372200.805771521,
             "strike_text": "135",
-            "text": "$5.89M",
+            "text": "$5.37M",
             "marks": []
           },
           {
             "strike": 137.5,
-            "value": 7919349.595767361,
+            "value": 7880950.4840352,
             "strike_text": "137.5",
-            "text": "$7.92M",
+            "text": "$7.88M",
             "marks": []
           },
           {
             "strike": 140.0,
-            "value": 4908816.721888561,
+            "value": 4575043.84420296,
             "strike_text": "140",
-            "text": "$4.91M",
+            "text": "$4.58M",
             "marks": []
           },
           {
             "strike": 142.5,
-            "value": 2075186.0364079203,
+            "value": 1644534.2760823204,
             "strike_text": "142.5",
-            "text": "$2.08M",
+            "text": "$1.64M",
             "marks": []
           },
           {
             "strike": 145.0,
-            "value": 13955675.440296963,
+            "value": 12675344.561452802,
             "strike_text": "145",
-            "text": "$13.96M",
+            "text": "$12.68M",
             "marks": []
           },
           {
             "strike": 147.5,
-            "value": 1281564.9879235202,
+            "value": 626036.6219510399,
             "strike_text": "147.5",
-            "text": "$1.28M",
+            "text": "$626.04K",
             "marks": []
           },
           {
             "strike": 150.0,
-            "value": 14612107.841472482,
+            "value": 11447529.268794721,
             "strike_text": "150",
-            "text": "$14.61M",
+            "text": "$11.45M",
             "marks": []
           },
           {
             "strike": 152.5,
-            "value": 999345.89564256,
+            "value": 992273.4366921601,
             "strike_text": "152.5",
-            "text": "$999.35K",
+            "text": "$992.27K",
             "marks": []
           },
           {
             "strike": 155.0,
-            "value": 4902802.4941125605,
+            "value": 4833732.638357041,
             "strike_text": "155",
-            "text": "$4.90M",
+            "text": "$4.83M",
             "marks": []
           },
           {
             "strike": 157.5,
-            "value": 1881847.5785772,
+            "value": 1456741.1954004,
             "strike_text": "157.5",
-            "text": "$1.88M",
+            "text": "$1.46M",
             "marks": []
           },
           {
             "strike": 160.0,
-            "value": 5023267.301320801,
+            "value": 4922061.9433944,
             "strike_text": "160",
-            "text": "$5.02M",
+            "text": "$4.92M",
             "marks": []
           },
           {
             "strike": 162.5,
-            "value": 7385009.13312072,
+            "value": 7320984.778732081,
             "strike_text": "162.5",
-            "text": "$7.39M",
+            "text": "$7.32M",
             "marks": []
           },
           {
             "strike": 165.0,
-            "value": 7549640.02884864,
+            "value": 7393651.38155136,
             "strike_text": "165",
-            "text": "$7.55M",
+            "text": "$7.39M",
             "marks": []
           },
           {
             "strike": 167.5,
-            "value": 5476959.6593532,
+            "value": 4714925.427751921,
             "strike_text": "167.5",
-            "text": "$5.48M",
+            "text": "$4.71M",
             "marks": []
           },
           {
             "strike": 170.0,
-            "value": 38724846.25209649,
+            "value": 38535126.083093286,
             "strike_text": "170",
-            "text": "$38.72M",
+            "text": "$38.54M",
             "marks": []
           },
           {
             "strike": 172.5,
-            "value": 7454945.69208888,
+            "value": 7031903.32567944,
             "strike_text": "172.5",
-            "text": "$7.45M",
+            "text": "$7.03M",
             "marks": []
           },
           {
             "strike": 175.0,
-            "value": 12838984.162351202,
+            "value": 12510683.456568483,
             "strike_text": "175",
-            "text": "$12.84M",
+            "text": "$12.51M",
             "marks": []
           },
           {
             "strike": 177.5,
-            "value": 4978333.04575752,
+            "value": 4459809.9496989595,
             "strike_text": "177.5",
-            "text": "$4.98M",
+            "text": "$4.46M",
             "marks": []
           },
           {
             "strike": 180.0,
-            "value": 9134565.7597536,
+            "value": 8980703.9306928,
             "strike_text": "180",
-            "text": "$9.13M",
+            "text": "$8.98M",
             "marks": []
           },
           {
             "strike": 182.5,
-            "value": 18550062.04955088,
+            "value": 18065057.06513712,
             "strike_text": "182.5",
-            "text": "$18.55M",
+            "text": "$18.07M",
             "marks": []
           },
           {
             "strike": 185.0,
-            "value": 13196813.978582881,
+            "value": 13085987.907375842,
             "strike_text": "185",
-            "text": "$13.20M",
+            "text": "$13.09M",
             "marks": []
           },
           {
             "strike": 187.5,
-            "value": 12369718.68461856,
+            "value": 11880582.80516064,
             "strike_text": "187.5",
-            "text": "$12.37M",
+            "text": "$11.88M",
             "marks": []
           },
           {
             "strike": 190.0,
-            "value": 18593609.501306638,
+            "value": 18122475.12537624,
             "strike_text": "190",
-            "text": "$18.59M",
+            "text": "$18.12M",
             "marks": []
           },
           {
             "strike": 192.5,
-            "value": 6975535.97048976,
+            "value": 6571025.089503841,
             "strike_text": "192.5",
-            "text": "$6.98M",
+            "text": "$6.57M",
             "marks": []
           },
           {
             "strike": 195.0,
-            "value": 19438776.53169048,
+            "value": 19076029.47353112,
             "strike_text": "195",
-            "text": "$19.44M",
+            "text": "$19.08M",
             "marks": []
           },
           {
             "strike": 197.5,
-            "value": 5467159.11408672,
+            "value": 5236128.795799681,
             "strike_text": "197.5",
-            "text": "$5.47M",
+            "text": "$5.24M",
             "marks": []
           },
           {
             "strike": 200.0,
-            "value": 32862909.87563088,
+            "value": 32325361.728969123,
             "strike_text": "200",
-            "text": "$32.86M",
+            "text": "$32.33M",
             "marks": []
           },
           {
             "strike": 202.5,
-            "value": 6127163.236763281,
+            "value": 5954636.389117681,
             "strike_text": "202.5",
-            "text": "$6.13M",
+            "text": "$5.95M",
             "marks": []
           },
           {
             "strike": 205.0,
-            "value": 14330259.767458322,
+            "value": 13308465.36469608,
             "strike_text": "205",
-            "text": "$14.33M",
+            "text": "$13.31M",
             "marks": []
           },
           {
             "strike": 207.5,
-            "value": 4404678.9861240005,
+            "value": 4332870.8756856,
             "strike_text": "207.5",
-            "text": "$4.40M",
+            "text": "$4.33M",
             "marks": []
           },
           {
             "strike": 210.0,
-            "value": 20470472.281474084,
+            "value": 19991596.917168483,
             "strike_text": "210",
-            "text": "$20.47M",
+            "text": "$19.99M",
             "marks": []
           },
           {
             "strike": 212.5,
-            "value": 9459471.2606412,
+            "value": 9232182.15609576,
             "strike_text": "212.5",
-            "text": "$9.46M",
+            "text": "$9.23M",
             "marks": []
           },
           {
             "strike": 215.0,
-            "value": 58355457.717765614,
+            "value": 57542297.51579185,
             "strike_text": "215",
-            "text": "$58.36M",
+            "text": "$57.54M",
             "marks": []
           },
           {
             "strike": 217.5,
-            "value": 21968335.00894032,
+            "value": 21554807.06079792,
             "strike_text": "217.5",
-            "text": "$21.97M",
+            "text": "$21.55M",
             "marks": []
           },
           {
             "strike": 220.0,
-            "value": 39501185.1174636,
+            "value": 37473898.6782804,
             "strike_text": "220",
-            "text": "$39.50M",
+            "text": "$37.47M",
             "marks": []
           },
           {
             "strike": 222.5,
-            "value": 4623578.96690856,
+            "value": 4290406.026361681,
             "strike_text": "222.5",
-            "text": "$4.62M",
+            "text": "$4.29M",
             "marks": []
           },
           {
             "strike": 225.0,
-            "value": 34274244.5883888,
+            "value": 33386759.17863072,
             "strike_text": "225",
-            "text": "$34.27M",
+            "text": "$33.39M",
             "marks": []
           },
           {
             "strike": 227.5,
-            "value": 11617629.69875736,
+            "value": 11020945.58294232,
             "strike_text": "227.5",
-            "text": "$11.62M",
+            "text": "$11.02M",
             "marks": []
           },
           {
             "strike": 230.0,
-            "value": 38650524.527304,
+            "value": 34587910.947312005,
             "strike_text": "230",
-            "text": "$38.65M",
+            "text": "$34.59M",
             "marks": []
           },
           {
             "strike": 232.5,
-            "value": 28199896.36641768,
+            "value": 27172275.56346504,
             "strike_text": "232.5",
-            "text": "$28.20M",
+            "text": "$27.17M",
             "marks": []
           },
           {
             "strike": 235.0,
-            "value": 15900847.95454848,
+            "value": 13416189.99255552,
             "strike_text": "235",
-            "text": "$15.90M",
+            "text": "$13.42M",
             "marks": []
           },
           {
             "strike": 237.5,
-            "value": 12087757.426552562,
+            "value": 10366614.420756241,
             "strike_text": "237.5",
-            "text": "$12.09M",
+            "text": "$10.37M",
             "marks": []
           },
           {
             "strike": 240.0,
-            "value": 41821744.00505112,
+            "value": 35898898.54485528,
             "strike_text": "240",
-            "text": "$41.82M",
+            "text": "$35.90M",
             "marks": []
           },
           {
             "strike": 242.5,
-            "value": 31743079.921891924,
+            "value": 28347695.166536886,
             "strike_text": "242.5",
-            "text": "$31.74M",
+            "text": "$28.35M",
             "marks": []
           },
           {
             "strike": 245.0,
-            "value": 48978514.63639608,
+            "value": 45161808.51562248,
             "strike_text": "245",
-            "text": "$48.98M",
+            "text": "$45.16M",
             "marks": []
           },
           {
             "strike": 247.5,
-            "value": 8329213.560521521,
+            "value": 6584439.68783208,
             "strike_text": "247.5",
-            "text": "$8.33M",
+            "text": "$6.58M",
             "marks": []
           },
           {
             "strike": 250.0,
-            "value": 72926415.53341487,
+            "value": 42066785.939721115,
             "strike_text": "250",
-            "text": "$72.93M",
+            "text": "$42.07M",
             "marks": [
               {
                 "kind": "put",
-                "label": "Put wall"
+                "label": "Largest put gamma strike"
               }
             ]
           },
           {
             "strike": 252.5,
-            "value": 14614293.115913041,
+            "value": 4143099.44837448,
             "strike_text": "252.5",
-            "text": "$14.61M",
+            "text": "$4.14M",
             "marks": []
           },
           {
             "strike": 255.0,
-            "value": 17673311.044960562,
+            "value": 12327204.389509201,
             "strike_text": "255",
-            "text": "$17.67M",
+            "text": "$12.33M",
             "marks": []
           },
           {
             "strike": 257.5,
-            "value": 10814068.80470376,
+            "value": 6111897.028478641,
             "strike_text": "257.5",
-            "text": "$10.81M",
+            "text": "$6.11M",
             "marks": []
           },
           {
             "strike": 260.0,
-            "value": 77171094.29240184,
+            "value": 56603803.914109185,
             "strike_text": "260",
-            "text": "$77.17M",
+            "text": "$56.60M",
             "marks": [
               {
                 "kind": "call",
-                "label": "Call wall"
+                "label": "Largest call gamma strike"
               }
             ]
           },
           {
             "strike": 262.5,
-            "value": 10728222.94898664,
+            "value": 2920112.7634922396,
             "strike_text": "262.5",
-            "text": "$10.73M",
+            "text": "$2.92M",
             "marks": []
           },
           {
             "strike": 265.0,
-            "value": 21897010.67708256,
+            "value": 7684471.337184959,
             "strike_text": "265",
-            "text": "$21.90M",
+            "text": "$7.68M",
             "marks": []
           },
           {
             "strike": 267.5,
-            "value": 7076938.701002879,
+            "value": 4285350.669252479,
             "strike_text": "267.5",
-            "text": "$7.08M",
+            "text": "$4.29M",
             "marks": []
           },
           {
             "strike": 270.0,
-            "value": 41474844.6165312,
+            "value": 19298774.31948384,
             "strike_text": "270",
-            "text": "$41.47M",
+            "text": "$19.30M",
             "marks": [
               {
                 "kind": "spot",
@@ -4984,72 +4984,72 @@
           },
           {
             "strike": 272.5,
-            "value": 10848683.021628961,
+            "value": 7830946.69295472,
             "strike_text": "272.5",
-            "text": "$10.85M",
+            "text": "$7.83M",
             "marks": []
           },
           {
             "strike": 275.0,
-            "value": 18822926.336118482,
+            "value": 8185950.622525681,
             "strike_text": "275",
-            "text": "$18.82M",
+            "text": "$8.19M",
             "marks": []
           },
           {
             "strike": 277.5,
-            "value": 8486753.549764322,
+            "value": 4093267.5203150418,
             "strike_text": "277.5",
-            "text": "$8.49M",
+            "text": "$4.09M",
             "marks": []
           },
           {
             "strike": 280.0,
-            "value": 21595900.55566728,
+            "value": 13137584.748058803,
             "strike_text": "280",
-            "text": "$21.60M",
+            "text": "$13.14M",
             "marks": []
           },
           {
             "strike": 282.5,
-            "value": 7233257.505040802,
+            "value": 2146403.909944801,
             "strike_text": "282.5",
-            "text": "$7.23M",
+            "text": "$2.15M",
             "marks": []
           },
           {
             "strike": 285.0,
-            "value": 9920140.867865521,
+            "value": 6831377.375465522,
             "strike_text": "285",
-            "text": "$9.92M",
+            "text": "$6.83M",
             "marks": []
           },
           {
             "strike": 287.5,
-            "value": 5576739.887647921,
+            "value": 5232813.2278207205,
             "strike_text": "287.5",
-            "text": "$5.58M",
+            "text": "$5.23M",
             "marks": []
           },
           {
             "strike": 290.0,
-            "value": 14346455.4096672,
+            "value": 11047022.74634592,
             "strike_text": "290",
-            "text": "$14.35M",
+            "text": "$11.05M",
             "marks": []
           },
           {
             "strike": 292.5,
-            "value": 1130734.18206648,
+            "value": 1038793.84501752,
             "strike_text": "292.5",
-            "text": "$1.13M",
+            "text": "$1.04M",
             "marks": []
           },
           {
             "strike": 295.0,
-            "value": 2100250.9112527203,
+            "value": 1723470.65351448,
             "strike_text": "295",
-            "text": "$2.10M",
+            "text": "$1.72M",
             "marks": []
           },
           {
@@ -5061,9 +5061,9 @@
           },
           {
             "strike": 300.0,
-            "value": 18598064.913205925,
+            "value": 14633523.724106884,
             "strike_text": "300",
-            "text": "$18.60M",
+            "text": "$14.63M",
             "marks": []
           },
           {
@@ -5075,9 +5075,9 @@
           },
           {
             "strike": 305.0,
-            "value": 1192470.69374304,
+            "value": 542033.29689744,
             "strike_text": "305",
-            "text": "$1.19M",
+            "text": "$542.03K",
             "marks": []
           },
           {
@@ -5089,9 +5089,9 @@
           },
           {
             "strike": 310.0,
-            "value": 1561897.9674823203,
+            "value": 1460723.9613252,
             "strike_text": "310",
-            "text": "$1.56M",
+            "text": "$1.46M",
             "marks": []
           },
           {
@@ -5117,9 +5117,9 @@
           },
           {
             "strike": 320.0,
-            "value": 435260.95252944005,
+            "value": 327644.95252944005,
             "strike_text": "320",
-            "text": "$435.26K",
+            "text": "$327.64K",
             "marks": []
           },
           {
@@ -5145,9 +5145,9 @@
           },
           {
             "strike": 330.0,
-            "value": 529859.913264,
+            "value": -115836.086736,
             "strike_text": "330",
-            "text": "$529.86K",
+            "text": "-$115.84K",
             "marks": []
           },
           {
@@ -5190,13 +5190,13 @@
           "centre": 270.0,
           "centre_text": "270",
           "note": null,
-          "max_abs": 99584918.78366545
+          "max_abs": 99355165.17963216
         },
         "max_abs_row": {
           "strike": 117.5,
-          "value": 99584918.78366545,
+          "value": 99355165.17963216,
           "strike_text": "117.5",
-          "text": "$99.58M",
+          "text": "$99.36M",
           "marks": []
         }
       },
@@ -5798,7 +5798,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Put wall"
+                "label": "Largest put gamma strike"
               }
             ]
           },
@@ -5831,7 +5831,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Call wall"
+                "label": "Largest call gamma strike"
               }
             ]
           },
@@ -6969,7 +6969,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
-      "busiest_vs_walls_text": "ABOVE the call wall",
+      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -6979,7 +6979,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
-        "level_text": "Call wall",
+        "level_text": "Largest call gamma strike",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -6989,7 +6989,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
-        "level_text": "Put wall",
+        "level_text": "Largest put gamma strike",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -7124,6 +7124,7 @@
     "atr_weekly_text": null,
     "atr_monthly_text": null,
     "regime_text": "Positive gamma",
+    "total_gamma_change": null,
     "spot_time_ct": "Wed 10/07 09:38 AM CT",
     "spot_not_live_text": "not live \u00b7 last trade Wed 10/07 09:38 AM CT, 40s old",
     "levels_mark": "OFFLINE",
@@ -7153,7 +7154,7 @@
       {
         "strike": 257.5,
         "gex": [109491.72595772782],
-        "dex": [10814068.80470376],
+        "dex": [6111897.028478641],
         "vanna": [-36.66299391684396],
         "oi": [
           {
@@ -7195,7 +7196,7 @@
         "strike_text": "257.5",
         "text": {
           "gex": ["$109.49K"],
-          "dex": ["$10.81M"],
+          "dex": ["$6.11M"],
           "oi": ["759"],
           "volume": ["193"]
         }
@@ -7203,7 +7204,7 @@
       {
         "strike": 260.0,
         "gex": [2968878.0308898254],
-        "dex": [77171094.29240184],
+        "dex": [56603803.914109185],
         "vanna": [-767.6186834491689],
         "oi": [
           {
@@ -7245,7 +7246,7 @@
         "strike_text": "260",
         "text": {
           "gex": ["$2.97M"],
-          "dex": ["$77.17M"],
+          "dex": ["$56.60M"],
           "oi": ["4,827"],
           "volume": ["419"]
         }
@@ -7253,7 +7254,7 @@
       {
         "strike": 262.5,
         "gex": [-29147.259441742324],
-        "dex": [10728222.94898664],
+        "dex": [2920112.7634922396],
         "vanna": [5.232990787044514],
         "oi": [
           {
@@ -7295,7 +7296,7 @@
         "strike_text": "262.5",
         "text": {
           "gex": ["-$29.15K"],
-          "dex": ["$10.73M"],
+          "dex": ["$2.92M"],
           "oi": ["803"],
           "volume": ["52"]
         }
@@ -7303,7 +7304,7 @@
       {
         "strike": 265.0,
         "gex": [363903.58842066233],
-        "dex": [21897010.67708256],
+        "dex": [7684471.337184959],
         "vanna": [-39.58207143301394],
         "oi": [
           {
@@ -7345,7 +7346,7 @@
         "strike_text": "265",
         "text": {
           "gex": ["$363.90K"],
-          "dex": ["$21.90M"],
+          "dex": ["$7.68M"],
           "oi": ["1,575"],
           "volume": ["305"]
         }
@@ -7353,7 +7354,7 @@
       {
         "strike": 267.5,
         "gex": [390499.2879743572],
-        "dex": [7076938.701002879],
+        "dex": [4285350.669252479],
         "vanna": [-12.785340696334345],
         "oi": [
           {
@@ -7395,7 +7396,7 @@
         "strike_text": "267.5",
         "text": {
           "gex": ["$390.50K"],
-          "dex": ["$7.08M"],
+          "dex": ["$4.29M"],
           "oi": ["499"],
           "volume": ["56"]
         }
@@ -7403,7 +7404,7 @@
       {
         "strike": 270.0,
         "gex": [2025417.5967300977],
-        "dex": [41474844.6165312],
+        "dex": [19298774.31948384],
         "vanna": [85.66144366021244],
         "oi": [
           {
@@ -7445,7 +7446,7 @@
         "strike_text": "270",
         "text": {
           "gex": ["$2.03M"],
-          "dex": ["$41.47M"],
+          "dex": ["$19.30M"],
           "oi": ["3,080"],
           "volume": ["233"]
         }
@@ -7453,7 +7454,7 @@
       {
         "strike": 272.5,
         "gex": [944406.3383617238],
-        "dex": [10848683.021628961],
+        "dex": [7830946.69295472],
         "vanna": [108.19712194988712],
         "oi": [
           {
@@ -7495,7 +7496,7 @@
         "strike_text": "272.5",
         "text": {
           "gex": ["$944.41K"],
-          "dex": ["$10.85M"],
+          "dex": ["$7.83M"],
           "oi": ["871"],
           "volume": ["102"]
         }
@@ -7503,7 +7504,7 @@
       {
         "strike": 275.0,
         "gex": [1257750.6522048865],
-        "dex": [18822926.336118482],
+        "dex": [8185950.622525681],
         "vanna": [234.1146484523618],
         "oi": [
           {
@@ -7545,7 +7546,7 @@
         "strike_text": "275",
         "text": {
           "gex": ["$1.26M"],
-          "dex": ["$18.82M"],
+          "dex": ["$8.19M"],
           "oi": ["1,573"],
           "volume": ["651"]
         }
@@ -7553,7 +7554,7 @@
       {
         "strike": 277.5,
         "gex": [698612.962857821],
-        "dex": [8486753.549764322],
+        "dex": [4093267.5203150418],
         "vanna": [179.54165920143828],
         "oi": [
           {
@@ -7595,7 +7596,7 @@
         "strike_text": "277.5",
         "text": {
           "gex": ["$698.61K"],
-          "dex": ["$8.49M"],
+          "dex": ["$4.09M"],
           "oi": ["779"],
           "volume": ["110"]
         }
@@ -7603,7 +7604,7 @@
       {
         "strike": 280.0,
         "gex": [2303349.6717287567],
-        "dex": [21595900.55566728],
+        "dex": [13137584.748058803],
         "vanna": [754.1187901636961],
         "oi": [
           {
@@ -7645,7 +7646,7 @@
         "strike_text": "280",
         "text": {
           "gex": ["$2.30M"],
-          "dex": ["$21.60M"],
+          "dex": ["$13.14M"],
           "oi": ["2,277"],
           "volume": ["323"]
         }
@@ -7653,7 +7654,7 @@
       {
         "strike": 282.5,
         "gex": [600091.5984657092],
-        "dex": [7233257.505040802],
+        "dex": [2146403.909944801],
         "vanna": [238.51379201755063],
         "oi": [
           {
@@ -7695,7 +7696,7 @@
         "strike_text": "282.5",
         "text": {
           "gex": ["$600.09K"],
-          "dex": ["$7.23M"],
+          "dex": ["$2.15M"],
           "oi": ["765"],
           "volume": ["60"]
         }
@@ -7725,7 +7726,7 @@
       },
       "max_abs": {
         "gex": 2968878.0308898254,
-        "dex": 77171094.29240184,
+        "dex": 56603803.914109185,
         "oi": 4827.0,
         "volume": 651.0
       },

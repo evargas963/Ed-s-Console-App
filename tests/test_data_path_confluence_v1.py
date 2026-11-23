@@ -556,8 +556,8 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
 
     A strike whose every contract Schwab sent with open interest 0 is 0 on the charm map (its
     one producer), and its book's charm magnitude is that 0; with no charm entry the magnitude
-    is not known. The publication's call wall is a level at its own price, in the options
-    lane, its text two decimals.
+    is not known. The publication's largest call gamma strike is a level at its own price, in
+    the options lane, its text two decimals.
     """
     zero_oi = sorted(
         k
@@ -577,7 +577,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         level_store._levels.pop("SPY", None)
     assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
-    walls = [level for level in _rail_levels(body) if level["abbrev"] == "Call wall"]
+    walls = [level for level in _rail_levels(body) if level["abbrev"] == "Call gamma"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
         (live.snap.call_wall, price_text(live.snap.call_wall), "options")
     ]

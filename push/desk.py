@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from calc.micro_structure import Candle
-from calc.terrain_engine import WALL_BREACHED
+from calc.terrain_engine import OPTION_LEVELS, WALL_BREACHED
 from numeric_contract import count_text, price_text
 from push.bars import chart_bars, held_minutes
 from push.terrain import terrain
@@ -167,14 +167,18 @@ def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
 
 
 def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
-    """Return a wall the live price is through, and stale levels: the terrain panel's words."""
+    """Return a largest call or put gamma strike the live price is through, and stale levels.
+
+    In the terrain panel's words, each level by its name in the one list (OPTION_LEVELS).
+    """
     items: list[dict[str, Any]] = []
     t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
+    names = dict(OPTION_LEVELS)
     walls = (
-        ("call", "cw", "up", t["call_wall_state"], t["call_wall"]),
-        ("put", "pw", "down", t["put_wall_state"], t["put_wall"]),
+        ("call_wall", "cw", "up", t["call_wall_state"], t["call_wall"]),
+        ("put_wall", "pw", "down", t["put_wall_state"], t["put_wall"]),
     )
-    for word, key, way, state, wall in walls:
+    for level, key, way, state, wall in walls:
         if state == WALL_BREACHED:  # at the live price (price_relations)
             items.append(
                 _item(
@@ -182,8 +186,8 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
                     t["spot_as_of_ts_utc"],
                     "OPTIONS",
                     way,
-                    f"Spot through the {word} wall",
-                    f"{word} wall {price_text(wall)} · spot {price_text(t['spot'])}",
+                    f"Spot through the {names[level].lower()}",
+                    f"{names[level]} {price_text(wall)} · spot {price_text(t['spot'])}",
                     "gamma levels",
                 )
             )

@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TypedDict
 
-from calc.terrain_engine import TerrainFields, TerrainSnapshot
+from calc.terrain_engine import TerrainFields, TerrainSnapshot, TotalGammaRecord
 from instrument_identity import ticker_storage_key
 from option_contract import OptionContract
 
@@ -164,6 +164,10 @@ class PublishedLevels:
     #: `captures_key` changes
     prior_day: TerrainSnapshot | None
     captures_key: tuple[float | None, str]
+    #: the largest total gamma strike last known in each column, and the newest publication that
+    #: moved it since the program started (calc.terrain_engine.total_gamma_record); the terrain
+    #: panel announces the move (push.terrain)
+    total_gamma: TotalGammaRecord = TotalGammaRecord()
 
     def served(self) -> ServedLevels:
         """Return the levels as the terrain panel sends them, before the live price's relations."""

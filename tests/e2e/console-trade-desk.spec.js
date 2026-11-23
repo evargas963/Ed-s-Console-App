@@ -729,7 +729,13 @@ test("Desk: the chain age keeps the chain's time", async ({ page }) => {
   await expect(page.locator("#tdmCardOpt .tdm-src")).toContainText(
     "Schwab option chain · " + CHAIN_TIME + " · LIVE · 4s",
   );
-  await expect(page.locator("#tdmCardOpt")).toContainText("775.00"); // SPY's real call wall
+  // SPY's real largest call and put gamma strikes, in one row, each in its colour
+  const strikes = page.locator("#tdmCardOpt .tdm-r", {
+    hasText: "Largest call / put gamma strike",
+  });
+  await expect(strikes).toHaveText("Largest call / put gamma strike 775.00 / 760.00");
+  await expect(strikes.locator(".up")).toHaveText("775.00");
+  await expect(strikes.locator(".dn")).toHaveText("760.00");
   // the served regime word (SPY's: NEGATIVE_GAMMA), toned from the one regime table
   await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveText("Negative gamma");
   await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveClass("tdm-state dn");
@@ -781,13 +787,14 @@ test.describe("Trade Desk renders served values", () => {
       "dark",
     );
     // the nearest six of SPY's levels (756.59 to 757.88) are drawn under three labels (a label
-    // closer than its height to a nearer one is counted on that one); the put wall (760, the price
-    // is through it) is the nearest level above the bars' price range, pinned at the edge
+    // closer than its height to a nearer one is counted on that one); the largest put gamma strike
+    // (760, the price is through it) is the nearest level above the bars' price range, pinned at
+    // the edge
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.levelsShown))
       .toBe(3);
     await expect(page.locator("#tdmChart .tvc-edge-top")).toContainText(
-      "Put wall · BREACHED — spot below 760.00",
+      "Largest put gamma strike · BREACHED — spot below 760.00",
     );
     // the profile is drawn after the close too (the session's served profile) and names its basis
     await expect(page.locator("#tdmProfNote")).toHaveText(LEVELS.volume_profile.basis);
@@ -1335,9 +1342,9 @@ test.describe("Trade Desk renders served values", () => {
     expect(STOPPED.spot_not_live_text).toContain("last trade");
     await expect(body).toContainText(nearest.from_spot_text + " · " + STOPPED.spot_not_live_text);
     await expect(body).toContainText(
-      "Put wall " +
+      "Largest put gamma strike " +
         row("put_wall").from_spot_text +
-        ", call wall " +
+        ", Largest call gamma strike " +
         row("call_wall").from_spot_text +
         " · " +
         STOPPED.spot_not_live_text,
@@ -1394,14 +1401,14 @@ test.describe("Trade Desk renders served values", () => {
     );
     await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (NASDAQ_BOOK, top 5)");
     // SPY's real levels (Right Now asks them at 1 minute): max pain is the nearest, 0.08 below
-    // the price; the price is through the put wall, so both walls are above it
+    // the price; the price is through the largest put gamma strike, so both are above it
     const level = (id) => REAL.levels["1"].levels.find((r) => r.id === id);
     await expect(body).toContainText("Max pain 757.00"); // nearest by the served by_distance
     await expect(body).toContainText("0.08 below spot");
     await expect(body).toContainText(
-      "Put wall " +
+      "Largest put gamma strike " +
         level("put_wall").from_spot_text +
-        ", call wall " +
+        ", Largest call gamma strike " +
         level("call_wall").from_spot_text,
     ); // the levels panel's own rows
     // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location);
@@ -1411,9 +1418,10 @@ test.describe("Trade Desk renders served values", () => {
     expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([
       757.0, 758.01, 4,
     ]);
-    // the walls' and the flip's own moves since the prior close, as served (no drift word)
+    // the largest call and put gamma strikes' and the flip's own moves since the prior close, as
+    // served (no drift word)
     await expect(body).toContainText(
-      "Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Gamma flip 760.77 → 761.22 (+0.45)",
+      "Largest call gamma strike 760 → 775 (+15) · Largest put gamma strike 760 → 760 (unchanged) · Gamma flip 760.77 → 761.22 (+0.45)",
     );
     await expect(body).toContainText("Gamma grew most at 775/770");
     // the busiest strikes 757 and 760 against the put wall at 760: one below it, one at it, so
@@ -1469,7 +1477,7 @@ test.describe("Trade Desk renders served values", () => {
     }
     const body = page.locator("#tdBody");
     await expect(body).toContainText("Max pain 757.00"); // SPY's nearest level, as before
-    await expect(body).toContainText("Call wall" + TERRAIN.call_wall_text);
+    await expect(body).toContainText("Largest call gamma strike" + TERRAIN.call_wall_text);
     // a ticker switch leaves nothing of the last ticker: its cards' values and their marks
     for (const kind of ["book", "levels", "liquidity", "terrain", "strikes"])
       deskPanels()[kind] = () => undefined; // the new ticker's panels are not sent yet
@@ -1593,9 +1601,9 @@ test.describe("Trade Desk renders served values", () => {
     // (push.strikes.BUSIEST_VS_WALLS_TEXT), then with a place and words the page has never held:
     // the page draws the served words, whichever they are, and picks none
     for (const [place, words] of [
-      ["ABOVE_CALL_WALL", "ABOVE the call wall"],
-      ["BELOW_PUT_WALL", "BELOW the put wall"],
-      ["INSIDE_WALLS", "inside the wall range"],
+      ["ABOVE_CALL_WALL", "ABOVE the largest call gamma strike"],
+      ["BELOW_PUT_WALL", "BELOW the largest put gamma strike"],
+      ["INSIDE_WALLS", "between the largest put and call gamma strikes"],
       ["A_PLACE_ONLY_THE_SERVER_KNOWS", "where only the server says"],
     ]) {
       deskPanels().strikes = Object.assign({}, STRIKES, {
@@ -1692,10 +1700,13 @@ test.describe("Trade Desk renders served values", () => {
     await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
     await expect(body).toContainText("Max pain 757.00");
-    // Schwab's SPY set: both walls are above the price, so the line names each wall's own side
+    // Schwab's SPY set: the largest put and call gamma strikes are both above the price, so the
+    // line names each one's own side, each by its served name
     const side = (id) => LEVELS.levels.find((r) => r.id === id).from_spot_text;
     expect([side("put_wall"), side("call_wall")]).toEqual(["2.92 above spot", "17.92 above spot"]);
-    await expect(body).toContainText("WallsPut wall 2.92 above spot, call wall 17.92 above spot");
+    await expect(body).toContainText(
+      "Gamma strikesLargest put gamma strike 2.92 above spot, Largest call gamma strike 17.92 above spot",
+    );
     const asked = sock.subscribes.length;
     // DETECT's book and FRAME's zones, FRAME's levels (each with its distance from the live
     // price), CONFIRM's levels and the migration's rows are the book, liquidity, levels, terrain
@@ -2014,7 +2025,7 @@ test.describe("Trade Desk renders served values", () => {
       price: 772,
       price_text: "772.00",
       family: "gamma",
-      label: "Call wall",
+      label: "Largest call gamma strike",
       evidence_tier: "DERIVED",
       distance: 0.7,
       side: "ABOVE",

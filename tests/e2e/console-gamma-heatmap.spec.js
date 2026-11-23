@@ -950,6 +950,70 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     }
   });
 
+  test("a move of the largest total gamma strike shows a toast at the bottom left, with a chime", async ({
+    page,
+  }) => {
+    // AMZN's real levels, the program's first publication: no move is served with them
+    expect(TERRAIN.total_gamma_change).toBeNull();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#klAbs")).toHaveText(TERRAIN.absolute_gamma_strike_text);
+    await expect(page.locator("#edToast")).toHaveCount(0);
+    // INDUCED: the move the program serves when AMZN's next day is published (the 0DTE column's
+    // 265 → 270 between its 2026-11-11 and 2026-11-12 captures), as push.terrain words it
+    const move = {
+      id: "1794497958.2236 Largest total gamma strike · 0DTE 265.00 → 270.00",
+      text: "Largest total gamma strike · 0DTE 265.00 → 270.00",
+      time_ct: "09:39:18 CT",
+    };
+    panels.terrain = Object.assign({}, TERRAIN, { total_gamma_change: move });
+    sock.changed("terrain");
+    // the page's ticker is SPY, and the stand-in socket sends each panel as that ticker's
+    const toast = page.locator("#edToast");
+    await expect(toast).toHaveText(
+      "SPY · Largest total gamma strike · 0DTE 265.00 → 270.00 · 09:39:18 CT×",
+    );
+    await expect(toast).toHaveAttribute("role", "status");
+    const box = await toast.boundingBox();
+    const view = page.viewportSize();
+    expect(box && view && [box.x, view.height - (box.y + box.height)]).toEqual([16, 16]);
+    // no click or key yet: a browser lets a page make no sound before one, so no chime
+    expect(await page.evaluate(() => window.EdToast.state())).toEqual({
+      shown: 1,
+      chimed: 0,
+      text: "SPY · " + move.text + " · " + move.time_ct,
+    });
+    // the same move sent again with the levels repriced (INDUCED: the regime turned) is not
+    // announced again; the regime drawn shows the frame was taken
+    panels.terrain = Object.assign({}, TERRAIN, {
+      total_gamma_change: move,
+      regime: "NEGATIVE_GAMMA",
+      regime_text: "Negative gamma",
+    });
+    sock.changed("terrain");
+    await expect(page.locator("#klRegime")).toHaveText("Negative gamma");
+    expect((await page.evaluate(() => window.EdToast.state())).shown).toBe(1);
+    // the close button takes it away
+    await toast.locator(".ed-toast-x").click();
+    await expect(toast).toHaveCount(0);
+    // after that click the page may sound: the next move shows and chimes (INDUCED: the regular
+    // column one strike higher)
+    const next = {
+      id: "1794498000.5 Largest total gamma strike · Regular 270.00 → 275.00",
+      text: "Largest total gamma strike · Regular 270.00 → 275.00",
+      time_ct: "09:40:00 CT",
+    };
+    panels.terrain = Object.assign({}, TERRAIN, { total_gamma_change: next });
+    sock.changed("terrain");
+    await expect(toast).toContainText("SPY · " + next.text + " · " + next.time_ct);
+    await expect
+      .poll(() => page.evaluate(() => window.EdToast.state()))
+      .toEqual({
+        shown: 2,
+        chimed: 1,
+        text: "SPY · " + next.text + " · " + next.time_ct,
+      });
+  });
+
   test("key levels rail reflects the terrain panel", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#klFlip")).toHaveText("243.91");

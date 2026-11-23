@@ -191,6 +191,21 @@
       // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
       if (window.EdShell.getExpiry()) src.textContent += " · all-exp";
     }
+    announceTotalGamma(d);
+  }
+
+  // The largest total gamma strike's newest move, served with the levels (total_gamma_change):
+  // a toast and a chime for a move this page sees arrive. A ticker's first levels on this page
+  // bring the move already standing, which is not new to the operator: it is kept, not announced.
+  var _announced = {};
+  function announceTotalGamma(d) {
+    var move = d.total_gamma_change,
+      id = move ? move.id : null,
+      first = !(d.ticker in _announced),
+      was = _announced[d.ticker];
+    _announced[d.ticker] = id;
+    if (first || id === null || id === was) return;
+    window.EdShell.toast(d.ticker + " · " + move.text + " · " + move.time_ct);
   }
 
   // ---------- Put/Call OI and volume <- the terrain panel's ratio texts (the selected expiry's, else the whole book's) ----------

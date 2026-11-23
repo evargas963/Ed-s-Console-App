@@ -45,21 +45,22 @@ def _confluence_expiries(books: dict[ExpiryKey, Book]) -> list[dict[str, Any]]:
     return [{"expiry": exp, "dte": dte} for exp, dte in sorted(found.items(), key=_expiry_order)]
 
 
-#: Pill text for the chain's option levels. Same-day copies take "0DTE " in front.
+#: Pill text for the chain's option levels, each "Largest" level by its side and measure in the
+#: same words. Same-day copies take "0DTE " in front.
 _OPTION_SHORT = {
-    "Call wall": "Call wall",
-    "Put wall": "Put wall",
+    "Largest call gamma strike": "Call gamma",
+    "Largest put gamma strike": "Put gamma",
     "Gamma flip": "Gamma flip",
     "Max pain": "Max pain",
-    "Largest total gamma strike": "Total Γ",
-    "Highest open interest strike near price": "High OI",
+    "Largest total gamma strike": "Total gamma",
+    "Largest open interest strike near price": "Open interest",
     "GSF": "GSF",
     "GRC": "GRC",
     "Largest negative net GEX strike": "−Net GEX",
     "Largest positive net GEX strike": "+Net GEX",
-    "Largest total delta strike": "Total Δ",
-    "Largest call delta strike": "Call Δ",
-    "Largest put delta strike": "Put Δ",
+    "Largest total delta strike": "Total delta",
+    "Largest call delta strike": "Call delta",
+    "Largest put delta strike": "Put delta",
     "Largest call charm strike": "Call charm",
     "Largest put charm strike": "Put charm",
 }
@@ -101,7 +102,7 @@ def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime) -> list[d
                 }
             )
     for gid, label in SAME_DAY_LEVELS:
-        price = live.same_day.get(gid)  # an unavailable snapshot holds no same-day level
+        price = live.same_day[gid]  # None: not known (an unavailable snapshot's every one)
         if price is not None:
             markers.append(
                 {

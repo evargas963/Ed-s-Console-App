@@ -232,8 +232,8 @@
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ["Call wall", orDash(d.call_wall_text)],
-      ["Put wall", orDash(d.put_wall_text)],
+      ["Largest call gamma strike", orDash(d.call_wall_text)],
+      ["Largest put gamma strike", orDash(d.put_wall_text)],
       ["Gamma flip", orDash(d.gamma_flip_text)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       [
@@ -327,11 +327,15 @@
       walls.put_wall.from_spot_text &&
       walls.call_wall.from_spot_text
     ) {
+      // each by its served name (the levels panel's row label)
       lines.push([
-        "Walls",
-        "Put wall " +
+        "Gamma strikes",
+        walls.put_wall.label +
+          " " +
           walls.put_wall.from_spot_text +
-          ", call wall " +
+          ", " +
+          walls.call_wall.label +
+          " " +
           walls.call_wall.from_spot_text +
           notLive(levelsD),
       ]);
@@ -369,8 +373,9 @@
     return '<span class="mig-mark ' + cls + '">' + esc(txt) + "</span>";
   }
 
-  // one served level move with its texts, the level's name served with them: 'Call wall 755 → 760
-  // (+5)'; a side not known is '-', and a change is said only when both days are known
+  // one served level move with its texts, the level's name served with them: 'Largest call gamma
+  // strike 755 → 760 (+5)'; a side not known is '-', and a change is said only when both days are
+  // known
   function levelMove(v) {
     return (
       v.level_text +

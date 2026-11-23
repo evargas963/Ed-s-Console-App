@@ -3349,6 +3349,42 @@
         border-color: var(--ed-accent-edge);
         color: var(--ed-ink);
       }
+
+      /* the toast (ed-core.js toast): one notice at the bottom left; it stays 12 s, then fades
+         out, and a newer one takes its place */
+      .ed-toast {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        z-index: 70;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        max-width: min(560px, calc(100vw - 32px));
+        padding: 10px 12px 10px 14px;
+        background: var(--ed-panel-2);
+        border: 1px solid var(--ed-edge);
+        border-left: 3px solid var(--ed-accent);
+        border-radius: 6px;
+        color: var(--ed-ink);
+        font-family: var(--ed-mono);
+        font-size: 12px;
+        animation: ed-toast-out 0.6s ease 12s forwards;
+      }
+      .ed-toast-x {
+        color: var(--ed-ink-2);
+        font-size: 16px;
+        line-height: 1;
+      }
+      .ed-toast-x:hover {
+        color: var(--ed-ink);
+      }
+      @keyframes ed-toast-out {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
     </style>
   </head>
   <body>
@@ -3693,8 +3729,9 @@
                       <span class="k">Spot</span><span class="v" id="klSpot">-</span
                       ><span class="v"></span> <span class="k">Gamma flip</span
                       ><span class="v" id="klFlip">-</span><span class="v" id="kl0Flip">-</span>
-                      <span class="k">Call wall</span><span class="v" id="klCall">-</span
-                      ><span class="v" id="kl0Call">-</span> <span class="k">Put wall</span
+                      <span class="k">Largest call gamma strike</span
+                      ><span class="v" id="klCall">-</span><span class="v" id="kl0Call">-</span>
+                      <span class="k">Largest put gamma strike</span
                       ><span class="v" id="klPut">-</span><span class="v" id="kl0Put">-</span>
                       <span class="k">Largest total gamma strike</span
                       ><span class="v" id="klAbs">-</span><span class="v" id="kl0Abs">-</span>

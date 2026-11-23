@@ -55,6 +55,7 @@ from calc.terrain_engine import (
     ExpiryKey,
     TerrainSnapshot,
     compute_terrain,
+    total_gamma_record,
 )
 from calc.terrain_read import crossed
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
@@ -954,10 +955,11 @@ def _publish_levels(
     surface, surface_symbols = None, frozenset[str]()
     if spot is not None and snap.books:
         surface, surface_symbols = _published_surface(tk, p, snap, now)
+    levels_ts = max([fetched_ts, *p.received])
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
-        levels_ts_utc=max([fetched_ts, *p.received]),
+        levels_ts_utc=levels_ts,
         chain_basis=capture.basis if capture is not None else CAPTURE_BASIS,
         spot_source=spot_source,
         spot_as_of_ts_utc=spot_ts,
@@ -970,6 +972,7 @@ def _publish_levels(
         contracts=listed,
         prior_day=prior,
         captures_key=captures_key,
+        total_gamma=total_gamma_record(previous and previous.total_gamma, snap, levels_ts),
     )
     level_store.publish(tk, levels)
     _levels_changed(tk)

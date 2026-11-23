@@ -627,25 +627,27 @@ def _sticky_sums(
 
 
 def _finish_bucket(b: Bucket) -> None:
-    """Compute a strike bucket's net fields from its call and put legs, +call/-put.
+    """Compute a strike bucket's net fields from its call and put legs.
 
-    The same convention as net GEX and the terrain's dex_dollars (one meaning of each on every
-    screen): the one place they are computed, for a book and for a merge of books.
+    The one place they are computed, for a book and for a merge of books, each as the industry
+    publishes it: gamma and vanna +call / -put, the convention net GEX makes (dealers long calls,
+    short puts; docs/SOURCES.md flashalpha-gex-formula); delta the signed sum of Schwab's deltas
+    as sent, a put's negative (net DEX, docs/SOURCES.md flashalpha-dex-api), no holder assumed.
     A dollar field or vanna needs spot (`dollarized`): none without it.
     """
     b["net_gamma"] = b["call_gamma"] - b["put_gamma"]
-    b["net_delta"] = b["call_delta"] - b["put_delta"]
-    b["net_dex_dollars"] = _net(b["call_dex_dollars"], b["put_dex_dollars"], b["dollarized"])
-    b["net_gex_1pct"] = _net(b["call_gex_1pct"], b["put_gex_1pct"], b["dollarized"])
-    b["net_vanna"] = _net(b["call_vanna"], b["put_vanna"], b["dollarized"])
+    b["net_delta"] = b["call_delta"] + b["put_delta"]
+    b["net_dex_dollars"] = _net(b["call_dex_dollars"], b["put_dex_dollars"], b["dollarized"], 1.0)
+    b["net_gex_1pct"] = _net(b["call_gex_1pct"], b["put_gex_1pct"], b["dollarized"], -1.0)
+    b["net_vanna"] = _net(b["call_vanna"], b["put_vanna"], b["dollarized"], -1.0)
 
 
-def _net(call: float | None, put: float | None, dollarized: bool) -> float | None:
-    """Return a dollar field's or vanna's net, +call/-put; None without spot (not dollarized).
+def _net(call: float | None, put: float | None, dollarized: bool, put_sign: float) -> float | None:
+    """Return a dollar field's or vanna's net, call + put_sign x put; None without spot.
 
     Dollarized, each leg is a number (a term not known adds nothing).
     """
-    return call - put if dollarized and call is not None and put is not None else None
+    return call + put_sign * put if dollarized and call is not None and put is not None else None
 
 
 def _diagnostics(total: int, used: int, missing: int) -> ExposureDiagnostics:

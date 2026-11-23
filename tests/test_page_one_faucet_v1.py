@@ -242,8 +242,8 @@ def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
 
 #: the marks of a strike row as the screen names them (push.strike_rows.MARK_LABELS)
 SPOT_MARK = {"kind": "spot", "label": "SPOT"}
-CALL_MARK = {"kind": "call", "label": "Call wall"}
-PUT_MARK = {"kind": "put", "label": "Put wall"}
+CALL_MARK = {"kind": "call", "label": "Largest call gamma strike"}
+PUT_MARK = {"kind": "put", "label": "Largest put gamma strike"}
 
 
 def _strike_lists(body):

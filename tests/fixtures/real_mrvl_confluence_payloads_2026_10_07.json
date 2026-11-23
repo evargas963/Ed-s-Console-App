@@ -14,7 +14,7 @@
     "gross": 17587848.864576463,
     "volume": 4199.0,
     "vol_oi": 0.8269896193771626,
-    "dex": 108495476.27955325,
+    "dex": 64720503.55924076,
     "vanna": 549392.1619142124,
     "iv": 313.54237241,
     "charm": 31096.66703997757,
@@ -30,7 +30,7 @@
      "gross": 7429703.875097449,
      "volume": 1883.0,
      "vol_oi": 0.4397477814105558,
-     "dex": 72802341.25308914,
+     "dex": 54023573.581810415,
      "vanna": -138844.4691648355,
      "iv": 69.84390359429035,
      "charm": 7554.741208367406,
@@ -54,7 +54,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$72.80M",
+     "dex_text": "$54.02M",
      "dex_reason": null,
      "vanna_text": "-$138.84K",
      "vanna_reason": null,
@@ -127,7 +127,7 @@
       {
        "label": "delta",
        "text": "5.0",
-       "raw_text": "$72.80M",
+       "raw_text": "$54.02M",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
@@ -150,7 +150,7 @@
      "gross": 3324721.4790630247,
      "volume": 855.0,
      "vol_oi": 0.3971202972596377,
-     "dex": 32525747.05959507,
+     "dex": 20481771.07630893,
      "vanna": -21086.38353230856,
      "iv": 70.04638664167554,
      "charm": 1158.7968733884527,
@@ -174,7 +174,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$32.53M",
+     "dex_text": "$20.48M",
      "dex_reason": null,
      "vanna_text": "-$21.09K",
      "vanna_reason": null,
@@ -182,7 +182,7 @@
      "iv_reason": null,
      "charm_text": "1.16K",
      "charm_reason": null,
-     "score": 17.18799995296726,
+     "score": 17.321275448157326,
      "score_text": "17",
      "missing": [],
      "contributions": [
@@ -202,9 +202,9 @@
       },
       {
        "label": "delta",
-       "text": "2.7",
-       "raw_text": "$32.53M",
-       "normalized_text": "0.54",
+       "text": "2.8",
+       "raw_text": "$20.48M",
+       "normalized_text": "0.56",
        "weight_text": "0.05"
       }
      ],
@@ -225,9 +225,9 @@
       },
       {
        "label": "delta",
-       "text": "2.7",
-       "raw_text": "$32.53M",
-       "normalized_text": "0.54",
+       "text": "2.8",
+       "raw_text": "$20.48M",
+       "normalized_text": "0.56",
        "weight_text": "0.05"
       },
       {
@@ -270,7 +270,7 @@
      "gross": 7264792.762772822,
      "volume": 960.0,
      "vol_oi": 0.17595307917888564,
-     "dex": 87124622.63075846,
+     "dex": 64720503.55924076,
      "vanna": -95053.81193626023,
      "iv": 71.19439301304084,
      "charm": 5310.675197038056,
@@ -294,7 +294,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$87.12M",
+     "dex_text": "$64.72M",
      "dex_reason": null,
      "vanna_text": "-$95.05K",
      "vanna_reason": null,
@@ -353,7 +353,7 @@
       {
        "label": "delta",
        "text": "5.0",
-       "raw_text": "$87.12M",
+       "raw_text": "$64.72M",
        "normalized_text": "1.00",
        "weight_text": "0.05"
       },
@@ -390,7 +390,7 @@
      "gross": 1226422.9904186903,
      "volume": 308.0,
      "vol_oi": 0.28230980751604035,
-     "dex": 14708023.404242462,
+     "dex": 9964978.918933501,
      "vanna": 6879.534932230025,
      "iv": 72.40760987,
      "charm": -390.53093304908634,
@@ -414,7 +414,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$14.71M",
+     "dex_text": "$9.96M",
      "dex_reason": null,
      "vanna_text": "$6.88K",
      "vanna_reason": null,
@@ -422,7 +422,7 @@
      "iv_reason": null,
      "charm_text": "-391",
      "charm_reason": null,
-     "score": 7.097162662097062,
+     "score": 7.254268018576232,
      "score_text": "7",
      "missing": [],
      "contributions": [
@@ -442,9 +442,9 @@
       },
       {
        "label": "delta",
-       "text": "1.2",
-       "raw_text": "$14.71M",
-       "normalized_text": "0.24",
+       "text": "1.4",
+       "raw_text": "$9.96M",
+       "normalized_text": "0.27",
        "weight_text": "0.05"
       }
      ],
@@ -465,9 +465,9 @@
       },
       {
        "label": "delta",
-       "text": "1.2",
-       "raw_text": "$14.71M",
-       "normalized_text": "0.24",
+       "text": "1.4",
+       "raw_text": "$9.96M",
+       "normalized_text": "0.27",
        "weight_text": "0.05"
       },
       {
@@ -510,7 +510,7 @@
      "gross": 3498847.2104455717,
      "volume": 1853.0,
      "vol_oi": 0.4894347596407818,
-     "dex": 44865043.357486404,
+     "dex": 30504539.026160903,
      "vanna": 68359.4364045784,
      "iv": 72.86854457999999,
      "charm": -3910.7302748938528,
@@ -534,7 +534,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$44.87M",
+     "dex_text": "$30.50M",
      "dex_reason": null,
      "vanna_text": "$68.36K",
      "vanna_reason": null,
@@ -542,7 +542,7 @@
      "iv_reason": null,
      "charm_text": "-3.91K",
      "charm_reason": null,
-     "score": 34.77579705377276,
+     "score": 35.26984271299615,
      "score_text": "35",
      "missing": [],
      "contributions": [
@@ -561,11 +561,11 @@
        "weight_text": "0.10"
       },
       {
-       "label": "net gamma",
-       "text": "4.0",
-       "raw_text": "$797.57K",
-       "normalized_text": "0.16",
-       "weight_text": "0.25"
+       "label": "delta",
+       "text": "4.2",
+       "raw_text": "$30.50M",
+       "normalized_text": "0.84",
+       "weight_text": "0.05"
       }
      ],
      "factors": [
@@ -584,18 +584,18 @@
        "weight_text": "0.10"
       },
       {
+       "label": "delta",
+       "text": "4.2",
+       "raw_text": "$30.50M",
+       "normalized_text": "0.84",
+       "weight_text": "0.05"
+      },
+      {
        "label": "net gamma",
        "text": "4.0",
        "raw_text": "$797.57K",
        "normalized_text": "0.16",
        "weight_text": "0.25"
-      },
-      {
-       "label": "delta",
-       "text": "3.7",
-       "raw_text": "$44.87M",
-       "normalized_text": "0.74",
-       "weight_text": "0.05"
       },
       {
        "label": "charm",
@@ -630,7 +630,7 @@
      "gross": 1590949.4507778278,
      "volume": 152.0,
      "vol_oi": 0.07152941176470588,
-     "dex": 19062158.05356197,
+     "dex": 11600973.099403791,
      "vanna": 73482.32762291552,
      "iv": 74.1740494,
      "charm": -4283.199518352656,
@@ -654,7 +654,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$19.06M",
+     "dex_text": "$11.60M",
      "dex_reason": null,
      "vanna_text": "$73.48K",
      "vanna_reason": null,
@@ -662,7 +662,7 @@
      "iv_reason": null,
      "charm_text": "-4.28K",
      "charm_reason": null,
-     "score": 19.286434625871813,
+     "score": 19.30909304697441,
      "score_text": "19",
      "missing": [],
      "contributions": [
@@ -720,8 +720,8 @@
       {
        "label": "delta",
        "text": "1.6",
-       "raw_text": "$19.06M",
-       "normalized_text": "0.31",
+       "raw_text": "$11.60M",
+       "normalized_text": "0.32",
        "weight_text": "0.05"
       },
       {
@@ -750,7 +750,7 @@
      "gross": 2617373.7690291805,
      "volume": 621.0,
      "vol_oi": 0.13830734966592428,
-     "dex": 46212977.6924643,
+     "dex": 35188568.34220757,
      "vanna": 97468.37896286984,
      "iv": 75.45619496,
      "charm": -5783.42797174112,
@@ -774,7 +774,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$46.21M",
+     "dex_text": "$35.19M",
      "dex_reason": null,
      "vanna_text": "$97.47K",
      "vanna_reason": null,
@@ -782,8 +782,8 @@
      "iv_reason": null,
      "charm_text": "-5.78K",
      "charm_reason": null,
-     "score": 34.389185004872076,
-     "score_text": "34",
+     "score": 35.416909841083786,
+     "score_text": "35",
      "missing": [],
      "contributions": [
       {
@@ -831,18 +831,18 @@
        "weight_text": "0.08"
       },
       {
+       "label": "delta",
+       "text": "4.8",
+       "raw_text": "$35.19M",
+       "normalized_text": "0.97",
+       "weight_text": "0.05"
+      },
+      {
        "label": "vanna",
        "text": "4.3",
        "raw_text": "$97.47K",
        "normalized_text": "0.61",
        "weight_text": "0.07"
-      },
-      {
-       "label": "delta",
-       "text": "3.8",
-       "raw_text": "$46.21M",
-       "normalized_text": "0.76",
-       "weight_text": "0.05"
       },
       {
        "label": "volume",
@@ -870,7 +870,7 @@
      "gross": 514248.77484909265,
      "volume": 73.0,
      "vol_oi": 0.06703397612488522,
-     "dex": 8545886.70501621,
+     "dex": 6063433.80826611,
      "vanna": 32853.29712982689,
      "iv": 78.44313467191911,
      "charm": -2028.6008052517896,
@@ -894,7 +894,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$8.55M",
+     "dex_text": "$6.06M",
      "dex_reason": null,
      "vanna_text": "$32.85K",
      "vanna_reason": null,
@@ -902,7 +902,7 @@
      "iv_reason": null,
      "charm_text": "-2.03K",
      "charm_reason": null,
-     "score": 9.146371147526912,
+     "score": 9.275308899592899,
      "score_text": "9",
      "missing": [],
      "contributions": [
@@ -959,9 +959,9 @@
       },
       {
        "label": "delta",
-       "text": "0.7",
-       "raw_text": "$8.55M",
-       "normalized_text": "0.14",
+       "text": "0.8",
+       "raw_text": "$6.06M",
+       "normalized_text": "0.17",
        "weight_text": "0.05"
       },
       {
@@ -990,7 +990,7 @@
      "gross": 679724.3786367907,
      "volume": 132.0,
      "vol_oi": 0.06398448860882211,
-     "dex": 19982435.339907747,
+     "dex": 16900391.30027995,
      "vanna": 35661.89040995425,
      "iv": 78.97351512745331,
      "charm": -2218.441818036479,
@@ -1014,7 +1014,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$19.98M",
+     "dex_text": "$16.90M",
      "dex_reason": null,
      "vanna_text": "$35.66K",
      "vanna_reason": null,
@@ -1022,8 +1022,8 @@
      "iv_reason": null,
      "charm_text": "-2.22K",
      "charm_reason": null,
-     "score": 13.906783362197498,
-     "score_text": "14",
+     "score": 14.583200814056804,
+     "score_text": "15",
      "missing": [],
      "contributions": [
       {
@@ -1034,18 +1034,18 @@
        "weight_text": "0.15"
       },
       {
+       "label": "delta",
+       "text": "2.3",
+       "raw_text": "$16.90M",
+       "normalized_text": "0.47",
+       "weight_text": "0.05"
+      },
+      {
        "label": "net gamma",
        "text": "2.0",
        "raw_text": "$396.32K",
        "normalized_text": "0.08",
        "weight_text": "0.25"
-      },
-      {
-       "label": "charm",
-       "text": "2.0",
-       "raw_text": "2.22K",
-       "normalized_text": "0.24",
-       "weight_text": "0.08"
       }
      ],
      "factors": [
@@ -1057,6 +1057,13 @@
        "weight_text": "0.15"
       },
       {
+       "label": "delta",
+       "text": "2.3",
+       "raw_text": "$16.90M",
+       "normalized_text": "0.47",
+       "weight_text": "0.05"
+      },
+      {
        "label": "net gamma",
        "text": "2.0",
        "raw_text": "$396.32K",
@@ -1069,13 +1076,6 @@
        "raw_text": "2.22K",
        "normalized_text": "0.24",
        "weight_text": "0.08"
-      },
-      {
-       "label": "delta",
-       "text": "1.7",
-       "raw_text": "$19.98M",
-       "normalized_text": "0.33",
-       "weight_text": "0.05"
       },
       {
        "label": "vanna",
@@ -1110,7 +1110,7 @@
      "gross": 318204.7437111227,
      "volume": 45.0,
      "vol_oi": 0.035685963521015066,
-     "dex": 12539493.81986686,
+     "dex": 10985392.224413859,
      "vanna": 17350.893788458485,
      "iv": 82.60036186,
      "charm": -1128.5923698460895,
@@ -1134,7 +1134,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$12.54M",
+     "dex_text": "$10.99M",
      "dex_reason": null,
      "vanna_text": "$17.35K",
      "vanna_reason": null,
@@ -1142,7 +1142,7 @@
      "iv_reason": null,
      "charm_text": "-1.13K",
      "charm_reason": null,
-     "score": 7.985994798310491,
+     "score": 8.462789317716894,
      "score_text": "8",
      "missing": [],
      "contributions": [
@@ -1154,18 +1154,18 @@
        "weight_text": "0.15"
       },
       {
+       "label": "delta",
+       "text": "1.5",
+       "raw_text": "$10.99M",
+       "normalized_text": "0.30",
+       "weight_text": "0.05"
+      },
+      {
        "label": "net gamma",
        "text": "1.1",
        "raw_text": "$217.05K",
        "normalized_text": "0.04",
        "weight_text": "0.25"
-      },
-      {
-       "label": "delta",
-       "text": "1.0",
-       "raw_text": "$12.54M",
-       "normalized_text": "0.21",
-       "weight_text": "0.05"
       }
      ],
      "factors": [
@@ -1177,18 +1177,18 @@
        "weight_text": "0.15"
       },
       {
+       "label": "delta",
+       "text": "1.5",
+       "raw_text": "$10.99M",
+       "normalized_text": "0.30",
+       "weight_text": "0.05"
+      },
+      {
        "label": "net gamma",
        "text": "1.1",
        "raw_text": "$217.05K",
        "normalized_text": "0.04",
        "weight_text": "0.25"
-      },
-      {
-       "label": "delta",
-       "text": "1.0",
-       "raw_text": "$12.54M",
-       "normalized_text": "0.21",
-       "weight_text": "0.05"
       },
       {
        "label": "charm",
@@ -1230,7 +1230,7 @@
      "gross": 715774.0078857461,
      "volume": 299.0,
      "vol_oi": 0.08122792719369737,
-     "dex": 24921521.60466991,
+     "dex": 20929246.39533009,
      "vanna": 75905.72641428745,
      "iv": 83.50422821,
      "charm": -4993.267028743839,
@@ -1254,7 +1254,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$24.92M",
+     "dex_text": "$20.93M",
      "dex_reason": null,
      "vanna_text": "$75.91K",
      "vanna_reason": null,
@@ -1262,8 +1262,8 @@
      "iv_reason": null,
      "charm_text": "-4.99K",
      "charm_reason": null,
-     "score": 25.706576033822472,
-     "score_text": "26",
+     "score": 26.529742828854523,
+     "score_text": "27",
      "missing": [],
      "contributions": [
       {
@@ -1319,9 +1319,9 @@
       },
       {
        "label": "delta",
-       "text": "2.1",
-       "raw_text": "$24.92M",
-       "normalized_text": "0.41",
+       "text": "2.9",
+       "raw_text": "$20.93M",
+       "normalized_text": "0.58",
        "weight_text": "0.05"
       },
       {
@@ -1364,10 +1364,10 @@
      },
      {
       "lane": "options",
-      "abbrev": "Put wall",
+      "abbrev": "Put gamma",
       "price": 270.0,
       "price_text": "270.00",
-      "title": "Put wall"
+      "title": "Largest put gamma strike"
      },
      {
       "lane": "options",
@@ -1378,7 +1378,7 @@
      },
      {
       "lane": "options",
-      "abbrev": "0DTE Call \u0394",
+      "abbrev": "0DTE Call delta",
       "price": 270.0,
       "price_text": "270.00",
       "title": "0DTE Largest call delta strike"
@@ -1413,7 +1413,7 @@
      },
      {
       "lane": "options",
-      "abbrev": "Put \u0394",
+      "abbrev": "Put delta",
       "price": 250.0,
       "price_text": "250.00",
       "title": "Largest put delta strike"
@@ -1460,14 +1460,14 @@
    "levels_above": [
     {
      "lane": "options",
-     "abbrev": "Call wall",
+     "abbrev": "Call gamma",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Call wall"
+     "title": "Largest call gamma strike"
     },
     {
      "lane": "options",
-     "abbrev": "Total \u0393",
+     "abbrev": "Total gamma",
      "price": 300.0,
      "price_text": "300.00",
      "title": "Largest total gamma strike"
@@ -1488,14 +1488,14 @@
     },
     {
      "lane": "options",
-     "abbrev": "Total \u0394",
+     "abbrev": "Total delta",
      "price": 300.0,
      "price_text": "300.00",
      "title": "Largest total delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "Call \u0394",
+     "abbrev": "Call delta",
      "price": 300.0,
      "price_text": "300.00",
      "title": "Largest call delta strike"
@@ -1509,21 +1509,21 @@
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Call wall",
+     "abbrev": "0DTE Call gamma",
      "price": 282.5,
      "price_text": "282.50",
-     "title": "0DTE Call wall"
+     "title": "0DTE Largest call gamma strike"
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Put wall",
+     "abbrev": "0DTE Put gamma",
      "price": 290.0,
      "price_text": "290.00",
-     "title": "0DTE Put wall"
+     "title": "0DTE Largest put gamma strike"
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Total \u0393",
+     "abbrev": "0DTE Total gamma",
      "price": 285.0,
      "price_text": "285.00",
      "title": "0DTE Largest total gamma strike"
@@ -1544,14 +1544,14 @@
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Total \u0394",
+     "abbrev": "0DTE Total delta",
      "price": 280.0,
      "price_text": "280.00",
      "title": "0DTE Largest total delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Put \u0394",
+     "abbrev": "0DTE Put delta",
      "price": 290.0,
      "price_text": "290.00",
      "title": "0DTE Largest put delta strike"
@@ -1588,16 +1588,16 @@
     }
    ],
    "level_names": {
-    "300.00": "Call wall + Largest total gamma strike + Largest positive net GEX strike + Largest total delta strike + Largest call delta strike + Largest call charm strike",
-    "270.00": "Put wall + Max pain + 0DTE Largest call delta strike",
+    "300.00": "Largest call gamma strike + Largest total gamma strike + Largest positive net GEX strike + Largest total delta strike + Largest call delta strike + Largest call charm strike",
+    "270.00": "Largest put gamma strike + Max pain + 0DTE Largest call delta strike",
     "249.97": "Gamma flip",
     "267.84": "GSF",
     "464.12": "GRC",
     "200.00": "Largest negative net GEX strike",
     "250.00": "Largest put delta strike",
     "260.00": "Largest put charm strike",
-    "282.50": "0DTE Call wall + 0DTE Largest positive net GEX strike",
-    "290.00": "0DTE Put wall + 0DTE Largest put delta strike + 0DTE Largest call charm strike + 0DTE Largest put charm strike",
+    "282.50": "0DTE Largest call gamma strike + 0DTE Largest positive net GEX strike",
+    "290.00": "0DTE Largest put gamma strike + 0DTE Largest put delta strike + 0DTE Largest call charm strike + 0DTE Largest put charm strike",
     "267.45": "0DTE Gamma flip",
     "285.00": "0DTE Largest total gamma strike",
     "274.38": "0DTE GSF",
@@ -1624,7 +1624,7 @@
     "gross": 18397817.45054602,
     "volume": 2768.0,
     "vol_oi": 2.0813397129186604,
-    "dex": 307780593.65682524,
+    "dex": 281685225.25204176,
     "vanna": 1494091.6610103934,
     "iv": 236.22027897,
     "charm": 18349.517841404617,
@@ -1640,7 +1640,7 @@
      "gross": 466840.5790972909,
      "volume": 201.0,
      "vol_oi": 0.2960235640648012,
-     "dex": 3302187.470770171,
+     "dex": 2778615.2692215107,
      "vanna": 78655.8283792238,
      "iv": 63.19750973863636,
      "charm": -966.698537896813,
@@ -1664,7 +1664,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$3.30M",
+     "dex_text": "$2.78M",
      "dex_reason": null,
      "vanna_text": "$78.66K",
      "vanna_reason": null,
@@ -1672,7 +1672,7 @@
      "iv_reason": null,
      "charm_text": "-967",
      "charm_reason": null,
-     "score": 13.370762409847128,
+     "score": 13.376579599945385,
      "score_text": "13",
      "missing": [],
      "contributions": [
@@ -1737,7 +1737,7 @@
       {
        "label": "delta",
        "text": "0.3",
-       "raw_text": "$3.30M",
+       "raw_text": "$2.78M",
        "normalized_text": "0.03",
        "weight_text": "0.10"
       },
@@ -1880,7 +1880,7 @@
      "gross": 4203992.571536388,
      "volume": 310.0,
      "vol_oi": 0.05874549933674436,
-     "dex": 31883135.552943453,
+     "dex": 26713115.114002295,
      "vanna": 600666.3926988769,
      "iv": 62.65728141776446,
      "charm": -7342.192505445739,
@@ -1904,7 +1904,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$31.88M",
+     "dex_text": "$26.71M",
      "dex_reason": null,
      "vanna_text": "$600.67K",
      "vanna_reason": null,
@@ -1912,7 +1912,7 @@
      "iv_reason": null,
      "charm_text": "-7.34K",
      "charm_reason": null,
-     "score": 63.6915619547742,
+     "score": 63.7335209647584,
      "score_text": "64",
      "missing": [],
      "contributions": [
@@ -1977,7 +1977,7 @@
       {
        "label": "delta",
        "text": "3.3",
-       "raw_text": "$31.88M",
+       "raw_text": "$26.71M",
        "normalized_text": "0.33",
        "weight_text": "0.10"
       },
@@ -2120,7 +2120,7 @@
      "gross": 968211.0974807675,
      "volume": 154.0,
      "vol_oi": 0.14405986903648269,
-     "dex": 8366138.900219321,
+     "dex": 5762107.335862281,
      "vanna": 106049.78641361251,
      "iv": 62.15992837000001,
      "charm": -1291.782355084047,
@@ -2144,7 +2144,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$8.37M",
+     "dex_text": "$5.76M",
      "dex_reason": null,
      "vanna_text": "$106.05K",
      "vanna_reason": null,
@@ -2152,7 +2152,7 @@
      "iv_reason": null,
      "charm_text": "-1.29K",
      "charm_reason": null,
-     "score": 19.413490814550087,
+     "score": 19.27019493016519,
      "score_text": "19",
      "missing": [],
      "contributions": [
@@ -2216,9 +2216,9 @@
       },
       {
        "label": "delta",
-       "text": "0.9",
-       "raw_text": "$8.37M",
-       "normalized_text": "0.09",
+       "text": "0.7",
+       "raw_text": "$5.76M",
+       "normalized_text": "0.07",
        "weight_text": "0.10"
       },
       {
@@ -2360,7 +2360,7 @@
      "gross": 18397817.45054602,
      "volume": 2768.0,
      "vol_oi": 0.15055751971716072,
-     "dex": 174283065.71039993,
+     "dex": 116706381.3388449,
      "vanna": 1494091.6610103934,
      "iv": 62.23376767,
      "charm": -18349.517841404617,
@@ -2384,7 +2384,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$174.28M",
+     "dex_text": "$116.71M",
      "dex_reason": null,
      "vanna_text": "$1.49M",
      "vanna_reason": null,
@@ -2443,7 +2443,7 @@
       {
        "label": "delta",
        "text": "10.0",
-       "raw_text": "$174.28M",
+       "raw_text": "$116.71M",
        "normalized_text": "1.00",
        "weight_text": "0.10"
       },
@@ -2480,7 +2480,7 @@
      "gross": 2101468.066412474,
      "volume": 41.0,
      "vol_oi": 0.020438683948155532,
-     "dex": 19241314.145685922,
+     "dex": 17725393.69343632,
      "vanna": 168299.8351883207,
      "iv": 61.76060007574988,
      "charm": -2062.2610209771715,
@@ -2504,7 +2504,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$19.24M",
+     "dex_text": "$17.73M",
      "dex_reason": null,
      "vanna_text": "$168.30K",
      "vanna_reason": null,
@@ -2512,7 +2512,7 @@
      "iv_reason": null,
      "charm_text": "-2.06K",
      "charm_reason": null,
-     "score": 35.67105695256668,
+     "score": 35.89481424749707,
      "score_text": "36",
      "missing": [],
      "contributions": [
@@ -2569,9 +2569,9 @@
       },
       {
        "label": "delta",
-       "text": "2.0",
-       "raw_text": "$19.24M",
-       "normalized_text": "0.20",
+       "text": "2.2",
+       "raw_text": "$17.73M",
+       "normalized_text": "0.22",
        "weight_text": "0.10"
       },
       {
@@ -2600,7 +2600,7 @@
      "gross": 2755427.127536323,
      "volume": 227.0,
      "vol_oi": 0.08912446014919513,
-     "dex": 28279056.73086126,
+     "dex": 18862228.869233936,
      "vanna": 152207.80094505273,
      "iv": 61.87646878215213,
      "charm": -1882.5262637871706,
@@ -2624,7 +2624,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$28.28M",
+     "dex_text": "$18.86M",
      "dex_reason": null,
      "vanna_text": "$152.21K",
      "vanna_reason": null,
@@ -2632,8 +2632,8 @@
      "iv_reason": null,
      "charm_text": "-1.88K",
      "charm_reason": null,
-     "score": 41.63561844365595,
-     "score_text": "42",
+     "score": 41.075209996078435,
+     "score_text": "41",
      "missing": [],
      "contributions": [
       {
@@ -2688,18 +2688,18 @@
        "weight_text": "0.07"
       },
       {
-       "label": "delta",
-       "text": "2.9",
-       "raw_text": "$28.28M",
-       "normalized_text": "0.29",
-       "weight_text": "0.10"
-      },
-      {
        "label": "charm",
        "text": "2.4",
        "raw_text": "1.88K",
        "normalized_text": "0.49",
        "weight_text": "0.05"
+      },
+      {
+       "label": "delta",
+       "text": "2.3",
+       "raw_text": "$18.86M",
+       "normalized_text": "0.23",
+       "weight_text": "0.10"
       },
       {
        "label": "volatility",
@@ -2720,7 +2720,7 @@
      "gross": 466557.78272719873,
      "volume": 238.0,
      "vol_oi": 0.569377990430622,
-     "dex": 5636087.683168381,
+     "dex": 155284.2617347804,
      "vanna": 6095.551270913005,
      "iv": 61.53418120908537,
      "charm": -75.86526303579403,
@@ -2744,7 +2744,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$5.64M",
+     "dex_text": "$155.28K",
      "dex_reason": null,
      "vanna_text": "$6.10K",
      "vanna_reason": null,
@@ -2752,8 +2752,8 @@
      "iv_reason": null,
      "charm_text": "-76",
      "charm_reason": null,
-     "score": 6.570874587390942,
-     "score_text": "7",
+     "score": 6.013367137243496,
+     "score_text": "6",
      "missing": [],
      "contributions": [
       {
@@ -2801,13 +2801,6 @@
        "weight_text": "0.20"
       },
       {
-       "label": "delta",
-       "text": "0.6",
-       "raw_text": "$5.64M",
-       "normalized_text": "0.06",
-       "weight_text": "0.10"
-      },
-      {
        "label": "vanna",
        "text": "0.2",
        "raw_text": "$6.10K",
@@ -2827,6 +2820,13 @@
        "raw_text": "61.53",
        "normalized_text": "0.01",
        "weight_text": "0.05"
+      },
+      {
+       "label": "delta",
+       "text": "0.0",
+       "raw_text": "$155.28K",
+       "normalized_text": "0.00",
+       "weight_text": "0.10"
       }
      ],
      "distance_text": null,
@@ -2840,7 +2840,7 @@
      "gross": 9767466.454838429,
      "volume": 674.0,
      "vol_oi": 0.07815398886827458,
-     "dex": 110010748.44648893,
+     "dex": 71624847.59524588,
      "vanna": 294722.7909691059,
      "iv": 61.84808497000001,
      "charm": -3750.666802187423,
@@ -2864,7 +2864,7 @@
      "vol_oi_reason": null,
      "flow_text": null,
      "flow_reason": "no signed flow is produced",
-     "dex_text": "$110.01M",
+     "dex_text": "$71.62M",
      "dex_reason": null,
      "vanna_text": "$294.72K",
      "vanna_reason": null,
@@ -2872,8 +2872,8 @@
      "iv_reason": null,
      "charm_text": "-3.75K",
      "charm_reason": null,
-     "score": 78.51821419178607,
-     "score_text": "79",
+     "score": 77.37822996957307,
+     "score_text": "77",
      "missing": [],
      "contributions": [
       {
@@ -2891,10 +2891,10 @@
        "weight_text": "0.20"
       },
       {
-       "label": "delta",
-       "text": "10.0",
-       "raw_text": "$110.01M",
-       "normalized_text": "1.00",
+       "label": "vanna",
+       "text": "9.4",
+       "raw_text": "$294.72K",
+       "normalized_text": "0.94",
        "weight_text": "0.10"
       }
      ],
@@ -2914,17 +2914,17 @@
        "weight_text": "0.20"
       },
       {
-       "label": "delta",
-       "text": "10.0",
-       "raw_text": "$110.01M",
-       "normalized_text": "1.00",
-       "weight_text": "0.10"
-      },
-      {
        "label": "vanna",
        "text": "9.4",
        "raw_text": "$294.72K",
        "normalized_text": "0.94",
+       "weight_text": "0.10"
+      },
+      {
+       "label": "delta",
+       "text": "8.9",
+       "raw_text": "$71.62M",
+       "normalized_text": "0.89",
        "weight_text": "0.10"
       },
       {
@@ -2967,14 +2967,14 @@
     "options": [
      {
       "lane": "options",
-      "abbrev": "Call wall",
+      "abbrev": "Call gamma",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Call wall"
+      "title": "Largest call gamma strike"
      },
      {
       "lane": "options",
-      "abbrev": "Total \u0393",
+      "abbrev": "Total gamma",
       "price": 300.0,
       "price_text": "300.00",
       "title": "Largest total gamma strike"
@@ -2988,14 +2988,14 @@
      },
      {
       "lane": "options",
-      "abbrev": "Total \u0394",
+      "abbrev": "Total delta",
       "price": 300.0,
       "price_text": "300.00",
       "title": "Largest total delta strike"
      },
      {
       "lane": "options",
-      "abbrev": "Call \u0394",
+      "abbrev": "Call delta",
       "price": 300.0,
       "price_text": "300.00",
       "title": "Largest call delta strike"
@@ -3009,14 +3009,14 @@
      },
      {
       "lane": "options",
-      "abbrev": "0DTE Put wall",
+      "abbrev": "0DTE Put gamma",
       "price": 290.0,
       "price_text": "290.00",
-      "title": "0DTE Put wall"
+      "title": "0DTE Largest put gamma strike"
      },
      {
       "lane": "options",
-      "abbrev": "0DTE Put \u0394",
+      "abbrev": "0DTE Put delta",
       "price": 290.0,
       "price_text": "290.00",
       "title": "0DTE Largest put delta strike"
@@ -3068,10 +3068,10 @@
    "levels_below": [
     {
      "lane": "options",
-     "abbrev": "Put wall",
+     "abbrev": "Put gamma",
      "price": 270.0,
      "price_text": "270.00",
-     "title": "Put wall"
+     "title": "Largest put gamma strike"
     },
     {
      "lane": "options",
@@ -3103,7 +3103,7 @@
     },
     {
      "lane": "options",
-     "abbrev": "Put \u0394",
+     "abbrev": "Put delta",
      "price": 250.0,
      "price_text": "250.00",
      "title": "Largest put delta strike"
@@ -3117,10 +3117,10 @@
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Call wall",
+     "abbrev": "0DTE Call gamma",
      "price": 282.5,
      "price_text": "282.50",
-     "title": "0DTE Call wall"
+     "title": "0DTE Largest call gamma strike"
     },
     {
      "lane": "options",
@@ -3131,7 +3131,7 @@
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Total \u0393",
+     "abbrev": "0DTE Total gamma",
      "price": 285.0,
      "price_text": "285.00",
      "title": "0DTE Largest total gamma strike"
@@ -3159,30 +3159,30 @@
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Total \u0394",
+     "abbrev": "0DTE Total delta",
      "price": 280.0,
      "price_text": "280.00",
      "title": "0DTE Largest total delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "0DTE Call \u0394",
+     "abbrev": "0DTE Call delta",
      "price": 270.0,
      "price_text": "270.00",
      "title": "0DTE Largest call delta strike"
     }
    ],
    "level_names": {
-    "300.00": "Call wall + Largest total gamma strike + Largest positive net GEX strike + Largest total delta strike + Largest call delta strike + Largest call charm strike",
-    "270.00": "Put wall + Max pain + 0DTE Largest call delta strike",
+    "300.00": "Largest call gamma strike + Largest total gamma strike + Largest positive net GEX strike + Largest total delta strike + Largest call delta strike + Largest call charm strike",
+    "270.00": "Largest put gamma strike + Max pain + 0DTE Largest call delta strike",
     "249.97": "Gamma flip",
     "267.84": "GSF",
     "464.12": "GRC",
     "200.00": "Largest negative net GEX strike",
     "250.00": "Largest put delta strike",
     "260.00": "Largest put charm strike",
-    "282.50": "0DTE Call wall + 0DTE Largest positive net GEX strike",
-    "290.00": "0DTE Put wall + 0DTE Largest put delta strike + 0DTE Largest call charm strike + 0DTE Largest put charm strike",
+    "282.50": "0DTE Largest call gamma strike + 0DTE Largest positive net GEX strike",
+    "290.00": "0DTE Largest put gamma strike + 0DTE Largest put delta strike + 0DTE Largest call charm strike + 0DTE Largest put charm strike",
     "267.45": "0DTE Gamma flip",
     "285.00": "0DTE Largest total gamma strike",
     "274.38": "0DTE GSF",
