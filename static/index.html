@@ -4058,24 +4058,6 @@
                         Open tab ›
                       </button>
                     </div>
-                    <div class="tdm-src"></div>
-                    <div class="tdm-cs">
-                      <div>
-                        <small>Current state</small><span class="tdm-state"></span
-                        ><span class="tdm-hero"></span>
-                      </div>
-                      <div>
-                        <small>Change (1h)</small
-                        ><span class="tdm-chg" title="No one-hour change is produced for this card"
-                          >-</span
-                        >
-                      </div>
-                    </div>
-                    <figure class="tdm-chartbox">
-                      <div class="tdm-plot"></div>
-                      <figcaption></figcaption>
-                    </figure>
-                    <div class="tdm-rows"></div>
                   </div>
                   <div class="tdm-card panel" id="tdmCardOpt">
                     <div class="tdm-card-h">
@@ -4089,24 +4071,6 @@
                         Open tab ›
                       </button>
                     </div>
-                    <div class="tdm-src"></div>
-                    <div class="tdm-cs">
-                      <div>
-                        <small>Current state</small><span class="tdm-state"></span
-                        ><span class="tdm-hero"></span>
-                      </div>
-                      <div>
-                        <small>Change (1h)</small
-                        ><span class="tdm-chg" title="No one-hour change is produced for this card"
-                          >-</span
-                        >
-                      </div>
-                    </div>
-                    <figure class="tdm-chartbox">
-                      <div class="tdm-plot"></div>
-                      <figcaption></figcaption>
-                    </figure>
-                    <div class="tdm-rows"></div>
                     <div class="tdm-lean"></div>
                   </div>
                   <div class="tdm-card panel" id="tdmCardVol">
@@ -4121,6 +4085,9 @@
                         Open tab ›
                       </button>
                     </div>
+                  </div>
+                  <!-- the three cards' one body (ed-trade-desk-map.js init) -->
+                  <template id="tdmCardBody">
                     <div class="tdm-src"></div>
                     <div class="tdm-cs">
                       <div>
@@ -4139,7 +4106,7 @@
                       <figcaption></figcaption>
                     </figure>
                     <div class="tdm-rows"></div>
-                  </div>
+                  </template>
                 </div>
                 <div class="tdm-agree panel">
                   <span class="tdm-agree-t">Readings</span>

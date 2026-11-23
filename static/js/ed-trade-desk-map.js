@@ -1256,6 +1256,10 @@
   }
   function init() {
     if (!$("tdmMap")) return;
+    // the Order Flow, Options Positioning and Volatility cards' one body, after each header
+    ["tdmCardFlow", "tdmCardOpt", "tdmCardVol"].forEach(function (id) {
+      $(id).querySelector(".tdm-card-h").after($("tdmCardBody").content.cloneNode(true));
+    });
     document.addEventListener("ed:view", start);
     document.addEventListener("ed:ticker", start);
     document.addEventListener("ed:book_venue", askPanels); // the book is the venue's
