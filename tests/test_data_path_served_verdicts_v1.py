@@ -211,7 +211,8 @@ def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_
     A chain delivered inside it is published and its levels are LIVE (operator 2026-11-12:
     "Yes, make them live"); in the gap before the 09:30 open a later chain replaces nothing and
     the levels read CLOSE; from 09:30 a chain is published again. Stock options' postMarket
-    window (16:00 to 16:15) leaves TSLA's own 16:00 close as it was.
+    window (16:00 to 16:15) is part of TSLA's option day: its levels stay LIVE through it, and
+    the last values computed in it stand after its 16:15 close.
     """
     fixtures = Path(__file__).parent / "fixtures"
     sent = json.loads((fixtures / "real_schwab_markets_2026_11_02.json").read_text("utf-8"))
@@ -229,17 +230,19 @@ def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_
         gap = push_terrain.terrain("SPY", _et(9, 28, day).timestamp())["levels_state"]
         published("SPY", SPY_0DTE, _et(9, 31, day))
         at_open = level_store.published_levels("SPY").computed_ts_utc
-        published("TSLA", TSLA, _et(16, 1, day))
-        published("TSLA", TSLA, _et(16, 5, day))
+        published("TSLA", TSLA, _et(16, 10, day))
+        post_market = push_terrain.terrain("TSLA", _et(16, 11, day).timestamp())["levels_state"]
+        published("TSLA", TSLA, _et(16, 16, day))
+        published("TSLA", TSLA, _et(16, 20, day))
         after_close = level_store.published_levels("TSLA").computed_ts_utc
-        closed = push_terrain.terrain("TSLA", _et(16, 6, day).timestamp())["levels_state"]
+        closed = push_terrain.terrain("TSLA", _et(16, 21, day).timestamp())["levels_state"]
     finally:
         record_markets(json.loads(held["body"]))
-    assert (before, live, gap, closed) == ("CLOSE", "LIVE", "CLOSE", "CLOSE")
+    assert (before, live, gap, post_market, closed) == ("CLOSE", "LIVE", "CLOSE", "LIVE", "CLOSE")
     assert in_pre_market == _et(8, 0, day).timestamp(), "the pre-market chain is published"
     assert in_gap == _et(8, 0, day).timestamp(), "between the windows the levels stand"
     assert at_open == _et(9, 31, day).timestamp()
-    assert after_close == _et(16, 1, day).timestamp(), "TSLA's close values stand after 16:00"
+    assert after_close == _et(16, 10, day).timestamp(), "TSLA's post-market values stand"
 
 
 def test_levels_with_no_markets_answer_held_are_not_live(published):

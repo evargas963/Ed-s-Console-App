@@ -476,8 +476,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   read once (`server._load_stored_sessions`). The session label rides each beat
   (`capture.Daemon.status`). Every session window and each contract's time to expiry
   (`time_et.time_to_expiry_years`, to the second) come from these answers; no session table is typed
-  by hand. Enforced by: `tests/test_markets_sessions_v1.py`,
-  `tests/test_data_path_stored_sessions_v1.py`.
+  by hand. Each option market's day is its regular and post-market windows, joined
+  (`time_et.Session.options`): on a full day both end at 16:15 ET, the close Schwab's own Greeks run
+  to, and there an expiring contract's time to expiry runs out (`time_et.settles_at`; Schwab's
+  `expirationDate` says 16:00) and it stops being streamed and recorded (`capture.shown_first`,
+  `capture.saved_window`). Enforced by: `tests/test_markets_sessions_v1.py`,
+  `tests/test_data_path_stored_sessions_v1.py`, `tests/test_option_contract_rule_v1.py`.
 - **News.** NEWS_HEADLINE, asked for every watchlist ticker and the market context's symbols
   (`capture.MARKET_CONTEXT_SERVICES`). Feed reads each item's numbered fields once, where it arrives
   (`feed.connection.news_headline`, their one reader: no Schwab document lists them,

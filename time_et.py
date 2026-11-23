@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -143,8 +143,8 @@ PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
 EQUITY_OPTIONS, INDEX_OPTIONS = "EQO", "IND"
 #: Underlyings whose listed options run to the index close: the symbols the exchanges list as
 #: trading to 4:15 p.m. ET, as that list has them (docs/SOURCES.md: cboe-rule-5-1,
-#: nasdaq-options-hours). Schwab's equity-option window ends earlier and Schwab marks no
-#: contract as one of them.
+#: nasdaq-options-hours). Schwab's equity-option windows end earlier on a half day (13:00 ET, no
+#: post-market) and Schwab marks no contract as one of them.
 _INDEX_CLOSE_UNDERLYINGS = frozenset(
     ("DBA", "DBB", "DBC", "DBO", "DIA", "DRAM", "EEM", "EFA", "EWY", "EWZ", "FXI", "GLD", "HYG")
     + ("IBIT", "IEF", "IVV", "IWM", "IWN", "IWO", "IYR", "KBE", "KRE", "KWEB", "LQD", "MDY", "MOO")
@@ -175,9 +175,10 @@ class Session:
     """One market date as Schwab's /markets answered it.
 
     It holds whether the stock market is open, each stock-market window it sent as (start, end)
-    in ET, each option market's regular windows (`options`: product -> windows), and every
-    window of any option market, its pre-market and post-market included (`option_hours`). A
-    closed date has no windows.
+    in ET, each option market's regular and post-market windows, joined where they meet
+    (`options`: product -> windows; the stock options' post-market runs 16:00 to 16:15 ET), and
+    every window of any option market, its pre-market included (`option_hours`). A closed date
+    has no windows.
     """
 
     day: str
@@ -189,7 +190,7 @@ class Session:
     option_hours: Windows
 
     def option_windows(self, product: str) -> Windows:
-        """Return the regular windows Schwab sent for option market `product` that date.
+        """Return option market `product`'s windows that date (`options`).
 
         `product` is EQO or IND.
         """
@@ -230,6 +231,17 @@ def _hours(entry: dict[str, Any]) -> dict[str, Any]:
     return entry["sessionHours"] if "sessionHours" in entry else {}
 
 
+def _unbroken(windows: Iterable[tuple[datetime, datetime]]) -> Windows:
+    """Return `windows` in order, those that overlap or meet joined into one."""
+    out: list[tuple[datetime, datetime]] = []
+    for start, end in sorted(windows):
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(end, out[-1][1]))
+        else:
+            out.append((start, end))
+    return tuple(out)
+
+
 def record_markets(answer: dict[str, Any]) -> Session:
     """Record Schwab's 200 answer to GET /markets?markets=equity,option for one date, as sent.
 
@@ -246,7 +258,12 @@ def record_markets(answer: dict[str, Any]) -> Session:
         _windows(hours, "regularMarket"),
         _windows(hours, "postMarket"),
         tuple(
-            (product, _windows(_hours(entry), "regularMarket"))
+            (
+                product,
+                _unbroken(
+                    _windows(_hours(entry), "regularMarket") + _windows(_hours(entry), "postMarket")
+                ),
+            )
             for product, entry in answer["option"].items()
         ),
         tuple(
@@ -354,20 +371,15 @@ def option_window_began(now: datetime) -> datetime | None:
     None outside every window, and when Schwab's answer for today is not held.
     """
     s = session(now.astimezone(ET).date().isoformat())
-    unbroken: list[tuple[datetime, datetime]] = []
-    for start, end in sorted(s.option_hours if s else ()):
-        if unbroken and start <= unbroken[-1][1]:
-            unbroken[-1] = (unbroken[-1][0], max(end, unbroken[-1][1]))
-        else:
-            unbroken.append((start, end))
-    return next((start for start, end in unbroken if start <= now < end), None)
+    windows = _unbroken(s.option_hours if s else ())
+    return next((start for start, end in windows if start <= now < end), None)
 
 
 def options_open(now: datetime) -> bool | None:
     """Tell whether `now` is inside a window Schwab sent for any option market, as sent.
 
     It is what the chain sweep, the levels and an option's live mark follow; None when Schwab's
-    answer for today is not held. option_market_open keeps the regular windows for the close
+    answer for today is not held. option_market_open leaves the pre-market out, for the close
     values.
     """
     s = session(now.astimezone(ET).date().isoformat())
@@ -377,11 +389,11 @@ def options_open(now: datetime) -> bool | None:
 
 
 def option_market_open(now: datetime, product: str | None = None) -> bool | None:
-    """Tell whether an option market is in a regular window Schwab sent for today.
+    """Tell whether an option market is in a window of its day Schwab sent for today (`options`).
 
-    The market is `product` (EQO, IND), or any option market when none is named (the last, IND,
-    runs to 16:15 ET). False outside its windows and all day on a day Schwab says is closed;
-    None when Schwab's answer for today is not held.
+    The market is `product` (EQO, IND), or any option market when none is named (on a full day
+    both run to 16:15 ET: IND's regular window, EQO's post-market). False outside its windows and
+    all day on a day Schwab says is closed; None when Schwab's answer for today is not held.
     """
     s = session(now.astimezone(ET).date().isoformat())
     if s is None:
@@ -395,7 +407,7 @@ def option_market_open(now: datetime, product: str | None = None) -> bool | None
 
 
 def options_closed_at(now: datetime, product: str | None = None) -> datetime | None:
-    """Return the end of the newest regular window that has ended by `now`, among answers held.
+    """Return the end of the newest `options` window that has ended by `now`, among answers held.
 
     The window is of option market `product`, or of any option market when none is named; None
     when none has.
@@ -493,6 +505,43 @@ YEAR_SECONDS: float = 365.0 * 24.0 * 3600.0
 SETTLEMENT_AM = "A"
 
 
+def settles_at(
+    expiration_date: str,
+    now: datetime,
+    *,
+    sessions: Mapping[str, Session],
+    settlement_type: str | None = None,
+    product: str = EQUITY_OPTIONS,
+) -> datetime | None:
+    """Return the instant an option's time to expiry runs out (time_to_expiry_years).
+
+    `expiration_date` is Schwab's expirationDate as sent. The settlement is option market
+    `product`'s close Schwab's /markets sent for the expiry date (`sessions`, the answers by ET
+    date, read by the caller's entry point; `product`, EQO unless the caller names another): the
+    end of its day (Session.options, its post-market included: 16:15 ET on a full day for stock
+    options as for index options, the close Schwab's own Greeks and theoretical values run to, as
+    measured on every root), or its open for Schwab's settlementType "A". Schwab's expirationDate
+    is not the settlement: it carries 16:00 ET on every contract, an AM-settled $SPX monthly's and
+    a half day's included (as captured). For a date with no /markets answer held a PM-settled
+    contract settles at Schwab's expirationDate as sent, and an AM-settled one too when that is
+    past the year /markets answers. None when the instant is not known: an AM-settled contract
+    within that year whose date /markets has not answered, a date it answers with no option
+    session, and an expirationDate without its time.
+    """
+    s = sessions.get(str(expiration_date)[:10])
+    if s is None:
+        if len(str(expiration_date)) <= 10:
+            return None
+        sent = datetime.fromisoformat(str(expiration_date))
+        left = sent.timestamp() - now.timestamp()
+        nearer = settlement_type == SETTLEMENT_AM and 0.0 <= left <= YEAR_SECONDS
+        return None if nearer else sent
+    windows = s.option_windows(product)
+    if not windows:
+        return None
+    return windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
+
+
 def time_to_expiry_years(
     expiration_date: str,
     now: datetime,
@@ -503,38 +552,18 @@ def time_to_expiry_years(
 ) -> float | None:
     """INTRADAY time-to-expiry in years (ACT/365), the one T of every Black-Scholes greek.
 
-    Seconds from `now` (the caller's valuation instant) to the option's settlement, over a
-    365-day year. `expiration_date` is Schwab's expirationDate as sent.
-    The settlement is the option market's regular close Schwab's /markets sent for the
-    expiry date (`sessions`, the answers by ET date, read by the caller's entry point;
-    `product`, EQO unless the caller names another), or its open for Schwab's settlementType "A".
-    Schwab's own expirationDate is not the settlement of an AM-settled contract (an AM-settled
-    $SPX monthly carries the 16:00 ET of its date, as captured). For a date with no /markets
-    answer held a PM-settled contract settles at Schwab's expirationDate as sent, and an
-    AM-settled one too when that is past the year /markets answers; nearer, it has no T until that
-    instant passes.
-
-    Validated against Schwab-reported gamma on real chains: intraday-to-close matches
-    Schwab to a MEASURED median ratio 0.987 (94% of ATM strikes within 10%) in the 2-6h window.
-
-    The time left as it is, to the second, however short: the near-expiry gamma, vanna and
-    charm are the formula's own; 0.0 at and after settlement, no time left, which every greek
-    takes as no value. None when the time left is not known: an AM-settled contract within the
-    year /markets answers whose date it has not, a date it answers with no regular option
-    session, and an expirationDate without its time.
+    Seconds from `now` (the caller's valuation instant) to the option's settlement (settles_at),
+    over a 365-day year: the time left as it is, to the second, however short (the near-expiry
+    gamma, vanna and charm are the formula's own); 0.0 at and after settlement, no time left,
+    which every greek takes as no value; None when the settlement is not known.
     """
-    s = sessions.get(str(expiration_date)[:10])
-    if s is None:
-        if len(str(expiration_date)) <= 10:
-            return None
-        settles = datetime.fromisoformat(str(expiration_date))
-        left = settles.timestamp() - now.timestamp()
-        if settlement_type == SETTLEMENT_AM and 0.0 <= left <= YEAR_SECONDS:
-            return None
-    else:
-        windows = s.option_windows(product)
-        if not windows:
-            return None
-        settles = windows[0][0] if settlement_type == SETTLEMENT_AM else windows[-1][1]
+    settles = settles_at(
+        expiration_date,
+        now,
+        sessions=sessions,
+        settlement_type=settlement_type,
+        product=product,
+    )
     # instants, not civil time: a DST change between now and the expiry is counted as elapsed
-    return max((settles.timestamp() - now.timestamp()) / YEAR_SECONDS, 0.0)
+    left = None if settles is None else settles.timestamp() - now.timestamp()
+    return None if left is None else max(left / YEAR_SECONDS, 0.0)

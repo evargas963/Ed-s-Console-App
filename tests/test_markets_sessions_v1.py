@@ -27,6 +27,7 @@ from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.live_ui import LiveUiServer
 from app.options.order_flow import streaming as ofs
 from feed.chain_sweep import markets_message
+from option_contract import read_chain
 from push import verdict as push_verdict
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status, mark_feed_live
@@ -265,6 +266,52 @@ def test_the_option_sessions_are_the_windows_schwab_sent():
     assert {t: time_et.option_window_began(_et(f"2026-11-02 {t}")) for t in began} == {
         t: b and _et(f"2026-11-02 {b}") for t, b in began.items()
     }
+
+
+def test_the_stock_options_day_runs_through_schwabs_post_market_and_so_does_their_time_left():
+    """Schwab's /markets answer of 2026-11-11: both option markets' days end at 16:15 ET.
+
+    Stock and ETF options (EQO) trade 09:30 to 16:00 ET and on in their post-market to 16:15,
+    joined as one day; index options (IND) 09:30 to 16:15. Expiring stock options trade in that
+    post-market (Schwab's close captures: TSLA's and META's to about 16:14 since 2026-10-19), and
+    Schwab's own Greeks run to 16:15. AMZN's contracts expiring that day carry Schwab's
+    expirationDate 16:00 ET, yet have time left until 16:15, the close their market reads from.
+    The 2026-11-27 half day sends no post-market: stock options end at 13:00, index at 13:15.
+    """
+    fx = json.loads((FX / "real_schwab_markets_2026_11_11.json").read_text(encoding="utf-8"))
+    time_et.record_markets(fx["body"])
+    day = ((_et("2026-11-11 09:30"), _et("2026-11-11 16:15")),)
+    s = time_et.session("2026-11-11")
+    assert (
+        s.option_windows(time_et.EQUITY_OPTIONS) == s.option_windows(time_et.INDEX_OPTIONS) == day
+    )
+    assert time_et.option_market_open(_et("2026-11-11 16:10"), time_et.EQUITY_OPTIONS) is True
+    assert time_et.option_market_open(_et("2026-11-11 16:15"), time_et.EQUITY_OPTIONS) is False
+    assert time_et.options_closed_at(_et("2026-11-11 16:20"), time_et.EQUITY_OPTIONS) == _et(
+        "2026-11-11 16:15"
+    )
+    chain = json.loads((FX / "real_amzn_full_chain_2026_10_29.json").read_text(encoding="utf-8"))
+    sent = {c.expiration for c in read_chain(chain["chain"]) if c.expiration[:10] == "2026-11-11"}
+    assert sent == {"2026-11-11T21:00:00.000+00:00"}  # 16:00 ET, as Schwab sent it
+    (expiration,) = sent
+    product = time_et.option_close_product("AMZN")
+    left = {
+        t: time_et.time_to_expiry_years(
+            expiration, _et(f"2026-11-11 {t}"), sessions=time_et.sessions(), product=product
+        )
+        for t in ("15:00", "16:00", "16:10", "16:15", "16:20")
+    }
+    year = time_et.YEAR_SECONDS
+    assert left == {
+        "15:00": 4500 / year,
+        "16:00": 900 / year,
+        "16:10": 300 / year,
+        "16:15": 0.0,
+        "16:20": 0.0,
+    }
+    assert time_et.session("2026-11-27").option_windows(time_et.EQUITY_OPTIONS) == (
+        (_et("2026-11-27 09:30"), _et("2026-11-27 13:00")),
+    )
 
 
 def test_after_schwabs_break_the_levels_are_not_live_and_say_why():

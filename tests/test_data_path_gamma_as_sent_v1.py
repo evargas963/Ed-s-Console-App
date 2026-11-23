@@ -26,7 +26,7 @@ from push import surface as push_surface
 from state import level_store
 from tests.feed_live_helper import publish_capture
 from tests.real_chains import NFLX
-from time_et import ET, record_markets
+from time_et import ET, option_close_product, record_markets, sessions
 
 _FX = json.loads(
     (
@@ -103,7 +103,13 @@ def test_the_option_rule_ranks_the_largest_gamma_schwab_sent_first_of_those_equa
     The four contracts that far (a call and a put each side) are ordered by gamma as sent: the
     large one first, taken as it is.
     """
-    ranked = shown_first(read_chain(NVDA["contracts"]), NVDA["spot"], NVDA["ts_utc"])
+    ranked = shown_first(
+        read_chain(NVDA["contracts"]),
+        NVDA["spot"],
+        NVDA["ts_utc"],
+        option_close_product("NVDA"),
+        sessions(),
+    )
     strikes = sorted({c["strikePrice"] for c in NVDA["contracts"]})
     centre = strikes.index(min(strikes, key=lambda k: (abs(k - NVDA["spot"]), k)))
     far = abs(strikes.index(148.0) - centre)

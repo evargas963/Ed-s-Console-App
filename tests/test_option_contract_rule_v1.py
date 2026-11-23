@@ -1102,5 +1102,44 @@ def test_every_contract_the_heatmap_shows_is_in_the_tickers_share_of_schwabs_lim
     rows = set(strikes[first : last + 1])
     columns = set(sorted({c.expires_at for c in listed})[: len(rows)])
     shown = {c.symbol for c in listed if c.strike in rows and c.expires_at in columns}
-    share = set(capture.shown_first(listed, real.spot, now)[: SCHWAB_LIMITS[L1] // 8])
+    product = time_et.option_close_product(real.ticker)
+    ranked = capture.shown_first(listed, real.spot, now, product, time_et.sessions())
+    share = set(ranked[: SCHWAB_LIMITS[L1] // 8])
     assert len(shown) > len(rows) and shown <= share
+
+
+@pytest.mark.parametrize(
+    ("ticker", "fixture"),
+    [
+        ("SPY", "real_spy_full_chain_2026_11_09.json"),
+        ("AMZN", "real_amzn_full_chain_2026_10_29.json"),
+    ],
+)
+def test_an_expiring_contract_streams_and_is_recorded_until_its_option_day_ends(ticker, fixture):
+    """Schwab's /markets answer of 2026-11-11: SPY's and AMZN's options trade to 16:15 ET.
+
+    Expiring SPY contracts (index-close options) and the large stocks' (stock options, in their
+    post-market) trade until 16:14:59 ET on their expiry day, as Schwab's close captures show,
+    while Schwab's expirationDate says 16:00. The contracts expiring 2026-11-11 stay in the
+    option rule's order and in the recorded window at 16:10, and leave both at 16:15.
+    """
+    fx = json.loads((_FX / "real_schwab_markets_2026_11_11.json").read_text(encoding="utf-8"))
+    time_et.record_markets(fx["body"])
+    raw = json.loads((_FX / fixture).read_text(encoding="utf-8"))
+    chain, spot = read_chain(raw["chain"]), float(raw["spot"])
+    expiring = {c.symbol for c in chain if c.expiration[:10] == "2026-11-11"}
+    assert expiring and {c.expiration for c in chain if c.symbol in expiring} == {
+        "2026-11-11T21:00:00.000+00:00"
+    }
+    product, held = time_et.option_close_product(ticker), time_et.sessions()
+
+    def at(t: str) -> float:
+        return datetime.fromisoformat(f"2026-11-11 {t}").replace(tzinfo=ET).timestamp()
+
+    ladders = capture.strike_ladders(chain, at("16:10"), product, held)
+    order = {
+        t: set(capture.shown_first(chain, spot, at(t), product, held)) for t in ("16:10", "16:15")
+    }
+    window = {t: capture.saved_window(ladders, spot, at(t)) for t in ("16:10", "16:15")}
+    assert expiring <= order["16:10"] and window["16:10"] and window["16:10"] <= expiring
+    assert not expiring & order["16:15"] and window["16:15"] and not window["16:15"] & expiring

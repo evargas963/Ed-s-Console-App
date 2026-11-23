@@ -165,7 +165,10 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
         server._last_feed_stamp.clear()
     assert len(reads) == len(MRVL.chain) == len(read), "each contract read once"
     assert all(a is b for a, b in zip(levels.chain, read, strict=True)), "the levels: that read"
-    assert daemon._ranked[tk] == capture.shown_first(read, MRVL.spot, now), "the rule: that read"
+    ranked = capture.shown_first(
+        read, MRVL.spot, now, time_et.option_close_product(tk), time_et.sessions()
+    )
+    assert daemon._ranked[tk] == ranked, "the rule: that read"
 
 
 def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
