@@ -6,6 +6,7 @@ from collections.abc import Collection, Mapping, Sequence
 from typing import Any, TypedDict, overload
 
 from calc.terrain_engine import (
+    OPTION_LEVELS,
     SCOPES,
     PerStrikeView,
     StrikeRow,
@@ -32,8 +33,13 @@ VALUE_TEXT = {
 }
 
 #: each mark a strike row can carry, as the screen names it: the listed strike nearest the live
-#: price, and the published levels' call wall and put wall
-MARK_LABELS = {"spot": "SPOT", "call": "Call wall", "put": "Put wall"}
+#: price, and the published levels' largest call and put gamma strikes, by their names in the one
+#: list
+MARK_LABELS = {
+    "spot": "SPOT",
+    "call": dict(OPTION_LEVELS)["call_wall"],
+    "put": dict(OPTION_LEVELS)["put_wall"],
+}
 
 
 class WindowView(TypedDict):

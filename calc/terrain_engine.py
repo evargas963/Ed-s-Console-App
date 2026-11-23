@@ -490,6 +490,53 @@ def level_moves(today: TerrainSnapshot | None, prior: TerrainSnapshot | None) ->
     return moves
 
 
+#: the largest total gamma strike last known in each column of Key Levels: the whole book's and the
+#: same-day book's
+type TotalGammaStrikes = tuple[float | None, float | None]
+#: the columns, as the screen names them
+TOTAL_GAMMA_COLUMNS = ("Regular", "0DTE")
+
+
+@dataclass(frozen=True)
+class TotalGammaChange:
+    """The largest total gamma strike of one column, as it was and as it is."""
+
+    column: str
+    before: float
+    after: float
+
+
+@dataclass(frozen=True)
+class TotalGammaMove:
+    """The columns one publication moved the largest total gamma strike in, and its levels' time."""
+
+    changes: tuple[TotalGammaChange, ...]
+    at: float
+
+
+def total_gamma_strikes(snap: TerrainSnapshot) -> TotalGammaStrikes:
+    """Return the largest total gamma strike of the whole book and of the same-day book."""
+    return snap.absolute_gamma_strike, snap.same_day.get("absolute_gamma_strike")
+
+
+def total_gamma_changes(
+    last: TotalGammaStrikes, now: TotalGammaStrikes
+) -> tuple[TotalGammaStrikes, tuple[TotalGammaChange, ...]]:
+    """Return each column's strike last known after `now`, and the columns `now` moved.
+
+    A column moves when its strike is known now and differs from the one known last; a strike not
+    known now keeps the one known last, so a strike gone for a while and back where it was is no
+    move, and the first one known is none (nothing was known before it).
+    """
+    known = tuple(n if n is not None else w for w, n in zip(last, now, strict=True))
+    changes = tuple(
+        TotalGammaChange(column, w, n)
+        for column, w, n in zip(TOTAL_GAMMA_COLUMNS, last, now, strict=True)
+        if w is not None and n is not None and n != w
+    )
+    return (known[0], known[1]), changes
+
+
 def positioning_migration(
     today: list[StrikeRow],
     prior: list[StrikeRow],
@@ -1005,14 +1052,16 @@ def pin_by_open_interest(
 
 
 #: The terrain's price levels and the name each is shown under, in the order they are listed: the
-#: industry's name where it has one, else what the level is, in standard words.
+#: industry's name where it has one (Gamma flip, Max pain), else what the level is, in one pattern
+#: of standard words ("Largest <side> <measure> strike"; operator 2026-11-22: uniform names; the
+#: walls are the largest call and put gamma, the word "wall" defined three ways by vendors).
 OPTION_LEVELS = (
-    ("call_wall", "Call wall"),
-    ("put_wall", "Put wall"),
+    ("call_wall", "Largest call gamma strike"),
+    ("put_wall", "Largest put gamma strike"),
     ("gamma_flip", "Gamma flip"),
     ("max_pain", "Max pain"),
     ("absolute_gamma_strike", "Largest total gamma strike"),
-    ("pin_candidate", "Highest open interest strike near price"),
+    ("pin_candidate", "Largest open interest strike near price"),
     ("gsf", "GSF"),
     ("grc", "GRC"),
     ("hvp", "Largest negative net GEX strike"),

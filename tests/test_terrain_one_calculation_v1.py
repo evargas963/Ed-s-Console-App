@@ -96,6 +96,22 @@ def _as_said_now(record: list) -> list:
     return out
 
 
+#: the fields defined anew since the record was written: net delta and net DEX are the signed sum
+#: of Schwab's deltas (operator 2026-11-22), proved on the raw chain in
+#: tests/test_one_faucet_units_v1.py; here their keys and places are what they were
+DEX_KEYS = frozenset({"net_delta", "net_dex_dollars", "dex"})
+
+
+def _dex_unread(v):
+    """Return a written-out value with every DEX_KEYS field's value set aside, its key kept."""
+    if isinstance(v, list) and len(v) == 3 and v[0] == "d":
+        redefined = isinstance(v[1], str) and v[1] in DEX_KEYS
+        return ["d", v[1], "redefined" if redefined else _dex_unread(v[2])]
+    if isinstance(v, list):
+        return [_dex_unread(x) for x in v]
+    return v
+
+
 def _field(record: list, key: str) -> list:
     """Return one field of a written-out terrain: its value as written."""
     return next(value for _d, k, value in record if k == key)
@@ -113,13 +129,16 @@ def test_every_value_is_what_it_was():
     where the two sides of the forward meet now, which takes the contracts' quotes, and these
     chains were stored without them (ATM_IV: its expiries and their order are what they were;
     its values are proved on real chains kept with their quotes in
-    tests/test_terrain_engine_v1.py).
+    tests/test_terrain_engine_v1.py). Net delta and net DEX are the signed sum of Schwab's deltas
+    since 2026-11-22 (DEX_KEYS: their places are what they were; their values are proved on the
+    raw chain in tests/test_one_faucet_units_v1.py), and nothing else moved with them.
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
     for tk, snap in terrains.items():
         was = _as_said_now(_per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"}))
-        now = _per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"})
+        was = _dex_unread(was)
+        now = _dex_unread(_per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"}))
         _same([e for e in was if e[1] != ATM_IV], [e for e in now if e[1] != ATM_IV], tk)
         assert [e[1] for e in _field(was, ATM_IV)] == [e[1] for e in _field(now, ATM_IV)], tk
         # the whole book's charm rows (new) are its charm map's nets, the map the record holds

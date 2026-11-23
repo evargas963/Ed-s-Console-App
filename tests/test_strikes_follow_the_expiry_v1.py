@@ -219,7 +219,7 @@ def test_a_prior_day_with_no_value_known_at_any_strike_says_so(published):
 
 
 def test_each_level_is_served_against_the_prior_days_own_with_its_texts(published):
-    """PCG's call wall moved from 13 to 12 between the two captures and its put wall stood.
+    """PCG's largest call gamma strike moved from 13 to 12 between the captures; its put stood.
 
     Neither day has a gamma flip. Each level is served with both days' strikes and the move as
     the screen shows them: a move down signed, none as "unchanged", an unknown level as nothing.
@@ -235,7 +235,7 @@ def test_each_level_is_served_against_the_prior_days_own_with_its_texts(publishe
                 "prior": 13.0,
                 "today": 12.0,
                 "change": -1.0,
-                "level_text": "Call wall",
+                "level_text": "Largest call gamma strike",
                 "prior_text": "13",
                 "today_text": "12",
                 "change_text": "-1",
@@ -245,7 +245,7 @@ def test_each_level_is_served_against_the_prior_days_own_with_its_texts(publishe
                 "prior": 13.0,
                 "today": 13.0,
                 "change": 0.0,
-                "level_text": "Put wall",
+                "level_text": "Largest put gamma strike",
                 "prior_text": "13",
                 "today_text": "13",
                 "change_text": "unchanged",

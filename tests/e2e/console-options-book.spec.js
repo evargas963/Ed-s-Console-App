@@ -278,7 +278,7 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
     await page.evaluate(() => window.EdShell.setExpiry(""));
     await expect.poll(deskAsk).toEqual(AUTO);
     // the four below/above rows are gone, the other facts stay
-    await expect(card).toContainText("Call wall");
+    await expect(card).toContainText("Largest call gamma strike");
     await expect(card).not.toContainText("below / above");
     await card.screenshot({ path: testInfo.outputPath("options-card.png") });
     await card.locator(".tdm-open").click();
@@ -310,6 +310,6 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
       "Options lean: the program could not produce the options level II",
     );
     await expect(card.locator(".olg")).toHaveCount(0);
-    await expect(card).toContainText("Call wall");
+    await expect(card).toContainText("Largest call gamma strike");
   });
 });

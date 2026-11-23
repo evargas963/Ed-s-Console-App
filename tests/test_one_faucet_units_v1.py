@@ -1,6 +1,6 @@
 """One meaning per name (2026-09-27).
 
-DEX is dealer-signed (+call/-put) in every bucket; vanna is per 1 volatility point in every
+DEX is the signed sum of Schwab's deltas in every bucket; vanna is per 1 volatility point in every
 bucket and in their sum; a contract with no readable expiry is in no expiry's book;
 yesterday's chain is priced at its own capture time.
 
@@ -26,7 +26,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_d
 from option_contract import read_chain
 from state import level_store
 from tests.capture_store import store_capture
-from tests.real_chains import CRWD, SPY_0DTE
+from tests.real_chains import CRWD, SPY_0DTE, SPY_FULL
 
 
 def _book():
@@ -39,10 +39,33 @@ def _book():
     return per
 
 
-def test_dex_is_dealer_signed_in_every_bucket():
-    per = _book()
-    for b in per.values():
-        assert b["net_dex_dollars"] == pytest.approx(b["call_dex_dollars"] - b["put_dex_dollars"])
+def test_dex_is_the_signed_sum_of_schwabs_deltas_in_every_bucket():
+    """Net DEX is call + put with each delta as Schwab sent it (a put's is negative).
+
+    The industry's net delta exposure (docs/SOURCES.md flashalpha-dex-api); it assumes nothing about
+    who holds a contract. Worked out from SPY's whole chain of 2026-11-09 as Schwab sent it,
+    outside the program: delta x open interest x multiplier x price per contract, summed by
+    strike. Before, a put's negative delta was subtracted: the two sides added as sizes, so no
+    strike was ever negative (+305.1 million delta-shares on this chain, where the signed sum is
+    -37.6 million and 181 strikes are negative).
+    """
+    spot = SPY_FULL.spot
+    want: dict[float, float] = {}
+    for c in SPY_FULL.chain:
+        delta, oi, mult = c["delta"], c["openInterest"], c["multiplier"]
+        if delta in (None, -999.0) or oi is None or not mult:
+            continue
+        want[c["strikePrice"]] = want.get(c["strikePrice"], 0.0) + delta * oi * mult * spot
+    per, _ = compute_exposures_by_strike(
+        read_chain(SPY_FULL.chain), spot=spot, now=SPY_FULL.now, sessions=time_et.sessions()
+    )
+    got = {k: b["net_dex_dollars"] for k, b in per.items() if b["net_dex_dollars"] is not None}
+    assert set(got) == set(want)
+    for k, value in got.items():
+        assert value == pytest.approx(want[k], rel=1e-9, abs=1e-6), k
+        assert value == pytest.approx(per[k]["call_dex_dollars"] + per[k]["put_dex_dollars"])
+    assert sum(got.values()) / spot == pytest.approx(-37.6e6, rel=1e-3)
+    assert sum(1 for v in got.values() if v < 0) == 181
 
 
 def test_vanna_is_per_vol_point_in_every_bucket_and_in_the_aggregate():

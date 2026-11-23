@@ -14,6 +14,8 @@ from calc.terrain_engine import (
     ABOVE_CALL_WALL,
     BELOW_PUT_WALL,
     INSIDE_WALLS,
+    LEVELS_COMPARED,
+    OPTION_LEVELS,
     LevelMove,
     MigrationRow,
     PositioningMigration,
@@ -141,13 +143,14 @@ class NotListed(LevelsVerdict):
     reason: str
 
 
-#: each level compared day over day as the screen names it (terrain_engine.LEVELS_COMPARED)
-LEVEL_TEXT = {"call_wall": "Call wall", "put_wall": "Put wall", "gamma_flip": "Gamma flip"}
-#: where the busiest strikes sit against the walls, as the screen says it
+#: each level compared day over day (terrain_engine.LEVELS_COMPARED) by its name in the one list
+LEVEL_TEXT = {key: name for key, name in OPTION_LEVELS if key in LEVELS_COMPARED}
+#: where the busiest strikes sit against the largest call and put gamma strikes, as the screen
+#: says it
 BUSIEST_VS_WALLS_TEXT = {
-    ABOVE_CALL_WALL: "ABOVE the call wall",
-    BELOW_PUT_WALL: "BELOW the put wall",
-    INSIDE_WALLS: "inside the wall range",
+    ABOVE_CALL_WALL: "ABOVE the largest call gamma strike",
+    BELOW_PUT_WALL: "BELOW the largest put gamma strike",
+    INSIDE_WALLS: "between the largest put and call gamma strikes",
 }
 
 

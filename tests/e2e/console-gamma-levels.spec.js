@@ -84,10 +84,11 @@ const LEVELS = {
   degraded: [],
 };
 
-// a 0DTE pair as served: the whole book's call wall and the same-day one, each with its text
+// a 0DTE pair as served: the whole book's largest call gamma strike and the same-day one, each
+// with its text
 const ZERO_DTE_CALL_WALL = {
   id: "call_wall",
-  label: "Call wall",
+  label: "Largest call gamma strike",
   carried: 600,
   price: 580,
   carried_text: "600.00",
@@ -193,13 +194,13 @@ test.describe("D — Gamma Levels view", () => {
   }) => {
     panels.levels = Object.assign({}, LEVELS, { zero_dte: [ZERO_DTE_CALL_WALL] });
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const row = page.locator("#levelsBody .zd-row", { hasText: "Call wall" });
+    const row = page.locator("#levelsBody .zd-row", { hasText: "Largest call gamma strike" });
     await expect(row.locator(".lv-px").nth(0)).toContainText("600.00");
     await expect(row.locator(".lv-px").nth(1)).toContainText("580.00");
     await expect(row.locator(".lv-px").nth(1).locator(".lv-age")).toHaveText("12:32:07 CT");
   });
 
-  test("the highest open interest strike's row shows the served note on hover", async ({
+  test("the largest open interest strike's row shows the served note on hover", async ({
     page,
   }) => {
     // SPY's levels panel during its session: its expiry closes that day with time left, so it has
@@ -208,7 +209,7 @@ test.describe("D — Gamma Levels view", () => {
     expect(pin.note).toContain("expected moves");
     panels.levels = SERVED;
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const row = page.locator("#levelsBody .lv-row", { hasText: "Highest open interest strike" });
+    const row = page.locator("#levelsBody .lv-row", { hasText: "Largest open interest strike" });
     await expect(row).toHaveAttribute("title", pin.note);
     await expect(row.locator(".lv-px").nth(0)).toContainText(pin.price.toFixed(2));
   });

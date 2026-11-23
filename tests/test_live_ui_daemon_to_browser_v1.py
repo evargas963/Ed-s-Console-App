@@ -939,7 +939,11 @@ def _marks(tk, listed, **walls):
     live = lmp.get_quote(tk).spot  # Schwab's last trade as the daemon holds it
     spot = None if live is None else min(listed, key=lambda k: abs(k - live))
     at = {"spot": spot, **walls}
-    labels = {"spot": "SPOT", "call": "Call wall", "put": "Put wall"}
+    labels = {
+        "spot": "SPOT",
+        "call": "Largest call gamma strike",
+        "put": "Largest put gamma strike",
+    }
     return lambda strike: [
         {"kind": kind, "label": labels[kind]} for kind, k in at.items() if k == strike
     ]

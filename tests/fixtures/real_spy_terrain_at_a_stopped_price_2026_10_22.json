@@ -117,5 +117,6 @@
  "spot_source": "streaming_plane",
  "spot_time_ct": "Thu 10/22 03:39 PM CT",
  "strikes_used": 146,
- "ticker": "SPY"
+ "ticker": "SPY",
+ "total_gamma_change": null
 }

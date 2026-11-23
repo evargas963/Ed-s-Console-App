@@ -12,7 +12,14 @@ from typing import TypedDict
 import live_market_plane as lmp
 from app.options.order_flow.streaming import price_state
 from calc.terrain_atr import Atr, compute_atrs
-from calc.terrain_engine import RelationFields, TerrainFields, compute_terrain, price_relations
+from calc.terrain_engine import (
+    OPTION_LEVELS,
+    RelationFields,
+    TerrainFields,
+    TotalGammaMove,
+    compute_terrain,
+    price_relations,
+)
 from calc.terrain_read import REGIME_TEXT
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
@@ -21,7 +28,7 @@ from push.spot import PriceMark, price_mark, resolve_spot
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import bar_store, level_store
 from state.level_store import ServedLevels, SpotStamp
-from time_et import ET, sessions
+from time_et import ET, ct_label, sessions
 
 
 class LevelsMark(TypedDict):
@@ -42,14 +49,43 @@ class AtrFields(TypedDict):
     atr_monthly_text: str | None
 
 
+class TotalGammaMoveText(TypedDict):
+    """The newest move of the largest total gamma strike, as the screen announces it.
+
+    `id` tells one move from the next; `text` names the level and each column's move; `time_ct`
+    is the time of the levels that moved it.
+    """
+
+    id: str
+    text: str
+    time_ct: str
+
+
 class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, PriceMark, LevelsMark):
     """What the terrain panel carries beside the levels' own fields, published or not.
 
     The levels' verdict, the live price's relations to them and its mark, the ATRs, the regime as
-    the screen says it (terrain_read) and the Key Levels line's word.
+    the screen says it (terrain_read), the Key Levels line's word, and the newest move of the
+    largest total gamma strike (None: none since the program started).
     """
 
     regime_text: str
+    total_gamma_change: TotalGammaMoveText | None
+
+
+def total_gamma_text(move: TotalGammaMove | None) -> TotalGammaMoveText | None:
+    """Return a move of the largest total gamma strike as the screen announces it; None for none.
+
+    The level by its name in the one list (OPTION_LEVELS), then each column's strike as it was
+    and as it is: "Largest total gamma strike · 0DTE 700.00 → 705.00".
+    """
+    if move is None:
+        return None
+    moved = " · ".join(
+        f"{c.column} {price_text(c.before)} → {price_text(c.after)}" for c in move.changes
+    )
+    text = f"{dict(OPTION_LEVELS)['absolute_gamma_strike']} · {moved}"
+    return {"id": f"{move.at!r} {text}", "text": text, "time_ct": ct_label(move.at)}
 
 
 class TerrainPanel(ServedLevels, BesideTheLevels):
@@ -129,6 +165,7 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
             **price_relations(served, spot).to_dict(),
             **_atr_fields(tk, at),  # live: today's candle from the bars held now
             "regime_text": REGIME_TEXT[cached.snap.regime],
+            "total_gamma_change": total_gamma_text(cached.total_gamma_move),
             # the chain's verdict is levels_state, above. The live price the relations are computed
             # from is a separate fact: the numbers stay, marked with whether that price is live
             **price_mark(tk, spot_ts, now),
@@ -145,6 +182,7 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
         "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
         "regime_text": REGIME_TEXT[empty["regime"]],
+        "total_gamma_change": None,
         # not ready, with the producer's reason when it has one, and the levels' verdict
         "error": (
             "terrain_not_ready: no chain from the daemon yet for this ticker"

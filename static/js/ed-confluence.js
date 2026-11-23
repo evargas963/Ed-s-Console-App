@@ -432,7 +432,7 @@
       ["GAMMA REGIME · CHAIN", orDash(body.regime_text), ""], // served: the regime in words
       ["GAMMA FLIP · CHAIN", body.flip_text, body.expiry ? body.expiry : ""],
       [
-        "HIGH OI STRIKE · CHAIN",
+        "LARGEST OPEN INTEREST STRIKE NEAR PRICE · CHAIN",
         body.pin_text,
         body.pin_text ? "expiry closing today" : "",
         body.pin_note,
