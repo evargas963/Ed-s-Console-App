@@ -117,8 +117,8 @@ def _live_feed_starts_down(_markets_answers_held):
     """live_market_plane's feed state (the daemon heartbeat) is process-global.
 
     Every test starts with NO live feed and no remembered held set or watchlist, so a heartbeat
-    one test marks can never make another test's price live. A down feed keeps that set and that
-    list for the screen (record_feed_down); this fixture clears them. Tests that need a live
+    one test marks can never make another test's price live. A late beat leaves that set and that
+    list for the screen; this fixture clears them, and the beat's time. Tests that need a live
     price mark it (tests/feed_live_helper.py). The day's first streamed trade (time_et.record_trade)
     is process-global too: every test starts with none. So is when each ticker's ticks last
     queued a reprice (server._repriced_at, once a second): every test starts with none, and
@@ -155,8 +155,8 @@ def _live_feed_starts_down(_markets_answers_held):
                 timer.cancel()
             server._reprice_timers.clear()
             server._repriced_at.clear()
-    live_market_plane.record_feed_down()
     with live_market_plane._lock:
+        live_market_plane._feed["rx"] = None
         live_market_plane._feed["held"] = {}
         live_market_plane._feed["status"] = None
         live_market_plane._by_ticker.clear()
@@ -167,8 +167,8 @@ def _live_feed_starts_down(_markets_answers_held):
     feed_live_helper.BUS = MessageBus()
     ofls.bind_bus(feed_live_helper.BUS.current)
     yield
-    live_market_plane.record_feed_down()
     with live_market_plane._lock:
+        live_market_plane._feed["rx"] = None
         live_market_plane._feed["held"] = {}
         live_market_plane._feed["status"] = None
 
@@ -183,7 +183,6 @@ def feed():
     ofs.stop_order_flow_stream()
     ofs.bind_daemon(None)
     live_market_plane._by_ticker.clear()
-    live_market_plane.record_feed_down()
 
 
 def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:

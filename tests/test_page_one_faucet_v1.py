@@ -39,7 +39,13 @@ from push import surface as push_surface
 from push import verdict as push_verdict
 from state import level_store
 from stream_spine import verbatim_msg
-from tests.feed_live_helper import daemon_status, mark_feed_live, publish_capture, pushed
+from tests.feed_live_helper import (
+    daemon_status,
+    mark_feed_down,
+    mark_feed_live,
+    publish_capture,
+    pushed,
+)
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
 from time_et import ET
 
@@ -85,7 +91,7 @@ def _forget():
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
-    lmp.record_feed_down()
+    mark_feed_down()
 
 
 @pytest.fixture
@@ -317,7 +323,7 @@ def test_the_spot_row_is_served(route):
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
         lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
-        lmp.record_feed_down()
+        mark_feed_down()
     assert marked == live
 
 
@@ -425,7 +431,7 @@ def _spx_chain(contracts):
             level_store._levels.pop("$SPX", None)
         lmp._by_ticker.pop("$SPX", None)
         lmp._fields_by_ticker.pop("$SPX", None)
-        lmp.record_feed_down()
+        mark_feed_down()
 
 
 def _et_day(ms):
@@ -556,7 +562,6 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     finally:
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_down()
     assert (row["spot"], row["spot_disp"], row["trade_time_ct"]) == (
         772.04,
         "772.04",

@@ -64,6 +64,7 @@ from tests.feed_live_helper import (
     daemon_status,
     forget_bars,
     hold_schwab_daily,
+    mark_feed_down,
     newest_bars,
     on_the_bus,
     price_history,
@@ -381,7 +382,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
             )
         )
     else:
-        lmp.record_feed_down()
+        mark_feed_down()
     try:
         row = live_price_rows.price_row("SPY", now)
         return {
@@ -393,7 +394,7 @@ def _served_at(now: float, feed_live: bool) -> dict:
     finally:
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_down()
+        mark_feed_down()
 
 
 def test_d5_a_feed_down_in_an_open_session_keeps_the_last_price_and_the_book():
@@ -1109,7 +1110,7 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
         finally:
             lmp._by_ticker.pop("SPY", None)
             lmp._fields_by_ticker.pop("SPY", None)
-            lmp.record_feed_down()
+            mark_feed_down()
         served[live] = (body["spot"], body["spot_source"], body["spot_time_ct"])
     assert (
         served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, "Fri 10/02 10:00 AM CT")

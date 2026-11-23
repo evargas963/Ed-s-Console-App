@@ -172,7 +172,6 @@ def test_strikes_payload_serves_each_strikes_volume_at_the_live_spot():
             level_store._levels.pop(C.ticker, None)
         lmp._by_ticker.pop(C.ticker, None)
         lmp._fields_by_ticker.pop(C.ticker, None)
-        lmp.record_feed_down()
     book = compute_exposures_by_strike(
         read_chain(C.chain), spot=C.spot, now=C.now, sessions=time_et.sessions()
     )[0]

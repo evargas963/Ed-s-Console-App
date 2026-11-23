@@ -35,7 +35,6 @@ def _clear(tk):
         level_store._levels.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_down()
 
 
 def test_every_per_strike_panel_answers_at_the_time_asked_around_the_price():

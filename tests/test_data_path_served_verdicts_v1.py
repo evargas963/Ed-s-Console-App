@@ -30,7 +30,7 @@ from push import terrain as push_terrain
 from state import capture_store, level_store
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import ROUND_SEC, daemon_status
+from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_down
 from tests.page_on_socket import pages
 from tests.real_chains import SPY_0DTE, TSLA
 from time_et import ET, age_text, record_markets
@@ -60,7 +60,7 @@ def _forget() -> None:
     for tk in ("TSLA", "SPY"):
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_down()
+    mark_feed_down()
 
 
 def _publish(tk: str, chain, delivered: datetime) -> None:

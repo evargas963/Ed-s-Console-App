@@ -41,6 +41,7 @@ from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import (
     clock_from,
     daemon_status,
+    mark_feed_down,
     mark_feed_live,
     publish_capture,
     recorder,
@@ -142,7 +143,7 @@ def _forget(tk: str = "SPY") -> None:
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
-    lmp.record_feed_down()
+    mark_feed_down()
 
 
 def _named(rows: list) -> dict:
@@ -289,7 +290,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     trade_ts = live_price_rows.price_row("SPY", clock())["trade_ts"]
     try:
         live = push_terrain.terrain("SPY", clock())
-        lmp.record_feed_down()
+        mark_feed_down()
         at = clock()
         down = push_terrain.terrain("SPY", at)
         levels = push_levels.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
@@ -337,7 +338,7 @@ def test_a_page_whose_price_has_stopped_is_told_each_minute_to_read_its_levels_a
             page = served.open("SPY", "levels")
             for down in (False, True, True):
                 if down:
-                    lmp.record_feed_down()
+                    mark_feed_down()
                 server.refresh_not_live_pages(clock())
                 seen.append(served.told(page, 0.3))
     finally:
@@ -376,7 +377,7 @@ def stopped_price_answers() -> dict:
         daemon_status(msg["ts_recv"], schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     lmp.record_from_level_one_equity("SPY", msg["native"], received_ts=msg["ts_recv"])
-    lmp.record_feed_down()
+    mark_feed_down()
     at = datetime.fromtimestamp(SPY_AFTER_HOURS_PRINT["ts_recv"], ET)
     try:
         next_close = datetime(2026, 10, 23, 16, 30, tzinfo=ET)

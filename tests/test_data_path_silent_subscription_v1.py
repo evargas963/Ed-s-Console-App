@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import live_market_plane as lmp
 from app.options.order_flow import streaming as ofs
-from tests.feed_live_helper import RTH_INSTANT, daemon_status
+from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down
 
 #: a contract Schwab listed and streamed: TSLA's 2026-08-31 367.5 call
 #: (tests/fixtures/real_options_stream_history_samples.json)
@@ -21,12 +21,9 @@ def test_a_missing_heartbeat_keeps_the_last_subscription():
     now = RTH_INSTANT
     held = {"LEVELONE_OPTIONS": [_SYM], "OPTIONS_BOOK": [_SYM]}
     lmp.record_feed_heartbeat(daemon_status(now, schwab_socket_open=True, held=held))
-    try:
-        live = ofs.get_option_contract_streaming_diagnostics(_SYM, now)  # a stock option
-        lmp.record_feed_down()
-        down = ofs.get_option_contract_streaming_diagnostics(_SYM, now)
-    finally:
-        lmp.record_feed_down()
+    live = ofs.get_option_contract_streaming_diagnostics(_SYM, now)  # a stock option
+    mark_feed_down()
+    down = ofs.get_option_contract_streaming_diagnostics(_SYM, now)
     assert live["subscription_state"] == ofs.SUBSCRIBED
     assert live["feed_health"]["l1"]["state"] == "LIVE"
     assert down["subscription_state"] == ofs.SUBSCRIBED

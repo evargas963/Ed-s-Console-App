@@ -25,7 +25,7 @@ from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import read_book
 from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
-from tests.feed_live_helper import daemon_status, on_the_bus
+from tests.feed_live_helper import daemon_status, mark_feed_down, on_the_bus
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -135,7 +135,7 @@ def test_a_contract_the_daemon_stops_streaming_keeps_its_last_bid():
         released = ofls.option_top(sym)
     finally:
         ofls.clear_all_live_state()
-        lmp.record_feed_down()
+        mark_feed_down()
     assert held.bid == m["item"]["BID_PRICE"]
     assert released.bid == m["item"]["BID_PRICE"]
     assert (

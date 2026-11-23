@@ -42,7 +42,13 @@ from state import capture_store, level_store
 from stream_spine import verbatim_msg
 from tests.capture_store import store_capture
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import ROUND_SEC, daemon_status, publish_capture, repriced
+from tests.feed_live_helper import (
+    ROUND_SEC,
+    daemon_status,
+    mark_feed_down,
+    publish_capture,
+    repriced,
+)
 from tests.real_chains import (
     CRWD,
     MRVL,
@@ -110,7 +116,7 @@ def _forget(tk: str) -> None:
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
     lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
-    lmp.record_feed_down()
+    mark_feed_down()
 
 
 def _spy_0dte_twice(
@@ -752,7 +758,7 @@ def mrvl_answers() -> dict:
     another test decides the verdict.
     """
     lmp.record_feed_heartbeat(daemon_status(MRVL.now.timestamp(), chain_round_sec=ROUND_SEC))
-    lmp.record_feed_down()
+    mark_feed_down()
     try:
         _publish_mrvl()
         by_expiry = {

@@ -61,7 +61,6 @@ def test_a_released_contract_keeps_its_last_bid_and_is_not_streamed():
         body = push_contract.options_microstructure(_SYM, _AT)
     finally:
         ofls.clear_all_live_state()
-        lmp.record_feed_down()
     assert body["top_of_book"]["bid"] == _MSG["item"]["BID_PRICE"]
     assert body["streaming_plane"]["subscription_state"] == ofs.NOT_STREAMED
     assert body["top_outage"]

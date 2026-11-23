@@ -36,7 +36,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
     sym = "$SPX"
     first = next(m for m in sent(_MIX, sym) if "LAST_PRICE" in m["item"])
     assert "LAST_SIZE" not in first["item"]
-    live_state.clear_symbol(sym)
+    live_state.clear_all_live_state()
     bus = MessageBus()
     live_state.bind_bus(bus.current)
     try:
@@ -44,7 +44,7 @@ def test_live_state_preserves_missing_last_size_for_order_flow_consumers():
         apply_record(live_state._LIVE_STATE, EQ, record)
         content = live_state.prints(sym)
     finally:
-        live_state.clear_symbol(sym)
+        live_state.clear_all_live_state()
     tape = [item for item in content if item.time_millis == first["item"]["TRADE_TIME_MILLIS"]]
 
     assert len(tape) == 1
@@ -70,7 +70,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
         if "LAST_PRICE" in m["item"]
     ]
     assert prints == [(775.565, 40), (775.57, None), (775.565, 49)]
-    live_state.clear_symbol(sym)
+    live_state.clear_all_live_state()
     bus = MessageBus()
     live_state.bind_bus(bus.current)
     try:
@@ -78,7 +78,7 @@ def test_live_state_present_last_size_reaches_order_flow_consumers():
             apply_record(live_state._LIVE_STATE, EQ, on_the_bus(bus, EQ, m["item"], m["ts_recv"]))
         content = live_state.prints(sym)
     finally:
-        live_state.clear_symbol(sym)
+        live_state.clear_all_live_state()
 
     assert [size for _x, size, _s in l1._signed_walk(content, None)] == [40, 40, 49, 250]
     assert l1.compute_cum_delta_proxy(content) is None

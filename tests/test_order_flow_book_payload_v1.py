@@ -30,12 +30,11 @@ import pytest
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import live_price_rows
-from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from push import book as push_book
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, forget_lean, mark_feed_down
 from time_et import record_markets
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -65,7 +64,7 @@ def build_book_closed_payload(
     ]
     ofls.clear_all_live_state()
     # the readouts another test's SPY books left in this process are not this book's
-    history.LEAN.forget("SPY")
+    forget_lean()
     try:
         lmp.record_feed_heartbeat(
             daemon_status(
@@ -90,14 +89,14 @@ def build_book_closed_payload(
                 ),
             )
         if feed_down:
-            lmp.record_feed_down()
+            mark_feed_down()
         return json.loads(json.dumps(push_book.order_flow_microstructure("SPY", "NYSE_BOOK", when)))
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop("SPY", None)
-        lmp.record_feed_down()
+        mark_feed_down()
         ofls.clear_all_live_state()
-        history.LEAN.forget("SPY")
+        forget_lean()
 
 
 #: 2026-10-23 15:59:05 ET, regular hours, the last of the five captured SPY messages received
@@ -124,7 +123,7 @@ def _row_after(ticker: str, messages: list, at: float) -> dict:
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(ticker, None)
-        lmp.record_feed_down()
+        mark_feed_down()
 
 
 def build_price_rows() -> dict:

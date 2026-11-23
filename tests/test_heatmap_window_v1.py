@@ -81,7 +81,6 @@ def _published():
         level_store._levels.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_down()
 
 
 def _heat(at=_AT, **kw):

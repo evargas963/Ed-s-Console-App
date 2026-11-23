@@ -78,7 +78,6 @@ def _reset() -> None:
     ofls.clear_all_live_state()
     with ofls._rest_lock:
         ofls._REST_QUOTES.clear()
-    lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     with level_store._lock:

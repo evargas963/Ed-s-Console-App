@@ -299,9 +299,6 @@ def test_an_expirys_held_contracts_are_found_by_lookup_not_by_walking_every_held
     lmp.record_feed_heartbeat(
         daemon_status(now, schwab_socket_open=True, held={"LEVELONE_OPTIONS": held})
     )
-    try:
-        found = lmp.held_option_symbols(asked, now, lmp.feed_now(now))
-    finally:
-        lmp.record_feed_down()
+    found = lmp.held_option_symbols(asked, now, lmp.feed_now(now))
     assert asked.searches == 0  # was once for each of the 12,904 held
     assert found == list(asked)  # every one held, in the order asked

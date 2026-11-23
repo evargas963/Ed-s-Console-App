@@ -13,7 +13,7 @@ from pathlib import Path
 import live_market_plane as lmp
 import live_price_rows
 import time_et
-from tests.feed_live_helper import mark_feed_live
+from tests.feed_live_helper import mark_feed_down, mark_feed_live
 
 _SENT = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_spy_level_one_2026_10_23.json").read_text(
@@ -34,10 +34,9 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_trade_time():
     lmp.record_from_level_one_equity("SPY", item, received_ts=_SENT["ts_recv"])
     try:
         live = live_price_rows.price_row("SPY", time_et.now())
-        lmp.record_feed_down()
+        mark_feed_down()
         down = live_price_rows.price_row("SPY", time_et.now())
     finally:
-        lmp.record_feed_down()
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
     assert live["trade_time_ct"] == live["quote_time_ct"] == "Fri 10/23 02:59 PM CT"

@@ -69,7 +69,6 @@ def _clean():
     """
     served = Pages()
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
     with level_store._lock:
         level_store._levels.pop(TK, None)
     with server._chains_waiting_lock:
@@ -77,7 +76,6 @@ def _clean():
     yield served
     served.stop()
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     with level_store._lock:

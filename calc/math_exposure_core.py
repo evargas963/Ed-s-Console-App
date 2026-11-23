@@ -836,19 +836,6 @@ def strike_total_volume(bucket: Bucket) -> float | None:
     return call_volume + put_volume
 
 
-def book_total_oi(exposures: dict[float, Bucket]) -> float | None:
-    """Total OI of the whole book, or None if ANY strike's OI is unknown."""
-    if not exposures:
-        return None
-    total = 0.0
-    for b in exposures.values():
-        t = strike_total_oi(b)
-        if t is None:
-            return None
-        total += t
-    return total
-
-
 def _put_call_ratio(legs: Iterable[tuple[float, float] | None]) -> float | None:
     """Total put / total call over the book's strikes.
 

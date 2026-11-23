@@ -10,7 +10,7 @@ import time_et
 from app.options.order_flow import state as of_state
 from calc.order_flow import book_age_sec
 from push import book as push_book
-from tests.feed_live_helper import mark_feed_live
+from tests.feed_live_helper import mark_feed_down, mark_feed_live
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _TK = "ZZBKTIME"
@@ -45,13 +45,12 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
     )
     now = time_et.now()
     try:
-        lmp.record_feed_down()
+        mark_feed_down()
         body = push_book.order_flow_microstructure(_TK, "NASDAQ_BOOK", now)
     finally:
         lmp._by_ticker.pop(_TK, None)
         lmp._fields_by_ticker.pop(_TK, None)
         of_state._LIVE_STATE._book.pop(_TK, None)
-        lmp.record_feed_down()
     assert body["top_of_book"]["bid"] == 772.00
     assert body["top_outage"] is not None
     assert body["quote_time_ct"] == "Fri 09/25 06:59 PM CT"

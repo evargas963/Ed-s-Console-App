@@ -351,17 +351,6 @@ class OrderFlowState:
             values.clear()
         self._records.clear()
 
-    def clear_symbol(self, symbol: str) -> None:
-        """Clear all state for one symbol, its recent prints and books included."""
-        sym = ticker_storage_key(symbol)
-        history.BOOKS.forget(sym)
-        history.LEAN.forget(sym)
-        with self._lock:
-            self._book.pop(sym, None)
-            self._records.pop(sym, None)
-            if sym in self._tape:
-                self._tape[sym].clear()
-
 
 _LIVE_STATE = OrderFlowState()
 
@@ -453,11 +442,6 @@ def clear_all_live_state() -> None:
     any rise Schwab merges is.
     """
     _LIVE_STATE.clear_all()
-
-
-def clear_symbol(symbol: str) -> None:
-    """Clear stored data for a symbol (e.g. on unsubscribe)."""
-    _LIVE_STATE.clear_symbol(symbol)
 
 
 def streamed_values(symbols: Iterable[str]) -> dict[str, Streamed]:

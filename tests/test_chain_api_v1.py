@@ -52,7 +52,6 @@ def _clean():
     ofls.clear_all_live_state()
     yield
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
     with level_store._lock:
         for tk in ("TSLA", "MRVL"):
             level_store._levels.pop(tk, None)

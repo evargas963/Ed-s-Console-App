@@ -1,12 +1,14 @@
-"""One expiry stored for a test, through the daemon's own transaction."""
+"""One expiry stored for a test, on the Recorder's own connection, in one transaction."""
 
 from __future__ import annotations
 
-from calibration.complete_chain_capture import capture_transaction, persist_complete_chain_capture
+from contextlib import closing
+
+from calibration.complete_chain_capture import persist_complete_chain_capture
 from stream_spine import CaptureWriter
 
 
 def store_capture(db, **row) -> dict:
-    CaptureWriter(db)  # the database as the Recorder makes it at its start: its folder and tables
-    with capture_transaction(db) as conn:
+    writer = CaptureWriter(db)  # the database as the Recorder makes it at its start
+    with closing(writer._open()) as conn, conn:  # commits, or rolls back on an error
         return persist_complete_chain_capture(conn, **row)

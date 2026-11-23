@@ -269,7 +269,7 @@ def test_an_options_book_never_leaks_into_the_underlyings_heatmap():
         for venue in ("NASDAQ_BOOK", "NYSE_BOOK", "OPTIONS_BOOK"):
             assert book_heatmap_for_ticker(contract["symbol"], venue)["available"] is False
     finally:
-        state.clear_symbol(contract["symbol"])
+        state.clear_all_live_state()
 
 
 def test_a_window_outside_the_books_kept_is_refused_never_replaced():

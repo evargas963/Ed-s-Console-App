@@ -52,6 +52,7 @@ from stream_spine import (
     quote_msg,
     verbatim_msg,
 )
+from tests.feed_live_helper import mark_feed_down
 from tests.schwab_rest_standin import LocalSchwab
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
@@ -113,7 +114,7 @@ def _beat(daemon: capture.Daemon) -> dict:
     try:
         assert lmp.daemon_status(time_et.now())["writer"] == beat["writer"]
     finally:
-        lmp.record_feed_down()
+        mark_feed_down()
     return beat
 
 

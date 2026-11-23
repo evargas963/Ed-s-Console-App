@@ -35,7 +35,7 @@ from push import tape as push_tape
 from push import terrain as push_terrain
 from state import level_store
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_live
+from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_down, mark_feed_live
 from tests.real_chains import CRWD
 
 _SPOT = CRWD.spot
@@ -238,7 +238,7 @@ def build_e2e_panels() -> dict:
         # the daemon's last status stands, its round of the watchlist reported (ROUND_SEC), its
         # feed not live: none left by another test decides the verdict
         lmp.record_feed_heartbeat(daemon_status(at, chain_round_sec=ROUND_SEC))
-        lmp.record_feed_down()
+        mark_feed_down()
         lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=at)
         return json.loads(
             json.dumps(

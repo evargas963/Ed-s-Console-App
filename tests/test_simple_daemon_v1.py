@@ -134,22 +134,18 @@ def test_one_live_rule_every_reader_agrees_and_all_fail_closed_at_one_limit():
             diag(b)["subscription_state"],
         )
 
-    lmp.record_feed_down()
-    try:
-        down = readers()
-        limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
-        lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
-        live, book_text, b_book = (
-            readers(),
-            diag(a)["feed_health"]["book"]["text"],
-            lmp.feed_live_for(b, "OPTIONS_BOOK", now),
-        )
-        lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
-        late = readers()
-        lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
-        schwab_down = readers()
-    finally:
-        lmp.record_feed_down()
+    down = readers()
+    limit = lmp.FEED_HEARTBEAT_MAX_AGE_SEC
+    lmp.record_feed_heartbeat({**status, "ts": now - limit + 0.5})
+    live, book_text, b_book = (
+        readers(),
+        diag(a)["feed_health"]["book"]["text"],
+        lmp.feed_live_for(b, "OPTIONS_BOOK", now),
+    )
+    lmp.record_feed_heartbeat({**status, "ts": now - limit - 0.5})
+    late = readers()
+    lmp.record_feed_heartbeat({**status, "schwab_socket_open": False, "ts": now})
+    schwab_down = readers()
     assert down == (False, False, "OFFLINE", "NOT STREAMED")
     assert late == (False, False, "OFFLINE", "SUBSCRIBED")
     # the daemon's own report of its last OPTIONS_BOOK message, 45 s, beside the feed's state

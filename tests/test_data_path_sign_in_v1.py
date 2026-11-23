@@ -34,7 +34,7 @@ from feed import chain_sweep as cch
 from feed import schwab_client as sc
 from push import verdict as push_verdict
 from stream_spine import HealthRegistry, MessageBus
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
 from time_et import ET
 
@@ -485,7 +485,7 @@ def _verdict(daemon, computed: float | None, at: datetime) -> tuple:
         verdict = push_verdict.terrain_staleness(computed, "SPY", now=now)
     finally:
         lmp.record_feed_heartbeat(daemon_status(0.0, schwab_socket_open=True))
-        lmp.record_feed_down()
+        mark_feed_down()
     return verdict["levels_state"], verdict["levels_stale_reason"]
 
 

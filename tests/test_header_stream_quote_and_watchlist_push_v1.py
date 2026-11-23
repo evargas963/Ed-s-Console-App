@@ -23,19 +23,16 @@ def test_a_symbol_the_daemon_does_not_hold_keeps_the_last_price_and_is_not_live(
     The last price stands, the row is not live, and it names the outage, the market open or
     closed.
     """
-    try:
-        for now in (1790780400.0, 1790820000.0):  # 11:00 ET, 22:00 ET
-            lmp.record_feed_heartbeat(
-                daemon_status(now, schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["ZZHELD"]})
-            )
-            lmp.record_from_level_one_equity(
-                "ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9}, received_ts=now
-            )
-            row = live_price_rows.price_row("ZZNOTHELD", now)
-            assert (row["spot"], row["bid"], row["feed_live"]) == (9.0, 8.9, False)
-            assert row["outage"] is not None
-    finally:
-        lmp.record_feed_down()
+    for now in (1790780400.0, 1790820000.0):  # 11:00 ET, 22:00 ET
+        lmp.record_feed_heartbeat(
+            daemon_status(now, schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["ZZHELD"]})
+        )
+        lmp.record_from_level_one_equity(
+            "ZZNOTHELD", {"LAST_PRICE": 9.0, "BID_PRICE": 8.9}, received_ts=now
+        )
+        row = live_price_rows.price_row("ZZNOTHELD", now)
+        assert (row["spot"], row["bid"], row["feed_live"]) == (9.0, 8.9, False)
+        assert row["outage"] is not None
 
 
 def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy() -> None:
@@ -70,4 +67,3 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     finally:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             kept.pop(tk, None)
-        lmp.record_feed_down()

@@ -12,12 +12,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import live_market_plane as lmp
 import time_et
 from app.options.order_flow import state as of_state
 from push import contract as push_contract
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import pushed
+from tests.feed_live_helper import mark_feed_down, pushed
 
 _SAMPLES = json.loads(
     (Path(__file__).parent / "fixtures" / "real_options_stream_history_samples.json").read_text(
@@ -52,11 +51,10 @@ def test_a_down_feed_keeps_the_contracts_quote_time_and_book_time():
                     symbol=_SYM, content=e["content"], src="schwab_options_l1", ts_recv=e["ts_recv"]
                 )
                 pushed(f"optquote.{_SYM}", msg)
-        lmp.record_feed_down()
+        mark_feed_down()
         body = push_contract.options_microstructure(_SYM, time_et.now())
     finally:
         of_state.clear_all_live_state()
-        lmp.record_feed_down()
     assert body["top_of_book"]["bid"] == 0.58
     assert body["top_outage"] is not None
     assert body["quote_time_ct"] == "Mon 08/31 01:50 PM CT"

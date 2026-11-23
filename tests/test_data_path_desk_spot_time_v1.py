@@ -37,7 +37,6 @@ def test_the_desk_spot_carries_schwabs_trade_time_when_the_feed_is_down():
     finally:
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_down()
     assert body["spot"] == item["LAST_PRICE"] == 760.07
     # Schwab's trade time is served once, as the text the page shows: no second, raw copy
     assert body["spot_time_ct"] == ct_label(at) == "Fri 10/23 02:59 PM CT"
