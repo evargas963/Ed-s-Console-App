@@ -72,3 +72,9 @@ def node_json(script: str, cwd: Path, env: dict[str, str]):
 def sent(messages: list[dict], key: str) -> list[dict]:
     """`key`'s messages among the stream's `messages`, in receive order."""
     return [m for m in messages if m["item"]["key"] == key]
+
+
+def rail_levels(body: dict) -> list[dict]:
+    """Every level a Confluence answer serves: each lane's inside the rows, then those past."""
+    lanes = body["rail_lanes"]
+    return [*lanes["session"], *lanes["options"], *body["levels_above"], *body["levels_below"]]

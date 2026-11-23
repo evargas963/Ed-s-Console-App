@@ -28,6 +28,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from tests.shared_helpers import rail_levels
+
 pytestmark = pytest.mark.rail
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -83,11 +85,6 @@ def _settles(name: str, expiry: str) -> datetime:
     return datetime.fromisoformat(sent.pop())
 
 
-def _levels(body: dict) -> list[dict]:
-    lanes = body["rail_lanes"]
-    return [*lanes["session"], *lanes["options"], *body["levels_above"], *body["levels_below"]]
-
-
 def _signed(x: float, digits: int) -> str:
     shown = f"{x:+.{digits}f}"
     return shown[1:] if float(shown) == 0 else shown
@@ -98,7 +95,7 @@ def test_the_matrix_marks_only_the_key_levels(name: str, key: str) -> None:
     """Only the kept levels; the same-day copies only when the expiry settles that day."""
     body = _panels(name)[key]
     expiry_day = body["expiry"] == _captured_at(name).date().isoformat()
-    titles = {lv["title"] for lv in _levels(body)}
+    titles = {lv["title"] for lv in rail_levels(body)}
     allowed = KEY_OPTIONS | KEY_SESSION | (SAME_DAY if expiry_day else set())
     assert titles <= allowed, titles - allowed
     # both benchmarks are there (the day has bars), and the dealers' gamma levels
@@ -137,7 +134,7 @@ def test_each_strike_and_level_is_its_distance_in_points_and_in_implied_moves(
     years = (_settles(name, expiry) - _captured_at(name)).total_seconds() / (365 * 86400)
     assert iv > 0 and years > 0, "the case has a volatility and time left: not vacuous"
     priced = [(row["strike"], row) for row in body["rows"]]
-    priced += [(lv["price"], lv) for lv in _levels(body)]
+    priced += [(lv["price"], lv) for lv in rail_levels(body)]
     for price, shown in priced:
         z = math.log(price / spot) / (iv * math.sqrt(years))
         assert shown["sigma"] == pytest.approx(z, rel=1e-9), price

@@ -342,6 +342,15 @@ def _text(n: float | None, digits: int) -> str | None:
     return f"{n:.{digits}f}"
 
 
+def implied_move(atm_iv_pct: float | None, years: float | None) -> float | None:
+    """Return an expiry's one implied move as a share of the price: σ_ATM × √(time left).
+
+    `atm_iv_pct` is the expiry's at-the-money volatility, a percent; `years` its time left. None
+    when either is not known.
+    """
+    return None if atm_iv_pct is None or years is None else atm_iv_pct / 100.0 * math.sqrt(years)
+
+
 class Distance(TypedDict):
     """A price's distance from the live price: in dollars, and in the expiry's implied moves."""
 

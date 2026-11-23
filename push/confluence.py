@@ -6,11 +6,17 @@ Read from State: the published levels (state.level_store), the price-level snaps
 
 from __future__ import annotations
 
-import math
 from datetime import datetime
 from typing import Any
 
-from calc.confluence_composite import Matrix, at_price, build_matrix, distance, window_rows
+from calc.confluence_composite import (
+    Matrix,
+    at_price,
+    build_matrix,
+    distance,
+    implied_move,
+    window_rows,
+)
 from calc.math_exposure_core import merge_exposure_books
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -174,7 +180,7 @@ def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) 
 
 
 def _sigma_root_t(published: PublishedLevels, tk: str, expiry: str, now: datetime) -> float | None:
-    """Return the expiry's one implied move: its at-the-money volatility × √(time left), or None.
+    """Return the expiry's one implied move (calc.confluence_composite.implied_move), or None.
 
     The volatility is the expiry's own (TerrainSnapshot.atm_iv_pct_by_expiry, a percent); the
     time is to its settlement at `now`, in years, by the one clock (time_et.time_to_expiry_years)
@@ -182,7 +188,6 @@ def _sigma_root_t(published: PublishedLevels, tk: str, expiry: str, now: datetim
     either is not known, or when the expiry's contracts settle at different times (an AM and a
     PM index series on one date): the expiry then has no one time left.
     """
-    iv_pct = published.snap.atm_iv_pct_by_expiry[expiry]
     held, product = sessions(), option_close_product(tk)
     times = {
         time_to_expiry_years(
@@ -192,9 +197,7 @@ def _sigma_root_t(published: PublishedLevels, tk: str, expiry: str, now: datetim
         if c.expiry == expiry and c.expiration is not None
     }
     t = times.pop() if len(times) == 1 else None
-    if iv_pct is None or t is None:
-        return None
-    return iv_pct / 100.0 * math.sqrt(t)
+    return implied_move(published.snap.atm_iv_pct_by_expiry[expiry], t)
 
 
 def _chain_status(verdict: LevelsVerdict, fetched: float, now: float) -> str:
