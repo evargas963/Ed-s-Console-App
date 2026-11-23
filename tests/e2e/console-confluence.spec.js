@@ -156,7 +156,9 @@ test("a price that has stopped marks the spot not live with its time and age", a
   expect(errs).toEqual([]);
 });
 
-test("the matrix redraws when the priced chain updates and keeps the expiry", async ({ page }) => {
+test("the matrix redraws its served tags and readings as the chain updates, keeping the expiry", async ({
+  page,
+}) => {
   const errs = [];
   const expiries = [];
   page.on("pageerror", (e) => errs.push(e.message));
