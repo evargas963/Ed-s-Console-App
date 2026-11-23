@@ -1,8 +1,8 @@
 """stream_capture.db holds what the operator trades, for the newest five trading sessions.
 
 See docs/DATA_FLOW.md §2 D4: the daemon's writer records an option quote or option book only for
-a contract the daemon keeps (Daemon.saves: each watchlist ticker's soonest expiration, the 5
-listed strikes each side of the price, and the Flow panel's contract), every equity message, and
+a contract the daemon keeps (Daemon.saves: every contract of each watchlist ticker's soonest
+expiration, and the Flow panel's contract), every equity message, and
 once after each close of the last option market removes the rows received before the newest five
 sessions began (keep_sessions, CaptureWriter.prune). The live stream and the levels are untouched.
 
@@ -70,11 +70,10 @@ def _rows(db, sql: str) -> list:
 def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(tmp_path):
     """Only the option contracts traded are recorded, and every equity message.
 
-    SPY 2026-10-07 12:32 ET at 776.61, its same-day expiration listed: strikes 772 to 782 (777
-    nearest, 5 listed each side), calls and puts. MRVL at 283.73, no same-day expiration: its
-    nearest, 2026-10-09, strikes 270 to 295 (282.5 nearest). The contract selected on the Flow
-    panel is recorded wherever it is. No other option quote or option book is recorded; both
-    tickers' equity quotes are.
+    SPY 2026-10-07 12:32 ET at 776.61, its same-day expiration listed: every contract of it,
+    calls and puts. MRVL at 283.73, no same-day expiration: every contract of its nearest,
+    2026-10-09. The contract selected on the Flow panel is recorded wherever it is. No other
+    option quote or option book is recorded; both tickers' equity quotes are.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
@@ -85,12 +84,8 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
     daemon.writer = writer
     writer.saves = daemon.saves
     flow = next(c["symbol"] for c in MRVL.chain if c["expirationDate"].startswith("2026-11-20"))
-    spy_kept = {c["symbol"] for c in SPY_0DTE.chain if 772 <= c["strikePrice"] <= 782}
-    mrvl_kept = {
-        c["symbol"]
-        for c in MRVL.chain
-        if c["expirationDate"].startswith("2026-10-09") and 270 <= c["strikePrice"] <= 295
-    }
+    spy_kept = {c["symbol"] for c in SPY_0DTE.chain if c["expirationDate"].startswith("2026-10-07")}
+    mrvl_kept = {c["symbol"] for c in MRVL.chain if c["expirationDate"].startswith("2026-10-09")}
     every = [c["symbol"] for c in SPY_0DTE.chain + MRVL.chain]
     near, far = (
         sorted(spy_kept)[0],
@@ -165,7 +160,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
             lmp._by_ticker.pop(tk, None)
             lmp._fields_by_ticker.pop(tk, None)
 
-    assert len(spy_kept) == len(mrvl_kept) == 22  # 11 strikes, a call and a put each
+    assert (len(spy_kept), len(mrvl_kept)) == (40, 162)  # every contract of the expiration
     options = {s for (s,) in _rows(db, "SELECT symbol FROM stream_options_quotes_raw")}
     assert options == spy_kept | mrvl_kept | {flow}, (
         "not exactly the kept contracts and the Flow panel's"

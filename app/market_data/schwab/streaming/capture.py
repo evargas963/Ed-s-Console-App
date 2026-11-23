@@ -291,14 +291,9 @@ def shown_first(
     return tuple(r[-1] for r in sorted(rows))
 
 
-#: listed strikes each side of the one nearest the price whose option quotes and option books are
-#: recorded (the operator's setting; Daemon.saves)
-STRIKES_SAVED = 5
-
 #: one expiration of a chain: its time (Schwab's expirationDate), when its last contract's time
-#: to expiry runs out (None while none of theirs is known), its listed strikes ascending, each
-#: strike's symbols
-type Ladder = tuple[float, float | None, list[float], dict[float, list[str]]]
+#: to expiry runs out (None while none of theirs is known), each listed strike's symbols
+type Ladder = tuple[float, float | None, dict[float, list[str]]]
 
 
 def strike_ladders(
@@ -306,11 +301,10 @@ def strike_ladders(
 ) -> list[Ladder]:
     """Return a chain's expirations, soonest first.
 
-    Each is (expiration time, when its time to expiry runs out, its listed strikes ascending,
-    each strike's contract symbols): the latest settlement of its contracts (time_et.settles_at
-    at `now`, on the ticker's option market `product` and Schwab's /markets answers `held`). A
-    contract whose strike or expiration is not a number, or that has no symbol to stream, is
-    left out (rule 2).
+    Each is (expiration time, when its time to expiry runs out, each listed strike's contract
+    symbols): the latest settlement of its contracts (time_et.settles_at at `now`, on the
+    ticker's option market `product` and Schwab's /markets answers `held`). A contract whose
+    strike or expiration is not a number, or that has no symbol to stream, is left out (rule 2).
     """
     at = datetime.fromtimestamp(now, ET)
     by: dict[float, dict[float, list[str]]] = {}
@@ -324,26 +318,22 @@ def strike_ladders(
             if settles is not None:
                 ends.setdefault(c.expires_at, []).append(settles.timestamp())
     return [
-        (expires, max(ends[expires]) if expires in ends else None, sorted(by_strike), by_strike)
+        (expires, max(ends[expires]) if expires in ends else None, by_strike)
         for expires, by_strike in sorted(by.items())
     ]
 
 
-def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[str]:
-    """Return the contracts recorded of one ticker.
+def saved_window(ladders: list[Ladder], now: float) -> frozenset[str]:
+    """Return the contracts recorded of one ticker: every contract of one expiration.
 
-    They are its soonest expiration whose time to expiry has not run out at `now` (today's when
-    one is listed, through the end of its option day, else the nearest), at the strike nearest
-    `price` (the lower of two equally near) and the STRIKES_SAVED listed strikes each side of it.
+    It is the soonest whose time to expiry has not run out at `now` (today's when one is
+    listed, through the end of its option day, else the nearest), every listed strike of it:
+    the Confluence matrix reads each strike of its expiry, and its readings are checked on this
+    record session by session.
     """
-    for _expires, ends, strikes, symbols in ladders:
+    for _expires, ends, symbols in ladders:
         if ends is None or ends > now:
-            i = nearest_position(strikes, price)
-            return frozenset(
-                s
-                for k in strikes[max(0, i - STRIKES_SAVED) : i + STRIKES_SAVED + 1]
-                for s in symbols[k]
-            )
+            return frozenset(s for strike_symbols in symbols.values() for s in strike_symbols)
     return frozenset()
 
 
@@ -503,13 +493,9 @@ class Daemon:
         )
 
     def _place(self, ticker: str, now: float) -> None:
-        """Place `ticker`'s recorded window (saved_window) at its live price and `now`.
-
-        While its row has no price, the window it has stands.
-        """
-        price = live_price_rows.spot(ticker)
-        if price is not None and ticker in self._ladders:
-            window = saved_window(self._ladders[ticker], price, now)
+        """Place `ticker`'s recorded window (saved_window) at `now`."""
+        if ticker in self._ladders:
+            window = saved_window(self._ladders[ticker], now)
             if window != self._windows.get(ticker):
                 self._windows[ticker] = window
                 self._keep_options()
@@ -567,8 +553,8 @@ class Daemon:
     async def _took_row(self, ticker: str) -> None:
         """Act on `ticker`'s price row published.
 
-        A watchlist ticker's window is placed at the price and its waiting chain ordered (the
-        window first: the rule streams it).
+        A watchlist ticker's window is placed and its waiting chain ordered (the window first:
+        the rule streams it).
         """
         if ticker in self.watchlist:
             now = self.clock()

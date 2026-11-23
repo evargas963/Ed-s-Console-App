@@ -117,10 +117,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   multiplier, symbol), reads through a helper or a table of names, page code, and the derived half
   (a served value `docs/derived_register.md` does not name). Known second producers, each deleted to
   one with a test: the strike at the price (`calc.terrain_engine.nearest_strike`,
-  `calc.confluence_composite.under_strike`, the daemon's `saved_window`); the front expiry's five
-  definitions (max pain, same-day levels, heatmap front, confluence default); equity prints kept
-  again in the order-flow tape (`app/options/order_flow/state.py`); and the second computations the
-  2026-10-02 review listed, each re-checked against the code before it is fixed.
+  `calc.confluence_composite.under_strike`); the front expiry's five definitions (max pain, same-day
+  levels, heatmap front, confluence default); equity prints kept again in the order-flow tape
+  (`app/options/order_flow/state.py`); and the second computations the 2026-10-02 review listed,
+  each re-checked against the code before it is fixed.
 - ENF-11 (QUEUED; also P1-9): one formatter per format, on the server, and a machine check of it
   (`tests/test_served_numbers_v1.py` holds the number formatters; ruff `PLC0415` is already at 0).
 - SIMPLIFY (ACTIVE; also ENF-04, TEST-CLEANUP, TEST-REVIEW, P2-6, P2-7): every line earns its place,

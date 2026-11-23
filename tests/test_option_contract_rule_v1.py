@@ -112,18 +112,14 @@ def by_definition(contracts: list[dict], price: float, now: float) -> list[str]:
     return [c["symbol"] for c in sorted(live, key=lambda c: (distance(c), *_order(c, price)))]
 
 
-def recorded_by_definition(contracts: list[dict], price: float, now: float) -> set[str]:
+def recorded_by_definition(contracts: list[dict], now: float) -> set[str]:
     """Return a chain's recorded contracts, from their definition.
 
-    Its soonest expiration not passed at `now`, at the listed strike nearest the price (the
-    lower of two equally near) and the 5 listed strikes each side of it.
+    Every contract of its soonest expiration not passed at `now`.
     """
     live = [c for c in contracts if _expires(c) > now]
     soonest = min(_expires(c) for c in live)
-    strikes = sorted({c["strikePrice"] for c in live if _expires(c) == soonest})
-    centre = min(range(len(strikes)), key=lambda i: (abs(strikes[i] - price), strikes[i]))
-    near = set(strikes[max(0, centre - 5) : centre + 6])
-    return {c["symbol"] for c in live if _expires(c) == soonest and c["strikePrice"] in near}
+    return {c["symbol"] for c in live if _expires(c) == soonest}
 
 
 def _dealt(rows: list[list[str]]) -> list[str]:
@@ -149,7 +145,7 @@ def _rule(
     many.
     """
     ranked = {tk: by_definition(chains[tk], prices[tk], now) for tk in watchlist}
-    windows = {tk: recorded_by_definition(chains[tk], prices[tk], now) for tk in watchlist}
+    windows = {tk: recorded_by_definition(chains[tk], now) for tk in watchlist}
     recorded = [[s for s in ranked[tk] if s in windows[tk]] for tk in watchlist]
     on_page = [ranked[tk] for tk in watchlist if tk in shown]
     order = list(
@@ -399,9 +395,9 @@ def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp
 
     OPTIONS_BOOK holds MRVL's first 100 of the rule's order, and has stated its limit. SPY's
     chain is fitted within it: one UNSUBS of MRVL's that give way and one ADD of as many of
-    SPY's (its recorded contracts, then its share of the deal). LEVELONE_OPTIONS, which refused
-    nothing, is asked for SPY's 442 on top. Schwab refuses nothing more: no contract past a
-    limit it stated is asked for.
+    SPY's (its recorded contracts, dealt in turn with MRVL's: half the books each).
+    LEVELONE_OPTIONS, which refused nothing, is asked for SPY's 442 on top. Schwab refuses
+    nothing more: no contract past a limit it stated is asked for.
     """
     alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"])
     both = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
@@ -424,9 +420,9 @@ def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp
         left, came = sorted(alone[svc] - both[svc]), sorted(both[svc] - alone[svc])
         assert moved == [(c, k) for c, k in (("UNSUBS", left), ("ADD", came)) if k], svc
     spys = {c["symbol"] for c in CHAINS["SPY"]} & both[BOOK]
-    recorded = recorded_by_definition(CHAINS["SPY"], PRICES["SPY"], CAPTURED)
-    assert both[BOOK] - alone[BOOK] == spys and recorded < spys, "SPY's recorded ones, and more"
-    assert len(alone[BOOK] - both[BOOK]) == len(spys) == 44
+    recorded = recorded_by_definition(CHAINS["SPY"], CAPTURED)
+    assert both[BOOK] - alone[BOOK] == spys and spys < recorded, "SPY's books: recorded ones"
+    assert len(alone[BOOK] - both[BOOK]) == len(spys) == 50
     assert alone[L1] < both[L1] and len(both[L1] - alone[L1]) == 442
     later = [
         a["response"][0]["content"]["code"] for a in market.streamer.answers[sent["answers"] :]
@@ -641,9 +637,10 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
 
     Not a second read of LAST_PRICE. Induced condition: after MRVL's last (263.51), Schwab marks
     LAST_PRICE invalid (-999), so the row has no price. MRVL's next chain, after its 2026-09-25
-    contracts expire, is not ordered at the last price: the contracts held, and the contracts
-    recorded, stay as they were. It is ordered at the next price Schwab sends (its close,
-    258.95).
+    contracts expire, is not ordered at the last price: the contracts held stay as they were.
+    It is ordered at the next price Schwab sends (its close, 258.95). The contracts recorded
+    read no price: they move to the next expiration as soon as the 2026-09-25 contracts' time
+    has run out, and the price changes nothing of them.
     """
     clock = [CAPTURED]
     expired = {c["symbol"] for c in CHAINS["MRVL"] if c["expirationDate"].startswith("2026-09-25")}
@@ -675,10 +672,10 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
     assert {s: held[s] for s in (L1, BOOK)} == {s: before[s] for s in (L1, BOOK)}, (
         "no chain is ordered at a price the row does not hold"
     )
-    assert held["recorded"][1] == held["recorded"][0], (
-        "the recorded window stands while the row has no price"
+    assert held["recorded"][1] != held["recorded"][0], (
+        "the recorded window moves with the expiration, the row's price or not"
     )
-    assert held["then_recorded"] != held["recorded"][0]  # at the next price it moves
+    assert held["then_recorded"] == held["recorded"][1]  # the next price changes nothing of it
     assert expired & before[L1] and not expired & then[L1]  # the next chain moved what is held
 
 
@@ -1030,7 +1027,8 @@ def test_the_ticker_a_page_shows_takes_schwabs_slots_and_a_switch_moves_them(tmp
     are dealt across both. A page selects SPY: every slot is SPY's but the recorded contracts
     of MRVL, which stay streamed so the writer still records them. The page switches to MRVL:
     every MRVL contract not expired streams, and SPY keeps the rest. On OPTIONS_BOOK (100) the
-    recorded contracts of both come first and the shown ticker takes the rest.
+    recorded contracts of both (every contract of each one's soonest expiration, more than
+    100) take every book, whichever ticker a page shows.
     """
     now = SPY_FULL.now.timestamp()
     chains = {"MRVL": CHAINS["MRVL"], "SPY": SPY_FULL.chain}
@@ -1062,17 +1060,23 @@ def test_the_ticker_a_page_shows_takes_schwabs_slots_and_a_switch_moves_them(tmp
         server.stop_terrain_loop()  # the reprices the selections queued
     spy = {c["symbol"] for c in chains["SPY"]}
     mrvl_live = {c["symbol"] for c in chains["MRVL"] if _expires(c) > now}
-    mrvl_recorded = recorded_by_definition(chains["MRVL"], prices["MRVL"], now)
-    spy_recorded = recorded_by_definition(chains["SPY"], prices["SPY"], now)
+    mrvl_recorded = recorded_by_definition(chains["MRVL"], now)
+    spy_recorded = recorded_by_definition(chains["SPY"], now)
     assert len(spy) > 3000 > len(mrvl_live) > 1500, "SPY alone is past Schwab's limit"
     assert all(len(held[L1]) == 3000 for held in (dealt, spy_shown, mrvl_shown))
-    assert len(dealt[L1] & spy) == 1500, "no page: half of Schwab's slots each"
+    recorded = mrvl_recorded | spy_recorded
+    rest = dealt[L1] - recorded
+    # the rest is dealt in turns; a turn on a contract already taken is skipped, which can move
+    # the split by no more than the recorded contracts
+    assert recorded < dealt[L1] and abs(len(rest & spy) - len(rest - spy)) <= len(recorded), (
+        "no page: each one's recorded contracts, then the rest dealt in turn"
+    )
     assert spy_shown[L1] - spy == mrvl_recorded, "SPY on a page: every slot but MRVL's recorded"
     assert mrvl_live < mrvl_shown[L1] and spy_recorded < mrvl_shown[L1]
     assert mrvl_shown[L1] - mrvl_live < spy, "MRVL on a page: all of it, and SPY the rest"
-    for held, shown in ((spy_shown, spy), (mrvl_shown, mrvl_live)):
-        assert mrvl_recorded | spy_recorded < held[BOOK]
-        assert held[BOOK] - mrvl_recorded - spy_recorded < shown, "the books left: the shown one's"
+    for held in (spy_shown, mrvl_shown):
+        assert held[BOOK] < mrvl_recorded | spy_recorded, "the books: recorded contracts"
+        assert held[BOOK] == dealt[BOOK], "the books do not follow the page: the record's"
 
 
 def test_a_contract_no_chain_the_console_holds_lists_is_not_taken():
@@ -1140,6 +1144,6 @@ def test_an_expiring_contract_streams_and_is_recorded_until_its_option_day_ends(
     order = {
         t: set(capture.shown_first(chain, spot, at(t), product, held)) for t in ("16:10", "16:15")
     }
-    window = {t: capture.saved_window(ladders, spot, at(t)) for t in ("16:10", "16:15")}
-    assert expiring <= order["16:10"] and window["16:10"] and window["16:10"] <= expiring
+    window = {t: capture.saved_window(ladders, at(t)) for t in ("16:10", "16:15")}
+    assert expiring <= order["16:10"] and window["16:10"] and window["16:10"] == expiring
     assert not expiring & order["16:15"] and window["16:15"] and not window["16:15"] & expiring
