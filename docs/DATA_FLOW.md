@@ -72,24 +72,24 @@ The rules for the data itself, at every hop from Schwab to the screen.
   contracts only (`capture.Daemon.saves`): every contract of each ticker's soonest expiration whose
   time to expiry has not run out (`capture.saved_window`), and the Flow panel's contract. Those come
   first in the option rule's order, so each ticker's front expiry is streamed in full before the
-  rest (`capture.Daemon.pick_options`). Quotes, option quotes, bars and news are kept whole; order books before the
-  regular open plus 30 minutes and in the session's last 30 minutes (`stream_spine._book_kept`).
-  After five sessions (`capture.SESSIONS_KEPT`, `capture.keep_sessions`) those rows move into
-  `stream_archive` as compressed blocks (`stream_spine.ARCHIVED`, read back by
-  `stream_spine.archived_rows`); the tables of `stream_spine.KEPT_BY_TIME` (price history, chain and
-  quote answers, operational tables) drop rows older than five sessions. A row the database refuses,
-  or a statement of the writer's own (a keep part, a spill's progress row) that fails for its own
-  reason, is kept as sent with its error in `stream_write_failures` and the writer goes on: an error
-  is every write's when its SQLite code is in `stream_spine.REFUSAL_CODES` (busy, locked, full, I/O,
-  read-only and the like), else that row's or statement's alone (`stream_spine._its_own`). While the
-  database refuses every write, the writer holds messages in memory up to
-  `stream_spine.HOLD_CAP_BYTES`, then in spill files beside the database (`<stem>.<ms>.<n>.spill`),
-  and writes them back in order, recording progress in `stream_spill_progress`; files a stop or
-  crash left are written back at the next start. Its state (`stream_spine.WriterStatus`) rides the
-  daemon's heartbeat to the header's Record cell: its one word, with the whole line as the title
-  and, while it is not recording, on the alert line (§6, decision 11). Enforced by:
-  `tests/test_data_path_stream_kept_v1.py`, `tests/test_data_path_rules_v1.py`,
-  `tests/test_data_path_writer_failures_v1.py`.
+  rest (`capture.Daemon.pick_options`). Quotes, option quotes, bars and news are kept whole; order
+  books before the regular open plus 30 minutes and in the session's last 30 minutes
+  (`stream_spine._book_kept`). After five sessions (`capture.SESSIONS_KEPT`,
+  `capture.keep_sessions`) those rows move into `stream_archive` as compressed blocks
+  (`stream_spine.ARCHIVED`, read back by `stream_spine.archived_rows`); the tables of
+  `stream_spine.KEPT_BY_TIME` (price history, chain and quote answers, operational tables) drop rows
+  older than five sessions. A row the database refuses, or a statement of the writer's own (a keep
+  part, a spill's progress row) that fails for its own reason, is kept as sent with its error in
+  `stream_write_failures` and the writer goes on: an error is every write's when its SQLite code is
+  in `stream_spine.REFUSAL_CODES` (busy, locked, full, I/O, read-only and the like), else that row's
+  or statement's alone (`stream_spine._its_own`). While the database refuses every write, the writer
+  holds messages in memory up to `stream_spine.HOLD_CAP_BYTES`, then in spill files beside the
+  database (`<stem>.<ms>.<n>.spill`), and writes them back in order, recording progress in
+  `stream_spill_progress`; files a stop or crash left are written back at the next start. Its state
+  (`stream_spine.WriterStatus`) rides the daemon's heartbeat to the header's Record cell: its one
+  word, with the whole line as the title and, while it is not recording, on the alert line (§6,
+  decision 11). Enforced by: `tests/test_data_path_stream_kept_v1.py`,
+  `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. The last value stands, marked** (`AGENTS.md` rule 5). A value is LIVE while its feed
   delivers it and its market trades (`live_market_plane.live_state`): the daemon's heartbeat is no
   older than `live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`, the Schwab socket is open, the symbol
