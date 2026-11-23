@@ -27,6 +27,7 @@ from calc.confluence_composite import (
 )
 from calc.liquidity_value_engine import bars_from_candles, visits
 from calc.math_exposure_core import Bucket, merge_exposure_books
+from calc.math_levels import expiry_gamma
 from calc.option_window import strike_look_back
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -254,29 +255,37 @@ def _book(snap: TerrainSnapshot, chosen: str) -> dict[float, Bucket]:
 def _matrix(
     tk: str,
     published: PublishedLevels,
-    spot: float,
+    priced: tuple[float, datetime],
     chosen: str,
     now: datetime,
     start: int | None,
 ) -> Matrix:
     """Return the readings of one expiry of a priced chain: the one the matrix request shows.
 
-    `spot`: the price the snapshot was priced at; `chosen` is an expiry of the snapshot's books
-    (_confluence_expiries); its book on the prior day (None, no prior day held; an expiry that
-    day does not list: every strike new); the regular session's visits at each strike so far;
-    each strike over the look-back from minute `start` (_looks).
+    `priced`: the price and the instant the snapshot was priced at; `chosen` is an expiry of the
+    snapshot's books (_confluence_expiries); its gamma if the price were at each strike, priced
+    at that same instant (calc.math_levels.expiry_gamma, for this expiry alone); its book on the
+    prior day (None, no prior day held; an expiry that day does not list: every strike new); the
+    regular session's visits at each strike so far; each strike over the look-back from minute
+    `start` (_looks).
     """
     snap, prior_day = published.snap, published.prior_day
     exposures = _book(snap, chosen)
     prior = None if prior_day is None else _book(prior_day, chosen)
     bars = bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
     contracts = [c for c in published.chain if c.expiry == chosen]
+    gamma = expiry_gamma(
+        [c for c in published.priced_chain if c.expiry == chosen],
+        priced[1],
+        sessions=sessions(),
+        product=option_close_product(tk),
+    )
     return build_matrix(
         exposures,
         snap.charm_by_expiry[chosen],
         snap.iv_by_expiry[chosen],
-        spot,
-        snap.gamma_by_expiry[chosen],
+        priced[0],
+        gamma,
         prior,
         visits(bars, sorted(exposures), now, sessions()),
         _looks(contracts, now, start),
@@ -524,7 +533,8 @@ def confluence_payload(
     """
     published = published_levels(tk)
     priced_at = None if published is None else published.snap.spot
-    if published is None or not published.snap.books or priced_at is None:
+    valued_at = None if published is None else published.snap.valued_at
+    if published is None or not published.snap.books or priced_at is None or valued_at is None:
         return unavailable(tk, "no priced chain is held for this ticker", **NO_LEVELS)
     live = published.snap
     today = now.strftime("%Y-%m-%d")
@@ -546,7 +556,7 @@ def confluence_payload(
         )
         return unavailable(tk, reason, expiry=chosen, **NO_LEVELS)
     start = _window_start(lookback, now)
-    stored = _matrix(tk, published, priced_at, chosen, now, start)
+    stored = _matrix(tk, published, (priced_at, valued_at), chosen, now, start)
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
     sigma_root_t = _sigma_root_t(published, tk, chosen, now)

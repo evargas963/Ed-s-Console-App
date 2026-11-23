@@ -298,6 +298,23 @@ def compute_gamma_profile(
     return sorted(curve.items())
 
 
+def expiry_gamma(
+    contracts: list[OptionContract],
+    now: datetime,
+    *,
+    sessions: Mapping[str, Session],
+    product: str,
+) -> dict[float, float]:
+    """Return one expiry's net GEX if the price were at each of its listed strikes at `now`.
+
+    Its contracts priced as the gamma profile prices them (contract_inputs), summed at every
+    strike the expiry lists (gamma_at_strikes): the confluence matrix's gamma reading of the
+    expiry it shows, at the levels snapshot's valuation instant. Empty with no priced contract.
+    """
+    parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
+    return gamma_at_strikes(parsed, (c.strike for c in contracts if c.strike is not None))
+
+
 def gamma_at_strikes(parsed: list[ProfileRow], strikes: Iterable[float]) -> dict[float, float]:
     """Net GEX (per 1% move, dollars) of `parsed`'s contracts if the price were at each strike.
 

@@ -25,7 +25,12 @@ from calc.confluence_composite import (
     window_rows,
 )
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
-from calc.math_levels import compute_charm_by_strike, contract_inputs, gamma_at_strikes
+from calc.math_levels import (
+    compute_charm_by_strike,
+    contract_inputs,
+    expiry_gamma,
+    gamma_at_strikes,
+)
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from numeric_contract import price_text
 from option_contract import read_chain
@@ -178,16 +183,23 @@ def _published_matrix(tk: str, fx_chain: list, ts_utc: float, spot: float, expir
     at = datetime.fromtimestamp(ts_utc, ET)
     try:
         publish_capture(tk, fx_chain, ts_utc, spot, at.date().isoformat(), at)
-        live = level_store.published_levels(tk).snap
+        published = level_store.published_levels(tk)
     finally:
         _forget(tk)
+    live = published.snap
     book = next(b for (e, _d), (b, _x) in live.books.items() if e == expiry)
+    gamma = expiry_gamma(
+        [c for c in published.priced_chain if c.expiry == expiry],
+        live.valued_at,
+        sessions=sessions(),
+        product=option_close_product(tk),
+    )
     return build_matrix(
         book,
         live.charm_by_expiry[expiry],
         live.iv_by_expiry[expiry],
         spot,
-        live.gamma_by_expiry[expiry],
+        gamma,
         None,
         {},
         {},
@@ -246,8 +258,8 @@ def test_each_strike_is_the_expirys_gamma_if_the_price_were_there():
 
     Each strike's gamma reading is the expiry's net GEX if the price were at that strike, worked
     out from the raw chain outside the program (tests/real_chains.gamma_here_worked_out): the
-    producer's map and every shown row, its words the sign's, a model with the convention said
-    on hover.
+    producer's map at the snapshot's valuation instant and every shown row, its words the sign's,
+    a model with the convention said on hover.
     """
     held = SPY_0DTE
     expiry = str(held.chain[0]["expirationDate"])[:10]
@@ -258,7 +270,11 @@ def test_each_strike_is_the_expirys_gamma_if_the_price_were_there():
     finally:
         _forget("SPY")
     expected = gamma_here_worked_out(held)
-    assert live.snap.gamma_by_expiry[expiry] == pytest.approx(expected, rel=1e-9)
+    assert live.snap.valued_at == held.now
+    produced = expiry_gamma(
+        live.priced_chain, held.now, sessions=sessions(), product=option_close_product("SPY")
+    )
+    assert produced == pytest.approx(expected, rel=1e-9)
     assert len(body["rows"]) == 11
     for row in body["rows"]:
         g = expected[row["strike"]]
