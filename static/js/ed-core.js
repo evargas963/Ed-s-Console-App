@@ -623,10 +623,10 @@
     var why = d && d.status === "unavailable" && d.scope && d.scope.reason;
     return why ? "chain unavailable — " + why : "no chain for this expiry";
   }
-  // The toast: one short notice at the bottom left, with a chime (operator 2026-11-22). Its words
-  // are served; it fades by its style (.ed-toast) and a newer one takes its place. A browser lets
-  // a page make sound only after the operator has clicked or typed on it, so the audio opens at
-  // the first such gesture; before it, the toast shows without the chime.
+  // The toast: one short notice at the bottom left, with a chime. Its words are served; it fades
+  // by its style (.ed-toast) and a newer one takes its place. A browser lets a page make sound
+  // only after the operator has clicked or typed on it, so the audio opens at the first such
+  // gesture; before it, the toast shows without the chime (the drawing module sounds it).
   var _audio = null;
   var _toasts = { shown: 0, chimed: 0, text: null };
   function openAudio() {
@@ -634,28 +634,9 @@
   }
   document.addEventListener("pointerdown", openAudio);
   document.addEventListener("keydown", openAudio);
-  // two soft sine notes a fifth apart, each fading out over most of a second: [hertz, start]
-  var CHIME = [
-    [880, 0],
-    [1318.51, 0.14],
-  ];
   function chime() {
     if (!_audio || _audio.state !== "running") return false;
-    // the audio clock places the notes: no time of day, and no value shown
-    var t0 = _audio.currentTime;
-    CHIME.forEach(function (note) {
-      var osc = _audio.createOscillator(),
-        gain = _audio.createGain(),
-        at = t0 + note[1];
-      osc.type = "sine";
-      osc.frequency.value = note[0];
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(0.2, at + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
-      osc.connect(gain).connect(_audio.destination);
-      osc.start(at);
-      osc.stop(at + 0.95);
-    });
+    window.EdDraw.chime(_audio);
     return true;
   }
   function toast(text) {

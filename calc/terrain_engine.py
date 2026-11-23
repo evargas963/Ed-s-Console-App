@@ -1072,8 +1072,8 @@ def pin_by_open_interest(
 
 #: The terrain's price levels and the name each is shown under, in the order they are listed: the
 #: industry's name where it has one (Gamma flip, Max pain), else what the level is, in one pattern
-#: of standard words ("Largest <side> <measure> strike"; operator 2026-11-22: uniform names; the
-#: walls are the largest call and put gamma, the word "wall" defined three ways by vendors).
+#: of standard words ("Largest <side> <measure> strike"; the walls are the largest call and put
+#: gamma, the word "wall" defined three ways by vendors).
 OPTION_LEVELS = (
     ("call_wall", "Largest call gamma strike"),
     ("put_wall", "Largest put gamma strike"),
