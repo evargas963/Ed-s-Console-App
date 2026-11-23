@@ -32,16 +32,16 @@
       ],
       views: Object.create(null),
     },
-    // Book/DOM (the book panel) and Heatmap are wired; the rest stay `na`
+    // Level II (the book panel) and Heatmap are wired; the rest stay `na`
     // (a labelled placeholder) until they have their own real wiring.
     "order-flow": {
       title: "ORDER FLOW",
       subs: [
-        { id: "book", label: "Book / DOM" },
+        { id: "book", label: "Level II" },
         { id: "heatmap", label: "Heatmap" },
         { id: "overview", label: "Overview", state: "na" },
-        { id: "tape", label: "Tape", state: "na" },
-        { id: "options-book", label: "Options Book", state: "na" },
+        { id: "tape", label: "Time & Sales", state: "na" },
+        { id: "options-book", label: "Options Level II", state: "na" },
         { id: "history", label: "History", state: "na" },
       ],
       views: Object.create(null),
@@ -52,36 +52,36 @@
         { id: "gamma", label: "Gamma" },
         { id: "vanna", label: "Vanna" },
         { id: "charm", label: "Charm" },
-        { id: "book", label: "Book" },
-        { id: "dex", label: "Delta / DEX" },
+        { id: "book", label: "Level II" },
+        { id: "dex", label: "Delta Exposure" },
         { id: "oi", label: "Open Interest" },
         { id: "flow", label: "Flow" },
         { id: "chain", label: "Chain" },
-        { id: "structures", label: "Structures" },
+        { id: "structures", label: "Specifications" },
       ],
       views: (function () {
         // dex/oi present the SAME strike x expiry grid + view family gamma does (heatmap/
-        // chart/levels/multi-map), just a different `measure` (see MEASURE_BY_SUBVIEW) --
+        // chart/levels/small multiples), just a different `measure` (see MEASURE_BY_SUBVIEW) --
         // one shared view list, not three copies to keep in sync by hand.
         var gammaViews = [
           { id: "heatmap", label: "Heatmap" },
           { id: "chart", label: "Chart" },
           { id: "levels", label: "Levels" },
-          { id: "multimap", label: "Multi-Map" },
+          { id: "multimap", label: "Small Multiples" },
           { id: "term", label: "Term Structure", state: "na" },
           { id: "analytics", label: "Analytics", state: "na" },
         ];
         return { gamma: gammaViews, dex: gammaViews, oi: gammaViews };
       })(),
     },
-    // Map and Levels are wired: Map is a visual liquidity map, not a table --
-    // the liquidity panel's own confluence-scored zones on a price axis; Levels reuses
+    // Zones and Levels are wired: Zones is a chart, not a table -- the liquidity panel's own
+    // support and resistance zones on a price axis; Levels reuses
     // ed-gamma-levels.js's levels renderer verbatim. The rest stay `na` until they have
     // their own real wiring.
     liquidity: {
       title: "LIQUIDITY",
       subs: [
-        { id: "map", label: "Map" },
+        { id: "map", label: "Zones" },
         { id: "levels", label: "Levels" },
         { id: "profile", label: "Profile", state: "na" },
         { id: "vwap", label: "VWAP / Value", state: "na" },
@@ -101,7 +101,7 @@
       views: Object.create(null),
     },
     system: {
-      title: "SYSTEM / TRUST",
+      title: "SYSTEM",
       subs: [
         { id: "data-health", label: "Data Health" },
         { id: "feeds", label: "Feeds" },
@@ -320,7 +320,7 @@
     oi: "Open Interest Heatmap",
     volume: "Volume Heatmap",
   };
-  var MV_TITLE = { levels: "Levels", multimap: "Multi-Map" };
+  var MV_TITLE = { levels: "Levels", multimap: "Small Multiples" };
   // the Chart view draws the selected measure's per-strike profile (ed-gamma-chart.js); volume has none
   var CHART_TITLE = {
     gex: "Price + GEX Profile",
@@ -661,10 +661,10 @@
     if (!d || d.snapshot_time_ct == null) return "";
     return asOfBadge({ label: label, when: d.snapshot_time_ct, age: d.snapshot_age_text });
   }
-  // Both marks of a panel that serves the session's price levels beside the gamma levels (the
+  // Both marks of a panel that serves the session's reference levels beside the option levels (the
   // levels panel, the liquidity zones), as its badges: the snapshot's, then the verdict's.
   function levelsBadges(d) {
-    return [snapshotBadge(d, "price levels"), verdictBadge(d, "terrain")].join("");
+    return [snapshotBadge(d, "reference levels"), verdictBadge(d, "terrain")].join("");
   }
   // A chain answer's badge: its served scope, in the words served with it, and the levels verdict
   // served with it; '' after a failed read (null: no answer).
@@ -988,7 +988,7 @@
           : "All Expirations";
   }
 
-  // A: one selected strike shared across heatmap / profile / dot map / GEX-by-strike / Strike Detail
+  // A: one selected strike shared across heatmap / profile / bubbles / GEX-by-strike / Strike Detail
   function setStrike(strike, expiry) {
     state.selStrike = strike == null || isNaN(strike) ? null : Number(strike);
     state.selExpiry = expiry;
@@ -1528,16 +1528,16 @@
     markWlDegraded();
   }
 
-  // market session (RTH / Pre-Market / After-Hours / Closed, or Unknown while Schwab's /markets
+  // market session (regular, pre-market, post-market or closed, or Unknown while Schwab's /markets
   // answer for today is not held), sent with each beat of the socket
   // label: one of time_et's five session words, or null while the console's push is down
   function paintSession(label, why) {
     var el = document.getElementById("hSession");
     if (!el) return;
     var m = {
-      RTH: ["RTH", "rth"],
-      "Pre-Market": ["PRE", "pre"],
-      "After-Hours": ["AH", "ah"],
+      RTH: ["REGULAR", "rth"],
+      "Pre-Market": ["PRE-MARKET", "pre"],
+      "After-Hours": ["POST-MARKET", "ah"],
       Closed: ["CLOSED", "closed"],
       Unknown: ["UNKNOWN", "unknown"],
     };

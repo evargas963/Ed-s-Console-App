@@ -31,7 +31,7 @@
   "crossed": false,
   "deferred": [
     "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+    "cumulative volume delta (estimated: exists in the engine, from the trades)",
     "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
     "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
   ],
@@ -86,9 +86,9 @@
     "auction_text": "Closing auction window \u2014 auction imbalance is a different number, not shown here.",
     "detail": {
       "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth. NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
-      "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
-      "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
-      "tilt": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
+      "construction": "Aggregate: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the aggregate is that book. Never the two books' level totals summed.",
+      "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The top of book is the only like-for-like comparison across venues.",
+      "tilt": "Order book imbalance: the bid shares less the ask shares over the two together, each second, as it is. NEUTRAL under 10%; BUY-HEAVY or SELL-HEAVY from 10% (the line Bookmap's Imbalance indicator changes colour at): direction only, not strength. A flip is a change of side, buy to sell or back."
     },
     "disagree": {
       "1": false,
@@ -106,11 +106,11 @@
         "feed_label": "NOT LIVE",
         "levels_text": null,
         "live": false,
-        "name": "Composite",
+        "name": "Aggregate",
         "no_number_head": "NO BOOK",
         "no_number_text": "No book for this symbol right now",
         "one_sided_text": null,
-        "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange \u00b7 no book for this symbol right now",
+        "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 aggregate, newest quote of each exchange \u00b7 no book for this symbol right now",
         "status": "no_book",
         "touch_flag": null,
         "touch_pct": null,

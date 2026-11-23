@@ -1,8 +1,8 @@
-/* Ed Console — Liquidity / "Map" subview. PRESENTATION ONLY, computes nothing.
+/* Ed Console — Liquidity / "Zones" subview. PRESENTATION ONLY, computes nothing.
    The zones the `liquidity` panel carries (support / resistance / value bands, each with its
-   served label, side and confluence score) on the one TradingView-style chart every chart in the
+   served label, side and count of levels) on the one TradingView-style chart every chart in the
    console uses (ed-tv-chart.js), over the price (the `bars` panel, completed Schwab bars, the toolbar's timeframe),
-   with the levels the levels panel marks as reference lines (the prior day's and the overnight's)
+   with the levels the levels panel marks as reference lines (the prior day's and the extended hours')
    and the live price from that panel on the page's socket -- the one level producer. The zone list
    below the chart names each zone's source levels. */
 (function () {
@@ -28,7 +28,7 @@
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML =
       '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from the liquidity panel; prior-day and overnight levels and the price from the levels and bars panels. The map arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from the liquidity panel; prior-day and extended-hours levels and the price from the levels and bars panels. The chart arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector(".liqm-plot"), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector(".liqm-tb"), _chart, {
       tf: _tf,
@@ -56,7 +56,7 @@
       "–" +
       z.zone_high_text +
       "</span>" +
-      '<span class="v">confluence ' +
+      '<span class="v">levels in zone ' +
       esc(z.confluence_score) +
       "</span></div>" +
       '<div class="sm liqm-tags">' +
@@ -101,7 +101,7 @@
           lo: z.zone_low,
           hi: z.zone_high,
           color: side[z.zone_side] || P.ink3,
-          label: z.zone_label + " · " + z.confluence_score + "×",
+          label: z.zone_label + " · levels " + z.confluence_score,
         };
       }),
     );
@@ -136,20 +136,20 @@
     // else that they make none (no_zones_text)
     var none = !snap ? "-" : orDash(esc(snap.reason || snap.no_zones_text));
     h.querySelector(".liqm-zones").innerHTML =
-      '<div class="fl-sec"><div class="fl-sec-h">Zones (confluence-scored)</div>' +
+      '<div class="fl-sec"><div class="fl-sec-h">Zones</div>' +
       (zones.length ? zones.map(zoneRow).join("") : '<div class="sm">' + none + "</div>") +
       "</div>" +
       holdSection(snap);
   }
 
-  // each level type's measured hold rate, as the server wrote it; what it is, on hover
+  // each level type's measured bounce frequency, as the server wrote it; what it is, on hover
   function holdSection(snap) {
     var rows = snap && snap.hold_rates ? snap.hold_rates : [];
     if (!rows.length) return "";
     return (
       '<div class="fl-sec liqm-hold" title="' +
       esc(snap.hold_note) +
-      '"><div class="fl-sec-h">How often each level held</div>' +
+      '"><div class="fl-sec-h">Bounce frequency of each level</div>' +
       rows
         .map(function (r) {
           return (

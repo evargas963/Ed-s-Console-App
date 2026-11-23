@@ -94,19 +94,19 @@
       ["Weighted mid", orDash(d.microprice_text), "microprice", bk("microprice")],
       ["Spread (pts)", orDash(d.spread_pts_text), "spread_pts", bk("spread_pts")],
       [
-        "Depth 1 · imbalance",
+        "Order book imbalance (top 1)",
         orDash(depth["1"].imbalance_text),
         "depth.1.imbalance",
         bk("depth.*.imbalance"),
       ],
       [
-        "Depth 3 · imbalance",
+        "Order book imbalance (top 3)",
         orDash(depth["3"].imbalance_text),
         "depth.3.imbalance",
         bk("depth.*.imbalance"),
       ],
       [
-        "Depth 5 · imbalance",
+        "Order book imbalance (top 5)",
         orDash(depth["5"].imbalance_text),
         "depth.5.imbalance",
         bk("depth.*.imbalance"),
@@ -126,31 +126,31 @@
     ];
     var rowsFlow = [
       [
-        "Top-book pressure",
+        "Queue imbalance",
         orDash(flow.top_book_pressure_text),
         "flow.top_book_pressure",
         fk("top_book_pressure"),
       ],
       [
-        "Tape pressure 30s",
+        "Trade imbalance (est.) 30s",
         orDash(flow.tape_pressure_30s_text) + " · unsigned " + orDash(flow.tape_unsigned_30s_text),
         "flow.tape_pressure_30s",
         fk("tape_pressure_30s"),
       ],
       [
-        "Tape pressure 2m",
+        "Trade imbalance (est.) 2m",
         orDash(flow.tape_pressure_2m_text) + " · unsigned " + orDash(flow.tape_unsigned_2m_text),
         "flow.tape_pressure_2m",
         fk("tape_pressure_2m"),
       ],
       [
-        "Tape pressure 5m",
+        "Trade imbalance (est.) 5m",
         orDash(flow.tape_pressure_5m_text) + " · unsigned " + orDash(flow.tape_unsigned_5m_text),
         "flow.tape_pressure_5m",
         fk("tape_pressure_5m"),
       ],
       [
-        "Cum Δ (proxy)",
+        "Cumulative volume delta (est.)",
         orDash(flow.cum_delta_proxy_text) +
           " · unsigned " +
           orDash(flow.cum_delta_unsigned_text) +
@@ -159,7 +159,7 @@
         fk("cum_delta_proxy"),
       ],
       [
-        "Cum Δ slope (proxy)",
+        "Cumulative volume delta slope (est.)",
         orDash(flow.cum_delta_slope_text),
         "flow.cum_delta_slope",
         fk("cum_delta_slope"),

@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Options/Gamma "Chart" subview (Price + GEX Profile / GEX Dot Map). The strikes panel is a
+ * Options/Gamma "Chart" subview (Price + GEX Profile / Bubbles). The strikes panel is a
  * genuine all-expiry aggregate -- no single mark has one real expiry to attribute, confirmed by
  * reading terrain_engine.py's _per_strike_rows and compute_exposures_by_strike (they collapse
  * call+put across EVERY expiry sharing a strike; there is no principled way to pick "the" call
@@ -234,7 +234,7 @@ test.describe("Options/Gamma Chart subview", () => {
     expect(errors).toEqual([]);
   });
 
-  test("the Delta / DEX and Open Interest Chart views draw the served profile of their measure", async ({
+  test("the Delta Exposure and Open Interest Chart views draw the served profile of their measure", async ({
     page,
   }) => {
     // operator 2026-09-29: "dex has a chart, oi has a chart" -- both views were blank

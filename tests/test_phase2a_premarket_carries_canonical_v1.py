@@ -39,7 +39,7 @@ _PHASE2A_IDS = (
 
 def _published(out) -> dict:
     """{canonical id: value} of every level the snapshot's zones carry."""
-    return {s["label"]: s["value"] for z in out.zones for s in z.source_levels}
+    return {s["id"]: s["value"] for z in out.zones for s in z.source_levels}
 
 
 def _bars(session: date, n: int = 120) -> list:

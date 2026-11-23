@@ -19,7 +19,9 @@ import live_market_plane as lmp
 import server as srv
 from calc import liquidity_value_engine
 from calc.liquidity_models import ZoneType
+from calc.liquidity_value_engine import LEVEL_NAMES
 from calc.micro_structure import Candle
+from calc.terrain_engine import OPTION_LEVELS
 from push import liquidity as push_liquidity
 from state import bar_store, level_store
 from tests.feed_live_helper import daemon_status, price_history, publish_capture
@@ -63,8 +65,8 @@ def _snapshot(zero_days: set[int], at: datetime, keep: float | None = None) -> d
 
 
 def _tags(zone: dict) -> list[str]:
-    """Return the tags of a served zone's levels, as each source level carries its tag."""
-    return [s["label"] for s in zone["source_levels"]]
+    """Return the ids of a served zone's levels, as each source level carries its id."""
+    return [s["id"] for s in zone["source_levels"]]
 
 
 def _tags_at_zero(body: dict) -> set[str]:
@@ -92,7 +94,8 @@ def test_a_last_price_of_zero_is_a_price_every_zone_is_above():
 def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
     """SPY's real close chain of 2026-10-22 published for the stand-in ticker, on Friday's bars.
 
-    Each option level the terrain holds reaches the zones under its tag (ABS_GAMMA once did not).
+    Each option level the terrain holds reaches the zones under its id (the total gamma strike once
+    did not), each with the name every screen gives it.
     No live price is held here, so no zone's side of it is known: each reads "-". A zone is typed
     by its side of the price alone (above: resistance, below: support, around it: pivot), never by
     the names of the levels in it.
@@ -112,13 +115,15 @@ def test_every_option_level_the_program_sends_makes_its_zone_an_option_zone():
         with level_store._lock:
             level_store._levels.pop(TK, None)
     held = {
-        tag
-        for key, tag in liquidity_value_engine.OPTION_LEVEL_TAGS
-        if getattr(snap, key) is not None
+        key for key in liquidity_value_engine.ZONE_OPTION_LEVELS if getattr(snap, key) is not None
     }
-    assert held >= {"GAMMA_CALL_WALL", "GAMMA_PUT_WALL", "ABS_GAMMA", "NET_CALL_PEAK", "MAX_PAIN"}
+    assert held >= {"call_wall", "put_wall", "absolute_gamma_strike", "lvp", "max_pain"}
     sent = {t for z in body["zones"] for t in _tags(z)}
     assert held <= sent, held - sent
+    # each by the name every screen gives it, never its id
+    names = dict(OPTION_LEVELS) | {lid: name for lid, (name, _tag) in LEVEL_NAMES.items()}
+    for z in body["zones"]:
+        assert [s["label"] for s in z["source_levels"]] == [names[t] for t in _tags(z)]
     assert {z["zone_label"] for z in body["zones"]} == {"-"}, "no price: no side"
     z = body["zones"][0]
     lo, hi = z["zone_low"], z["zone_high"]

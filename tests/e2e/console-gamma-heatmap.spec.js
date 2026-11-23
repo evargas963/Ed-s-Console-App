@@ -405,7 +405,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   const CHAINED = [
     { name: "Strike Detail", host: "#sdBody", badge: "#sdSrc" },
     { name: "the chain", host: "#chainBody", badge: "#chSrc", sub: "chain" },
-    { name: "Structures", host: "#stBody", sub: "structures" },
+    { name: "Specifications", host: "#stBody", sub: "structures" },
   ];
   for (const p of CHAINED) {
     test(`${p.name}: a chain the program could not produce after a good one says why and leaves no badge`, async ({
@@ -707,7 +707,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   // a strike's second listing on its own row. INDUCED: AMZN lists one contract per strike and
   // side, so a second listing at the price's strike is added, with a settlement its call and put
   // differ on (served null) and its own last trading day.
-  test("Structures draws every ladder row with the contract fields served on it", async ({
+  test("Specifications draws every ladder row with the contract fields served on it", async ({
     page,
   }) => {
     const i = CHAIN.ladder.findIndex((r) => r.strike === K);
@@ -987,7 +987,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#klPcrVolScope")).toContainText("volume");
   });
 
-  test("Key Levels' price levels stand with the time and age of the snapshot they are read from", async ({
+  test("Key Levels' reference levels stand with the time and age of the snapshot they are read from", async ({
     page,
   }) => {
     // AMZN's levels panel during its session, as the route served it: beside the section's
@@ -1158,7 +1158,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator(".wl-row .wl-sym", { hasText: "AMD" })).toHaveCount(1);
   });
 
-  test("chart view: Price + GEX Profile and Dot Map render from canonical inputs", async ({
+  test("chart view: Price + GEX Profile and Bubbles render from canonical inputs", async ({
     page,
   }) => {
     // The chart's spot is the header's price row (audit of #280 removed the terrain's copy,
@@ -1191,10 +1191,10 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await page.screenshot({
       path: require("path").join("test-results", "console-gamma-chart-2560x1440.png"),
     });
-    // dot map mode: per-strike dots
-    await page.locator('.cmode[data-cmode="dotmap"]').click();
-    await expect.poll(async () => (await cs()).profile.style).toBe("dots");
-    await expect(page.locator('#chartModes .cmode[data-cmode="dotmap"]')).toHaveClass(/on/);
+    // bubbles: one per strike
+    await page.locator('.cmode[data-cmode="bubbles"]').click();
+    await expect.poll(async () => (await cs()).profile.style).toBe("bubbles");
+    await expect(page.locator('#chartModes .cmode[data-cmode="bubbles"]')).toHaveClass(/on/);
   });
 
   test("header never paints a quote from a poll: no push -> -, not a fallback", async ({
@@ -1236,7 +1236,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#hFeed")).toContainText("LIVE");
     await expect(page.locator("#hBidAsk")).toHaveText("601.20 × 601.25");
     // Schwab's two change percents, each beside its own label
-    await expect(page.locator(".hpair.chgs .k")).toHaveText(["Reg", "Ext"]);
+    await expect(page.locator(".hpair.chgs .k")).toHaveText(["Reg", "Net"]);
     await expect(page.locator("#hChgReg")).toHaveText("+0.40%");
     await expect(page.locator("#hChg")).toHaveText("+0.50%");
   });

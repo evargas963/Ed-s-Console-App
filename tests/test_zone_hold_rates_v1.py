@@ -245,7 +245,7 @@ def test_ten_days_are_too_few_touches_to_show_a_rate():
     )
     assert all(by[15].touches < HOLD_MIN_TOUCHES for by in got.values())
     pdh = got["PDH"][15]
-    assert push_liquidity.hold_text(pdh) == f"- ({pdh.touches} touches)"
+    assert push_liquidity.hold_text(pdh) == f"- ({pdh.touches} hits)"
 
 
 def test_the_wilson_interval():
@@ -266,7 +266,7 @@ def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
         )
     rows = push_liquidity.hold_rates("SPY", EVENING)
     names = [r["level"] for r in rows]
-    assert names[0] == "Prior day high" and "Opening range high" in names
+    assert names[0] == "Prior day high" and "Opening range (15 min) high" in names
     pdh = hold_counts(
         bars_from_candles(bar_store.bars_1m("SPY", bar_store.BARS_KEPT)),
         bar_store.series("SPY", "1d"),

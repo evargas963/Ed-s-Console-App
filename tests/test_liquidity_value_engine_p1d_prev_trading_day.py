@@ -180,7 +180,7 @@ def test_each_family_with_no_bar_in_its_window_is_declared_absent_by_name_with_w
     assert snap.families_absent == [
         {"family": "vwap", "reason": "no RTH volume for session VWAP in available bars"},
         {"family": "opening_range", "reason": "no bar in the opening minutes, or no open known"},
-        {"family": "overnight", "reason": "no overnight-window bars in available tape"},
+        {"family": "extended_hours", "reason": "no extended-hours bars in the bars held"},
         {
             "family": "value_area",
             "reason": "no RTH volume for the volume profile in available bars",

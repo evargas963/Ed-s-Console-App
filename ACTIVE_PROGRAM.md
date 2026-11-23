@@ -134,9 +134,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   (`server.py`, including the gamma surface's served record, `calc/liquidity_value_engine.py`,
   `app/options/order_flow/streaming.py`, `calc/order_flow.py`, `calc/math_exposure_core.py`,
   `ed-core.js`, `ed-gamma.js`), with no folder moves.
-- LEG-TERMS (QUEUED): every served chain leg carries the contract terms Structures shows
+- LEG-TERMS (QUEUED): every served chain leg carries the terms Contract Specifications shows
   (`settlementType`, `multiplier`, `nonStandard`, `pennyPilot`, `exerciseType`, `expirationType`,
-  `lastTradingDay`), and no page reads them there: Structures draws the row's `series`, which
+  `lastTradingDay`), and no page reads them there: that panel draws the row's `series`, which
   `push.chain._series` builds by reading them off the leg. Next: `_series` reads the contract's
   record and the leg drops them; `calc.terrain_engine.chain_ladder` hands on only the served rows,
   so the ladder then carries the records.
@@ -186,7 +186,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - LEVELS-SHOT (QUEUED): the Gamma Levels screenshot step (`tests/e2e/console-gamma-levels.spec.js`,
   `page.screenshot` after `setViewportSize`) failed once in CI and passed on a re-run; its cause
   first (`.claude/skills/flaky-test-fix/SKILL.md`), from the `playwright-failures` artifact.
-- PIN-TEST (QUEUED): "Market Map: a pinned bar shows its served change" in
+- PIN-TEST (QUEUED): "Price chart: a pinned bar shows its served change" in
   `tests/e2e/console-trade-desk.spec.js` failed once in CI and passed in 20 local runs under load;
   its cause first, the test unchanged until then.
 - LIVE-SESSION (QUEUED): checks only a live session can show, across the watchlist: the heatmap
@@ -203,17 +203,16 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   their side of the price; one rule for whether options are open, from Schwab's windows, for every
   reader; a pre-market real chain's Greeks, volume and open interest; a half day's windows when
   Schwab sends one; a stock 0DTE chain from 16:00 to 16:15 on a stock expiry day.
-- TU-05 (QUEUED, after the rest): Options → Multi-Map and Key Levels → Vanna Support, Charm
-  Resistance: vanna and charm exposure in dollars per strike and expiry.
-- TU-08 (QUEUED, after the rest): Key Levels → Zero Gamma, Volatility Trigger: the regime dead-zone
-  around the flip.
-- TU-11 (QUEUED, after the rest): Options → Multi-Map: skew and term fields.
+- TU-05 (QUEUED, after the rest): Options → Small Multiples and Key Levels: vanna and charm exposure
+  in dollars per strike and expiry.
+- TU-08 (QUEUED, after the rest): Key Levels: the regime's dead zone around the gamma flip.
+- TU-11 (QUEUED, after the rest): Options → Small Multiples: skew and term fields.
 - TU-06 (QUEUED, after the rest; also TU-07, TU-09, TU-10, TU-12): call-put IV spread, ΔOI flow,
   GEX/ADV normalization, an external GEX benchmark, intraday DDOI; each meaning confirmed from its
   source before it is built. No implied one-day move or band of standard deviations is built: the
   operator removed them from everywhere.
 - LIQ-CARD (QUEUED): the order-imbalance build: step 1, the Desk Liquidity card
-  (`push.book.liquidity_readout`), is built. Next: step 2, Book/DOM with its balance scale; step 3,
+  (`push.book.liquidity_readout`), is built. Next: step 2, Level II with its balance scale; step 3,
   the Heatmap with TradingView-style controls, each to the operator's spec. Separate items when
   asked: a daily accumulator, a per-stock depth measure.
 - LP-01 (QUEUED): check that the raw liquidity levels show on the Trade Desk chart.
@@ -231,9 +230,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - DESK-INDEX-LINE (OPERATOR): the Trade Desk's foot strip repeats the three indexes the header's
   second row now shows on every page (`static/js/ed-trade-desk-map.js` `paintIndexes`), each with
   its last trade's time, on a line of its own. Whether that line stays is his. With it, at the
-  1920×950 window, the Cross-Domain Read row's track is 27 pixels under its 36-pixel panel, and with
-  every line of the Liquidity card at once as well (INDUCED) the Desk needs 823 pixels of its 808
-  and scrolls 15, as it needed 847 of 832 before the header changed; without that line both fit.
+  1920×950 window, the Readings row's track is 27 pixels under its 36-pixel panel, and with every
+  line of the Liquidity card at once as well (INDUCED) the Desk needs 823 pixels of its 808 and
+  scrolls 15, as it needed 847 of 832 before the header changed; without that line both fit.
 - INDEX-QUOTE-TIME (OPERATOR): Schwab sends `QUOTE_TIME_MILLIS` 0 for an index with no bid or ask
   ($VIX, $NDX; Schwab Streamer API §3.1, field 34, "Last time a bid or ask updated"), and the price
   row serves it as a time, "Wed 12/31 06:00 PM CT" (`live_price_rows.price_row` `quote_time_ct`, as

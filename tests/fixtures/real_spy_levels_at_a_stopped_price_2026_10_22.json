@@ -15,7 +15,7 @@
  "families_absent": [
   {
    "family": "price_levels",
-   "reason": "no price levels published for this ticker for the market's session yet (they are built from its 1-minute bars on each new bar and at the console's start)"
+   "reason": "no reference levels published for this ticker for the market's session yet (they are built from its 1-minute bars on each new bar and at the console's start)"
   }
  ],
  "levels": [

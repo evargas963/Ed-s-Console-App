@@ -25,7 +25,7 @@ from app.options.order_flow import state
 from app.options.order_flow import streaming as S
 from app.options.order_flow.history import RecentBooks, book_heatmap_for_ticker
 from app.options.order_flow.state import read_book
-from push import bookmap as push_bookmap
+from push import book_heatmap as push_book_heatmap
 from stream_spine import book_msg
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -206,7 +206,7 @@ def test_with_no_book_to_draw_the_whole_answer_is_the_ticker_that_it_is_not_and_
 
     The ticker as the console keys it, that the heatmap is not available, and why: the three
     keys every panel's not-available answer has (push.answers.not_available) and nothing else,
-    from the heatmap's own builder and from the `bookmap` panel over it.
+    from the heatmap's own builder and from the `book_heatmap` panel over it.
     """
     none_kept = RecentBooks()
     no_book = book_heatmap_for_ticker("spy", NYSE, minutes=60, books=none_kept)
@@ -220,7 +220,7 @@ def test_with_no_book_to_draw_the_whole_answer_is_the_ticker_that_it_is_not_and_
         empty = book_heatmap_for_ticker(blank, NYSE, books=none_kept)
         assert empty == {"ticker": blank, "available": False, "reason": "empty ticker"}
         assert list(empty) == ["ticker", "available", "reason"]
-    panel = push_bookmap.bookmap("ZZZZ", {"venue": "NASDAQ_BOOK", "minutes": 5})
+    panel = push_book_heatmap.book_heatmap("ZZZZ", {"venue": "NASDAQ_BOOK", "minutes": 5})
     assert panel == {
         "ticker": "ZZZZ",
         "available": False,
@@ -279,10 +279,10 @@ def test_a_window_outside_the_books_kept_is_refused_never_replaced():
     window the page did not ask.
     """
     for minutes in (0.5, 15, 60, 120, 240):
-        assert "available" in push_bookmap.bookmap(
+        assert "available" in push_book_heatmap.book_heatmap(
             SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes}
         )
     for minutes in (241, 0, -60, "abc"):
         with pytest.raises(ValueError) as refused:
-            push_bookmap.bookmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
+            push_book_heatmap.book_heatmap(SYM, {"venue": "NASDAQ_BOOK", "minutes": minutes})
         assert repr(minutes) in str(refused.value), "the refusal names the window asked"

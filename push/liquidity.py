@@ -16,12 +16,13 @@ from calc.liquidity_value_engine import (
     HOLD_MIN_TOUCHES,
     HOLD_WINDOW_SESSIONS,
     LEVEL_NAMES,
-    OPTION_LEVEL_TAGS,
+    ZONE_OPTION_LEVELS,
     HoldCount,
     bars_from_candles,
     build_zone_snapshot,
     wilson_interval,
 )
+from calc.terrain_engine import OPTION_LEVELS
 from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
@@ -33,10 +34,15 @@ from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot, materialize_hold_counts
 from time_et import sessions
 
+#: every level a zone is clustered from, by id, as every screen names it: the session's levels
+#: (LEVEL_NAMES) and the terrain's (OPTION_LEVELS)
+ZONE_LEVEL_NAMES = {lid: name for lid, (name, _tag) in LEVEL_NAMES.items()} | dict(OPTION_LEVELS)
+
 
 class ShownSourceLevel(SourceLevel):
-    """A level a zone is clustered from, with its price as the screen shows it."""
+    """A level a zone is clustered from, with its name and its price as the screen shows them."""
 
+    label: str
     value_text: str | None
 
 
@@ -108,10 +114,10 @@ class NoLiquidity(TypedDict):
 
 
 def _option_levels(published: PublishedLevels | None) -> list[tuple[float, str]]:
-    """Return the published terrain's option levels, tagged for liquidity zones; none before one."""
+    """Return the published terrain's option levels the zones are fused with; none before one."""
     return [
-        (float(level), tag)
-        for k, tag in OPTION_LEVEL_TAGS
+        (float(level), k)
+        for k in ZONE_OPTION_LEVELS
         if published is not None and (level := published.snap.level(k)) is not None
     ]
 
@@ -142,29 +148,29 @@ VWAP_RELATION_TEXT: dict[str | None, str | None] = {
 }
 #: what the map's zone list says when the session's levels make no zone
 NO_ZONES_TEXT = "no zones for this session yet"
-#: what the hold rates are, shown on hover beside them
+#: what the bounce frequencies are, shown on hover beside them
 HOLD_NOTE = (
-    f"Over the last {HOLD_WINDOW_SESSIONS} completed sessions held: a touch is a 1-minute bar "
-    "reaching the level from one side, once per approach; it held when the close 15 minutes "
+    f"Over the last {HOLD_WINDOW_SESSIONS} completed sessions held: a hit is a 1-minute bar "
+    "reaching the level from one side, once per approach; it bounced when the close 15 minutes "
     "later (30 in brackets) is still on that side. Random is the same count for "
     f"{HOLD_BASELINE_LEVELS} levels a session spread over the open +- the month's largest move "
-    "(Osler 2000): random levels hold about half the time, so only the difference means anything. "
-    f"'-' below {HOLD_MIN_TOUCHES} touches. A past frequency, not a forecast."
+    "(Osler 2000): random levels bounce about half the time, so only the difference means "
+    f"anything. '-' below {HOLD_MIN_TOUCHES} hits. A past frequency, not a forecast."
 )
 
 
 def hold_text(c: HoldCount) -> str:
-    """One horizon's hold rate in words: the rate, the random levels' and the 95% interval.
+    """One horizon's bounce frequency in words: it, the random levels' and the 95% interval.
 
-    "-" with the touches counted when they are fewer than HOLD_MIN_TOUCHES (or the random levels
-    were never touched), for no rate is shown on so few.
+    "-" with the hits counted when they are fewer than HOLD_MIN_TOUCHES (or the random levels
+    were never hit), for no frequency is shown on so few.
     """
     if c.touches < HOLD_MIN_TOUCHES or c.baseline_touches == 0:
-        return f"- ({c.touches} touches)"
+        return f"- ({c.touches} hits)"
     rate, base = c.holds / c.touches, c.baseline_holds / c.baseline_touches
     lo, hi = wilson_interval(c.holds, c.touches)
     return (
-        f"held {rate:.0%} of {c.touches} touches; random {base:.0%}; "
+        f"bounced {rate:.0%} of {c.touches} hits; random {base:.0%}; "
         f"{(rate - base) * 100:+.0f} points (95%: {lo:.0%} to {hi:.0%})"
     )
 
@@ -265,7 +271,10 @@ def liquidity_snapshot(ticker: str, now: datetime) -> LiquidityPanel | NoLiquidi
             "zone_low_text": price_text(z.zone_low),
             "zone_high_text": price_text(z.zone_high),
             "anchor": z.zone_mid,
-            "source_levels": [{**s, "value_text": price_text(s["value"])} for s in z.source_levels],
+            "source_levels": [
+                {**s, "label": ZONE_LEVEL_NAMES[s["id"]], "value_text": price_text(s["value"])}
+                for s in z.source_levels
+            ],
             "confluence_score": z.confluence_score,
             "interpretation_notes": z.interpretation_notes,
         }

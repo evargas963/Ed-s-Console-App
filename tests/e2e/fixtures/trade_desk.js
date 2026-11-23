@@ -65,7 +65,7 @@ async function intercept(page, rows = []) {
     terrain: TERRAIN,
     liquidity: LIQ,
     option_book: OPTION_BOOK,
-    bookmap: HEAT,
+    book_heatmap: HEAT,
     tape: REAL.tape,
     strikes: (key, params) =>
       params.expiry === REAL.strikes_second_expiry.expiry

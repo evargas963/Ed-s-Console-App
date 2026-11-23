@@ -219,10 +219,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_quote_time_v1.py`, `tests/e2e/console-header.spec.js`.
 - **Order book.** NYSE_BOOK, NASDAQ_BOOK and OPTIONS_BOOK → the bus → the Recorder,
   `stream_book_raw` (D4) → the console (`order_flow.state.OrderFlowState`, one book per service,
-  never combined) → the `book` and `bookmap` panels (`push.book.book`, `push/bookmap.py`), sent
-  again on each book (`server.FLOW_PANELS`). The Liquidity card's order-imbalance readout of both
-  books and their composite is computed once per book (`calc.order_flow.book_readout`) and kept a
-  second at a time (`order_flow.history.LEAN`): (bid − ask) / (bid + ask) over the shares Schwab
+  never combined) → the `book` and `book_heatmap` panels (`push.book.book`, `push/book_heatmap.py`),
+  sent again on each book (`server.FLOW_PANELS`). The Liquidity card's order-imbalance readout of
+  both books and their aggregate is computed once per book (`calc.order_flow.book_readout`) and kept
+  a second at a time (`order_flow.history.LEAN`): (bid − ask) / (bid + ask) over the shares Schwab
   sent at the best 1, 3 and 5 levels, Top 5 the screen's default. A side Schwab sent with no levels
   is empty, never an older book's. Enforced by: `tests/test_data_path_book_time_v1.py`,
   `tests/test_data_path_book_size_v1.py`.
@@ -303,7 +303,7 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   Charts `series.update`). Its lifecycle owner is the price row's writer: a feed that stops leaves
   the bar as it was, with its last trade's time; the program started within a minute builds none for
   it. Enforced by: `tests/test_forming_bar_v1.py`, `tests/e2e/console-forming-bar.spec.js`.
-- **Price levels** (prior day, overnight, opening range, VWAP, value area). Producer
+- **Reference levels** (prior day, extended hours, opening range, VWAP, value area). Producer
   `server._publish_price_levels`, from the bar store's bars after each bar, for the market's session
   (`time_et.market_session_date`), reading every bar from the prior session's regular open as
   Schwab's /markets sent it (`calc.liquidity_value_engine.levels_start`; a prior session whose bars
@@ -315,7 +315,7 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   session's value area band (`prior_value_area`), the VWAP's words (`vwap_text`) and the volume
   profile's POC label (`volume_profile.poc_label`). Both panels serve the snapshot's time and age
   with its levels (`push.levels.snapshot_stamp`), and every screen that draws them shows both: the
-  Levels view in its two homes, Key Levels' price levels, the Liquidity map, Right Now's Frame and
+  Levels view in its two homes, Key Levels' reference levels, the zones chart, Right Now's Frame and
   the Desk's LEVELS pill. Enforced by: `tests/test_e2e_panels_two_day_v1.py`,
   `tests/test_data_path_snapshot_time_v1.py`, `tests/e2e/console-gamma-levels.spec.js`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`.
@@ -358,17 +358,17 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   next open. The verdict (`push.verdict.terrain_staleness`): LIVE, CLOSE, STALE past two of the
   sweep's rounds, or NOT LIVE, with the levels' time and age. Each panel that serves the levels'
   values serves that verdict with them and its screen shows it as its badge: Key Levels, the
-  heatmap, GEX by strike, Vanna and Charm by strike, the Chain, Strike Detail, Structures, the
-  Options Book, the Levels view in its two homes, the Liquidity map (its zones hold the option
-  levels) and Right Now's Frame, Confirm and migration (`tests/test_vanna_charm_by_strike_v1.py`,
-  `tests/test_option_book_v1.py`, `tests/test_e2e_panels_two_day_v1.py`,
-  `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-options-book.spec.js`,
-  `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-gamma-levels.spec.js`,
-  `tests/e2e/console-trade-desk.spec.js`). Enforced by: `tests/test_instant_ui_blockers_a_v1.py`,
-  `tests/test_one_levels_producer_v1.py`, `tests/test_data_path_silent_price_v1.py`,
-  `tests/test_data_path_startup_v1.py`, `tests/test_data_path_confluence_v1.py`,
-  `tests/test_rest_quotes_reach_the_levels_v1.py`, `tests/test_data_path_chain_spot_v1.py`,
-  `tests/test_data_path_charm_side_unknown_v1.py`.
+  heatmap, GEX by strike, Vanna and Charm by strike, the Chain, Strike Detail, Contract
+  Specifications, the Options Book, the Levels view in its two homes, the zones chart (its zones
+  hold the option levels) and Right Now's Frame, Confirm and migration
+  (`tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`,
+  `tests/test_e2e_panels_two_day_v1.py`, `tests/e2e/console-options-vanna-charm.spec.js`,
+  `tests/e2e/console-options-book.spec.js`, `tests/e2e/console-gamma-heatmap.spec.js`,
+  `tests/e2e/console-gamma-levels.spec.js`, `tests/e2e/console-trade-desk.spec.js`). Enforced by:
+  `tests/test_instant_ui_blockers_a_v1.py`, `tests/test_one_levels_producer_v1.py`,
+  `tests/test_data_path_silent_price_v1.py`, `tests/test_data_path_startup_v1.py`,
+  `tests/test_data_path_confluence_v1.py`, `tests/test_rest_quotes_reach_the_levels_v1.py`,
+  `tests/test_data_path_chain_spot_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`.
 - **Served words.** A state the program serves is served with the words the screen shows for it,
   from one table where the frame is built: the regime (`regime_text`:
   `calc.terrain_read.REGIME_TEXT`), the price's side of the flip (`flip_relation_text`), a level
@@ -382,14 +382,14 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `app.options.order_flow.streaming`), a tilt as running text says it (`tilt_text`, beside the
   headline's `side_word`: `calc.order_flow.TILT_WORDS`), and a zone list that lists none
   (`no_zones_text`: `push.liquidity.NO_ZONES_TEXT`). A choice of what a screen draws is served the
-  same way: each level says whether the liquidity map draws it as a reference line
-  (`reference_line`: `push.levels.REFERENCE_LINE_FAMILIES`). The page draws them and holds no table
-  from a served state to words; a table from a state to a colour, a tone or an arrow is drawing and
-  stays on the page. Enforced by: `tests/test_positioning_migration_v1.py`,
-  `tests/test_options_flow_tape_v1.py`, `tests/test_chain_api_v1.py`,
-  `tests/test_liquidity_readout_v1.py`, `tests/test_one_levels_producer_v1.py`,
-  `tests/test_trade_desk_served_v1.py`, `tests/test_data_path_liquidity_zero_v1.py`,
-  `tests/test_options_order_flow_api_v1.py`, `tests/test_options_order_flow_production_v1.py`,
+  same way: each level says whether the zones chart draws it as a reference line (`reference_line`:
+  `push.levels.REFERENCE_LINE_FAMILIES`). The page draws them and holds no table from a served state
+  to words; a table from a state to a colour, a tone or an arrow is drawing and stays on the page.
+  Enforced by: `tests/test_positioning_migration_v1.py`, `tests/test_options_flow_tape_v1.py`,
+  `tests/test_chain_api_v1.py`, `tests/test_liquidity_readout_v1.py`,
+  `tests/test_one_levels_producer_v1.py`, `tests/test_trade_desk_served_v1.py`,
+  `tests/test_data_path_liquidity_zero_v1.py`, `tests/test_options_order_flow_api_v1.py`,
+  `tests/test_options_order_flow_production_v1.py`,
   `tests/test_data_path_silent_subscription_v1.py`,
   `tests/test_liquidity_snapshot_spot_identity_v1.py`, `tests/test_e2e_panels_two_day_v1.py`,
   `tests/e2e/console-trade-desk.spec.js`, `tests/e2e/console-options-flow-tape.spec.js`,
@@ -589,8 +589,8 @@ them".
   them draws the header in a wide system face scaled to their width (`static/index.html`,
   `Ed Header Fallback`), and the layout holds in both. Under it, at a 1920×950 window, the Trade
   Desk's Desk page does not scroll, with every line of its Liquidity card drawn and with the market
-  context's rows arriving, live or stopped: its Market Map's floor is 356 pixels, and 380 in a
-  window 1,400 pixels wide or narrower, which wraps the map's toolbar and legend
+  context's rows arriving, live or stopped: its price chart's floor is 356 pixels, and 380 in a
+  window 1,400 pixels wide or narrower, which wraps the chart's toolbar and legend
   (`static/css/ed-trade-desk.css` `.tdm`). Enforced by: `tests/e2e/console-header.spec.js`,
   `tests/e2e/console-sign-in.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-liquidity-card.spec.js`, `tests/test_data_path_header_volatility_v1.py`,

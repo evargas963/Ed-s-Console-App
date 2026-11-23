@@ -126,7 +126,7 @@
     };
   }
   // Values at prices on the price axis, drawn from the pane's right edge (a GEX profile: signed
-  // bars, or dots sized by magnitude) or its left edge (the volume profile). rows: [{price,
+  // bars, or bubbles sized by magnitude) or its left edge (the volume profile). rows: [{price,
   // value, color}] and `scale`, the served largest |value| (the full band); with `fit` the rows'
   // prices join the auto-fit so every row is on screen. Scaling to the pane is drawing; the values
   // and the scale are served.
@@ -170,7 +170,7 @@
               f = window.EdDraw.strength(r.value, mx); // unknown: no mark
             c.fillStyle = r.color;
             c.globalAlpha = 0.85;
-            if (f != null && self.style === "dots") {
+            if (f != null && self.style === "bubbles") {
               var rad = DOT_MAX_R * Math.sqrt(f) * hr; // a dot's area is its strength
               c.beginPath();
               c.arc(W - band / 2, y, rad, 0, 2 * Math.PI);

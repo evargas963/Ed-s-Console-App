@@ -16,13 +16,48 @@
       "zone_high_text": "0.00",
       "anchor": 0.0,
       "source_levels": [
-        { "label": "ORB_HIGH", "value": 0.0, "value_text": "0.00" },
-        { "label": "ORB_MID", "value": 0.0, "value_text": "0.00" },
-        { "label": "ORB_LOW", "value": 0.0, "value_text": "0.00" },
-        { "label": "TODAY_VAH", "value": 0.0, "value_text": "0.00" },
-        { "label": "TODAY_POC", "value": 0.0, "value_text": "0.00" },
-        { "label": "TODAY_VAL", "value": 0.0, "value_text": "0.00" },
-        { "label": "OVERNIGHT_LOW", "value": 0.0, "value_text": "0.00" }
+        {
+          "id": "ORB_HIGH",
+          "value": 0.0,
+          "label": "Opening range (15 min) high",
+          "value_text": "0.00"
+        },
+        {
+          "id": "ORB_MID",
+          "value": 0.0,
+          "label": "Opening range (15 min) midpoint",
+          "value_text": "0.00"
+        },
+        {
+          "id": "ORB_LOW",
+          "value": 0.0,
+          "label": "Opening range (15 min) low",
+          "value_text": "0.00"
+        },
+        {
+          "id": "TODAY_VAH",
+          "value": 0.0,
+          "label": "Value area high (est. from 1-min bars)",
+          "value_text": "0.00"
+        },
+        {
+          "id": "TODAY_POC",
+          "value": 0.0,
+          "label": "Point of control (est. from 1-min bars)",
+          "value_text": "0.00"
+        },
+        {
+          "id": "TODAY_VAL",
+          "value": 0.0,
+          "label": "Value area low (est. from 1-min bars)",
+          "value_text": "0.00"
+        },
+        {
+          "id": "OVERNIGHT_LOW",
+          "value": 0.0,
+          "label": "Extended-hours low",
+          "value_text": "0.00"
+        }
       ],
       "confluence_score": 7,
       "interpretation_notes": "No live price: the side of the price is not known"
@@ -35,7 +70,14 @@
       "zone_low_text": "2.92",
       "zone_high_text": "2.92",
       "anchor": 2.9153649326952222,
-      "source_levels": [{ "label": "VWAP", "value": 2.9153649326952222, "value_text": "2.92" }],
+      "source_levels": [
+        {
+          "id": "VWAP",
+          "value": 2.9153649326952222,
+          "label": "VWAP",
+          "value_text": "2.92"
+        }
+      ],
       "confluence_score": 1,
       "interpretation_notes": "No live price: the side of the price is not known"
     },
@@ -47,7 +89,14 @@
       "zone_low_text": "758.79",
       "zone_high_text": "758.79",
       "anchor": 758.7901,
-      "source_levels": [{ "label": "PDL", "value": 758.7901, "value_text": "758.79" }],
+      "source_levels": [
+        {
+          "id": "PDL",
+          "value": 758.7901,
+          "label": "Prior day low",
+          "value_text": "758.79"
+        }
+      ],
       "confluence_score": 1,
       "interpretation_notes": "No live price: the side of the price is not known"
     },
@@ -59,7 +108,14 @@
       "zone_low_text": "761.19",
       "zone_high_text": "761.19",
       "anchor": 761.19,
-      "source_levels": [{ "label": "PD_VAL", "value": 761.19, "value_text": "761.19" }],
+      "source_levels": [
+        {
+          "id": "PD_VAL",
+          "value": 761.19,
+          "label": "Prior day VAL (est. from 1-min bars)",
+          "value_text": "761.19"
+        }
+      ],
       "confluence_score": 1,
       "interpretation_notes": "No live price: the side of the price is not known"
     },
@@ -72,11 +128,36 @@
       "zone_high_text": "765.65",
       "anchor": 764.8199999999999,
       "source_levels": [
-        { "label": "PDC", "value": 763.99, "value_text": "763.99" },
-        { "label": "PD_POC", "value": 764.35, "value_text": "764.35" },
-        { "label": "OVERNIGHT_HIGH", "value": 764.98, "value_text": "764.98" },
-        { "label": "PD_VAH", "value": 765.34, "value_text": "765.34" },
-        { "label": "PDH", "value": 765.65, "value_text": "765.65" }
+        {
+          "id": "PDC",
+          "value": 763.99,
+          "label": "Prior day close",
+          "value_text": "763.99"
+        },
+        {
+          "id": "PD_POC",
+          "value": 764.35,
+          "label": "Prior day POC (est. from 1-min bars)",
+          "value_text": "764.35"
+        },
+        {
+          "id": "OVERNIGHT_HIGH",
+          "value": 764.98,
+          "label": "Extended-hours high",
+          "value_text": "764.98"
+        },
+        {
+          "id": "PD_VAH",
+          "value": 765.34,
+          "label": "Prior day VAH (est. from 1-min bars)",
+          "value_text": "765.34"
+        },
+        {
+          "id": "PDH",
+          "value": 765.65,
+          "label": "Prior day high",
+          "value_text": "765.65"
+        }
       ],
       "confluence_score": 5,
       "interpretation_notes": "No live price: the side of the price is not known"
@@ -91,26 +172,50 @@
   },
   "spot_location": null,
   "hold_rates": [
-    { "level": "Prior day high", "text": "- (0 touches) [30 min: - (0 touches)]" },
-    { "level": "Prior day low", "text": "- (8 touches) [30 min: - (8 touches)]" },
-    { "level": "Prior day close", "text": "- (5 touches) [30 min: - (5 touches)]" },
+    {
+      "level": "Prior day high",
+      "text": "- (0 hits) [30 min: - (0 hits)]"
+    },
+    {
+      "level": "Prior day low",
+      "text": "- (8 hits) [30 min: - (8 hits)]"
+    },
+    {
+      "level": "Prior day close",
+      "text": "- (5 hits) [30 min: - (5 hits)]"
+    },
     {
       "level": "Prior day POC (est. from 1-min bars)",
-      "text": "- (0 touches) [30 min: - (0 touches)]"
+      "text": "- (0 hits) [30 min: - (0 hits)]"
     },
     {
       "level": "Prior day VAH (est. from 1-min bars)",
-      "text": "- (0 touches) [30 min: - (0 touches)]"
+      "text": "- (0 hits) [30 min: - (0 hits)]"
     },
     {
       "level": "Prior day VAL (est. from 1-min bars)",
-      "text": "- (0 touches) [30 min: - (0 touches)]"
+      "text": "- (0 hits) [30 min: - (0 hits)]"
     },
-    { "level": "Overnight high", "text": "- (0 touches) [30 min: - (0 touches)]" },
-    { "level": "Overnight low", "text": "- (5 touches) [30 min: - (5 touches)]" },
-    { "level": "Opening range high", "text": "- (0 touches) [30 min: - (0 touches)]" },
-    { "level": "Opening range low", "text": "- (7 touches) [30 min: - (7 touches)]" },
-    { "level": "Opening range mid", "text": "- (14 touches) [30 min: - (13 touches)]" }
+    {
+      "level": "Extended-hours high",
+      "text": "- (0 hits) [30 min: - (0 hits)]"
+    },
+    {
+      "level": "Extended-hours low",
+      "text": "- (5 hits) [30 min: - (5 hits)]"
+    },
+    {
+      "level": "Opening range (15 min) high",
+      "text": "- (0 hits) [30 min: - (0 hits)]"
+    },
+    {
+      "level": "Opening range (15 min) low",
+      "text": "- (7 hits) [30 min: - (7 hits)]"
+    },
+    {
+      "level": "Opening range (15 min) midpoint",
+      "text": "- (14 hits) [30 min: - (13 hits)]"
+    }
   ],
-  "hold_note": "Over the last 60 completed sessions held: a touch is a 1-minute bar reaching the level from one side, once per approach; it held when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels hold about half the time, so only the difference means anything. '-' below 100 touches. A past frequency, not a forecast."
+  "hold_note": "Over the last 60 completed sessions held: a hit is a 1-minute bar reaching the level from one side, once per approach; it bounced when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels bounce about half the time, so only the difference means anything. '-' below 100 hits. A past frequency, not a forecast."
 }

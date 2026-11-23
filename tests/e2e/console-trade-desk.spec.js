@@ -38,7 +38,8 @@ const listed = (strikes) => strikes.today.map((r) => String(r.strike)).reverse()
 const INSIDE = LIQ.zones[LIQ.spot_location.inside];
 // the marks a panel of the levels' values is served with, as the page draws them: the price-level
 // snapshot's time and age, and the levels verdict (its state word, time and age)
-const snapshotMark = (d) => ["price levels", d.snapshot_time_ct, d.snapshot_age_text].join(" · ");
+const snapshotMark = (d) =>
+  ["reference levels", d.snapshot_time_ct, d.snapshot_age_text].join(" · ");
 const verdictMark = (d) =>
   ["terrain", d.levels_state, d.levels_time_ct, d.levels_age_text].join(" · ");
 // push.liquidity.liquidity_snapshot's answer with no price levels published
@@ -48,7 +49,7 @@ const NO_PRICE_LEVELS = {
   available: false,
   zones: [],
   reason:
-    "no price levels published for this ticker for the market's session yet (they are " +
+    "no reference levels published for this ticker for the market's session yet (they are " +
     "built from its 1-minute bars on each new bar and at the console's start)",
 };
 // a level far above the candles' range: the GRC as the levels panel serves one
@@ -342,7 +343,7 @@ test("Liquidity map: a ticker switch leaves nothing of the last ticker: its zone
 test("Liquidity map: the lines drawn are the levels the program marks, whatever their family", async ({
   page,
 }) => {
-  // the levels panel marks the prior day's six and the overnight's two as the map's reference
+  // the levels panel marks the prior day's six and the extended hours' two as the chart's reference
   // lines (reference_line; tests/test_e2e_panels_two_day_v1.py). INDUCED: that answer with the
   // marks moved, the session's VWAP marked and none of the eight: the map draws the VWAP and
   // none of them, for the choice is the program's and the page holds no list of families
@@ -694,7 +695,7 @@ test("Desk: a book whose market is closed reads BOOK NOT LIVE and keeps Schwab's
   await expect(page.locator('#tdmCardLiq [data-liqvenue="COMPOSITE"]')).toHaveClass(/\bon\b/);
   await expect(page.locator("#tdmCardLiq .liq-body")).toContainText("2,160");
   await expect(page.locator("#tdmCardLiq .tdm-src")).toContainText(
-    "Schwab NYSE_BOOK · composite, newest quote of each exchange",
+    "Schwab NYSE_BOOK · aggregate, newest quote of each exchange",
   );
   expect(errs).toEqual([]);
 });
@@ -1108,7 +1109,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect.poll(opened).toContain("MU");
   });
 
-  test("Market Map: the wheel over the price axis rescales price (as TradingView); over the plot it does not", async ({
+  test("Price chart:the wheel over the price axis rescales price (as TradingView); over the plot it does not", async ({
     page,
   }) => {
     // operator 2026-09-29: "in tv all you do is scroll [on the price legend] and it will expand the
@@ -1184,7 +1185,7 @@ test.describe("Trade Desk renders served values", () => {
       .toBe(SPOT);
   });
 
-  test("Market Map: the served last completed bar; a price tick moves the live LAST line and asks for no bars", async ({
+  test("Price chart:the served last completed bar; a price tick moves the live LAST line and asks for no bars", async ({
     page,
   }) => {
     const errs = watchErrors(page);
@@ -1253,7 +1254,7 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
-  test("Market Map: a pinned bar shows its served change (the chart kept the bar without it)", async ({
+  test("Price chart:a pinned bar shows its served change (the chart kept the bar without it)", async ({
     page,
   }) => {
     // 2026-09-28 (ONE-16): the chart copied each served bar without chg/chg_pct, so the pinned
@@ -1344,7 +1345,7 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
-  test("Market Map: the flip side from a price that has stopped is marked not live with its time and age", async ({
+  test("Price chart:the flip side from a price that has stopped is marked not live with its time and age", async ({
     page,
   }) => {
     const errs = watchErrors(page);
@@ -1389,9 +1390,9 @@ test.describe("Trade Desk renders served values", () => {
     // the words served for running text: the page changes no case
     const nq5 = MICRO.readout.venues.NASDAQ_BOOK.views["5"];
     expect(nq5.tilt_text).toBe(
-      { BID_HEAVY: "bid heavy", BALANCED: "balanced", OFFER_HEAVY: "offer heavy" }[nq5.tilt],
+      { BID_HEAVY: "buy-heavy", BALANCED: "neutral", OFFER_HEAVY: "sell-heavy" }[nq5.tilt],
     );
-    await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (NASDAQ_BOOK, depth 5)");
+    await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (NASDAQ_BOOK, top 5)");
     // SPY's real levels (Right Now asks them at 1 minute): max pain is the nearest, 0.08 below
     // the price; the price is through the put wall, so both walls are above it
     const level = (id) => REAL.levels["1"].levels.find((r) => r.id === id);
@@ -1406,7 +1407,7 @@ test.describe("Trade Desk renders served values", () => {
     // the price is inside the pivot zone 757.00-758.01 (the liquidity panel's own spot_location);
     // its four levels (max pain, today's VAH, the opening range high, the prior day's VAL; no VWAP
     // band since 2026-11-20), the price not among them
-    await expect(body).toContainText("Inside a Pivot / value zone (757.00–758.01, confluence 4)");
+    await expect(body).toContainText("Price inside zone (757.00–758.01, levels in zone 4)");
     expect([INSIDE.zone_low, INSIDE.zone_high, INSIDE.confluence_score]).toEqual([
       757.0, 758.01, 4,
     ]);
@@ -1661,7 +1662,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect(body).toContainText(BOOK_TIME + " · 1s");
     await expect(body).toContainText("757.05 × 757.07"); // Schwab's best bid and ask
     await expect(body).toContainText(
-      MICRO.readout.venues.NASDAQ_BOOK.views["5"].tilt_text + " (NASDAQ_BOOK, depth 5)",
+      MICRO.readout.venues.NASDAQ_BOOK.views["5"].tilt_text + " (NASDAQ_BOOK, top 5)",
     );
     expect(errs).toEqual([]);
   });
@@ -1679,7 +1680,7 @@ test.describe("Trade Desk renders served values", () => {
     await openView(page, "trade-desk", "right-now");
     await expect(page.locator("#tdBody")).toContainText(
       book.readout.venues.NASDAQ_BOOK.views["5"].pct_text +
-        "Words ONLY the server knows (NASDAQ_BOOK, depth 5)",
+        "Words ONLY the server knows (NASDAQ_BOOK, top 5)",
     );
     expect(errs).toEqual([]);
   });
@@ -1712,7 +1713,7 @@ test.describe("Trade Desk renders served values", () => {
       ),
     });
     sock.changed("liquidity");
-    await expect(body).toContainText("Inside a Pivot / value zone (757.00–758.50"); // FRAME's zones
+    await expect(body).toContainText("Price inside zone (757.00–758.50"); // FRAME's zones
     await expect(body).toContainText("Max pain 757.00");
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771, max_pain_text: "771.00" });
     sock.changed("terrain");
@@ -1815,7 +1816,7 @@ test.describe("Trade Desk renders served values", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const body = page.locator("#tdBody");
-    await expect(body).toContainText("(NYSE_BOOK, depth 5)");
+    await expect(body).toContainText("(NYSE_BOOK, top 5)");
     await page.evaluate(() => {
       // the venue each draw from here on shows
       window.__draws = [];
@@ -1839,7 +1840,7 @@ test.describe("Trade Desk renders served values", () => {
     sock.frame("book:desk", "SPY", Object.assign({}, MICRO, { venue: "NYSE_BOOK" })); // NYSE's, already on its way ...
     held = false;
     sock.changed("book"); // ... and NASDAQ's behind it
-    await expect(body).toContainText("(NASDAQ_BOOK, depth 5)");
+    await expect(body).toContainText("(NASDAQ_BOOK, top 5)");
     expect(await page.evaluate(() => window.__draws)).toEqual(["(NASDAQ_BOOK"]);
   });
 
@@ -1994,9 +1995,7 @@ test.describe("Trade Desk renders served values", () => {
       ),
     });
     sock.changed("liquidity"); // ... and a panel of another kind lands after it
-    await expect(page.locator("#tdBody")).toContainText(
-      "Inside a Pivot / value zone (757.00–758.50",
-    );
+    await expect(page.locator("#tdBody")).toContainText("Price inside zone (757.00–758.50");
     // once the new window is drawn, every later draw is the new window: none goes back to the
     // old one, the later panel's included
     const draws = await page.evaluate(() => window.__draws);
@@ -2005,7 +2004,7 @@ test.describe("Trade Desk renders served values", () => {
     expect(draws.slice(first).filter((d) => d !== wide)).toEqual([]);
   });
 
-  test("Market Map: 3m, line mode, a level beyond the visible range pinned at the edge, and the flip note", async ({
+  test("Price chart:3m, line mode, a level beyond the visible range pinned at the edge, and the flip note", async ({
     page,
   }) => {
     const errs = watchErrors(page);
@@ -2050,7 +2049,7 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
-  test("Market Map: no shaded wall band, whatever the terrain carries", async ({ page }) => {
+  test("Price chart:no shaded wall band, whatever the terrain carries", async ({ page }) => {
     // operator 2026-10-04: no shaded area on the chart. The call- and put-wall gamma ranges were
     // drawn as green and red bands across the pane; a terrain that still carries ranges (as the
     // server sent them before) draws exactly the same chart as one without them.

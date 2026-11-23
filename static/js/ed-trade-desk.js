@@ -2,8 +2,8 @@
    The page's reasoning flow is Detect -> Frame -> Confirm -> Execute; this module builds the
    first three stages from panels other workspaces already own, all on the page's socket -- one
    page, zero new math, zero new producers:
-     DETECT  <- the `book:desk` panel (same engine the Order Flow > Book/DOM tab reads)
-     FRAME   <- the `levels:desk` and `liquidity:desk` panels (same contracts Liquidity > Levels/Map read)
+     DETECT  <- the `book:desk` panel (same engine the Order Flow > Level II tab reads)
+     FRAME   <- the `levels:desk` and `liquidity:desk` panels (same contracts Liquidity > Levels/Zones read)
      CONFIRM <- the `terrain:desk` panel (the levels the Gamma tab is sent)
    The Context Summary panel is plain-English arrangement of those SAME four responses (e.g.
    "is spot presently between these two already-fetched zone bounds") -- a classification of
@@ -113,7 +113,11 @@
         classOf(cls, "top_of_book.bid"),
       ],
       ["Spread (pts)", orDash(d.spread_pts_text), classOf(cls, "spread_pts")],
-      ["Depth 1 imbalance", orDash(depth["1"].imbalance_text), classOf(cls, "depth.*.imbalance")],
+      [
+        "Order book imbalance (top 1)",
+        orDash(depth["1"].imbalance_text),
+        classOf(cls, "depth.*.imbalance"),
+      ],
       ["Book age", bookAge, classOf(cls, "ages.book_age_sec")],
     ];
     // the Liquidity readout's served headline and tilt for this book at depth 5, the tilt in the
@@ -122,7 +126,7 @@
     var r5 = d.readout && d.readout.venues[d.venue] && d.readout.venues[d.venue].views["5"];
     var tilt = r5 ? r5.tilt : null;
     var heroVal = r5 && r5.pct_text != null ? r5.pct_text : "-";
-    var heroUnit = tilt == null ? "" : r5.tilt_text + " (" + esc(d.venue) + ", depth 5)";
+    var heroUnit = tilt == null ? "" : r5.tilt_text + " (" + esc(d.venue) + ", top 5)";
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
     // no book age served reads AGE UNKNOWN, never live
     var bs = d.ages.book_stale;
@@ -143,12 +147,12 @@
   function frameStage(sent) {
     // the levels panel as sent: undefined (none yet), failed, or the levels
     if (sent === undefined)
-      return stage(2, "td-accent-green", "Frame — liquidity levels", "-", "", null, [], null);
+      return stage(2, "td-accent-green", "Frame — reference levels", "-", "", null, [], null);
     if (sent.failed != null)
       return stage(
         2,
         "td-accent-green",
-        "Frame — liquidity levels",
+        "Frame — reference levels",
         sent.failed,
         "",
         null,
@@ -161,7 +165,7 @@
       return stage(
         2,
         "td-accent-green",
-        "Frame — liquidity levels",
+        "Frame — reference levels",
         "No levels",
         "",
         null,
@@ -182,7 +186,7 @@
       return stage(
         2,
         "td-accent-green",
-        "Frame — liquidity levels",
+        "Frame — reference levels",
         "No priced levels",
         "",
         null,
@@ -199,7 +203,7 @@
     return stage(
       2,
       "td-accent-green",
-      "Frame — nearest liquidity level",
+      "Frame — nearest reference level",
       heroVal,
       nearest.from_spot_text + notLive(levelsD),
       null,
@@ -278,13 +282,12 @@
       var z = loc.inside;
       lines.push([
         "Location",
-        "Inside a " +
-          esc(z.zone_label) +
-          " zone (" +
+        esc(z.zone_label) +
+          " (" +
           z.zone_low_text +
           "–" +
           z.zone_high_text +
-          ", confluence " +
+          ", levels in zone " +
           z.confluence_score +
           ")",
       ]);
@@ -295,7 +298,7 @@
           esc(loc.above.zone_label) +
             " zone above at " +
             loc.above.zone_low_text +
-            " (confluence " +
+            " (levels in zone " +
             loc.above.confluence_score +
             ")",
         );
@@ -304,13 +307,13 @@
           esc(loc.below.zone_label) +
             " zone below at " +
             loc.below.zone_high_text +
-            " (confluence " +
+            " (levels in zone " +
             loc.below.confluence_score +
             ")",
         );
       lines.push([
         "Location",
-        parts.length ? "Between zones — " + parts.join(", ") : "No scored zone nearby",
+        parts.length ? "Between zones — " + parts.join(", ") : "No zone nearby",
       ]);
     }
     var walls = {}; // served: the levels panel's own rows

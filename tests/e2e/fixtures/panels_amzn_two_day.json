@@ -75338,7 +75338,7 @@
       },
       "deferred": [
         "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-        "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+        "cumulative volume delta (estimated: exists in the engine, from the trades)",
         "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
         "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
       ],
@@ -76071,11 +76071,11 @@
                 "pct": -83.33333333333334,
                 "pct_text": "-83%",
                 "tilt": "OFFER_HEAVY",
-                "side_word": "OFFER HEAVY",
-                "tilt_text": "offer heavy",
+                "side_word": "SELL-HEAVY",
+                "tilt_text": "sell-heavy",
                 "held_sec": 14,
                 "held_open": false,
-                "held_text": "HELD 14s",
+                "held_text": "FOR 14s",
                 "sentence": "200 more shares offered than bid.",
                 "flips_2m": 9,
                 "bid_text": "20",
@@ -76291,11 +76291,11 @@
                 "pct": 32.5,
                 "pct_text": "+33%",
                 "tilt": "BID_HEAVY",
-                "side_word": "BID HEAVY",
-                "tilt_text": "bid heavy",
+                "side_word": "BUY-HEAVY",
+                "tilt_text": "buy-heavy",
                 "held_sec": 13,
                 "held_open": false,
-                "held_text": "HELD 13s",
+                "held_text": "FOR 13s",
                 "sentence": "520 more shares bid than offered.",
                 "flips_2m": 10,
                 "bid_text": "1,060",
@@ -76511,11 +76511,11 @@
                 "pct": 25.0,
                 "pct_text": "+25%",
                 "tilt": "BID_HEAVY",
-                "side_word": "BID HEAVY",
-                "tilt_text": "bid heavy",
+                "side_word": "BUY-HEAVY",
+                "tilt_text": "buy-heavy",
                 "held_sec": 13,
                 "held_open": false,
-                "held_text": "HELD 13s",
+                "held_text": "FOR 13s",
                 "sentence": "520 more shares bid than offered.",
                 "flips_2m": 8,
                 "bid_text": "1,300",
@@ -76754,11 +76754,11 @@
                 "pct": -83.33333333333334,
                 "pct_text": "-83%",
                 "tilt": "OFFER_HEAVY",
-                "side_word": "OFFER HEAVY",
-                "tilt_text": "offer heavy",
+                "side_word": "SELL-HEAVY",
+                "tilt_text": "sell-heavy",
                 "held_sec": 12,
                 "held_open": false,
-                "held_text": "HELD 12s",
+                "held_text": "FOR 12s",
                 "sentence": "200 more shares offered than bid.",
                 "flips_2m": 9,
                 "bid_text": "20",
@@ -76974,11 +76974,11 @@
                 "pct": 32.5,
                 "pct_text": "+33%",
                 "tilt": "BID_HEAVY",
-                "side_word": "BID HEAVY",
-                "tilt_text": "bid heavy",
+                "side_word": "BUY-HEAVY",
+                "tilt_text": "buy-heavy",
                 "held_sec": 11,
                 "held_open": false,
-                "held_text": "HELD 11s",
+                "held_text": "FOR 11s",
                 "sentence": "520 more shares bid than offered.",
                 "flips_2m": 10,
                 "bid_text": "1,060",
@@ -77194,11 +77194,11 @@
                 "pct": 25.0,
                 "pct_text": "+25%",
                 "tilt": "BID_HEAVY",
-                "side_word": "BID HEAVY",
-                "tilt_text": "bid heavy",
+                "side_word": "BUY-HEAVY",
+                "tilt_text": "buy-heavy",
                 "held_sec": 11,
                 "held_open": false,
-                "held_text": "HELD 11s",
+                "held_text": "FOR 11s",
                 "sentence": "520 more shares bid than offered.",
                 "flips_2m": 8,
                 "bid_text": "1,300",
@@ -77411,11 +77411,11 @@
             "live": false,
             "book_time_ct": "Thu 11/12 09:39 AM CT",
             "book_age_text": "2s",
-            "source_text": "Schwab NASDAQ_BOOK \u00b7 composite, newest quote of each exchange \u00b7 book Thu 11/12 09:39 AM CT \u00b7 2s old \u00b7 not live",
+            "source_text": "Schwab NASDAQ_BOOK \u00b7 aggregate, newest quote of each exchange \u00b7 book Thu 11/12 09:39 AM CT \u00b7 2s old \u00b7 not live",
             "no_number_text": null,
             "no_number_head": null,
             "dedup_partial_text": null,
-            "name": "Composite"
+            "name": "Aggregate"
           }
         },
         "disagree": {
@@ -77424,9 +77424,9 @@
           "5": false
         },
         "detail": {
-          "tilt": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back.",
-          "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
-          "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
+          "tilt": "Order book imbalance: the bid shares less the ask shares over the two together, each second, as it is. NEUTRAL under 10%; BUY-HEAVY or SELL-HEAVY from 10% (the line Bookmap's Imbalance indicator changes colour at): direction only, not strength. A flip is a change of side, buy to sell or back.",
+          "construction": "Aggregate: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the aggregate is that book. Never the two books' level totals summed.",
+          "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The top of book is the only like-for-like comparison across venues.",
           "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth. NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes."
         },
         "auction": "NONE",
@@ -77453,33 +77453,39 @@
         "anchor": 269.99375,
         "source_levels": [
           {
-            "label": "TODAY_VAL",
+            "id": "TODAY_VAL",
             "value": 269.83,
+            "label": "Value area low (est. from 1-min bars)",
             "value_text": "269.83"
           },
           {
-            "label": "GAMMA_CALL_WALL",
+            "id": "call_wall",
             "value": 270.0,
+            "label": "Call wall",
             "value_text": "270.00"
           },
           {
-            "label": "GAMMA_PUT_WALL",
+            "id": "put_wall",
             "value": 270.0,
+            "label": "Put wall",
             "value_text": "270.00"
           },
           {
-            "label": "DELTA_PUT_WALL",
+            "id": "put_delta_wall",
             "value": 270.0,
+            "label": "Largest put delta strike",
             "value_text": "270.00"
           },
           {
-            "label": "ABS_GAMMA",
+            "id": "absolute_gamma_strike",
             "value": 270.0,
+            "label": "Largest total gamma strike",
             "value_text": "270.00"
           },
           {
-            "label": "ORB_MID",
+            "id": "ORB_MID",
             "value": 270.1575,
+            "label": "Opening range (15 min) midpoint",
             "value_text": "270.16"
           }
         ],
@@ -77496,13 +77502,15 @@
         "anchor": 270.9520028195942,
         "source_levels": [
           {
-            "label": "OVERNIGHT_HIGH",
+            "id": "OVERNIGHT_HIGH",
             "value": 270.8822,
+            "label": "Extended-hours high",
             "value_text": "270.88"
           },
           {
-            "label": "VWAP",
+            "id": "VWAP",
             "value": 271.02180563918836,
+            "label": "VWAP",
             "value_text": "271.02"
           }
         ],
@@ -77519,13 +77527,15 @@
         "anchor": 267.60249999999996,
         "source_levels": [
           {
-            "label": "PD_VAH",
+            "id": "PD_VAH",
             "value": 267.37,
+            "label": "Prior day VAH (est. from 1-min bars)",
             "value_text": "267.37"
           },
           {
-            "label": "ORB_LOW",
+            "id": "ORB_LOW",
             "value": 267.835,
+            "label": "Opening range (15 min) low",
             "value_text": "267.83"
           }
         ],
@@ -77542,8 +77552,9 @@
         "anchor": 271.74,
         "source_levels": [
           {
-            "label": "TODAY_POC",
+            "id": "TODAY_POC",
             "value": 271.74,
+            "label": "Point of control (est. from 1-min bars)",
             "value_text": "271.74"
           }
         ],
@@ -77560,23 +77571,27 @@
         "anchor": 266.08000000000004,
         "source_levels": [
           {
-            "label": "PDL",
+            "id": "PDL",
             "value": 265.62,
+            "label": "Prior day low",
             "value_text": "265.62"
           },
           {
-            "label": "PD_VAL",
+            "id": "PD_VAL",
             "value": 265.77,
+            "label": "Prior day VAL (est. from 1-min bars)",
             "value_text": "265.77"
           },
           {
-            "label": "PDC",
+            "id": "PDC",
             "value": 266.17,
+            "label": "Prior day close",
             "value_text": "266.17"
           },
           {
-            "label": "PD_POC",
+            "id": "PD_POC",
             "value": 266.54,
+            "label": "Prior day POC (est. from 1-min bars)",
             "value_text": "266.54"
           }
         ],
@@ -77593,8 +77608,9 @@
         "anchor": 272.48,
         "source_levels": [
           {
-            "label": "ORB_HIGH",
+            "id": "ORB_HIGH",
             "value": 272.48,
+            "label": "Opening range (15 min) high",
             "value_text": "272.48"
           }
         ],
@@ -77611,8 +77627,9 @@
         "anchor": 273.44,
         "source_levels": [
           {
-            "label": "TODAY_VAH",
+            "id": "TODAY_VAH",
             "value": 273.44,
+            "label": "Value area high (est. from 1-min bars)",
             "value_text": "273.44"
           }
         ],
@@ -77629,13 +77646,15 @@
         "anchor": 274.935,
         "source_levels": [
           {
-            "label": "PDH",
+            "id": "PDH",
             "value": 274.87,
+            "label": "Prior day high",
             "value_text": "274.87"
           },
           {
-            "label": "NET_CALL_PEAK",
+            "id": "lvp",
             "value": 275.0,
+            "label": "Largest positive net GEX strike",
             "value_text": "275.00"
           }
         ],
@@ -77652,8 +77671,9 @@
         "anchor": 263.16,
         "source_levels": [
           {
-            "label": "OVERNIGHT_LOW",
+            "id": "OVERNIGHT_LOW",
             "value": 263.16,
+            "label": "Extended-hours low",
             "value_text": "263.16"
           }
         ],
@@ -77670,8 +77690,9 @@
         "anchor": 260.0,
         "source_levels": [
           {
-            "label": "MAX_PAIN",
+            "id": "max_pain",
             "value": 260.0,
+            "label": "Max pain",
             "value_text": "260.00"
           }
         ],
@@ -77688,8 +77709,9 @@
         "anchor": 250.0,
         "source_levels": [
           {
-            "label": "DELTA_CALL_WALL",
+            "id": "call_delta_wall",
             "value": 250.0,
+            "label": "Largest call delta strike",
             "value_text": "250.00"
           }
         ],
@@ -77706,8 +77728,9 @@
         "anchor": 243.91411813739333,
         "source_levels": [
           {
-            "label": "GAMMA_FLIP",
+            "id": "gamma_flip",
             "value": 243.91411813739333,
+            "label": "Gamma flip",
             "value_text": "243.91"
           }
         ],
@@ -77724,8 +77747,9 @@
         "anchor": 240.0,
         "source_levels": [
           {
-            "label": "NET_PUT_PEAK",
+            "id": "hvp",
             "value": 240.0,
+            "label": "Largest negative net GEX strike",
             "value_text": "240.00"
           }
         ],
@@ -77748,50 +77772,50 @@
     "hold_rates": [
       {
         "level": "Prior day high",
-        "text": "- (3 touches) [30 min: - (3 touches)]"
+        "text": "- (3 hits) [30 min: - (3 hits)]"
       },
       {
         "level": "Prior day low",
-        "text": "- (11 touches) [30 min: - (8 touches)]"
+        "text": "- (11 hits) [30 min: - (8 hits)]"
       },
       {
         "level": "Prior day close",
-        "text": "- (1 touches) [30 min: - (1 touches)]"
+        "text": "- (1 hits) [30 min: - (1 hits)]"
       },
       {
         "level": "Prior day POC (est. from 1-min bars)",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       },
       {
         "level": "Prior day VAH (est. from 1-min bars)",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       },
       {
         "level": "Prior day VAL (est. from 1-min bars)",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       },
       {
-        "level": "Overnight high",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "level": "Extended-hours high",
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       },
       {
-        "level": "Overnight low",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "level": "Extended-hours low",
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       },
       {
-        "level": "Opening range high",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "level": "Opening range (15 min) high",
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       },
       {
-        "level": "Opening range low",
-        "text": "- (5 touches) [30 min: - (5 touches)]"
+        "level": "Opening range (15 min) low",
+        "text": "- (5 hits) [30 min: - (5 hits)]"
       },
       {
-        "level": "Opening range mid",
-        "text": "- (0 touches) [30 min: - (0 touches)]"
+        "level": "Opening range (15 min) midpoint",
+        "text": "- (0 hits) [30 min: - (0 hits)]"
       }
     ],
-    "hold_note": "Over the last 60 completed sessions held: a touch is a 1-minute bar reaching the level from one side, once per approach; it held when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels hold about half the time, so only the difference means anything. '-' below 100 touches. A past frequency, not a forecast."
+    "hold_note": "Over the last 60 completed sessions held: a hit is a 1-minute bar reaching the level from one side, once per approach; it bounced when the close 15 minutes later (30 in brackets) is still on that side. Random is the same count for 100 levels a session spread over the open +- the month's largest move (Osler 2000): random levels bounce about half the time, so only the difference means anything. '-' below 100 hits. A past frequency, not a forecast."
   },
   "levels": {
     "1": {
@@ -77925,7 +77949,7 @@
           "id": "ORB_HIGH",
           "price": 272.48,
           "family": "opening_range",
-          "label": "Opening range high",
+          "label": "Opening range (15 min) high",
           "short": "ORH",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
@@ -77996,9 +78020,9 @@
         {
           "id": "OVERNIGHT_HIGH",
           "price": 270.8822,
-          "family": "overnight",
-          "label": "Overnight high",
-          "short": "ONH",
+          "family": "extended_hours",
+          "label": "Extended-hours high",
+          "short": "Ext high",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
@@ -78021,7 +78045,7 @@
           "id": "ORB_MID",
           "price": 270.1575,
           "family": "opening_range",
-          "label": "Opening range mid",
+          "label": "Opening range (15 min) midpoint",
           "short": "ORM",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
@@ -78153,7 +78177,7 @@
           "id": "ORB_LOW",
           "price": 267.835,
           "family": "opening_range",
-          "label": "Opening range low",
+          "label": "Opening range (15 min) low",
           "short": "ORL",
           "side": "BELOW",
           "evidence_tier": "price_fact",
@@ -78178,7 +78202,7 @@
           "price": 267.37,
           "family": "prior_day",
           "label": "Prior day VAH (est. from 1-min bars)",
-          "short": "pVAH est",
+          "short": "Prior VAH est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -78202,7 +78226,7 @@
           "price": 266.54,
           "family": "prior_day",
           "label": "Prior day POC (est. from 1-min bars)",
-          "short": "pPOC est",
+          "short": "Prior POC est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -78250,7 +78274,7 @@
           "price": 265.77,
           "family": "prior_day",
           "label": "Prior day VAL (est. from 1-min bars)",
-          "short": "pVAL est",
+          "short": "Prior VAL est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -78296,9 +78320,9 @@
         {
           "id": "OVERNIGHT_LOW",
           "price": 263.16,
-          "family": "overnight",
-          "label": "Overnight low",
-          "short": "ONL",
+          "family": "extended_hours",
+          "label": "Extended-hours low",
+          "short": "Ext low",
           "side": "BELOW",
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
@@ -79456,7 +79480,7 @@
           "id": "ORB_HIGH",
           "price": 272.48,
           "family": "opening_range",
-          "label": "Opening range high",
+          "label": "Opening range (15 min) high",
           "short": "ORH",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
@@ -79527,9 +79551,9 @@
         {
           "id": "OVERNIGHT_HIGH",
           "price": 270.8822,
-          "family": "overnight",
-          "label": "Overnight high",
-          "short": "ONH",
+          "family": "extended_hours",
+          "label": "Extended-hours high",
+          "short": "Ext high",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
@@ -79552,7 +79576,7 @@
           "id": "ORB_MID",
           "price": 270.1575,
           "family": "opening_range",
-          "label": "Opening range mid",
+          "label": "Opening range (15 min) midpoint",
           "short": "ORM",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
@@ -79684,7 +79708,7 @@
           "id": "ORB_LOW",
           "price": 267.835,
           "family": "opening_range",
-          "label": "Opening range low",
+          "label": "Opening range (15 min) low",
           "short": "ORL",
           "side": "BELOW",
           "evidence_tier": "price_fact",
@@ -79709,7 +79733,7 @@
           "price": 267.37,
           "family": "prior_day",
           "label": "Prior day VAH (est. from 1-min bars)",
-          "short": "pVAH est",
+          "short": "Prior VAH est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -79733,7 +79757,7 @@
           "price": 266.54,
           "family": "prior_day",
           "label": "Prior day POC (est. from 1-min bars)",
-          "short": "pPOC est",
+          "short": "Prior POC est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -79781,7 +79805,7 @@
           "price": 265.77,
           "family": "prior_day",
           "label": "Prior day VAL (est. from 1-min bars)",
-          "short": "pVAL est",
+          "short": "Prior VAL est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -79827,9 +79851,9 @@
         {
           "id": "OVERNIGHT_LOW",
           "price": 263.16,
-          "family": "overnight",
-          "label": "Overnight low",
-          "short": "ONL",
+          "family": "extended_hours",
+          "label": "Extended-hours low",
+          "short": "Ext low",
           "side": "BELOW",
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
@@ -80932,7 +80956,7 @@
           "id": "ORB_HIGH",
           "price": 272.48,
           "family": "opening_range",
-          "label": "Opening range high",
+          "label": "Opening range (15 min) high",
           "short": "ORH",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
@@ -81003,9 +81027,9 @@
         {
           "id": "OVERNIGHT_HIGH",
           "price": 270.8822,
-          "family": "overnight",
-          "label": "Overnight high",
-          "short": "ONH",
+          "family": "extended_hours",
+          "label": "Extended-hours high",
+          "short": "Ext high",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",
@@ -81028,7 +81052,7 @@
           "id": "ORB_MID",
           "price": 270.1575,
           "family": "opening_range",
-          "label": "Opening range mid",
+          "label": "Opening range (15 min) midpoint",
           "short": "ORM",
           "side": "ABOVE",
           "evidence_tier": "price_fact",
@@ -81160,7 +81184,7 @@
           "id": "ORB_LOW",
           "price": 267.835,
           "family": "opening_range",
-          "label": "Opening range low",
+          "label": "Opening range (15 min) low",
           "short": "ORL",
           "side": "BELOW",
           "evidence_tier": "price_fact",
@@ -81185,7 +81209,7 @@
           "price": 267.37,
           "family": "prior_day",
           "label": "Prior day VAH (est. from 1-min bars)",
-          "short": "pVAH est",
+          "short": "Prior VAH est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -81209,7 +81233,7 @@
           "price": 266.54,
           "family": "prior_day",
           "label": "Prior day POC (est. from 1-min bars)",
-          "short": "pPOC est",
+          "short": "Prior POC est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -81257,7 +81281,7 @@
           "price": 265.77,
           "family": "prior_day",
           "label": "Prior day VAL (est. from 1-min bars)",
-          "short": "pVAL est",
+          "short": "Prior VAL est",
           "side": "BELOW",
           "evidence_tier": "derived_certified",
           "semantic_scope": "prior_rth_session",
@@ -81303,9 +81327,9 @@
         {
           "id": "OVERNIGHT_LOW",
           "price": 263.16,
-          "family": "overnight",
-          "label": "Overnight low",
-          "short": "ONL",
+          "family": "extended_hours",
+          "label": "Extended-hours low",
+          "short": "Ext low",
           "side": "BELOW",
           "evidence_tier": "price_fact",
           "semantic_scope": "overnight_window",

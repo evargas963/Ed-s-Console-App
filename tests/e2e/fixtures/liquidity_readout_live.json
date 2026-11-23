@@ -31,7 +31,7 @@
   "crossed": false,
   "deferred": [
     "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+    "cumulative volume delta (estimated: exists in the engine, from the trades)",
     "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
     "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
   ],
@@ -158,9 +158,9 @@
     "auction_text": null,
     "detail": {
       "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth. NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
-      "construction": "Composite: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the composite is that book. Never the two books' level totals summed.",
-      "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The touch is the only like-for-like comparison across venues.",
-      "tilt": "The headline is the book's percentage each second, as it is. BALANCED under 10%; BID or OFFER HEAVY from 10% (Bookmap's colour-switch line): direction only, not strength. A flip is a change of side, bid to offer or back."
+      "construction": "Aggregate: every exchange's and market maker's quote from the books Schwab sends for this symbol, one per contributor by side; where a contributor quotes in both books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent; then the shares summed at each distinct price and the best five prices per side. With one book, the aggregate is that book. Never the two books' level totals summed.",
+      "spans": "Top 5 covers different price ranges on the two venues \u2014 the percentages are over different prices, so compare directions, not magnitudes. The top of book is the only like-for-like comparison across venues.",
+      "tilt": "Order book imbalance: the bid shares less the ask shares over the two together, each second, as it is. NEUTRAL under 10%; BUY-HEAVY or SELL-HEAVY from 10% (the line Bookmap's Imbalance indicator changes colour at): direction only, not strength. A flip is a change of side, buy to sell or back."
     },
     "disagree": {
       "1": true,
@@ -178,11 +178,11 @@
         "feed_label": "LIVE",
         "levels_text": null,
         "live": true,
-        "name": "Composite",
+        "name": "Aggregate",
         "no_number_head": null,
         "no_number_text": null,
         "one_sided_text": null,
-        "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 composite, newest quote of each exchange",
+        "source_text": "Schwab NYSE_BOOK + NASDAQ_BOOK \u00b7 aggregate, newest quote of each exchange",
         "status": "ok",
         "touch_flag": null,
         "touch_pct": -37.93103448275862,
@@ -199,7 +199,7 @@
             "flips_2m": 49,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -309,11 +309,11 @@
             "pct": -37.93103448275862,
             "pct_text": "-38%",
             "sentence": "440 more shares offered than bid.",
-            "side_word": "OFFER HEAVY",
+            "side_word": "SELL-HEAVY",
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "OFFER_HEAVY",
-            "tilt_text": "offer heavy",
+            "tilt_text": "sell-heavy",
             "total_depth": 1160.0,
             "total_text": "1,160"
           },
@@ -327,7 +327,7 @@
             "flips_2m": 28,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -438,11 +438,11 @@
             "pct": -14.000000000000002,
             "pct_text": "-14%",
             "sentence": "560 more shares offered than bid.",
-            "side_word": "OFFER HEAVY",
+            "side_word": "SELL-HEAVY",
             "span_ask_text": "0.03",
             "span_bid_text": "0.03",
             "tilt": "OFFER_HEAVY",
-            "tilt_text": "offer heavy",
+            "tilt_text": "sell-heavy",
             "total_depth": 4000.0,
             "total_text": "4,000"
           },
@@ -456,7 +456,7 @@
             "flips_2m": 16,
             "held_open": false,
             "held_sec": 3,
-            "held_text": "HELD 3s",
+            "held_text": "FOR 3s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -567,11 +567,11 @@
             "pct": -7.2727272727272725,
             "pct_text": "-7%",
             "sentence": "320 more shares offered than bid.",
-            "side_word": "BALANCED",
+            "side_word": "NEUTRAL",
             "span_ask_text": "0.30",
             "span_bid_text": "0.42",
             "tilt": "BALANCED",
-            "tilt_text": "balanced",
+            "tilt_text": "neutral",
             "total_depth": 4400.0,
             "total_text": "4,400"
           }
@@ -608,7 +608,7 @@
             "flips_2m": 50,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -719,11 +719,11 @@
             "pct": 46.666666666666664,
             "pct_text": "+47%",
             "sentence": "70 more shares bid than offered.",
-            "side_word": "BID HEAVY",
+            "side_word": "BUY-HEAVY",
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "BID_HEAVY",
-            "tilt_text": "bid heavy",
+            "tilt_text": "buy-heavy",
             "total_depth": 150.0,
             "total_text": "150"
           },
@@ -737,7 +737,7 @@
             "flips_2m": 36,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -848,11 +848,11 @@
             "pct": 22.58064516129032,
             "pct_text": "+23%",
             "sentence": "70 more shares bid than offered.",
-            "side_word": "BID HEAVY",
+            "side_word": "BUY-HEAVY",
             "span_ask_text": "6.86",
             "span_bid_text": "6.81",
             "tilt": "BID_HEAVY",
-            "tilt_text": "bid heavy",
+            "tilt_text": "buy-heavy",
             "total_depth": 310.0,
             "total_text": "310"
           },
@@ -866,7 +866,7 @@
             "flips_2m": 28,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -977,11 +977,11 @@
             "pct": 24.528301886792452,
             "pct_text": "+25%",
             "sentence": "130 more shares bid than offered.",
-            "side_word": "BID HEAVY",
+            "side_word": "BUY-HEAVY",
             "span_ask_text": "14.87",
             "span_bid_text": "15.05",
             "tilt": "BID_HEAVY",
-            "tilt_text": "bid heavy",
+            "tilt_text": "buy-heavy",
             "total_depth": 530.0,
             "total_text": "530"
           }
@@ -1018,7 +1018,7 @@
             "flips_2m": 49,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -1126,11 +1126,11 @@
             "pct": -37.93103448275862,
             "pct_text": "-38%",
             "sentence": "440 more shares offered than bid.",
-            "side_word": "OFFER HEAVY",
+            "side_word": "SELL-HEAVY",
             "span_ask_text": "0.00",
             "span_bid_text": "0.00",
             "tilt": "OFFER_HEAVY",
-            "tilt_text": "offer heavy",
+            "tilt_text": "sell-heavy",
             "total_depth": 1160.0,
             "total_text": "1,160"
           },
@@ -1144,7 +1144,7 @@
             "flips_2m": 22,
             "held_open": false,
             "held_sec": 2,
-            "held_text": "HELD 2s",
+            "held_text": "FOR 2s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -1255,11 +1255,11 @@
             "pct": -14.000000000000002,
             "pct_text": "-14%",
             "sentence": "560 more shares offered than bid.",
-            "side_word": "OFFER HEAVY",
+            "side_word": "SELL-HEAVY",
             "span_ask_text": "0.03",
             "span_bid_text": "0.03",
             "tilt": "OFFER_HEAVY",
-            "tilt_text": "offer heavy",
+            "tilt_text": "sell-heavy",
             "total_depth": 4000.0,
             "total_text": "4,000"
           },
@@ -1273,7 +1273,7 @@
             "flips_2m": 16,
             "held_open": false,
             "held_sec": 3,
-            "held_text": "HELD 3s",
+            "held_text": "FOR 3s",
             "lean": {
               "2m": {
                 "lean": "MIXED",
@@ -1384,11 +1384,11 @@
             "pct": -7.2727272727272725,
             "pct_text": "-7%",
             "sentence": "320 more shares offered than bid.",
-            "side_word": "BALANCED",
+            "side_word": "NEUTRAL",
             "span_ask_text": "0.30",
             "span_bid_text": "0.42",
             "tilt": "BALANCED",
-            "tilt_text": "balanced",
+            "tilt_text": "neutral",
             "total_depth": 4400.0,
             "total_text": "4,400"
           }

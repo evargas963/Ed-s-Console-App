@@ -1,4 +1,4 @@
-"""The `bookmap` panel: the depth heatmap of a ticker's Schwab book."""
+"""The `book_heatmap` panel: the depth heatmap of a ticker's Schwab book."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from push.answers import NotAvailable
 from push.asked import venue_asked
 
 
-def bookmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NotAvailable:
-    """Return the `bookmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
+def book_heatmap(ticker: str, params: dict[str, Any]) -> BookHeatmap | NotAvailable:
+    """Return the `book_heatmap` panel: the depth heatmap of the ticker's Schwab book `venue`.
 
     history.book_heatmap_for_ticker bins the venue's recent books in the console's memory into a
     time x price grid over the newest `minutes`. The window ends at the newest book, never at

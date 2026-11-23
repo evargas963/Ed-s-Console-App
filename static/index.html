@@ -1369,9 +1369,9 @@
         line-height: 1.5;
       }
 
-      /* Order Flow Book/DOM — a real per-level price ladder (d.depth_pressure), not a flat stat
+      /* Order Flow Level II — a real per-level price ladder (d.depth_pressure), not a flat stat
      list. Ask levels stack above the mid strip, bid levels below — the shape traders actually
-     scan a DOM ladder in. */
+     scan a depth ladder in. */
       .dom-wrap {
         display: flex;
         gap: 16px;
@@ -2186,7 +2186,7 @@
         box-shadow: inset 0 0 0 1px var(--ed-stale);
       }
 
-      /* main-panel view switching (Heatmap / Chart / Levels / Multi-Map) */
+      /* main-panel view switching (Heatmap / Chart / Levels / Small Multiples) */
       .mvwrap {
         padding: 0;
         position: relative;
@@ -2751,7 +2751,7 @@
         color: var(--ed-ink-3);
         margin-top: 8px;
       }
-      /* Structures (contract-safety metadata, operator field-inventory audit) — reuses .sd's
+      /* Contract specifications (operator field-inventory audit) — reuses .sd's
      table styling; strike is the row label (like .sd td.side), flags are quiet unless ON */
       .st-tbl td:first-child {
         text-align: left;
@@ -3194,7 +3194,7 @@
       .lv-foot .lv-absent {
         color: var(--ed-stale);
       }
-      /* Options Flow — reference card structure; truthful empty state inside the table */
+      /* Options Time & Sales — reference card structure; truthful empty state inside the table */
       .of {
         width: 100%;
         height: 100%;
@@ -3232,7 +3232,7 @@
       .of .notproven {
         display: inline-block;
       }
-      /* Options Flow tape rows: Schwab's trade prints; classification is a mechanical bid/ask comparison, never an aggressor side. */
+      /* Options Time & Sales rows: Schwab's trades; classification is a mechanical bid/ask comparison, never an aggressor side. */
       .of td {
         padding: 5px 8px;
         text-align: right;
@@ -3398,11 +3398,11 @@
             ><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9v9z" /></svg
             ><span class="lbl">Portfolio / Risk</span></a
           >
-          <a class="navitem" data-ws="system" title="System / Trust"
+          <a class="navitem" data-ws="system" title="System"
             ><svg viewBox="0 0 24 24">
               <path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z" />
               <path d="M9 12l2 2 4-4" /></svg
-            ><span class="lbl">System / Trust</span></a
+            ><span class="lbl">System</span></a
           >
         </div>
         <div class="wl" id="watchlist">
@@ -3442,7 +3442,7 @@
             <span
               class="k"
               title="Schwab NET_CHANGE_PERCENT: last price vs prior close, extended hours included"
-              >Ext</span
+              >Net</span
             >
             <span class="chg mono" id="hChg">-</span>
           </div>
@@ -3532,13 +3532,13 @@
           <button type="button" class="tab on" data-sub="gamma">Gamma</button>
           <button type="button" class="tab" data-sub="vanna">Vanna</button>
           <button type="button" class="tab" data-sub="charm">Charm</button>
-          <button type="button" class="tab" data-sub="book">Book</button>
-          <button type="button" class="tab na" data-sub="dex">Delta / DEX</button>
+          <button type="button" class="tab" data-sub="book">Level II</button>
+          <button type="button" class="tab na" data-sub="dex">Delta Exposure</button>
           <button type="button" class="tab na" data-sub="oi">OI</button>
           <button type="button" class="tab" data-sub="flow">Flow</button>
           <button type="button" class="tab" data-sub="chain">Chain</button>
           <button type="button" class="tab na" data-sub="structures">
-            Structures<span class="np">NOT PROVEN</span>
+            Specifications<span class="np">NOT PROVEN</span>
           </button>
         </div>
         <!-- tier 3: view controls -->
@@ -3546,7 +3546,7 @@
           <button type="button" class="vtab on" data-view="heatmap">Heatmap</button>
           <button type="button" class="vtab" data-view="chart">Chart</button>
           <button type="button" class="vtab" data-view="levels">Levels</button>
-          <button type="button" class="vtab" data-view="multimap">Multi-Map</button>
+          <button type="button" class="vtab" data-view="multimap">Small Multiples</button>
           <div class="ctrls">
             <label
               class="ctrl ctrl-sym"
@@ -3608,7 +3608,7 @@
           <section class="workspace on" data-ws-pane="options">
             <div class="sub-pane on" data-sub-pane="gamma">
               <div class="gamma-grid">
-                <!-- main working panel — view tabs (Heatmap/Chart/Levels/Multi-Map) swap this -->
+                <!-- main working panel — view tabs (Heatmap/Chart/Levels/Small Multiples) swap this -->
                 <div class="panel p-heat">
                   <div class="panel-h">
                     <span class="hticker" id="mvTicker">-</span>
@@ -3617,7 +3617,7 @@
                       <span class="sub cov" id="heatScope"></span>
                       <span class="chart-modes" id="chartModes" hidden>
                         <button type="button" class="cmode on" data-cmode="profile">Profile</button>
-                        <button type="button" class="cmode" data-cmode="dotmap">Dot Map</button>
+                        <button type="button" class="cmode" data-cmode="bubbles">Bubbles</button>
                       </span>
                       <span class="prov derived">DERIVED</span>
                       <button
@@ -3658,7 +3658,7 @@
                     <div class="mv" id="view-multimap">
                       <div id="multimapBody" class="mvbody">
                         <div class="placeholder">
-                          <div class="big">Multi-Map</div>
+                          <div class="big">Small Multiples</div>
                           <div class="sm">
                             A strike × expiry view across measures. The heatmap's surface serves
                             GEX, DEX and vanna per strike × expiry; charm is served per strike only.
@@ -3712,7 +3712,7 @@
                       ><span class="v" id="kl0PutCharm">-</span>
                     </div>
                     <div class="kl-scope" id="klFlipNote"></div>
-                    <div class="kl-sec">Price levels<span id="klPriceSrc"></span></div>
+                    <div class="kl-sec">Reference levels<span id="klPriceSrc"></span></div>
                     <div class="kl-row">
                       <span class="k">Prior day high</span><span class="v" id="klPdh">-</span>
                     </div>
@@ -3783,8 +3783,8 @@
                   </div>
                   <div class="panel">
                     <div class="panel-h">
-                      <span class="t">Options Flow</span
-                      ><span class="sub">tape · desired contracts</span>
+                      <span class="t">Options Time &amp; Sales</span
+                      ><span class="sub">trades · desired contracts</span>
                       <div class="r">
                         <span id="ofSrc"></span
                         ><span class="prov native">NATIVE · NO AGGRESSOR SIDE</span>
@@ -3806,7 +3806,7 @@
                             <th scope="col">Premium</th>
                             <th scope="col">Vol</th>
                             <th scope="col">OI</th>
-                            <th scope="col">IV%</th>
+                            <th scope="col">IV (%)</th>
                             <th scope="col">Δ</th>
                             <th scope="col">vs Market</th>
                           </tr>
@@ -3815,8 +3815,8 @@
                           <tr class="of-empty">
                             <td colspan="14">
                               <div class="oe-sub">
-                                Select a Call or Put contract in Chain — the tape shows its real
-                                native trade prints.
+                                Select a Call or Put contract in Chain — its trades as Schwab
+                                streamed them show here.
                               </div>
                             </td>
                           </tr>
@@ -3853,13 +3853,14 @@
             <div class="sub-pane" data-sub-pane="flow">
               <div class="panel">
                 <div class="panel-h">
-                  <span class="hticker" id="flTicker">-</span><span class="t">Options Flow</span>
+                  <span class="hticker" id="flTicker">-</span
+                  ><span class="t">Contract Order Flow</span>
                 </div>
                 <div class="panel-b" id="flowBody">
                   <div class="placeholder">
                     <div class="sm">
-                      Options microstructure from the contract panel (real book / depth / imbalance
-                      / tape-PROXY / freshness; no fabricated signed flow).
+                      The contract's order book, imbalance, estimated trade imbalance and freshness;
+                      no fabricated signed flow.
                     </div>
                   </div>
                 </div>
@@ -3932,7 +3933,7 @@
               </div>
             </div>
 
-            <!-- OPTIONS / STRUCTURES subview — contract-safety/identity metadata that is already
+            <!-- OPTIONS / SPECIFICATIONS subview — contract-safety/identity metadata that is already
              flowing through every chain panel contract dict verbatim (operator field-inventory
              audit, 2026-09-13): multiplier, non-standard/deliverable flags, settlement/exercise/
              expiration type, last trading day, penny-pilot. Prevents an adjusted or specially-
@@ -3941,7 +3942,7 @@
               <div class="panel">
                 <div class="panel-h">
                   <span class="hticker" id="stTicker">-</span
-                  ><span class="t">Contract Structures</span
+                  ><span class="t">Contract Specifications</span
                   ><span class="sub">non-standard · settlement · exercise · deliverables</span>
                   <div class="r">
                     <span id="stSrc"></span><span class="prov native">CHAIN</span>
@@ -3963,7 +3964,7 @@
           <!-- TRADE DESK / RIGHT NOW — the one Detect->Frame->Confirm synthesis page (operator,
            2026-09-13). Execute is deliberately absent; see ed-trade-desk.js's own docstring. -->
           <section class="workspace" data-ws-pane="trade-desk">
-            <!-- DESK (operator mockup 2026-09-25): Market Map + Attention Queue + four domain cards for
+            <!-- DESK (operator mockup 2026-09-25): price chart + alerts + four domain cards for
              the SELECTED ticker, one global timeframe. ed-trade-desk-map.js fills it; the chart is
              the shared TradingView-style chart (ed-tv-chart.js on Lightweight Charts). -->
             <div class="sub-pane" data-sub-pane="desk">
@@ -3971,7 +3972,7 @@
                 <div class="tdm-main">
                   <section class="tdm-map panel" id="tdmMap">
                     <div class="tdm-map-h">
-                      <span class="t">Market Map</span>
+                      <span class="t">Price Chart</span>
                       <div id="tdmToolbar"></div>
                     </div>
                     <div class="tdm-families" id="tdmFamilies"></div>
@@ -3982,7 +3983,7 @@
                   </section>
                   <aside class="tdm-queue panel" aria-labelledby="tdmQueueTitle">
                     <div class="panel-h">
-                      <span class="t" id="tdmQueueTitle">Attention Queue</span
+                      <span class="t" id="tdmQueueTitle">Alerts</span
                       ><span class="tdm-count" id="tdmQueueCount"></span>
                       <div class="r"><span class="sub" id="tdmLookback"></span></div>
                     </div>
@@ -4000,7 +4001,7 @@
                           NASDAQ
                         </button></span
                       ><button type="button" class="scbtn liq-comp" data-liqvenue="COMPOSITE">
-                        COMPOSITE</button
+                        AGGREGATE</button
                       ><button
                         type="button"
                         class="tdm-open"
@@ -4020,7 +4021,7 @@
                         type="button"
                         class="tdm-open"
                         data-drill="flow"
-                        title="Order Flow · Book / DOM"
+                        title="Order Flow · Level II"
                       >
                         Open tab ›
                       </button>
@@ -4051,7 +4052,7 @@
                         type="button"
                         class="tdm-open"
                         data-drill="options"
-                        title="Options · Book"
+                        title="Options · Level II"
                       >
                         Open tab ›
                       </button>
@@ -4109,14 +4110,14 @@
                   </div>
                 </div>
                 <div class="tdm-agree panel">
-                  <span class="tdm-agree-t">Cross-Domain Read</span>
+                  <span class="tdm-agree-t">Readings</span>
                   <div class="tdm-agree-row" id="tdmAgree"></div>
                 </div>
                 <div class="tdm-foot">
                   <span class="tdm-idx" id="tdmIdxSPX"></span
                   ><span class="tdm-idx" id="tdmIdxNDX"></span
                   ><span class="tdm-idx" id="tdmIdxVIX"></span
-                  ><span class="tdm-trust-l">Data trust</span
+                  ><span class="tdm-trust-l">Data status</span
                   ><span class="tdm-trust" id="tdmTrust"></span
                   ><span class="tdm-foot-src" id="tdmFoot"></span>
                 </div>
@@ -4176,14 +4177,14 @@
             </div>
           </section>
 
-          <!-- ORDER FLOW / BOOK · DOM — real L2 book microstructure for the underlying ticker
-           (operator, 2026-09-13). Other subs (Overview/Heatmap/Tape/Options Book/History) stay
+          <!-- ORDER FLOW / LEVEL II — real L2 book microstructure for the underlying ticker
+           (operator, 2026-09-13). Other subs (Overview/Time & Sales/Options Level II/History) stay
            `state:'na'` in ed-core.js's NAV until they have their own real wiring. -->
           <section class="workspace" data-ws-pane="order-flow">
             <div class="sub-pane" data-sub-pane="book">
               <div class="panel">
                 <div class="panel-h">
-                  <span class="hticker" id="obTicker">-</span><span class="t">Book / DOM</span
+                  <span class="hticker" id="obTicker">-</span><span class="t">Level II</span
                   ><span class="sub">top-of-book · depth · imbalance</span>
                   <div class="r">
                     <span class="bookvenue"
@@ -4208,7 +4209,8 @@
             <div class="sub-pane" data-sub-pane="heatmap">
               <div class="panel">
                 <div class="panel-h">
-                  <span class="hticker" id="ofhTicker">-</span><span class="t">Book Heatmap</span
+                  <span class="hticker" id="ofhTicker">-</span
+                  ><span class="t">Order Book Heatmap</span
                   ><span class="sub">displayed depth over time</span>
                   <div class="r">
                     <span class="bookvenue"
@@ -4229,8 +4231,8 @@
                 <div class="panel-b" id="ofhBody">
                   <div class="placeholder">
                     <div class="sm">
-                      Historical book depth from the bookmap panel — real captured NASDAQ/NYSE book
-                      ticks binned by time x price, green=bid-dominant/red=ask-dominant,
+                      Historical book depth from the order book heatmap — real captured NASDAQ/NYSE
+                      book ticks binned by time x price, green=bid-dominant/red=ask-dominant,
                       brightness=size. Never interpolated.
                     </div>
                   </div>
@@ -4246,8 +4248,9 @@
             <div class="sub-pane" data-sub-pane="map">
               <div class="panel">
                 <div class="panel-h">
-                  <span class="hticker" id="liqmTicker">-</span><span class="t">Liquidity Map</span
-                  ><span class="sub">confluence-scored zones · reference levels · spot</span>
+                  <span class="hticker" id="liqmTicker">-</span
+                  ><span class="t">Support and Resistance Zones</span
+                  ><span class="sub">zones by their count of levels · reference levels · spot</span>
                   <div class="r">
                     <span id="liqmSrc"></span><span class="prov derived">LIQUIDITY SNAPSHOT</span>
                   </div>
@@ -4255,9 +4258,9 @@
                 <div class="panel-b" id="liqmBody">
                   <div class="placeholder">
                     <div class="sm">
-                      A visual price map from the liquidity panel's own confluence-scored
-                      support/resistance zones, plus prior-day/overnight reference levels and spot —
-                      never a fabricated line.
+                      The support and resistance zones of the liquidity panel on a price chart, plus
+                      the prior-day and extended-hours reference levels and spot — never a
+                      fabricated line.
                     </div>
                   </div>
                 </div>
@@ -4267,15 +4270,15 @@
               <div class="panel">
                 <div class="panel-h">
                   <span class="hticker" id="lvlTicker">-</span
-                  ><span class="t">Liquidity Levels</span
-                  ><span class="sub">prior day · overnight · session</span>
+                  ><span class="t">Reference Levels</span
+                  ><span class="sub">prior day · extended hours · session</span>
                   <div class="r"><span class="prov native">LEVELS</span></div>
                 </div>
                 <div class="panel-b" id="lvlBody">
                   <div class="placeholder">
                     <div class="sm">
-                      Canonical price levels from the levels panel (PDH/PDL/PDC, POC/VAH/VAL,
-                      overnight, VWAP) — vendor-derived, never a fabricated line.
+                      Reference levels from the levels panel (prior day, POC/VAH/VAL, extended
+                      hours, VWAP) — vendor-derived, never a fabricated line.
                     </div>
                   </div>
                 </div>
@@ -4293,7 +4296,7 @@
           </section>
           <section class="workspace" data-ws-pane="system">
             <div class="placeholder">
-              <div class="big">System / Trust — Data Health · Feeds · Provenance · Runtime</div>
+              <div class="big">System — Data Health · Feeds · Provenance · Runtime</div>
               <div class="sm">
                 Can I trust what Ed Console is showing? Wires to /api/health, /api/build (process
                 identity + code drift).

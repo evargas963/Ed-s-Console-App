@@ -62,9 +62,9 @@ def test_the_overnight_levels_name_the_sessions_they_span(now, window):
         hold_schwab_daily("SPY")
         server._publish_price_levels("SPY", now)
         body = push_levels.levels_payload("SPY", "1", now)
-        overnight = [r for r in body["levels"] if r["family"] == "overnight"]
-        assert {r["id"] for r in overnight} == {"OVERNIGHT_HIGH", "OVERNIGHT_LOW"}
-        for row in overnight:
+        extended = [r for r in body["levels"] if r["family"] == "extended_hours"]
+        assert {r["id"] for r in extended} == {"OVERNIGHT_HIGH", "OVERNIGHT_LOW"}
+        for row in extended:
             assert row["provenance"]["window"] == window
     finally:
         forget_bars("SPY", "TSLA")

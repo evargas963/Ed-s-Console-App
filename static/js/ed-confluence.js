@@ -106,7 +106,7 @@
       height +
       '" width="276" height="' +
       height +
-      '" aria-label="Price levels">';
+      '" aria-label="Reference levels">';
     lines.forEach(function (lv) {
       var start = lv.session ? 8 : 146;
       svg +=
