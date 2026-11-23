@@ -3135,16 +3135,16 @@
     "same_day": {
       "call_wall": 270.0,
       "put_wall": 270.0,
-      "gamma_flip": 258.49264280576534,
+      "gamma_flip": 258.54662635929026,
       "absolute_gamma_strike": 270.0,
-      "gsf": 265.4998340068834,
-      "grc": 292.1097422685329,
+      "gsf": 265.4466874835757,
+      "grc": 292.6345962144246,
       "hvp": 262.5,
       "lvp": 270.0,
       "key_delta_strike": 260.0,
       "call_delta_wall": 260.0,
       "put_delta_wall": 270.0,
-      "call_charm_wall": 267.5,
+      "call_charm_wall": 265.0,
       "put_charm_wall": 265.0
     },
     "call_delta_wall": 250.0,
@@ -3254,16 +3254,16 @@
     "same_day_text": {
       "call_wall": "270.00",
       "put_wall": "270.00",
-      "gamma_flip": "258.49",
+      "gamma_flip": "258.55",
       "absolute_gamma_strike": "270.00",
-      "gsf": "265.50",
-      "grc": "292.11",
+      "gsf": "265.45",
+      "grc": "292.63",
       "hvp": "262.50",
       "lvp": "270.00",
       "key_delta_strike": "260.00",
       "call_delta_wall": "260.00",
       "put_delta_wall": "270.00",
-      "call_charm_wall": "267.50",
+      "call_charm_wall": "265.00",
       "put_charm_wall": "265.00"
     },
     "pcr_all_text": "0.78",
@@ -81486,10 +81486,10 @@
         {
           "id": "gamma_flip",
           "label": "Gamma Flip",
-          "price": 258.49264280576534,
+          "price": 258.54662635929026,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 243.91411813739333,
-          "price_text": "258.49",
+          "price_text": "258.55",
           "carried_text": "243.91",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -81510,10 +81510,10 @@
         {
           "id": "gsf",
           "label": "GSF",
-          "price": 265.4998340068834,
+          "price": 265.4466874835757,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 259.325308455338,
-          "price_text": "265.50",
+          "price_text": "265.45",
           "carried_text": "259.33",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -81522,10 +81522,10 @@
         {
           "id": "grc",
           "label": "GRC",
-          "price": 292.1097422685329,
+          "price": 292.6345962144246,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 380.60114725715437,
-          "price_text": "292.11",
+          "price_text": "292.63",
           "carried_text": "380.60",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -81594,10 +81594,10 @@
         {
           "id": "call_charm_wall",
           "label": "Charm Call",
-          "price": 267.5,
+          "price": 265.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
-          "price_text": "267.50",
+          "price_text": "265.00",
           "carried_text": "275.00",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -83017,10 +83017,10 @@
         {
           "id": "gamma_flip",
           "label": "Gamma Flip",
-          "price": 258.49264280576534,
+          "price": 258.54662635929026,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 243.91411813739333,
-          "price_text": "258.49",
+          "price_text": "258.55",
           "carried_text": "243.91",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -83041,10 +83041,10 @@
         {
           "id": "gsf",
           "label": "GSF",
-          "price": 265.4998340068834,
+          "price": 265.4466874835757,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 259.325308455338,
-          "price_text": "265.50",
+          "price_text": "265.45",
           "carried_text": "259.33",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -83053,10 +83053,10 @@
         {
           "id": "grc",
           "label": "GRC",
-          "price": 292.1097422685329,
+          "price": 292.6345962144246,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 380.60114725715437,
-          "price_text": "292.11",
+          "price_text": "292.63",
           "carried_text": "380.60",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -83125,10 +83125,10 @@
         {
           "id": "call_charm_wall",
           "label": "Charm Call",
-          "price": 267.5,
+          "price": 265.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
-          "price_text": "267.50",
+          "price_text": "265.00",
           "carried_text": "275.00",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -84493,10 +84493,10 @@
         {
           "id": "gamma_flip",
           "label": "Gamma Flip",
-          "price": 258.49264280576534,
+          "price": 258.54662635929026,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 243.91411813739333,
-          "price_text": "258.49",
+          "price_text": "258.55",
           "carried_text": "243.91",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -84517,10 +84517,10 @@
         {
           "id": "gsf",
           "label": "GSF",
-          "price": 265.4998340068834,
+          "price": 265.4466874835757,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 259.325308455338,
-          "price_text": "265.50",
+          "price_text": "265.45",
           "carried_text": "259.33",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -84529,10 +84529,10 @@
         {
           "id": "grc",
           "label": "GRC",
-          "price": 292.1097422685329,
+          "price": 292.6345962144246,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 380.60114725715437,
-          "price_text": "292.11",
+          "price_text": "292.63",
           "carried_text": "380.60",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
@@ -84601,10 +84601,10 @@
         {
           "id": "call_charm_wall",
           "label": "Charm Call",
-          "price": 267.5,
+          "price": 265.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
-          "price_text": "267.50",
+          "price_text": "265.00",
           "carried_text": "275.00",
           "staleness": {
             "as_of_time_ct": "Thu 11/12 09:39 AM CT"
