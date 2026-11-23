@@ -359,7 +359,8 @@ def at_price(
 ) -> dict[str, Any]:
     """Return the shown rows, each with its distance from the live price and its spot line.
 
-    The spot line marks the strike the price sits under; the price row is drawn below it, and
+    The spot line marks the strike the price sits under; the price row is drawn after the rows at
+    or above the price (`price_row_index`, the rows running highest strike first), and
     `price_between_text` names the two listed strikes the price falls between (one, when it is
     on a strike). The matrix is read at the book's price, the price on screen is the live one;
     each row's distance is `distance`'s, in dollars and in the expiry's implied moves
@@ -385,6 +386,7 @@ def at_price(
         "spot": spot,
         "spot_text": price_text(spot),
         "price_between_text": between,
+        "price_row_index": None if spot is None else sum(r["strike"] >= spot for r in rows),
     }
 
 

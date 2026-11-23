@@ -135,6 +135,7 @@
   "volume": 1053494.0
  },
  "price_between_text": "between 774.00 and 773.00",
+ "price_row_index": 5,
  "reason": null,
  "rows": [
   {

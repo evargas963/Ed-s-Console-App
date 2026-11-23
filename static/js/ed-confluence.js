@@ -1,66 +1,231 @@
-/* Trade Desk / Confluence Matrix. Draws the `confluence` panel. Computes nothing financial.
-   Pill positions are display geometry between the served strikes. */
+/* Trade Desk / Confluence Matrix. Draws the `confluence` panel. Computes nothing: every number,
+   word, colour tone, level placement and the price row's place is served. */
 (function () {
   "use strict";
 
   var selectedStrike = null;
-  var pinned = null;
   var lastRows = [];
-  var lastNames = {};
-  var lastSpot = null;
-  var lastSpotText = null;
-  var lastBody = null;
   var bound = false;
 
-  var HEADS = [
-    [
-      "Price / session",
-      "benchmarks",
-      "VWAP and the prior close: the prices institutions' execution desks are measured against.",
-      false,
-    ],
-    [
-      "Options levels",
-      "dealer hedging",
-      "Gamma Flip, Gamma Call, Gamma Put, Gamma Total and OI Pin, each at its own price; their same-day copies on the expiry's own day.",
-      false,
-    ],
-    ["Strike", "", "Listed strike.", false],
-    [
-      "Δ spot",
-      "points · σ",
-      "Strike minus the live price, and that distance in the expiry's implied moves (σ): its at-the-money volatility times the square root of the time left.",
-      false,
-    ],
-    [
-      "Composite",
-      "size, not direction",
-      "How large this strike's positions and activity are against the expiry's other strikes, up to the preset ceiling. It carries no direction.",
-      true,
-    ],
-    ["Net GEX", "$ / 1%", "Net gamma exposure in dollars per 1% move.", false],
-    ["OI", "contracts", "Open interest in contracts. Green intensity shows size.", false],
-    ["P/C GEX", "ratio", "Put gamma divided by call gamma. Above 1 is put-heavy.", false],
-    [
-      "Gross GEX",
-      "$ / 1%",
-      "Call gamma plus put gamma, in dollars per 1% move. Green shows size.",
-      true,
-    ],
-    ["ΔGEX", "$ / 1%", "No change in gamma is produced.", false],
-    [
-      "Opt Vol",
-      "contracts",
-      "Options volume this session, in contracts. Green intensity shows size.",
-      false,
-    ],
-    ["P/C vol", "ratio", "Put volume divided by call volume. Above 1 is put-heavy.", false],
-    ["Vol/OI", "ratio", "Options volume divided by open interest.", false],
-    ["Flow", "signed $", "No signed flow is produced.", true],
-    ["DEX", "$", "Delta exposure in dollars.", false],
-    ["Vanna", "$ / vol pt", "Vanna in dollars per volatility point.", false],
-    ["IV", "%", "Implied volatility for the strike.", false],
-    ["Charm", "shares/day", "Charm in delta-shares per day.", false],
+  // the groups, read left to right by importance (decision 62), each with its columns and class,
+  // and each column: its head, unit, what it is (hover), the served row keys of its text, shading
+  // number, reason and hover, the served peak it shades against ("one": the Composite's own
+  // scale, 1), and its cell's and head's classes (a group's last column has the edge)
+  var GROUPS = [
+    ["Composite", 1, "group edge"],
+    ["Price and levels", 4, "group edge"],
+    ["Gamma profile and levels", 2, "group edge"],
+    ["Positioning (open interest)", 4, "group edge"],
+    ["Second-order Greeks (charm, vanna, IV)", 4, "group edge"],
+    ["Volume and flow", 5, "group edge"],
+    ["Hedging flow (est.)", 1, "group"],
+  ];
+  var COLS = [
+    {
+      head: "Read · strength",
+      unit: "model · untested",
+      title:
+        "The sign of the expiry's gamma if the price were here (negative: the hedging accelerates moves; positive: it dampens them) and its strength, 0 to 100: the equal vote of the families measured here.",
+      text: "composite_text",
+      value: "composite",
+      peak: "one",
+      reason: "composite_reason",
+      hover: "composite_hover",
+      cls: "comp edge",
+      th: "edge",
+    },
+    { head: "Strike", unit: "", title: "Listed strike.", text: "strike_text", cls: "plain strike" },
+    {
+      head: "Δ pts",
+      unit: "points",
+      title: "Strike minus the live price.",
+      text: "distance_text",
+      cls: "plain",
+    },
+    {
+      head: "σ",
+      unit: "implied moves",
+      title:
+        "The distance in the expiry's implied moves: ln(strike / price) over its at-the-money volatility times the square root of the time left.",
+      text: "sigma_text",
+      cls: "plain",
+    },
+    {
+      head: "Key levels here",
+      unit: "",
+      title: "The key levels nearest this strike, each at its own price; its hold rate on hover.",
+      tags: true,
+      cls: "plain tags edge",
+      th: "edge",
+    },
+    {
+      head: "Gamma if here",
+      unit: "model",
+      title:
+        "The expiry's net gamma if the price were at this strike, on the convention: dealers long calls, short puts.",
+      text: "gamma_here_text",
+      value: "gamma_here",
+      peak: "gamma_here",
+      reason: "gamma_here_reason",
+      hover: "gamma_here_hover",
+    },
+    {
+      head: "Visits",
+      unit: "bounced of hits",
+      title: "Today's hits at the strike, and how many bounced 15 minutes later.",
+      text: "visits_text",
+      value: "visits",
+      peak: "visits",
+      reason: "visits_reason",
+      hover: "visits_hover",
+      cls: "edge",
+      th: "edge",
+    },
+    {
+      head: "Net GEX",
+      unit: "$ / 1%",
+      title: "Net gamma exposure in dollars per 1% move.",
+      text: "net_gex_text",
+      value: "net_gex",
+      peak: "net_gex",
+      reason: "net_reason",
+    },
+    {
+      head: "OI",
+      unit: "contracts",
+      title: "Open interest, calls and puts, as Schwab sent it.",
+      text: "oi_text",
+      value: "oi",
+      peak: "oi",
+      reason: "oi_reason",
+      hover: "oi_hover",
+    },
+    {
+      head: "ΔOI 1d",
+      unit: "contracts",
+      title: "Open interest less the prior day's capture of this expiry.",
+      text: "oi_change_text",
+      value: "oi_change",
+      peak: "oi_change",
+      reason: "oi_change_reason",
+      hover: "oi_change_hover",
+    },
+    {
+      head: "DEX",
+      unit: "$",
+      title: "Delta exposure in dollars.",
+      text: "dex_text",
+      value: "dex",
+      peak: "dex",
+      reason: "dex_reason",
+      cls: "edge",
+      th: "edge",
+    },
+    {
+      head: "Charm",
+      unit: "shares/day · model",
+      title: "The open interest's delta drift per day, in shares.",
+      text: "charm_text",
+      value: "charm",
+      peak: "charm",
+      reason: "charm_reason",
+    },
+    {
+      head: "Vanna",
+      unit: "$ / vol pt",
+      title: "Vanna in dollars per volatility point.",
+      text: "vanna_text",
+      value: "vanna",
+      peak: "vanna",
+      reason: "vanna_reason",
+    },
+    {
+      head: "IV",
+      unit: "%",
+      title: "The strike's implied volatility, Schwab's, blended over calls and puts.",
+      text: "iv_text",
+      value: "iv",
+      peak: "iv",
+      reason: "iv_reason",
+    },
+    {
+      head: "IV chg",
+      unit: "vol pts · look-back",
+      title: "The strike's implied volatility now less at the look-back's start.",
+      text: "iv_change_text",
+      value: "iv_change",
+      peak: "iv_change",
+      reason: "iv_change_reason",
+      hover: "iv_change_hover",
+      cls: "edge",
+      th: "edge",
+    },
+    {
+      head: "Volume",
+      unit: "contracts",
+      title: "Contracts traded at the strike, calls and puts.",
+      text: "volume_text",
+      value: "volume",
+      peak: "volume",
+      reason: "volume_reason",
+      hover: "volume_hover",
+    },
+    {
+      head: "Vol/OI",
+      unit: "ratio",
+      title: "Volume divided by open interest.",
+      text: "vol_oi_text",
+      value: "vol_oi",
+      peak: "vol_oi",
+      reason: "vol_oi_reason",
+    },
+    {
+      head: "P/C vol",
+      unit: "ratio",
+      title: "Put volume divided by call volume. Above 1 is put-heavy.",
+      text: "pc_vol_text",
+      value: "pc_vol_lean",
+      peak: "pc_vol_lean",
+      reason: "pc_vol_reason",
+    },
+    {
+      head: "Pace",
+      unit: "vs 20 sessions",
+      title: "The strike's volume in the look-back against the same time of day over 20 sessions.",
+      text: "pace_text",
+      value: "pace",
+      peak: "pace",
+      reason: "pace_reason",
+      hover: "pace_hover",
+    },
+    {
+      head: "Bought−sold",
+      unit: "contracts · est.",
+      title: "Contracts traded above the middle of the quote less below it, in the look-back.",
+      text: "bought_sold_text",
+      value: "bought_sold",
+      peak: "bought_sold",
+      reason: "bought_sold_reason",
+      hover: "bought_sold_hover",
+      cls: "edge",
+      th: "edge",
+    },
+    {
+      head: "Flow",
+      unit: "$ of stock · est.",
+      title:
+        "The stock the look-back's option trades would have the hedgers trade, on the convention.",
+      text: "flow_text",
+      value: "flow",
+      peak: "flow",
+      reason: "flow_reason",
+      hover: "flow_hover",
+    },
+  ];
+
+  // each column's width in pixels, the approved design's (mock-up version 4, decision 63)
+  var WIDTHS = [
+    96, 62, 54, 46, 190, 88, 58, 82, 62, 66, 82, 74, 70, 50, 58, 72, 54, 50, 54, 64, 72,
   ];
 
   function state() {
@@ -76,7 +241,7 @@
   }
 
   // The matrix is the `confluence` panel (server.confluence) on the page's socket while this view
-  // is on, at the page's one expiry choice (null, All Expirations: the program ranks the front
+  // is on, at the page's one expiry choice (null, All Expirations: the program reads the front
   // expiry still open), at once and each time the chain or the levels change.
   function load() {
     window.EdShell.showPanel(
@@ -96,115 +261,6 @@
     }
   });
 
-  // the matrix's rows are this tall; the rail is drawn against them
-  var ROW_PX = 52;
-
-  // the served rail (push.confluence._rail): each price line and each lane's levels inside the rows; the
-  // page places them
-  function rails(rows, lines, lanes) {
-    var n = rows.length;
-    var height = n * ROW_PX;
-    if (!n) return "";
-    var strikes = rows.map(function (r) {
-      return r.strike;
-    });
-    var anchorY = function (price) {
-      return window.EdDraw.rowAnchorY(price, strikes, ROW_PX);
-    };
-    var svg =
-      '<svg viewBox="0 0 276 ' +
-      height +
-      '" width="276" height="' +
-      height +
-      '" aria-label="Reference levels">';
-    lines.forEach(function (lv) {
-      var start = lv.session ? 8 : 146;
-      svg +=
-        '<path class="price-line" data-price="' +
-        esc(lv.price_text) +
-        '" d="M' +
-        start +
-        " " +
-        anchorY(lv.price) +
-        ' H290" stroke="#718198" opacity=".7"/>';
-    });
-    ["session", "options"].forEach(function (lane, laneIndex) {
-      var group = lanes[lane];
-      var pos = window.EdDraw.stackLabels(
-        group.map(function (o) {
-          return anchorY(o.price);
-        }),
-        height,
-        25,
-        12,
-      );
-      group.forEach(function (lv, index) {
-        var x = laneIndex * 138 + 7;
-        var anchor = anchorY(lv.price);
-        var label = pos[index];
-        var connector = window.EdDraw.apart(label, anchor)
-          ? '<path d="M' +
-            (x + 120) +
-            " " +
-            label +
-            " L" +
-            (x + 126) +
-            " " +
-            anchor +
-            '" fill="none" stroke="#8b9db5"/>'
-          : "";
-        svg +=
-          '<g class="level-pill" role="button" tabindex="0" data-price="' +
-          esc(lv.price_text) +
-          '" aria-label="' +
-          esc(lv.title + " " + lv.price_text) +
-          '"><title>' +
-          esc(lv.title + ": " + lv.price_text) +
-          "</title>" +
-          connector +
-          '<rect x="' +
-          x +
-          '" y="' +
-          (label - 10) +
-          '" width="120" height="20" rx="3" fill="#111b29" stroke="#56677f"/><text x="' +
-          (x + 60) +
-          '" y="' +
-          (label + 4) +
-          '" text-anchor="middle" fill="white" font-size="10" font-weight="700">' +
-          esc(lv.abbrev + " " + lv.price_text) +
-          "</text></g>";
-      });
-    });
-    return svg + "</svg>";
-  }
-
-  // the served levels past the shown strikes (push.confluence._rail: levels_above / levels_below)
-  function offButtons(list, side) {
-    return list
-      .map(function (lv) {
-        var prefix = side === "above" ? "↑ " : "↓ ";
-        return (
-          '<button type="button" data-price="' +
-          esc(lv.price_text) +
-          '" title="' +
-          esc(lv.title + " · outside visible strike range") +
-          '">' +
-          esc(
-            prefix +
-              lv.abbrev +
-              " " +
-              lv.price_text +
-              " · " +
-              orDash(lv.distance_text) +
-              " · " +
-              orDash(lv.sigma_text),
-          ) +
-          "</button>"
-        );
-      })
-      .join("");
-  }
-
   // a cell's shade: its served number against its column's served peak, by the shell's one
   // strength rule in the theme's colours; a peak with no size shades as zero
   function shade(value, peak, heat) {
@@ -222,145 +278,118 @@
     );
   }
 
-  function heatCell(shown, value, peak, heat, reason, edge) {
-    var missing = shown == null || shown === "";
-    var cls = (edge ? "edge " : "") + (missing ? "missing" : "");
-    var title = missing && reason ? ' title="' + esc(reason) + '"' : "";
-    var paint = missing ? "" : shade(value, peak, heat);
-    return '<td class="' + cls + '"' + title + paint + ">" + (missing ? "-" : esc(shown)) + "</td>";
+  function tagsCell(col, row) {
+    var tags = Array.isArray(row.tags) ? row.tags : [];
+    return (
+      '<td class="' +
+      col.cls +
+      '">' +
+      tags
+        .map(function (t) {
+          return (
+            '<span class="cm-tag ' +
+            esc(t.lane) +
+            '" title="' +
+            esc(t.hover) +
+            '">' +
+            esc(t.text) +
+            "</span>"
+          );
+        })
+        .join("") +
+      "</td>"
+    );
   }
 
+  function cell(col, row, peaks, heat) {
+    if (col.tags) return tagsCell(col, row);
+    var shown = row[col.text];
+    var missing = shown == null || shown === "";
+    var cls = [col.cls, missing ? "missing" : null].filter(Boolean).join(" ");
+    var title = missing ? row[col.reason] : col.hover ? row[col.hover] : null;
+    var peak = col.peak === "one" ? 1 : col.peak ? peaks[col.peak] : null;
+    var paint = missing || !col.value ? "" : shade(row[col.value], peak, heat);
+    return (
+      '<td class="' +
+      cls +
+      '"' +
+      (title ? ' title="' + esc(title) + '"' : "") +
+      paint +
+      ">" +
+      (missing ? "-" : esc(shown)) +
+      "</td>"
+    );
+  }
+
+  // the price row, where the program placed it (price_row_index): the price, the two strikes it
+  // falls between and Schwab's last trade, or its not-live mark
+  function priceRow(body) {
+    var when = body.spot_not_live_text
+      ? body.spot_not_live_text
+      : body.spot_time_ct
+        ? "Schwab last trade " + body.spot_time_ct
+        : "";
+    var between = body.price_between_text ? body.price_between_text : "";
+    return (
+      '<tr class="price-row"><td colspan="' +
+      COLS.length +
+      '"><b>▸ Price ' +
+      esc(orDash(body.spot_text)) +
+      "</b> <span>" +
+      esc([between, when].filter(Boolean).join(" · ")) +
+      "</span></td></tr>"
+    );
+  }
+
+  // the selected strike's served readings, each with its served hover words
   function showDetail(row) {
     var detail = document.getElementById("cmDetail");
     if (!detail) return;
     if (!row) {
       detail.innerHTML =
-        '<div class="eyebrow">Selected strike</div><p>Click a strike for its numbers.</p>';
+        '<div class="eyebrow">Selected strike</div><p>Click a strike for its readings.</p>';
       return;
     }
-    var missing = Array.isArray(row.missing) ? row.missing : [];
-    var parts = Array.isArray(row.contributions) ? row.contributions : [];
-    var factors = Array.isArray(row.factors) ? row.factors : [];
-    var ceiling = lastBody && lastBody.ceiling != null ? lastBody.ceiling : null;
-    var scoreLine =
-      row.score == null
-        ? orDash(missing.join(", "))
-        : orDash(row.score_text) + " / " + orDash(ceiling);
-    var facts = [
-      ["Net GEX", row.net_gex_text, row.net_reason, "$ per 1% move", "M"],
-      ["Open interest", row.oi_text, row.oi_reason, "contracts", ""],
-      ["Options Volume", row.volume_text, row.volume_reason, "session contracts", ""],
-      ["IV", row.iv_text, row.iv_reason, "implied volatility", "%"],
-      ["Flow", row.flow_text, row.flow_reason, "premium dollars", "M"],
-      ["Charm", row.charm_text, row.charm_reason, "delta-shares / day", "k"],
+    var lines = [
+      ["Composite", row.composite_text, row.composite_hover || row.composite_reason],
+      ["Gamma if here", row.gamma_here_text, row.gamma_here_hover || row.gamma_here_reason],
+      ["Visits", row.visits_text, row.visits_hover || row.visits_reason],
+      ["Open interest", row.oi_text, row.oi_hover || row.oi_reason],
+      ["ΔOI 1d", row.oi_change_text, row.oi_change_hover || row.oi_change_reason],
+      ["Volume", row.volume_text, row.volume_hover || row.volume_reason],
+      ["IV chg", row.iv_change_text, row.iv_change_hover || row.iv_change_reason],
+      ["Bought−sold", row.bought_sold_text, row.bought_sold_hover || row.bought_sold_reason],
+      ["Flow", row.flow_text, row.flow_hover || row.flow_reason],
     ];
-    var cards = facts
-      .map(function (f) {
-        var missingValue = f[1] == null || f[1] === "";
-        var caption = missingValue && f[2] ? f[2] : f[3];
-        var shown = missingValue ? "-" : String(f[1]) + f[4];
-        return (
-          '<div class="card"><label>' +
-          esc(f[0]) +
-          "</label><b>" +
-          esc(shown) +
-          "</b><span>" +
-          esc(caption) +
-          "</span></div>"
-        );
-      })
-      .join("");
-    var why = parts
-      .map(function (p) {
-        return p.label + " " + p.text;
-      })
-      .join(" · ");
-    var lines = factors.map(function (p) {
-      return (
-        p.label +
-        " " +
-        p.text +
-        "  raw " +
-        orDash(p.raw_text) +
-        "  norm " +
-        orDash(p.normalized_text) +
-        "  weight " +
-        orDash(p.weight_text)
-      );
+    var tags = (Array.isArray(row.tags) ? row.tags : []).map(function (t) {
+      return "<li>" + esc(t.hover) + "</li>";
     });
-    var note = why;
-    if (lines.length) note += (note ? "\n" : "") + lines.join("\n");
-    if (missing.length && row.score == null) note += (note ? "\n" : "") + missing.join(", ");
     detail.innerHTML =
       '<div class="eyebrow">Selected strike</div><h2>' +
-      esc(orDash(row.strike_text) + " · " + orDash(row.distance_text) + " points from spot") +
-      "</h2><p>Composite " +
-      esc(scoreLine) +
-      '</p><div class="cards">' +
-      cards +
-      "</div>" +
-      (note ? '<p class="note">' + esc(note) + "</p>" : "");
-  }
-
-  function highlight(priceText) {
-    var box = document.getElementById("cmBody");
-    if (!box) return;
-    box.querySelectorAll("[data-price]").forEach(function (el) {
-      var on = priceText != null && el.getAttribute("data-price") === priceText;
-      el.classList.toggle("lit", on);
-      el.classList.toggle("pinned", on);
-    });
-    var read = document.getElementById("cmRead");
-    if (!read) return;
-    if (priceText == null) {
-      read.textContent =
-        "Hover or focus a level; click to pin its line. Escape clears the selection.";
-      return;
-    }
-    var line = lastNames[priceText] + " · " + priceText;
-    if (pinned === priceText) line += " · PINNED";
-    read.textContent = line;
-  }
-
-  function position() {
-    var line = document.getElementById("spotline");
-    var tbody = document.getElementById("cmRows");
-    if (!line || !tbody) return;
-    var trs = tbody.querySelectorAll("tr");
-    var wrap = tbody.closest(".matrix-wrap");
-    if (!trs.length || lastSpot == null || !wrap) {
-      line.style.display = "none";
-      return;
-    }
-    var wrapRect = wrap.getBoundingClientRect();
-    var points = Array.prototype.map.call(trs, function (tr, i) {
-      return {
-        price: lastRows[i].strike,
-        y: window.EdDraw.middleY(tr.getBoundingClientRect(), wrapRect),
-      };
-    });
-    var top = window.EdDraw.priceY(lastSpot, points);
-    if (top == null) {
-      line.style.display = "none";
-      return;
-    }
-    line.style.display = "";
-    line.style.top = top + "px";
-    line.innerHTML = "<span>SPOT " + esc(orDash(lastSpotText)) + "</span>";
+      esc(orDash(row.strike_text) + " · " + orDash(row.distance_text) + " points from the price") +
+      '</h2><dl class="cm-lines">' +
+      lines
+        .map(function (l) {
+          return (
+            "<dt>" +
+            esc(l[0]) +
+            "</dt><dd><b>" +
+            esc(orDash(l[1])) +
+            "</b>" +
+            (l[2] ? " <span>" + esc(l[2]) + "</span>" : "") +
+            "</dd>"
+          );
+        })
+        .join("") +
+      "</dl>" +
+      (tags.length ? '<ul class="cm-taglist">' + tags.join("") + "</ul>" : "");
   }
 
   function onClick(e) {
     var box = document.getElementById("cmBody");
     if (!box || !box.contains(e.target)) return;
-    var level = e.target.closest("[data-price]");
-    if (level) {
-      var priceText = level.getAttribute("data-price");
-      pinned = pinned === priceText ? null : priceText;
-      highlight(pinned);
-      return;
-    }
     var row = e.target.closest("tr[data-i]");
-    if (!row || e.target.closest(".rail")) return;
+    if (!row) return;
     var picked = lastRows[Number(row.getAttribute("data-i"))];
     if (!picked) return;
     selectedStrike = picked.strike;
@@ -376,252 +405,163 @@
     if (!box) return;
     bound = true;
     box.addEventListener("click", onClick);
-    box.addEventListener("mouseover", function (e) {
-      var level = e.target.closest("[data-price]");
-      if (level && box.contains(level)) highlight(level.getAttribute("data-price"));
-    });
-    box.addEventListener("mouseout", function (e) {
-      var level = e.target.closest("[data-price]");
-      if (!level || !box.contains(level)) return;
-      if (e.relatedTarget && level.contains(e.relatedTarget)) return;
-      highlight(pinned);
-    });
-    box.addEventListener("focusin", function (e) {
-      var level = e.target.closest("[data-price]");
-      if (level) highlight(level.getAttribute("data-price"));
-    });
-    box.addEventListener("focusout", function () {
-      highlight(pinned);
-    });
     box.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") {
-        pinned = null;
-        highlight(null);
-        return;
-      }
-      var pill = e.target.closest(".level-pill");
-      var row = e.target.closest("tr[data-i]");
-      if ((e.key === "Enter" || e.key === " ") && (pill || row)) {
+      if ((e.key === "Enter" || e.key === " ") && e.target.closest("tr[data-i]")) {
         e.preventDefault();
         onClick(e);
       }
     });
-    window.addEventListener("resize", function () {
-      position();
-    });
+  }
+
+  // the served levels past the shown strikes (levels_above / levels_below), each after `arrow`
+  function pastLevels(list, arrow) {
+    return list
+      .map(function (lv) {
+        var words = [arrow, lv.text, "·", orDash(lv.distance_text), "·", orDash(lv.sigma_text)];
+        return (
+          '<span class="cm-past" title="' + esc(lv.hover) + '">' + esc(words.join(" ")) + "</span>"
+        );
+      })
+      .join("");
+  }
+
+  function headline(h) {
+    if (!h) return "";
+    return (
+      '<section class="cm-headline"><div class="eyebrow">COMPOSITE · THE KIND OF MOVE</div>' +
+      '<div class="cm-kind ' +
+      esc(h.tone || "") +
+      '">' +
+      esc(orDash(h.text)) +
+      (h.text ? " <small>est.</small>" : "") +
+      "</div><p>" +
+      esc(orDash(h.note)) +
+      "</p>" +
+      (h.record ? '<p class="cm-record">Record: ' + esc(h.record) + "</p>" : "") +
+      "</section>"
+    );
+  }
+
+  function cards(list) {
+    return (Array.isArray(list) ? list : [])
+      .map(function (c) {
+        return (
+          '<div class="stat"' +
+          (c.hover ? ' title="' + esc(c.hover) + '"' : "") +
+          "><label>" +
+          esc(c.label) +
+          '</label><strong class="' +
+          esc(c.tone || "") +
+          '">' +
+          esc(orDash(c.value)) +
+          "</strong>" +
+          (c.sub ? "<small>" + esc(c.sub) + "</small>" : "") +
+          "</div>"
+        );
+      })
+      .join("");
   }
 
   function draw(body) {
     var box = document.getElementById("cmBody");
     if (!box) return;
     bind();
-    lastBody = body;
-    // the expiry the program ranked, as served (the one chosen, else the front one still open)
+    // the expiry the program read, as served (the one chosen, else the front one still open)
     var pick = body.expiry ? '<span class="cm-exp">Expiry ' + esc(body.expiry) + "</span>" : "";
     var rows = Array.isArray(body.rows) ? body.rows : [];
-    var peaks = body.peaks,
-      heat = window.EdShell.heatColors(); // each column's served scale
+    var peaks = body.peaks || {},
+      heat = window.EdShell.heatColors();
     lastRows = rows;
-    lastNames = body.level_names;
-    lastSpot = typeof body.spot === "number" ? body.spot : null;
-    lastSpotText = body.spot_text;
-    if (
-      !rows.some(function (r) {
-        return r.strike === selectedStrike;
-      })
-    ) {
-      var fallback = null;
+    var kept = null;
+    rows.forEach(function (r) {
+      if (r.strike === selectedStrike) kept = r;
+    });
+    if (kept == null) {
       rows.forEach(function (r) {
-        if (r.spot_line && fallback == null) fallback = r;
+        if (r.spot_line && kept == null) kept = r;
       });
-      if (fallback == null && rows.length) fallback = rows[0];
-      selectedStrike = fallback == null ? null : fallback.strike;
+      if (kept == null && rows.length) kept = rows[0];
+      selectedStrike = kept == null ? null : kept.strike;
     }
-    var summary = [
-      // a price that has stopped: the served mark (time and age) stands for every value from it
-      [
-        "SPOT",
-        body.spot_text,
-        body.spot_not_live_text
-          ? body.spot_not_live_text
-          : body.spot_time_ct
-            ? "last trade " + body.spot_time_ct
-            : "",
-      ],
-      ["GAMMA REGIME · CHAIN", orDash(body.regime_text), ""], // served: the regime in words
-      ["GAMMA FLIP · CHAIN", body.flip_text, body.expiry ? body.expiry : ""],
-      ["OI PIN · CHAIN", body.pin_text, body.pin_text ? "expiry closing today" : "", body.pin_note],
-    ]
-      .map(function (cell) {
-        var small = cell[2] ? "<small>" + esc(cell[2]) + "</small>" : "";
-        var hover = cell[3] ? ' title="' + esc(cell[3]) + '"' : ""; // the served note
-        return (
-          '<div class="stat"' +
-          hover +
-          "><label>" +
-          esc(cell[0]) +
-          "</label><strong>" +
-          esc(orDash(cell[1])) +
-          "</strong>" +
-          small +
-          "</div>"
-        );
-      })
-      .join("");
     var status = body.available ? orDash(body.status_text) : orDash(body.reason);
     var heads =
-      '<tr><th class="group edge" colspan="5">Price context</th><th class="group edge" colspan="4">Positioning</th><th class="group edge" colspan="5">Activity</th><th class="group" colspan="4">Sensitivity</th></tr><tr>';
-    HEADS.forEach(function (col, index) {
-      var secondary = "<small>" + esc(col[1]) + "</small>";
-      if (index === 4) {
-        secondary += "<small>" + esc(orDash(body.scale_text)) + "</small>";
-        if (body.preset) secondary += "<small>" + esc(body.preset) + "</small>";
-      }
-      heads +=
-        '<th tabindex="0" title="' +
-        esc(col[2]) +
-        '"' +
-        (col[3] ? ' class="edge"' : "") +
-        ">" +
-        esc(col[0]) +
-        secondary +
-        "</th>";
-    });
-    heads += "</tr>";
+      "<tr>" +
+      GROUPS.map(function (g) {
+        return '<th class="' + g[2] + '" colspan="' + g[1] + '">' + esc(g[0]) + "</th>";
+      }).join("") +
+      "</tr><tr>" +
+      COLS.map(function (col) {
+        return (
+          '<th tabindex="0"' +
+          (col.title ? ' title="' + esc(col.title) + '"' : "") +
+          (col.th ? ' class="' + col.th + '"' : "") +
+          ">" +
+          esc(col.head) +
+          (col.unit ? "<small>" + esc(col.unit) + "</small>" : "") +
+          "</th>"
+        );
+      }).join("") +
+      "</tr>";
     var bodyRows = "";
     rows.forEach(function (row, i) {
-      var scoreShown =
-        row.score_text == null
-          ? ""
-          : '<button type="button" class="score" aria-label="Inspect strike ' +
-            esc(orDash(row.strike_text)) +
-            '">' +
-            esc(row.score_text) +
-            " ›</button>";
-      var scoreReason = Array.isArray(row.missing) ? row.missing.join(", ") : "";
+      if (i === body.price_row_index) bodyRows += priceRow(body);
       bodyRows +=
         '<tr tabindex="0" class="data-row' +
         (row.strike === selectedStrike ? " selected" : "") +
         '" data-i="' +
         i +
-        '">';
-      if (i === 0) {
-        bodyRows +=
-          '<td class="rail edge" colspan="2" rowspan="' +
-          rows.length +
-          '">' +
-          rails(rows, body.rail_lines, body.rail_lanes) +
-          "</td>";
-      }
-      bodyRows += '<td class="strike">' + esc(orDash(row.strike_text)) + "</td>";
-      bodyRows +=
-        "<td>" +
-        esc(orDash(row.distance_text)) +
-        '<small class="sigma">' +
-        esc(orDash(row.sigma_text)) +
-        "</small></td>";
-      if (row.score_text == null) {
-        bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">-</td>';
-      } else {
-        bodyRows +=
-          '<td class="edge"' + shade(row.score, body.ceiling, heat) + ">" + scoreShown + "</td>";
-      }
-      bodyRows += heatCell(
-        row.net_gex_text,
-        row.net_gex,
-        peaks.net_gex,
-        heat,
-        row.net_reason,
-        false,
-      );
-      bodyRows += heatCell(row.oi_text, row.oi, peaks.oi, heat, row.oi_reason, false);
-      bodyRows += heatCell(
-        row.pc_gex_text,
-        row.pc_gex_lean,
-        peaks.pc_gex_lean,
-        heat,
-        row.pc_gex_reason,
-        false,
-      );
-      bodyRows += heatCell(row.gross_text, row.gross, peaks.gross, heat, row.gross_reason, true);
-      bodyRows += heatCell(row.dgex_text, null, null, heat, row.dgex_reason, false);
-      bodyRows += heatCell(
-        row.volume_text,
-        row.volume,
-        peaks.volume,
-        heat,
-        row.volume_reason,
-        false,
-      );
-      bodyRows += heatCell(
-        row.pc_vol_text,
-        row.pc_vol_lean,
-        peaks.pc_vol_lean,
-        heat,
-        row.pc_vol_reason,
-        false,
-      );
-      bodyRows += heatCell(
-        row.vol_oi_text,
-        row.vol_oi,
-        peaks.vol_oi,
-        heat,
-        row.vol_oi_reason,
-        false,
-      );
-      bodyRows += heatCell(row.flow_text, null, null, heat, row.flow_reason, true);
-      bodyRows += heatCell(row.dex_text, row.dex, peaks.dex, heat, row.dex_reason, false);
-      bodyRows += heatCell(row.vanna_text, row.vanna, peaks.vanna, heat, row.vanna_reason, false);
-      bodyRows += heatCell(row.iv_text, row.iv, peaks.iv, heat, row.iv_reason, false);
-      bodyRows += heatCell(row.charm_text, row.charm, peaks.charm, heat, row.charm_reason, false);
-      bodyRows += "</tr>";
+        '">' +
+        COLS.map(function (col) {
+          return cell(col, row, peaks, heat);
+        }).join("") +
+        "</tr>";
     });
+    if (body.price_row_index === rows.length && rows.length) bodyRows += priceRow(body);
     var notes = Array.isArray(body.notes) ? body.notes : [];
+    var cols = WIDTHS.map(function (w) {
+      return '<col style="width:' + w + 'px">';
+    }).join("");
     var table = rows.length
-      ? '<div class="frame" id="cmFrame"><div class="matrix-wrap"><table><colgroup><col style="width:138px"><col style="width:138px"><col style="width:74px"><col style="width:58px"><col style="width:75px"><col span="13"></colgroup><thead>' +
+      ? '<div class="frame" id="cmFrame"><div class="matrix-wrap"><table><colgroup>' +
+        cols +
+        "</colgroup><thead>" +
         heads +
         '</thead><tbody id="cmRows">' +
         bodyRows +
-        '</tbody></table><div id="spotline"></div></div></div>'
+        "</tbody></table></div></div>"
       : '<div class="status">' + esc(orDash(body.reason)) + "</div>";
-    var kept = null;
-    rows.forEach(function (row) {
-      if (row.strike === selectedStrike) kept = row;
-    });
     box.innerHTML =
-      '<div class="cm-page"><div class="summary">' +
-      summary +
+      '<div class="cm-page">' +
+      headline(body.headline) +
+      '<div class="summary">' +
+      cards(body.cards) +
       '</div><div class="status"><span>' +
       esc(status) +
       "</span>" +
       pick +
       '</div><div class="offscreen" id="cmAbove">' +
-      offButtons(body.levels_above, "above") +
+      pastLevels(body.levels_above || [], "↑") +
       "</div>" +
       table +
       '<div class="offscreen" id="cmBelow">' +
-      offButtons(body.levels_below, "below") +
-      '</div><div class="levelread" id="cmRead">Hover or focus a level; click to pin its line. Escape clears the selection.</div><div class="legend"><span><i class="scale"></i> Red − / green + · brighter = larger magnitude within each column.</span><span>OI, Opt Vol, Gross GEX, IV and composite: green intensity = size only. P/C: red put-heavy / green call-heavy.</span></div><div class="detail" id="cmDetail"></div>' +
+      pastLevels(body.levels_below || [], "↓") +
+      '</div><div class="legend"><span>Read first, left to right by importance: the Composite, where the strike is, what the hedging does there, the positions behind it, how time and volatility move them, the trading, and last the hedging-flow estimate.</span><span>Heat: each cell from the zero colour toward green (+) or red (−) by its value against its column\'s largest on the expiry; open interest, volume, Vol/OI, IV and Visits are size only (green); P/C red put-heavy, green call-heavy. est. and model rest on the convention: dealers long calls, short puts.</span></div><div class="detail" id="cmDetail"></div>' +
       (notes.length ? '<p class="foot">' + esc(notes.join(" ")) + "</p>" : "") +
       "</div>";
     showDetail(kept);
-    highlight(pinned);
-    requestAnimationFrame(position);
   }
 
   document.addEventListener("ed:view", function () {
     selectedStrike = null;
     load();
   });
-  // a new expiry chosen is a new ranking: its own strikes
+  // a new expiry chosen is a new matrix: its own strikes
   document.addEventListener("ed:expiry", function () {
     selectedStrike = null;
-    pinned = null;
     load();
   });
   document.addEventListener("ed:ticker", function () {
     selectedStrike = null;
-    pinned = null;
     load();
   });
 })();
