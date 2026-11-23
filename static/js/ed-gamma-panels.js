@@ -19,7 +19,7 @@
 
   // Delta/DEX and Open Interest fall back to displaying the SAME gamma `.sub-pane` (they have
   // no dedicated pane of their own -- showSubPane()'s fallback rule), which is where Key
-  // Levels/GEX-by-Strike/PCR/the Options Flow tape all physically live. A 'gamma'-only check
+  // Levels/GEX-by-Strike/PCR/Options Time & Sales all physically live. A 'gamma'-only check
   // would freeze all four panels on Delta/DEX or OI (a ticker switch there would leave the
   // PREVIOUS ticker's spot/flip/wall values) -- every check in this file recognizes all
   // three, exactly like ed-gamma.js's _isGammaFamilySubview.
@@ -462,7 +462,7 @@
     var net = sd ? sd.net_gex : null; // served null: no surface value at this strike
     var netCls = window.EdDraw.bySign(net, "pos", "neg", "");
     host.innerHTML =
-      '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV%</th></tr></thead><tbody>' +
+      '<table class="sd"><thead><tr><th>Type</th><th>OI</th><th>Vol</th><th>Gamma</th><th>GEX $</th><th>Delta</th><th>IV (%)</th></tr></thead><tbody>' +
       '<tr><td class="side c">Call</td><td>' +
       cell(call, "oi_text") +
       "</td><td>" +
@@ -668,7 +668,7 @@
     window.EdShell.showPanel("chain:structures", { expiry: window.EdShell.getExpiry() });
   }
 
-  // ---------- Options Flow tape ------------
+  // ---------- Options Time & Sales ------------
   // The embedded tape widget on the Gamma pane (#ofBody) -- real native trade prints for
   // every contract of the ticker the daemon streams (its option rule), never a fabricated
   // buy/sell side.
@@ -680,7 +680,7 @@
       host.innerHTML =
         '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
         "<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>" +
-        "<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead>" +
+        "<th>Vol</th><th>OI</th><th>IV (%)</th><th>Δ</th><th>vs Market</th></tr></thead>" +
         '<tbody><tr class="of-empty"><td colspan="14"><div class="oe-sub">' +
         esc(d.reason) +
         "</div></td></tr></tbody></table>"; // the server says why with every empty tape
@@ -747,7 +747,7 @@
     host.innerHTML =
       '<table class="of"><thead><tr><th>Time</th><th>Symbol</th><th>Exp</th><th>Type</th><th>Strike</th>' +
       "<th>Bid×Size</th><th>Ask×Size</th><th>Trade</th><th>Size</th><th>Premium</th>" +
-      "<th>Vol</th><th>OI</th><th>IV%</th><th>Δ</th><th>vs Market</th></tr></thead><tbody>" +
+      "<th>Vol</th><th>OI</th><th>IV (%)</th><th>Δ</th><th>vs Market</th></tr></thead><tbody>" +
       body +
       "</tbody></table>";
   }

@@ -202,7 +202,7 @@ _AUCTION_TEXT: dict[str | None, str | None] = {
 #: the readout before any book has arrived: every venue no_book
 _NO_BOOKS = book_readout(dict.fromkeys(BOOK_VENUES))
 #: each venue of the Liquidity card as the card names it (the hover of its dot)
-VENUE_NAMES = {"NYSE_BOOK": "NYSE", "NASDAQ_BOOK": "Nasdaq", COMPOSITE: "Composite"}
+VENUE_NAMES = {"NYSE_BOOK": "NYSE", "NASDAQ_BOOK": "Nasdaq", COMPOSITE: "Aggregate"}
 _LIVE_BOOK = "live book"
 
 
@@ -213,7 +213,7 @@ def _source(venue: str, books: list[str] | None) -> str:
     """
     if books is None:
         return f"Schwab {venue}"
-    return f"Schwab {' + '.join(books)} · composite, newest quote of each exchange"
+    return f"Schwab {' + '.join(books)} · aggregate, newest quote of each exchange"
 
 
 def _no_number(status: str) -> tuple[str, str, str] | None:

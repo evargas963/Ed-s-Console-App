@@ -1,4 +1,4 @@
-"""The `desk` panel: the Trade Desk's attention queue, one item per event, newest first.
+"""The `desk` panel: the Trade Desk's alerts, one item per event, newest first.
 
 Read from State: the recorded level crosses (state.cross_store), the terrain panel at the live
 price (push.terrain) and the chart's bars (push.bars).
@@ -57,7 +57,7 @@ def _desk_window_start(tf: str, now: datetime) -> float:
 
 
 def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[str, Any]:
-    """Return the Trade Desk's attention queue at `now`.
+    """Return the Trade Desk's alerts at `now`.
 
     Level crosses in the timeframe's window as recorded (level, direction, price, spot, time),
     numbered oldest first, the newest cross at each level for the newest DESK_MARKERS levels

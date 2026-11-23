@@ -52,10 +52,10 @@ test("the header session follows each beat, while quotes keep arriving between t
   await expect(page.locator("#hSession")).toHaveText("CLOSED");
   for (let i = 0; i < 5; i++) socket.send(JSON.stringify({ type: "quotes", rows: [] }));
   socket.send(feed(["SPY"], 1001, "Pre-Market")); // Schwab's pre-market window opened
-  await expect(page.locator("#hSession")).toHaveText("PRE");
+  await expect(page.locator("#hSession")).toHaveText("PRE-MARKET");
   await expect(page.locator("#hSession")).toHaveClass(/pre/);
   socket.send(feed(["SPY"], 1002, "RTH"));
-  await expect(page.locator("#hSession")).toHaveText("RTH");
+  await expect(page.locator("#hSession")).toHaveText("REGULAR");
 });
 
 test("the header clock is the beat time the program sends, drawn as sent", async ({ page }) => {

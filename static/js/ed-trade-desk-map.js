@@ -1,15 +1,15 @@
 /* Ed Console — Trade Desk / "Desk" subview. PRESENTATION ONLY.
 
    One page for the SELECTED ticker, one global timeframe:
-     MARKET MAP   <- the bars panel (completed Schwab bars at the timeframe),
-                     the levels panel (value area, VWAP, prior day, opening range, overnight),
-                     the terrain panel (call/put wall, gamma flip, max pain -- full chain)
-     ATTENTION    <- the desk panel (served, numbered; each marker is its queue entry, linked
-                     both ways): level crosses judged by their minute's bar, wall breaches,
-                     stale levels
+     PRICE CHART  <- the bars panel (completed Schwab bars at the timeframe), the levels panel
+                     (value area, VWAP, prior day, opening range, extended hours), the terrain
+                     panel (call/put wall, gamma flip, max pain -- full chain)
+     ALERTS       <- the desk panel (served, numbered; each marker is its alert, linked both
+                     ways): level crosses judged by their minute's bar, wall breaches, stale
+                     levels
      CARDS        <- the book, terrain, bars and liquidity panels (value/VWAP relation) and the
                      price row (Schwab LEVELONE)
-     HEADER TRUST <- the same panels' own state/age fields
+     DATA STATUS  <- the same panels' own state/age fields
    Every panel arrives on the page's one socket. The browser computes nothing: it picks which
    served values to show, formats them, and places a served event on the bar that contains it.
    A value with no producer yet says so. */
@@ -27,13 +27,13 @@
     return S.events && S.events.tf === S.tf ? S.events.window_label : "-";
   }
   var FAMILIES = [
-    { id: "volume_profile", lbl: "Volume profile (RTH)" },
+    { id: "volume_profile", lbl: "Volume profile (regular)" },
     { id: "value_area", lbl: "Value area" },
     { id: "vwap", lbl: "VWAP" },
     { id: "gamma", lbl: "Gamma" },
     { id: "prior_day", lbl: "Prior day" },
     { id: "opening_range", lbl: "Opening range" },
-    { id: "overnight", lbl: "Overnight" },
+    { id: "extended_hours", lbl: "Extended hours" },
   ];
   var DRILL = {
     liquidity: ["order-flow", "heatmap"],
@@ -82,7 +82,7 @@
     fam: JSON.parse(
       sget(
         "ed.desk.fam",
-        '{"value_area":1,"vwap":1,"gamma":1,"prior_day":1,"opening_range":1,"overnight":1}',
+        '{"value_area":1,"vwap":1,"gamma":1,"prior_day":1,"opening_range":1,"extended_hours":1}',
       ),
     ),
     ticker: null,
@@ -363,7 +363,7 @@
       value_area: [P.warn, 2, 1],
       prior_day: [P.stale, 2, 1],
       opening_range: [P.stale, 2, 1],
-      overnight: [P.stale, 2, 1],
+      extended_hours: [P.stale, 2, 1],
       gamma: [P.stale, 2, 1],
     };
     var gamma = {
@@ -465,7 +465,7 @@
     );
   }
 
-  // ------------------------------------------------------------------ attention queue
+  // ------------------------------------------------------------------ alerts
   function queueItems() {
     return S.events ? S.events.items : [];
   } // served, ordered, numbered
@@ -651,9 +651,9 @@
           row("Put wall", orDash(t.put_wall_text), "dn") +
           row("Gamma flip", orDash(t.gamma_flip_text)) +
           (t.flip_note != null ? row("Gamma flip note", esc(t.flip_note)) : "") +
-          row("P/C OI", orDash(t.pcr_all_text)) +
+          row("Put/call OI", orDash(t.pcr_all_text)) +
           row("Max pain", orDash(t.max_pain_text)) +
-          row("Contracts", orDash(t.contracts_used_text));
+          row("Option series", orDash(t.contracts_used_text));
       }
       paintLean(c);
     }
@@ -667,9 +667,9 @@
       );
       src(c, "Schwab option chain · " + (!t || why(t) ? "-" : esc(chainAgeLabel(t))));
       c.querySelector(".tdm-rows").innerHTML =
-        row("ATR daily", orDash(t && t.atr_daily_text)) +
-        row("ATR weekly", orDash(t && t.atr_weekly_text)) +
-        row("ATR monthly", orDash(t && t.atr_monthly_text)) +
+        row("ATR(14) daily", orDash(t && t.atr_daily_text)) +
+        row("ATR(14) weekly", orDash(t && t.atr_weekly_text)) +
+        row("ATR(14) monthly", orDash(t && t.atr_monthly_text)) +
         '<span class="tdm-r" id="tdmVolIdx"></span>';
       paintVolIndex();
     }
@@ -854,9 +854,8 @@
     var h =
       depth +
       '<div class="liq-now liq-keep"><div class="liq-lbl liq-keep"><span>' +
-      "TOP " +
+      "ORDER BOOK IMBALANCE · TOP " +
       view +
-      " HEADLINE" +
       "</span>" +
       (r.touch_flag ? '<span class="liq-pill">' + esc(r.touch_flag) + "</span>" : "") +
       (r.live ? "" : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + "</span>") +
@@ -913,14 +912,14 @@
       "</div>" +
       (rd.disagree[view] ? '<span class="liq-pill">VENUES DISAGREE</span>' : "") +
       "</div>" +
-      '<div><div class="liq-lbl"><span>AT THE TOUCH</span><b>' +
+      '<div><div class="liq-lbl"><span>TOP OF BOOK</span><b>' +
       esc(orDash(r.touch_text)) +
       "</b></div>" +
       '<div class="liq-gauge">' +
       (r.touch_pct == null ? "" : '<i style="left:' + liqLeft(r.touch_pct) + '"></i>') +
       "</div></div>" +
-      '<div><div class="liq-lbl"><span>LEAN</span><span class="liq-pill plain">◷ ' +
-      esc(v.held_text || "HELD -") +
+      '<div><div class="liq-lbl"><span>IMBALANCE</span><span class="liq-pill plain">◷ ' +
+      esc(orDash(v.held_text)) + // served: how long the side has stood; none known, "-"
       "</span></div>" +
       (v.lean
         ? '<div class="liq-lean"><span>2m</span>' +
@@ -938,7 +937,7 @@
       (r.dedup_partial_text && !one
         ? '<span class="tdm-r">' + esc(r.dedup_partial_text) + "</span>"
         : "") +
-      '<span class="tdm-r">Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue</span>' +
+      '<span class="tdm-r">Green NYSE · Red Nasdaq · Gold Aggregate · White ring marks the selected venue</span>' +
       '<span class="tdm-r">' +
       liqSpans(rd, view) +
       "</span>" +
@@ -1124,7 +1123,7 @@
                 ),
                 m.ages.book_stale === false ? "ok" : "bad",
               );
-    // the session levels snapshot's served time and age
+    // the reference levels snapshot's served time and age
     var levelWord = L && L.snapshot_age_text != null ? L.snapshot_age_text : "-";
     var levelWhen = L && L.snapshot_time_ct != null ? L.snapshot_time_ct : null;
     var levelShown = levelWhen != null ? levelWhen + " · " + levelWord : levelWord;
@@ -1137,7 +1136,7 @@
               "LEVELS",
               levelShown,
               L.degraded && L.degraded.length ? "warn" : "ok",
-              "session levels snapshot age",
+              "reference levels snapshot age",
             );
     var gammaWhen = t ? chainAgeLabel(t) : null;
     var gammaWhy = t && t.levels_stale_reason ? t.levels_stale_reason : null;

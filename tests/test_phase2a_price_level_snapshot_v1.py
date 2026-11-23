@@ -196,7 +196,7 @@ def test_absent_input_stays_absent_and_is_declared():
     assert snap.levels == {}, "no bars must produce no levels, not zeros or spot"
     assert (snap.vwap_series, snap.volume_profile) == ([], None), "no curve and no profile"
     fams = {f["family"] for f in snap.families_absent}
-    assert {"prior_day", "vwap", "opening_range", "overnight", "value_area"} <= fams
+    assert {"prior_day", "vwap", "opening_range", "extended_hours", "value_area"} <= fams
     assert all(f.get("reason") for f in snap.families_absent)
     assert snap.price("VWAP") is None
 
@@ -271,7 +271,7 @@ def test_the_liquidity_route_serves_the_levels_snapshots_values_under_the_same_i
         bar_store._series.pop(("ZZP2B", "1d"), None)
     copies = {"raw_levels", "raw_levels_used", "as_of_cutoff_et", "level_semantic_scope"}
     assert not copies & set(liq), "the snapshot's values are served once, by the levels panel"
-    used = {s["label"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}
+    used = {s["id"]: s["value"] for z in liq["zones"] for s in z["source_levels"]}
     assert used and set(used) <= set(PHASE2A_LEVEL_IDS), used
     for tag, value in used.items():
         assert levels[tag] == value, tag

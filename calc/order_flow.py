@@ -303,7 +303,7 @@ _BOOK_CLASSIFICATION = {
 #: the book measures not served, each with why
 _BOOK_DEFERRED = (
     "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+    "cumulative volume delta (estimated: exists in the engine, from the trades)",
     "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
     "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)",
 )
@@ -494,9 +494,9 @@ COMPOSITE = "COMPOSITE"
 #: (bid - ask) / (bid + ask) (docs/SOURCES.md gould-bonart-2015, cao-hansch-wang-2009,
 #: bookmap-imbalance); "5" is the headline the screen opens on
 READOUT_VIEWS: tuple[str, ...] = ("1", "3", "5")
-#: the headline percentage reads BALANCED under this, else the side it leans to (Bookmap's
-#: Imbalance indicator shows the ratio in the buyer's or seller's colour from 10%;
-#: docs/SOURCES.md bookmap-imbalance)
+#: the headline percentage reads NEUTRAL under this, else buy-heavy or sell-heavy (the three words
+#: docs/SOURCES.md cartea-2018's; Bookmap's Imbalance indicator shows the ratio in the buyer's or
+#: seller's colour from 10%: bookmap-imbalance)
 OF_TILT_PCT: float = 10.0
 #: the lean sparklines: (name, window in seconds, one point every this many seconds)
 OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
@@ -507,22 +507,22 @@ OF_LEAN_WINDOWS: tuple[tuple[str, int, int], ...] = (
 OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC)
 #: a tilt as the card's headline says it (`side_word`); the same words in lower case are how
 #: running text says it (`tilt_text`), each served so the page changes no case
-TILT_WORDS = {"BID_HEAVY": "BID HEAVY", "BALANCED": "BALANCED", "OFFER_HEAVY": "OFFER HEAVY"}
+TILT_WORDS = {"BID_HEAVY": "BUY-HEAVY", "BALANCED": "NEUTRAL", "OFFER_HEAVY": "SELL-HEAVY"}
 #: a tilt's side, for flips: BALANCED is none
 _SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
 #: the detail panel's words
 READOUT_DETAIL = {
-    "tilt": f"The headline is the book's percentage each second, as it is. BALANCED under"
-    f" {OF_TILT_PCT:.0f}%; BID or OFFER HEAVY from {OF_TILT_PCT:.0f}%"
-    " (Bookmap's colour-switch line): direction only, not strength. A flip is a change of"
-    " side, bid to offer or back.",
-    "construction": "Composite: every exchange's and market maker's quote from the books Schwab"
+    "tilt": "Order book imbalance: the bid shares less the ask shares over the two together, each"
+    f" second, as it is. NEUTRAL under {OF_TILT_PCT:.0f}%; BUY-HEAVY or SELL-HEAVY from"
+    f" {OF_TILT_PCT:.0f}% (the line Bookmap's Imbalance indicator changes colour at): direction"
+    " only, not strength. A flip is a change of side, buy to sell or back.",
+    "construction": "Aggregate: every exchange's and market maker's quote from the books Schwab"
     " sends for this symbol, one per contributor by side; where a contributor quotes in both"
     " books (Nasdaq's NSDQ, for SPY and IWM), the copy with the newer quote time Schwab sent;"
     " then the shares summed at each distinct price and the best five prices per side. With one"
-    " book, the composite is that book. Never the two books' level totals summed.",
+    " book, the aggregate is that book. Never the two books' level totals summed.",
     "spans": "Top 5 covers different price ranges on the two venues — the percentages are over"
-    " different prices, so compare directions, not magnitudes. The touch is the only"
+    " different prices, so compare directions, not magnitudes. The top of book is the only"
     " like-for-like comparison across venues.",
     "books": "NYSE_BOOK is each exchange's best quote grouped by price, not order depth."
     " NASDAQ_BOOK carries Nasdaq's own quote and market makers' quotes.",
@@ -897,7 +897,7 @@ def _card_view(r: Readout, points: Points, v: str, view: str, last: int) -> Card
         "tilt_text": TILT_WORDS[tilt].lower() if tilt else None,
         "held_sec": held,
         "held_open": since is not None and since == known_from,
-        "held_text": None if held is None else f"HELD {'≥' if since == known_from else ''}{held}s",
+        "held_text": None if held is None else f"FOR {'≥' if since == known_from else ''}{held}s",
         "sentence": _CROSSED_SENTENCE if r.touch_state == "CROSSED" else _sentence(bid, ask),
         "flips_2m": _flips(shown, first, last),
         "bid_text": count_text(bid),

@@ -170,16 +170,16 @@ class ZoneType(str, Enum):
 #: value (neither)
 ZONE_DISPLAY: dict[ZoneType, tuple[str, str]] = {
     ZoneType.SUPPORT_LIQUIDITY: ("Support", "support"),
-    ZoneType.PIVOT_VALUE: ("Pivot / value", "value"),
+    ZoneType.PIVOT_VALUE: ("Price inside zone", "value"),
     ZoneType.RESISTANCE_LIQUIDITY: ("Resistance", "resistance"),
     ZoneType.SIDE_UNKNOWN: ("-", "value"),
 }
 
 
 class SourceLevel(TypedDict):
-    """One level a zone is clustered from: its tag and its own price."""
+    """One level a zone is clustered from: its id and its own price."""
 
-    label: str
+    id: str
     value: float
 
 

@@ -84,12 +84,12 @@ def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
     ]
     assert distances and distances == sorted(distances)
     z = body["zones"][0]
-    first = [s["label"] for s in z["source_levels"]]
+    first = [s["id"] for s in z["source_levels"]]
     side = (
         "Resistance"
         if z["zone_low"] > last
         else "Support"
         if z["zone_high"] < last
-        else "Pivot / value"
+        else "Price inside zone"
     )
     assert z["zone_label"] == side and "SPOT_LIVE" not in first  # typed by side; not a level

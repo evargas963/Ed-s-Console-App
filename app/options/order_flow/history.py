@@ -70,7 +70,7 @@ LANDED_TEXT: dict[str, str | None] = {
 
 
 class TapeRow(TypedDict):
-    """One kept print as the Options Flow tape shows it (tape_row).
+    """One kept print as Options Time & Sales shows it (tape_row).
 
     Schwab's trade time and that time in CT, the contract, the trade and what it was kept with
     (the quote in force, the day's volume, the volatility and delta), where it landed
@@ -173,7 +173,7 @@ def quoted(
 
 
 def tape_row(symbol: str, kept: KeptPrint, contract: OptionContract) -> TapeRow:
-    """Return a print the live state kept of contract `symbol` as the Options Flow tape shows it.
+    """Return a print the live state kept of contract `symbol` as Options Time & Sales shows it.
 
     With its contract's terms: expiry, side, strike and open interest are the chain record's
     (option_contract.read_contract, the one reader of them); premium = trade x size x that

@@ -80,14 +80,14 @@ LEVEL_NAMES = {
     "PDH": ("Prior day high", "PDH"),
     "PDL": ("Prior day low", "PDL"),
     "PDC": ("Prior day close", "PDC"),
-    "PD_POC": ("Prior day POC (est. from 1-min bars)", "pPOC est"),
-    "PD_VAH": ("Prior day VAH (est. from 1-min bars)", "pVAH est"),
-    "PD_VAL": ("Prior day VAL (est. from 1-min bars)", "pVAL est"),
-    "ORB_HIGH": ("Opening range high", "ORH"),
-    "ORB_LOW": ("Opening range low", "ORL"),
-    "ORB_MID": ("Opening range mid", "ORM"),
-    "OVERNIGHT_HIGH": ("Overnight high", "ONH"),
-    "OVERNIGHT_LOW": ("Overnight low", "ONL"),
+    "PD_POC": ("Prior day POC (est. from 1-min bars)", "Prior POC est"),
+    "PD_VAH": ("Prior day VAH (est. from 1-min bars)", "Prior VAH est"),
+    "PD_VAL": ("Prior day VAL (est. from 1-min bars)", "Prior VAL est"),
+    "ORB_HIGH": (f"Opening range ({OPENING_RANGE_MINUTES} min) high", "ORH"),
+    "ORB_LOW": (f"Opening range ({OPENING_RANGE_MINUTES} min) low", "ORL"),
+    "ORB_MID": (f"Opening range ({OPENING_RANGE_MINUTES} min) midpoint", "ORM"),
+    "OVERNIGHT_HIGH": ("Extended-hours high", "Ext high"),
+    "OVERNIGHT_LOW": ("Extended-hours low", "Ext low"),
     "VWAP": ("VWAP", "VWAP"),
 }
 
@@ -445,7 +445,7 @@ def _zone(cluster: Cluster, zone_type: ZoneType, notes: str) -> Zone:
         zone_low=lo,
         zone_high=hi,
         zone_mid=mid,
-        source_levels=[{"label": t, "value": p} for p, t in source_pairs],
+        source_levels=[{"id": t, "value": p} for p, t in source_pairs],
         confluence_score=len(tags),
         interpretation_notes=notes,
     )
@@ -485,17 +485,17 @@ def vwap_against_value(vwap: float | None, val: float | None, vah: float | None)
     return "above_value" if vwap > vah else "below_value" if vwap < val else "inside_value"
 
 
-#: the terrain levels the zones are fused with, and the tag each carries: the one list of them
-OPTION_LEVEL_TAGS = (
-    ("call_wall", "GAMMA_CALL_WALL"),
-    ("put_wall", "GAMMA_PUT_WALL"),
-    ("call_delta_wall", "DELTA_CALL_WALL"),
-    ("put_delta_wall", "DELTA_PUT_WALL"),
-    ("absolute_gamma_strike", "ABS_GAMMA"),
-    ("lvp", "NET_CALL_PEAK"),
-    ("hvp", "NET_PUT_PEAK"),
-    ("max_pain", "MAX_PAIN"),
-    ("gamma_flip", "GAMMA_FLIP"),
+#: the terrain levels the zones are fused with, by id (terrain_engine.OPTION_LEVELS): the one list
+ZONE_OPTION_LEVELS = (
+    "call_wall",
+    "put_wall",
+    "call_delta_wall",
+    "put_delta_wall",
+    "absolute_gamma_strike",
+    "lvp",
+    "hvp",
+    "max_pain",
+    "gamma_flip",
 )
 
 
@@ -503,7 +503,7 @@ def _classify_live_cluster(lo: float, hi: float, price: float | None) -> tuple[Z
     """Type a live zone by its side of the live price: above it resistance, below it support.
 
     The definition: support is a level under the market, resistance one over it (Osler 2000,
-    docs/SOURCES.md osler-2000). The price inside the zone (an edge included): pivot / value.
+    docs/SOURCES.md osler-2000). The price inside the zone (an edge included): neither.
     With no live price the side is not known (SIDE_UNKNOWN, "-"); no level's name decides it.
     """
     if price is None:
@@ -580,8 +580,8 @@ PHASE2A_LEVEL_IDS: dict[str, tuple[str, str, str]] = {
     "PD_POC": ("prior_day", "prior_rth_session", "derived_certified"),
     "PD_VAH": ("prior_day", "prior_rth_session", "derived_certified"),
     "PD_VAL": ("prior_day", "prior_rth_session", "derived_certified"),
-    "OVERNIGHT_HIGH": ("overnight", "overnight_window", "price_fact"),
-    "OVERNIGHT_LOW": ("overnight", "overnight_window", "price_fact"),
+    "OVERNIGHT_HIGH": ("extended_hours", "overnight_window", "price_fact"),
+    "OVERNIGHT_LOW": ("extended_hours", "overnight_window", "price_fact"),
     "ORB_HIGH": ("opening_range", "session_rth", "price_fact"),
     "ORB_LOW": ("opening_range", "session_rth", "price_fact"),
     "ORB_MID": ("opening_range", "session_rth", "price_fact"),
@@ -935,10 +935,10 @@ def _overnight_part(
     sessions: Mapping[str, Session],
     basis: str,
 ) -> _Family | _Absent:
-    """Return the overnight range before the session."""
+    """Return the extended-hours range before the session."""
     overnight = get_overnight_levels(bars_norm, session_date, prior_date, sessions=sessions)
     if overnight is None:
-        return _Absent("overnight", "no overnight-window bars in available tape")
+        return _Absent("extended_hours", "no extended-hours bars in the bars held")
     return _Family(
         (("OVERNIGHT_HIGH", overnight.high), ("OVERNIGHT_LOW", overnight.low)),
         f"{_PRODUCER_NS}.get_overnight_levels",
@@ -1034,7 +1034,7 @@ def build_price_level_snapshot(
     if not bars_norm:
         families += [
             _Absent(fam, f"no bars available (source {bar_source})")
-            for fam in ("vwap", "opening_range", "overnight", "value_area")
+            for fam in ("vwap", "opening_range", "extended_hours", "value_area")
         ]
     else:
         window = f"{session_date.isoformat()} RTH (canonical snapshot over {bar_source})"

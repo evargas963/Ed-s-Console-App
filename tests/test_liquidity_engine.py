@@ -405,7 +405,7 @@ def test_no_lookahead_premarket():
         price=500.0,
         sessions=sessions(),
     )
-    labels = {s["label"] for z in out.zones for s in z.source_levels}
+    labels = {s["id"] for z in out.zones for s in z.source_levels}
     assert labels & {"PDH", "PDL", "PDC"}
     # No today POC/VAH/VAL in the premarket zones: every poc-shaped level is the
     # previous day's PD_ form, never a same-day value.
@@ -461,7 +461,7 @@ def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
     Expected values worked out here from the bars and Schwab's daily candle as sent. INDUCED:
     one option level (a call wall at 671.00), for no captured terrain goes with these bars.
     """
-    wall = [(671.0, "GAMMA_CALL_WALL")]
+    wall = [(671.0, "call_wall")]
     prior = prior_session(schwab_daily("SPY"), FRIDAY.date())
     assert prior is not None
     overnight_from = datetime(2026, 10, 1, 16, 0, tzinfo=ET).timestamp()  # 10-01's regular close
@@ -470,23 +470,23 @@ def test_one_builder_gives_the_premarket_and_the_live_zones_on_real_bars():
     pre, held = _real_zones(datetime(2026, 10, 2, 9, 0, tzinfo=ET), wall)
     overnight = [b for b in held if b["timestamp"] / 1000 >= overnight_from]
     assert overnight, "no overnight bar in the capture: the assertion would be vacuous"
-    got = {s["label"]: s["value"] for z in pre.zones for s in z.source_levels}
+    got = {s["id"]: s["value"] for z in pre.zones for s in z.source_levels}
     assert (pre.snapshot_type, pre.summary) == (SnapshotType.PREMARKET, None)
     assert set(got) == {"PDH", "PDL", "PDC", "PD_POC", "PD_VAH", "PD_VAL"} | {
         "OVERNIGHT_HIGH",
         "OVERNIGHT_LOW",
-        "GAMMA_CALL_WALL",
+        "call_wall",
     }
     assert (got["PDH"], got["PDL"], got["PDC"]) == (prior.high, prior.low, prior.close)
-    assert got["GAMMA_CALL_WALL"] == 671.0
+    assert got["call_wall"] == 671.0
     assert got["OVERNIGHT_HIGH"] == max(b["high"] for b in overnight)
     assert got["OVERNIGHT_LOW"] == min(b["low"] for b in overnight)
 
     live, held = _real_zones(FRIDAY, wall)
     first15 = [b for b in held if opening <= b["timestamp"] / 1000 < opening + 15 * 60]
-    got = {s["label"]: s["value"] for z in live.zones for s in z.source_levels}
+    got = {s["id"]: s["value"] for z in live.zones for s in z.source_levels}
     assert live.snapshot_type == SnapshotType.LIVE and live.summary is not None
-    assert got["GAMMA_CALL_WALL"] == 671.0
+    assert got["call_wall"] == 671.0
     assert (got["PDH"], got["PDL"]) == (prior.high, prior.low)
     assert got["PDC"] == prior.close
     overnight = [b for b in held if overnight_from <= b["timestamp"] / 1000 < opening]
@@ -518,7 +518,7 @@ def test_a_price_on_a_zones_edge_or_between_them_is_inside_it():
     """The live zones at 15:00 ET Friday, each priced at its low, its high and in its upper half.
 
     Support is a level under the market and resistance one over it (Osler 2000); a price on a
-    zone's edge or within it is neither: pivot / value.
+    zone's edge or within it is neither: the price is inside the zone.
     """
     snap, _held = _real_snapshot(FRIDAY)
 

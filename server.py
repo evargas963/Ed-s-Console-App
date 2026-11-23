@@ -71,7 +71,7 @@ from open_gap import (
 from option_contract import NO_GREEKS, OptionContract, Streamed
 from push import bars as push_bars
 from push import book as push_book
-from push import bookmap as push_bookmap
+from push import book_heatmap as push_book_heatmap
 from push import chain as push_chain
 from push import confluence as push_confluence
 from push import contract as push_contract
@@ -1885,7 +1885,7 @@ PAGE_PANELS: dict[str, Callable[[live_ui.Asked], Mapping[str, Any]]] = {
     "forming": lambda a: push_bars.forming(a.ticker, a.now, a.params),
     "tape": lambda a: push_tape.tape(a.ticker, a.now),
     "book": lambda a: push_book.book(a.ticker, a.now, a.params),
-    "bookmap": lambda a: push_bookmap.bookmap(a.ticker, a.params),
+    "book_heatmap": lambda a: push_book_heatmap.book_heatmap(a.ticker, a.params),
     "contract": lambda a: push_contract.options_microstructure(
         push_contract.contract_asked(a.params), a.now
     ),
@@ -1902,7 +1902,7 @@ CHAIN_PANELS = ("expiries",)
 BARS_PANELS = ("bars", "liquidity", "desk", "forming")
 #: the chain screens and the Options Book show each contract's newest streamed values (push.chain,
 #: push.option_book), and the live price
-FLOW_PANELS = ("book", "bookmap", "tape", "contract", "chain", "option_book")
+FLOW_PANELS = ("book", "book_heatmap", "tape", "contract", "chain", "option_book")
 #: the panels an option contract's own quote or book moves: its Flow panel, the chain screens and
 #: the Options Book
 OPTION_PANELS = ("contract", "chain", "option_book")

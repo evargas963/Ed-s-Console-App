@@ -379,7 +379,7 @@ def test_each_venue_is_served_with_the_name_its_dot_shows():
     The card's dots name their venue from the readout; the page holds no table of names.
     """
     names = {v: r["name"] for v, r in _served(_pair_readout()).items()}
-    assert names == {"NYSE_BOOK": "NYSE", "NASDAQ_BOOK": "Nasdaq", e.COMPOSITE: "Composite"}
+    assert names == {"NYSE_BOOK": "NYSE", "NASDAQ_BOOK": "Nasdaq", e.COMPOSITE: "Aggregate"}
 
 
 def test_a_level_without_per_exchange_rows_is_taken_whole_and_the_dedup_marked_partial():
@@ -447,7 +447,7 @@ def test_with_one_book_the_composite_is_that_book():
     assert got["NYSE_BOOK"]["no_number_head"] == "NO BOOK"
     assert got[e.COMPOSITE]["no_number_text"] is None
     assert got[e.COMPOSITE]["source_text"].startswith(
-        "Schwab NASDAQ_BOOK · composite, newest quote of each exchange"
+        "Schwab NASDAQ_BOOK · aggregate, newest quote of each exchange"
     )
 
 
@@ -460,7 +460,7 @@ def test_a_nasdaq_only_composite_is_live_while_the_feed_holds_both_books():
     rows = [r for r in _ROWS if r[1] == "NASDAQ_BOOK"]
     comp = build_readout_payload(rows=rows)["readout"]["venues"][e.COMPOSITE]
     assert (comp["live"], comp["feed_label"], comp["books"]) == (True, "LIVE", ["NASDAQ_BOOK"])
-    assert comp["source_text"] == "Schwab NASDAQ_BOOK · composite, newest quote of each exchange"
+    assert comp["source_text"] == "Schwab NASDAQ_BOOK · aggregate, newest quote of each exchange"
     assert comp["views"]["5"]["pct"] is not None
 
 
@@ -468,7 +468,7 @@ def test_with_no_book_the_composite_names_the_two_books_it_reads():
     got = _served(_NO_BOOK)[e.COMPOSITE]
     assert got["no_number_head"] == "NO BOOK"
     assert got["source_text"].startswith(
-        "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · no book"
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · aggregate, newest quote of each exchange · no book"
     )
 
 
@@ -607,9 +607,9 @@ def test_the_tilt_turns_at_10_percent(row, venue, view, pct, tilt):
     # the tilt as the headline says it and as running text says it, each served: the Desk's
     # strip and Right Now's unit draw the second and change no case
     assert (w["side_word"], w["tilt_text"]) == {
-        "BALANCED": ("BALANCED", "balanced"),
-        "BID_HEAVY": ("BID HEAVY", "bid heavy"),
-        "OFFER_HEAVY": ("OFFER HEAVY", "offer heavy"),
+        "BALANCED": ("NEUTRAL", "neutral"),
+        "BID_HEAVY": ("BUY-HEAVY", "buy-heavy"),
+        "OFFER_HEAVY": ("SELL-HEAVY", "sell-heavy"),
     }[tilt]
 
 
@@ -763,7 +763,7 @@ def test_held_is_at_least_when_the_values_began_inside_the_window():
         series = w["lean"]["2m"]["values"]
         known = end - (len(series) - 1) + next(k for k, x in enumerate(series) if x is not None)
         assert w["held_open"] is (end - w["held_sec"] == known), v
-        assert w["held_text"] == f"HELD {'≥' if w['held_open'] else ''}{w['held_sec']}s"
+        assert w["held_text"] == f"FOR {'≥' if w['held_open'] else ''}{w['held_sec']}s"
 
 
 def test_the_headline_is_the_value_standing_at_the_last_second():
@@ -880,7 +880,7 @@ def test_the_route_serves_the_readout_of_both_books_and_the_composite_live():
     assert [rd["venues"][v]["source_text"] for v in (*e.BOOK_VENUES, e.COMPOSITE)] == [
         "Schwab NYSE_BOOK · live book",
         "Schwab NASDAQ_BOOK · live book",
-        "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange",
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · aggregate, newest quote of each exchange",
     ]
     assert rd["detail"] == e.READOUT_DETAIL
     # the readout served is the one the intake computed on the newest book, not a second one
@@ -919,7 +919,7 @@ def test_a_book_without_its_time_says_not_live_and_that_no_time_was_sent():
         "Schwab NYSE_BOOK · not live, no book time sent"
     )
     assert got[e.COMPOSITE]["source_text"].startswith(
-        "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · not live, no"
+        "Schwab NYSE_BOOK + NASDAQ_BOOK · aggregate, newest quote of each exchange · not live, no"
         " book time sent"
     )
 

@@ -1,5 +1,5 @@
 /* Ed Console — Order Flow / "Heatmap" subview. PRESENTATION ONLY.
-   The book with a time dimension: the `bookmap` panel carries the time x price grid of
+   The book with a time dimension: the `book_heatmap` panel carries the time x price grid of
    the selected Schwab book's displayed size (NYSE_BOOK or NASDAQ_BOOK, never combined), and this
    view draws it on the one TradingView-style chart every chart in the console uses
    (ed-tv-chart.js): the served buckets are the time axis, each served cell is drawn at its own
@@ -49,14 +49,14 @@
         ", Schwab's book times — every cell is a captured book tick; nothing is interpolated between ticks.";
   }
 
-  // The grid is the `bookmap` panel (push.bookmap) on the page's socket while this view is on,
-  // for the selected venue and window, at once and with each streamed quote or book.
+  // The grid is the `book_heatmap` panel (push.book_heatmap) on the page's socket while this view
+  // is on, for the selected venue and window, at once and with each streamed quote or book.
   function load() {
     if (!isHeatmap()) {
-      window.EdShell.showPanel("bookmap", null);
+      window.EdShell.showPanel("book_heatmap", null);
       return;
     }
-    window.EdShell.showPanel("bookmap", {
+    window.EdShell.showPanel("book_heatmap", {
       venue: window.EdShell.getState().bookVenue,
       minutes: _minutes,
     });
@@ -64,7 +64,7 @@
   document.addEventListener("ed:panel", function (e) {
     var d = e.detail,
       h = host();
-    if (d.type !== "bookmap" || !h || !isHeatmap()) return;
+    if (d.type !== "book_heatmap" || !h || !isHeatmap()) return;
     render(h, d.failed != null ? { available: false, reason: d.failed } : d);
   });
 

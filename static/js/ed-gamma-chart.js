@@ -4,7 +4,7 @@
    panel over them), the flip and the walls (the `terrain:chart` panel on the page's socket) as level
    lines, the live price (the header's price row), and the selected measure's per-strike rows
    (the socket's `strikes:chart` panel at the expiry chosen: GEX `today`, DEX and OI `measures`) as a profile on the price axis --
-   bars, or dots sized by magnitude (Dot Map). The same view serves the Gamma, Delta / DEX and Open
+   bars, or bubbles sized by magnitude. The same view serves the Gamma, Delta Exposure and Open
    Interest subviews. The strikes shown are the window the server sends for the Gamma scope. A click
    on a strike selects it for every panel. The page computes no exposure or level. */
 (function () {
@@ -45,7 +45,7 @@
   }
   var ticker = window.EdShell.ticker;
 
-  var _mode = "profile"; // 'profile' (bars) | 'dotmap' (dots)
+  var _mode = "profile"; // 'profile' (bars) | 'bubbles'
   var _chart = null;
   var _liveQuote = null; // the header's price row (ed:quote_tick), the one displayed price
   var _last = { bars: undefined, forming: undefined, strikes: undefined, terrain: undefined };
@@ -166,7 +166,7 @@
         };
       }),
       prof.scale,
-      _mode === "dotmap" ? "dots" : "bars",
+      _mode === "bubbles" ? "bubbles" : "bars",
     );
     c.selectProfile(
       window.EdShell.getState().selStrike == null

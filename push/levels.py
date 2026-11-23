@@ -26,14 +26,14 @@ from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot
 from time_et import age_text, ct_label
 
-#: why a route serves no price levels for a ticker
+#: why a route serves no reference levels for a ticker
 NO_PRICE_LEVELS_REASON = (
-    "no price levels published for this ticker for the market's session yet (they are "
+    "no reference levels published for this ticker for the market's session yet (they are "
     "built from its 1-minute bars on each new bar and at the console's start)"
 )
-#: the level families the liquidity map draws as reference lines beside its zones: the prior
-#: day's and the overnight's. Each level says whether it is one (`reference_line`)
-REFERENCE_LINE_FAMILIES = frozenset({"prior_day", "overnight"})
+#: the level types the zones chart draws as reference lines beside its zones: the prior day's
+#: and the extended hours'. Each level says whether it is one (`reference_line`)
+REFERENCE_LINE_FAMILIES = frozenset({"prior_day", "extended_hours"})
 
 
 def same_day_note(snap: TerrainSnapshot) -> str | None:

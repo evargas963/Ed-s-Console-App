@@ -31,7 +31,7 @@
   "crossed": false,
   "deferred": [
     "aggressor_side (PROXY: needs trade-vs-quote classification history)",
-    "cvd / cum_delta (PROXY: exists as cum_delta_proxy in the engine, tape-based)",
+    "cumulative volume delta (estimated: exists in the engine, from the trades)",
     "absorption / replenishment (PROXY: exists in the engine, 2-snapshot compare)",
     "iceberg / add-pull / institutional_flow (PROXY: no evidence base in this slice)"
   ],

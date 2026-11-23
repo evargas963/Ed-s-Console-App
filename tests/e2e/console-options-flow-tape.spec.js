@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Options Flow tape (operator field-inventory audit, 2026-09-13) — the embedded #ofBody
+ * Options Time & Sales (operator field-inventory audit, 2026-09-13) — the embedded #ofBody
  * widget on the Gamma pane, rebuilt to the operator's own required schema: Time | Symbol |
  * Expiry | Type | Strike | Bid x Size | Ask x Size | Trade | Size | Premium | Volume | OI |
  * IV | Delta | provenance. Sourced from the `tape` panel on the page's socket (native LEVELONE_OPTIONS trade
@@ -81,7 +81,7 @@ async function intercept(page, tapeBody) {
   });
 }
 
-test.describe("Options Flow tape (Gamma pane, native trade prints)", () => {
+test.describe("Options Time & Sales (Gamma pane, native trade prints)", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem("ed_ticker", "SPY");
@@ -125,7 +125,7 @@ test.describe("Options Flow tape (Gamma pane, native trade prints)", () => {
       "Premium",
       "Vol",
       "OI",
-      "IV%",
+      "IV (%)",
       "Δ",
       "vs Market",
     ]);

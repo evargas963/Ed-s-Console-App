@@ -127,8 +127,8 @@
       "<thead><tr>" +
       '<th colspan="7" class="cflag" style="text-align:center">Calls</th><th class="mid">Strike</th>' +
       '<th colspan="7" class="pflag" style="text-align:center">Puts</th></tr>' +
-      '<tr><th>OI</th><th>Vol</th><th>IV%</th><th>Δ</th><th>Γ</th><th>Bid</th><th>Ask</th><th class="mid"></th>' +
-      "<th>Bid</th><th>Ask</th><th>Γ</th><th>Δ</th><th>IV%</th><th>Vol</th><th>OI</th></tr></thead></table>" +
+      '<tr><th>OI</th><th>Vol</th><th>IV (%)</th><th>Δ</th><th>Γ</th><th>Bid</th><th>Ask</th><th class="mid"></th>' +
+      "<th>Bid</th><th>Ask</th><th>Γ</th><th>Δ</th><th>IV (%)</th><th>Vol</th><th>OI</th></tr></thead></table>" +
       '<div class="chn-scroll" id="chainScroll">' +
       head +
       '<table class="chn chn-bodytbl">' +

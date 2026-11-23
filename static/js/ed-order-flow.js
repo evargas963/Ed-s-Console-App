@@ -1,7 +1,7 @@
-/* Ed Console — Order Flow / "Book · DOM" subview. PRESENTATION ONLY.
+/* Ed Console — Order Flow / "Level II" subview. PRESENTATION ONLY.
    Real L2 book microstructure for the UNDERLYING ticker itself (NASDAQ_BOOK/NYSE_BOOK): the
    `book` panel on the page's socket, from the SAME calc.order_flow.
-   compute_book_microstructure the options Flow tab reads. Reuses that view's .fl-* CSS grammar
+   compute_book_microstructure the contract's Flow tab reads. Reuses that view's .fl-* CSS grammar
    so a book reads the same whether it's an option contract's or the ticker's own.
 
    The console streams the books of the ticker a page has selected; a book not yet arrived reads
@@ -124,7 +124,7 @@
       orDash(d.mark_text) +
       "</span><span>spread " +
       orDash(d.spread_pts_text) +
-      "</span><span>microprice " +
+      "</span><span>weighted mid " +
       orDash(d.microprice_text) +
       "</span></div>";
 
@@ -141,9 +141,9 @@
       ],
     ];
     var rowsImb = [
-      ["Depth 1 imbalance", orDash(depth["1"].imbalance_text), bk("depth.*.imbalance")],
-      ["Depth 3 imbalance", orDash(depth["3"].imbalance_text), bk("depth.*.imbalance")],
-      ["Depth 5 imbalance", orDash(depth["5"].imbalance_text), bk("depth.*.imbalance")],
+      ["Order book imbalance (top 1)", orDash(depth["1"].imbalance_text), bk("depth.*.imbalance")],
+      ["Order book imbalance (top 3)", orDash(depth["3"].imbalance_text), bk("depth.*.imbalance")],
+      ["Order book imbalance (top 5)", orDash(depth["5"].imbalance_text), bk("depth.*.imbalance")],
       ["Bid total (5)", orDash(depth["5"].bid_total_text), bk("depth.*.bid_total")],
       ["Ask total (5)", orDash(depth["5"].ask_total_text), bk("depth.*.ask_total")],
     ];

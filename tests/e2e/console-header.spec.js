@@ -100,7 +100,7 @@ test("row 1 draws the selected ticker's row and the beat's status words, each fr
   await expect(page.locator("#hSym")).toHaveText("SPY");
   await expect(page.locator("#hPx")).toHaveText(SPY.spot_disp);
   // Schwab's two change percents, each beside its label
-  await expect(page.locator(".hpair.chgs .k")).toHaveText(["Reg", "Ext"]);
+  await expect(page.locator(".hpair.chgs .k")).toHaveText(["Reg", "Net"]);
   await expect(page.locator("#hChgReg")).toHaveText(SPY.chg_pct_regular_text);
   await expect(page.locator("#hChgReg")).toHaveClass(/neg/);
   await expect(page.locator("#hChg")).toHaveText(SPY.chg_pct_text);
@@ -119,7 +119,7 @@ test("row 1 draws the selected ticker's row and the beat's status words, each fr
   await expect(page.locator("#hSignIn")).toHaveAttribute("title", FX.beat.sign_in.why);
   await expect(page.locator("#hSignIn")).not.toHaveClass(/neg|none/);
   await expect(page.locator("#hLeftOutKv")).toBeHidden();
-  await expect(page.locator("#hSession")).toHaveText("RTH");
+  await expect(page.locator("#hSession")).toHaveText("REGULAR");
   await expect(page.locator("#hClock")).toHaveText(FX.beat.clock_ct);
   await expect(page.locator("#hClockDate")).toHaveText(FX.beat.day_ct);
   expect(errs).toEqual([]);
@@ -233,7 +233,7 @@ test("a stopped index stands marked with its time and age; the push silent, the 
   // beside it, and why is its title
   sock.send(beat(FX.beat_closed, [...FX.market_closed, SPY], NEWS.morning));
   await expect(page.locator("#hClock")).toHaveText(FX.beat_closed.clock_ct);
-  await expect(page.locator("#hSession")).toHaveText("AH");
+  await expect(page.locator("#hSession")).toHaveText("POST-MARKET");
   for (const row of FX.market_closed) {
     const cell = cellOf(page, context, row);
     await expect(cell).toHaveClass(/stale/);
@@ -706,7 +706,7 @@ function knownTexts(frame, alerting) {
     spx.feed_label,
     feed.writer.word,
     feed.sign_in.word,
-    { RTH: "RTH", "After-Hours": "AH" }[feed.session],
+    { RTH: "REGULAR", "After-Hours": "POST-MARKET" }[feed.session],
     feed.day_ct,
     feed.clock_ct,
   ].concat(feed.left_out ? [feed.left_out.line] : []);

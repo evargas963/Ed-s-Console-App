@@ -24,7 +24,7 @@ const LATER = Object.assign({}, SERVED, SPY.later.levels);
 // age, and the gamma levels' verdict (its state word, time and age)
 function badges(d) {
   return [
-    ["price levels", d.snapshot_time_ct, d.snapshot_age_text].join(" · "),
+    ["reference levels", d.snapshot_time_ct, d.snapshot_age_text].join(" · "),
     ["terrain", d.levels_state, d.levels_time_ct, d.levels_age_text].join(" · "),
   ];
 }

@@ -206,7 +206,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       "price levels per side, not timeframes",
     );
     await expect(card(page).locator(".tdm-src")).toHaveText(
-      "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange",
+      "Schwab NYSE_BOOK + NASDAQ_BOOK · aggregate, newest quote of each exchange",
     );
     // the whole source line shows, wrapped, never cut off
     expect(
@@ -218,7 +218,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     const span = (k, side) => READOUT_LIVE.readout.venues[k].views["5"]["span_" + side + "_text"];
     const order = [
       "price levels per side, not timeframes",
-      "TOP 5 HEADLINE",
+      "ORDER BOOK IMBALANCE · TOP 5",
       w.side_word,
       w.pct_text,
       "Bids",
@@ -228,12 +228,12 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       w.sentence,
       "Difference: " + w.difference_text + " shares · Total depth: " + w.total_text + " shares",
       "VENUES",
-      "AT THE TOUCH",
+      "TOP OF BOOK",
       LIVE_COMP.touch_text,
-      "LEAN",
+      "IMBALANCE",
       w.held_text,
       w.flips_2m + " flips in 2 min",
-      "Green NYSE · Red Nasdaq · Gold Composite · White ring marks the selected venue",
+      "Green NYSE · Red Nasdaq · Gold Aggregate · White ring marks the selected venue",
       "Top-5 spans, bid / ask: NYSE " +
         span("NYSE_BOOK", "bid") +
         " / " +
@@ -268,7 +268,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     await openDesk(page, READOUT_LIVE, true);
     const v = LIVE_COMP.views["5"];
     await expect(card(page).locator('[data-liqview="5"]')).toHaveClass(/on/);
-    await expect(card(page).locator(".liq-body")).toContainText("TOP 5 HEADLINE");
+    await expect(card(page).locator(".liq-body")).toContainText("ORDER BOOK IMBALANCE · TOP 5");
     await expect(card(page).locator(".liq-pct")).toHaveText(v.pct_text);
     await expect(page.locator("#tdmAgree .tdm-ag").first()).toContainText(
       "LIQUIDITY" + v.tilt_text, // served: the tilt as running text says it
@@ -284,7 +284,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     for (const [k, name] of [
       ["NYSE_BOOK", "NYSE"],
       ["NASDAQ_BOOK", "Nasdaq"],
-      ["COMPOSITE", "Composite"],
+      ["COMPOSITE", "Aggregate"],
     ]) {
       const dot = card(page).locator(".liq-dot." + k);
       const venue = READOUT_LIVE.readout.venues[k];
@@ -326,7 +326,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     await expect(card(page).locator('[data-liqview="3"]')).toBeVisible();
     await card(page).locator('[data-liqview="3"]').click();
     const v3 = LIVE_COMP.views["3"];
-    await expect(card(page).locator(".liq-body")).toContainText("TOP 3 HEADLINE");
+    await expect(card(page).locator(".liq-body")).toContainText("ORDER BOOK IMBALANCE · TOP 3");
     await expect(card(page).locator(".liq-pct")).toHaveText(v3.pct_text);
     await expect(card(page).locator(".liq-sent")).toHaveText(v3.sentence);
     await expect(card(page).locator(".liq-body")).toContainText(
@@ -356,12 +356,12 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
   test("each depth's headline and the agreement strip take the served tilt's colour and arrow", async ({
     page,
   }) => {
-    // the tilt's name as served (order_flow.TILT_WORDS): bids green and up, offers red and down,
-    // balanced gold with no arrow
+    // the tilt's name as served (order_flow.TILT_WORDS): buy-heavy green and up, sell-heavy red
+    // and down, neutral gold with no arrow
     const tone = { BID_HEAVY: "bid", BALANCED: "bal", OFFER_HEAVY: "ask" };
     const arrow = { BID_HEAVY: "up", BALANCED: "", OFFER_HEAVY: "dn" };
     // the tilt as running text says it, served beside the headline's word (tilt_text)
-    const text = { BID_HEAVY: "bid heavy", BALANCED: "balanced", OFFER_HEAVY: "offer heavy" };
+    const text = { BID_HEAVY: "buy-heavy", BALANCED: "neutral", OFFER_HEAVY: "sell-heavy" };
     const errs = watchErrors(page);
     await openDesk(page, READOUT_LIVE);
     const seen = new Set();
@@ -392,10 +392,10 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     // the card's headline draws side_word.
     const errs = watchErrors(page);
     for (const [tilt, word, words] of [
-      ["BID_HEAVY", "BID HEAVY", "bid heavy"],
-      ["BALANCED", "BALANCED", "balanced"],
-      ["OFFER_HEAVY", "OFFER HEAVY", "offer heavy"],
-      ["BID_HEAVY", "BID HEAVY", "Words ONLY the server knows"],
+      ["BID_HEAVY", "BUY-HEAVY", "buy-heavy"],
+      ["BALANCED", "NEUTRAL", "neutral"],
+      ["OFFER_HEAVY", "SELL-HEAVY", "sell-heavy"],
+      ["BID_HEAVY", "BUY-HEAVY", "Words ONLY the server knows"],
     ]) {
       const body = JSON.parse(JSON.stringify(READOUT_LIVE));
       Object.assign(body.readout.venues.COMPOSITE.views["5"], {
@@ -437,7 +437,7 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       "NYSE + Nasdaq only — not the whole market · Book " + c.book_time_ct,
     );
     await expect(card(page).locator(".tdm-src")).toHaveText(
-      "Schwab NYSE_BOOK + NASDAQ_BOOK · composite, newest quote of each exchange · book " +
+      "Schwab NYSE_BOOK + NASDAQ_BOOK · aggregate, newest quote of each exchange · book " +
         c.book_time_ct +
         " · " +
         c.book_age_text +
