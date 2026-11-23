@@ -6,7 +6,7 @@ Walls, pins, inflections, support/resistance derived from options exposure struc
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from datetime import datetime
 from typing import Literal, TypedDict
@@ -296,6 +296,37 @@ def compute_gamma_profile(
         ]
         curve.update(zip(inner, _gamma_profile_totals(parsed, inner), strict=True))
     return sorted(curve.items())
+
+
+def expiry_gamma(
+    contracts: list[OptionContract],
+    now: datetime,
+    *,
+    sessions: Mapping[str, Session],
+    product: str,
+) -> dict[float, float]:
+    """Return one expiry's net GEX if the price were at each of its listed strikes at `now`.
+
+    Its contracts priced as the gamma profile prices them (contract_inputs), summed at every
+    strike the expiry lists (gamma_at_strikes): the confluence matrix's gamma reading of the
+    expiry it shows, at the levels snapshot's valuation instant. Empty with no priced contract.
+    """
+    parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
+    return gamma_at_strikes(parsed, (c.strike for c in contracts if c.strike is not None))
+
+
+def gamma_at_strikes(parsed: list[ProfileRow], strikes: Iterable[float]) -> dict[float, float]:
+    """Net GEX (per 1% move, dollars) of `parsed`'s contracts if the price were at each strike.
+
+    The gamma profile's own sums (_gamma_profile_totals) at the `strikes` listed, a strike
+    whose own contracts hold no open interest included: the curve of compute_gamma_profile at
+    those prices, without the crossing's refinement. A model (Schwab sends gamma at its own
+    price only), one convention: +call / -put. Empty with no priced contract.
+    """
+    if not parsed:
+        return {}
+    grid = sorted({float(s) for s in strikes})
+    return dict(zip(grid, _gamma_profile_totals(parsed, grid), strict=True))
 
 
 def _gamma_profile_totals(parsed: list[ProfileRow], grid: list[float]) -> list[float]:

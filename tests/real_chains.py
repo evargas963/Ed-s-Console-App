@@ -189,6 +189,24 @@ def gamma_flip_worked_out(book: RealChain) -> float | None:
     return min(roots, key=lambda x: abs(x - book.spot)) if roots else None
 
 
+def gamma_here_worked_out(book: RealChain) -> dict[float, float]:
+    """Return the book's net GEX if the price were at each strike, outside the program.
+
+    The dealer convention (+call / -put), each contract's Black-Scholes-Merton gamma (Hull ch.
+    19) with the price at the strike, on Schwab's volatility, rate and yield, times open interest
+    x multiplier x strike^2 x 1%, summed over the contracts that can be priced; one value per
+    listed strike, a strike whose own contracts hold no open interest included.
+    """
+    k, t, sigma, sign, r, q, size = _schwab_inputs(book)
+    out = {}
+    for s in sorted({float(c["strikePrice"]) for c in book.chain}):
+        vt = sigma * np.sqrt(t)
+        d1 = (np.log(s / k) + (r - q + 0.5 * sigma**2) * t) / vt
+        phi = np.exp(-0.5 * d1**2) / math.sqrt(2.0 * math.pi)
+        out[s] = float(np.sum(np.exp(-q * t) * phi / (s * vt) * sign * size) * s * s * 0.01)
+    return out
+
+
 def charm_walls(book: RealChain) -> tuple[float, float]:
     """Return (call charm wall, put charm wall) of a one-expiry book, outside the program.
 

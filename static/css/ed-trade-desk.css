@@ -1667,8 +1667,7 @@
   white-space: nowrap;
 }
 
-.cm-page .status,
-.cm-page .levelread {
+.cm-page .status {
   font-size: 11px;
   padding: 8px 0;
   min-height: 29px;
@@ -1694,8 +1693,8 @@
   display: none;
 }
 
-.cm-page .offscreen button {
-  font-size: 10px;
+.cm-page .offscreen .cm-past {
+  font-size: 11px;
   color: #fff;
   padding: 4px 7px;
   background: #172231;
@@ -1703,8 +1702,90 @@
   border-radius: 5px;
 }
 
-.cm-page .offscreen button.pinned {
+/* the look-back picker: every look-back column follows the one on */
+.cm-page .cm-lookback {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.cm-page .cm-lookback button {
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.cm-page .cm-lookback button.on {
+  background: #2f8cff;
   border-color: #79b7ff;
+}
+
+.cm-page .cm-lookback small {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+/* the Composite's headline: the kind of move, its words and its record */
+.cm-page .cm-headline {
+  margin: 0 0 10px;
+  padding: 14px 16px;
+  background: #0c121c;
+  border: 1px solid #243044;
+  border-radius: 4px;
+}
+
+.cm-page .cm-headline .eyebrow {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #fff;
+}
+
+.cm-page .cm-kind {
+  font-size: 22px;
+  font-weight: 750;
+  margin-top: 4px;
+}
+
+.cm-page .cm-kind small {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* each family's card: what it read and its vote, red for wider and continuing */
+.cm-page .cm-families {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cm-page .cm-family {
+  padding: 8px 10px;
+  border: 1px dashed #2d3d55;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.cm-page .cm-family.neg {
+  color: #fff;
+  border: 1px solid #ef4444;
+  background: #3a1418;
+}
+
+.cm-page .cm-family.pos {
+  color: #fff;
+  border: 1px solid #22c55e;
+  background: #0f2a1a;
+}
+
+/* a served tone: red where the gamma accelerates moves, green where it dampens them */
+.cm-page .neg {
+  color: #ff6b6b;
+}
+
+.cm-page .pos {
+  color: #3ddc84;
 }
 
 .cm-page .frame {
@@ -1717,13 +1798,13 @@
 
 .cm-page .matrix-wrap {
   position: relative;
-  min-width: 1564px;
+  min-width: 1504px;
 }
 
 .cm-page table {
   border-collapse: collapse;
   width: 100%;
-  min-width: 1564px;
+  min-width: 1504px;
   table-layout: fixed;
   font-variant-numeric: tabular-nums;
 }
@@ -1750,15 +1831,6 @@
   display: block;
   color: #fff;
   font-size: 11px;
-  font-weight: 600;
-  margin-top: 2px;
-}
-
-/* a strike's distance in the expiry's implied moves, under its distance in points */
-.cm-page td small.sigma {
-  display: block;
-  color: #fff;
-  font-size: 10px;
   font-weight: 600;
   margin-top: 2px;
 }
@@ -1790,39 +1862,64 @@
   border-right: 1px solid #344256;
 }
 
+.cm-page td.plain {
+  background: #0c121c;
+}
+
 .cm-page td.strike {
   font-size: 15px;
   font-weight: 650;
-  color: #fff;
-  background: #0c121c;
 }
 
-.cm-page td.rail {
-  padding: 0;
-  vertical-align: top;
-  background: #0c121c;
-  position: relative;
-  z-index: 2;
+.cm-page td.comp {
+  text-align: left;
+  white-space: nowrap;
 }
 
-.cm-page td.rail svg {
-  display: block;
-  overflow: visible;
-  pointer-events: auto;
+/* the key levels at a strike, each its own price: option levels blue, session levels grey */
+.cm-page td.tags {
+  text-align: left;
+  white-space: normal;
 }
 
-.cm-page td.rail svg text {
-  font-family: "Arial Narrow", "Segoe UI", Arial, sans-serif;
+.cm-page .cm-tag {
+  display: inline-block;
+  margin: 1px 3px 1px 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: #e6edf5;
+  background: #14202e;
+  border: 1px solid #6b7b92;
+}
+
+.cm-page .cm-tag.options {
+  color: #dbe9ff;
+  background: #0f2338;
+  border-color: #2f7be0;
+}
+
+/* the price row, between the two strikes the price falls between */
+.cm-page tr.price-row td {
+  height: auto;
+  padding: 5px 10px;
+  text-align: left;
+  background: #0c2544;
+  border-top: 1px solid #2f8cff;
+  border-bottom: 1px solid #2f8cff;
+}
+
+.cm-page tr.price-row span {
+  font-weight: 600;
+  margin-left: 8px;
 }
 
 .cm-page tr.selected td {
   box-shadow:
     inset 0 2px #347cff,
     inset 0 -2px #347cff;
-}
-
-.cm-page tr.selected td.rail {
-  box-shadow: none;
 }
 
 .cm-page tr.data-row:hover td {
@@ -1834,56 +1931,13 @@
   outline-offset: -2px;
 }
 
-.cm-page tr.data-row td:not(.rail) {
+.cm-page tr.data-row td {
   cursor: pointer;
-}
-
-.cm-page .score {
-  background: transparent;
-  border: 0;
-  color: #fff;
-  font-weight: 800;
-  font-size: 14px;
-  padding: 4px 8px;
-  border-radius: 5px;
 }
 
 .cm-page .missing {
   background: repeating-linear-gradient(135deg, #151d28, #151d28 5px, #1e2938 5px, #1e2938 6px);
   color: #fff;
-}
-
-.cm-page .level-pill {
-  cursor: pointer;
-  outline: none;
-}
-
-.cm-page .level-pill:hover rect,
-.cm-page .level-pill:focus rect,
-.cm-page .level-pill.pinned rect {
-  stroke: #79b7ff;
-  stroke-width: 2;
-  fill: #1d3654;
-}
-
-.cm-page .price-line {
-  pointer-events: none;
-}
-
-.cm-page .price-line.lit {
-  stroke: #8dc6ff;
-  stroke-width: 2.5;
-  opacity: 1;
-}
-
-.cm-page #spotline {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 4;
-  border-top: 1px solid #5796ff;
-  pointer-events: none;
-  height: 0;
 }
 
 .cm-page .legend {
@@ -1895,15 +1949,6 @@
   color: #fff;
   font-size: 10px;
   font-weight: 600;
-}
-
-.cm-page .scale {
-  display: inline-block;
-  width: 120px;
-  height: 9px;
-  vertical-align: middle;
-  margin-right: 8px;
-  background: linear-gradient(90deg, #e0232f, #111822, #09a643);
 }
 
 .cm-page .detail {
@@ -1929,69 +1974,33 @@
   color: #fff;
 }
 
-.cm-page .cards {
+/* the selected strike's readings, each with its served words */
+.cm-page .cm-lines {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  margin-top: 18px;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 14px;
+  margin: 10px 0 0;
 }
 
-.cm-page .card {
-  border-left: 2px solid #347cff;
-  padding-left: 12px;
-}
-
-.cm-page .card label {
-  color: #fff;
-  font-size: 10px;
-  display: block;
-  font-weight: 600;
-}
-
-.cm-page .card b {
-  display: block;
-  font-size: 18px;
-  margin: 7px 0;
-  font-weight: 700;
-  color: #fff;
-}
-
-.cm-page .card span {
-  color: #fff;
+.cm-page .cm-lines dt {
   font-size: 11px;
+  font-weight: 700;
+}
+
+.cm-page .cm-lines dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.cm-page .cm-lines dd span,
+.cm-page .cm-taglist {
   font-weight: 600;
 }
 
-.cm-page #spotline span {
-  position: absolute;
-  left: 6px;
-  top: -9px;
-  background: #0c121c;
-  color: #fff;
-  border: 1px solid #5796ff;
-  border-radius: 2px;
-  padding: 1px 5px;
-  font-size: 10px;
-  line-height: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.cm-page .detail .note,
 .cm-page .foot {
   font-size: 11px;
   line-height: 1.5;
-  margin-top: 14px;
+  margin-top: 16px;
   color: #fff;
   white-space: pre-line;
-}
-
-.cm-page .foot {
-  margin-top: 16px;
-}
-
-@media (width <=900px) {
-  .cm-page .cards {
-    grid-template-columns: repeat(3, 1fr);
-  }
 }

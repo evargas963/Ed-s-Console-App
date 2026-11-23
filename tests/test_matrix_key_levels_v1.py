@@ -102,7 +102,7 @@ def test_the_matrix_marks_only_the_key_levels(name: str, key: str) -> None:
     assert titles >= KEY_SESSION
     assert titles >= {"Gamma Flip", "Gamma Call", "Gamma Put", "Gamma Total"}
     assert bool(titles & SAME_DAY) == expiry_day
-    session = {lv["title"] for lv in body["rail_lanes"]["session"]}
+    session = {lv["title"] for lv in rail_levels(body) if lv["lane"] == "session"}
     assert session <= KEY_SESSION
 
 

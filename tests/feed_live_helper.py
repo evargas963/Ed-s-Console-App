@@ -121,6 +121,21 @@ def apply_record(state: OrderFlowState, service: str, record: tuple[str, dict]) 
     )
 
 
+def replay_options(messages: list[dict]) -> OrderFlowState:
+    """Return an order-flow state of a test's own after recorded LEVELONE_OPTIONS `messages`.
+
+    Each ({ts_recv, schwab_ts, item}) put on a bus of its own as the daemon puts it (on_the_bus)
+    and applied as the console applies it (apply_record), in order.
+    """
+    bus = MessageBus()
+    state = OrderFlowState()
+    state.current = bus.current
+    for m in messages:
+        record = on_the_bus(bus, "LEVELONE_OPTIONS", m["item"], m["ts_recv"], m["schwab_ts"])
+        apply_record(state, "LEVELONE_OPTIONS", record)
+    return state
+
+
 def daemon_bars(name: str, *symbols: str) -> list[dict]:
     """Return the capture daemon's recorded receipts of Schwab's CHART_EQUITY bars.
 

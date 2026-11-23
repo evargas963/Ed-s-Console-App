@@ -398,10 +398,11 @@ NOT_STREAMED = Streamed(NO_TOP, NO_GREEKS)
 def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -> Streamed:
     """Read a LEVELONE record's fields (`content`, each received at its `stamps` time).
 
-    Its top of book, and its Greeks, volatility and volume, each with the time its own field was
-    received (a message carries only the fields that changed); a Greek Schwab sends as -999 is no
-    value, and TOTAL_VOLUME is a count as sent (a reported 0 is 0, AGENTS.md rule 2). Read once
-    per version of the record, on its first read (streamed_record).
+    Its top of book, and its Greeks, volatility, volume and the stock's price it carries, each
+    with the time its own field was received (a message carries only the fields that changed); a
+    Greek Schwab sends as -999 is no value, and TOTAL_VOLUME is a count as sent (a reported 0 is
+    0, AGENTS.md rule 2). Read once per version of the record, on its first read
+    (streamed_record).
     """
     sent = {
         name: Received(v, stamps[name.upper()][1]) for name, v in streamed_greeks(content).items()
@@ -409,6 +410,9 @@ def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -
     volume = schwab_count(content.get("TOTAL_VOLUME"))
     if volume is not None:
         sent["total_volume"] = Received(volume, stamps["TOTAL_VOLUME"][1])
+    if "UNDERLYING_PRICE" in content:
+        underlying = schwab_number(content["UNDERLYING_PRICE"])
+        sent["underlying_price"] = Received(underlying, stamps["UNDERLYING_PRICE"][1])
     return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
 
 

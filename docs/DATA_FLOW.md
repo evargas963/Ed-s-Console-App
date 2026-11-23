@@ -442,10 +442,35 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `docs/derived_register.md` "Confluence key levels"): Gamma Flip, Gamma Call, Gamma Put, Gamma
   Total and OI Pin from the published levels, their same-day copies only when the chosen expiry
   settles that day, and VWAP and the prior close from the session's price levels; each inside the
-  strikes shown on its lane, the rest listed above or below. Each strike and each level carries its
-  distance from the live price in points and in the expiry's implied moves (σ), one producer
+  strikes shown a tag on the row of the strike nearest its price, its own price on it and its hold
+  rate on hover, the rest listed above or below. Each strike and each level carries its distance
+  from the live price in points and in the expiry's implied moves (σ), one producer
   (`calc.confluence_composite.distance`). Enforced by: `tests/test_matrix_key_levels_v1.py`,
   `tests/test_data_path_confluence_v1.py`, `tests/e2e/console-confluence.spec.js`.
+- **The Confluence matrix's readings.** One expiry's strikes, read left to right by importance
+  (matrix decisions 59 to 64): the Composite (`calc.confluence_composite.composite`: the sign of the
+  expiry's gamma if the price were at the strike, `calc.math_levels.expiry_gamma`, for the shown
+  expiry alone at the levels' valuation instant, and the equal vote of the families measured there);
+  the price and levels; the gamma there and today's hits (`calc.liquidity_value_engine.visits`); the
+  positions (net GEX, open interest, its change since the prior day's capture, DEX); charm, vanna
+  and volatility; and the look-back's volume, volatility change, bought less sold and hedging flow
+  (`calc.option_window`). The headline is the kind of move the whole book's gamma at the price
+  makes, with each family's vote (`calc.confluence_composite.family_votes`), every reading untested.
+  Enforced by: `tests/test_data_path_confluence_v1.py`, `tests/test_matrix_look_back_v1.py`,
+  `tests/e2e/console-confluence.spec.js`.
+- **The option look-back record.** LEVELONE_OPTIONS → the bus → the console's intake →
+  `OrderFlowState._take_record`: for each contract, at the first message of each minute, its volume,
+  volatility and running totals of bought, sold, unknown and hedging flow in force before it (each
+  rise of TOTAL_VOLUME one step, read by its last trade against the quote in force,
+  `calc.option_window.step_totals`). Its lifecycle owner is the order-flow state: a record begins at
+  a contract's first message of the ET day, takes every message after it, and is begun again on the
+  next day and when the program starts, so a window reaching before that is "-", never a part. A
+  reconnect of Schwab's stream keeps it: Schwab's counts run on, so the window's volume stays exact,
+  and the gap's trades arrive as one rise of volume, read by its last trade as any rise Schwab
+  merges is (on the day it was measured, 2026-11-23, 63% of the first hour's volume came in rises
+  larger than their last trade). When the stream stops, the newest values stand and the header says
+  OFFLINE. Read by the matrix (`push.confluence._looks`) over the look-back the page picks. Enforced
+  by: `tests/test_matrix_look_back_v1.py`.
 - **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept
   before it (derived register, "A print on the tape"). Each print is kept with the quote in force
   when it traded (`calc.l1_trade_observation.quote_in_force`, taken once, in

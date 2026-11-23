@@ -1196,6 +1196,22 @@ def hold_counts(
     return {lid: {m: HoldCount(*found[lid][m]) for m in HOLD_MINUTES} for lid in HOLD_LEVELS}
 
 
+def visits(
+    bars_norm: list[Bar], strikes: list[float], now: datetime, sessions: Mapping[str, Session]
+) -> dict[float, tuple[int, int]]:
+    """Return each strike's (touches, holds) in the regular session of `now`'s ET date so far.
+
+    By the hold rates' own rule (_touch_outcomes, at HOLD_MINUTES' first horizon, 15) over that
+    session's regular-hours bars from its open; a touch counts once its 15 minutes have passed.
+    Empty before that session opens, or with no regular session that day (or its hours not held).
+    """
+    hours = _regular(sessions, now.astimezone(ET).date())
+    if hours is None or now < hours[0]:
+        return {}
+    rth = sorted((b for b in bars_norm if hours[0] <= b["_dt"] < hours[1]), key=lambda b: b["_dt"])
+    return {s: _touch_outcomes(rth, s, hours[0], HOLD_MINUTES[0]) for s in strikes}
+
+
 def hold_window(bars_norm: list[Bar], now: datetime, sessions: Mapping[str, Session]) -> list[Bar]:
     """Return the bars hold_counts reads at `now`: each before a regular close at or before `now`.
 

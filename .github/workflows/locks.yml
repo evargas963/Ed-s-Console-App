@@ -14,6 +14,8 @@ permissions:
 
 jobs:
   locks:
+    # `edited` also fires for a closed pull request, which has no test merge left to judge
+    if: github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

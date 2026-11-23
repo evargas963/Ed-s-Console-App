@@ -20,6 +20,7 @@ from calc import math_exposure_core, terrain_engine
 from calc.terrain_engine import compute_terrain
 from option_contract import read_chain
 from tests.call_count import calls
+from tests.real_chains import CRWD, MRVL, TSLA
 from tests.terrain_digest import canonical, real_terrains
 from time_et import ET
 
@@ -40,6 +41,13 @@ BEFORE = json.loads(_RECORD)["terrains"]
 
 #: the one field read another way since the record was written (test_every_value_is_what_it_was)
 ATM_IV = "atm_iv_pct_by_expiry"
+#: the one field added since the record was written: the instant each chain was valued at
+#: (compute_terrain's `now`), at which the matrix prices its gamma if here; asserted on its own
+VALUED_AT = "valued_at"
+#: each real chain's valuation instant, as real_terrains values it
+VALUED = {c.ticker: c.now for c in (CRWD, TSLA, MRVL)} | {
+    "SPY": datetime.fromtimestamp(_SPY["capture_ts_utc"], ET)
+}
 #: the words of the regime, the headline and the flip's note as the record holds them, and as
 #: they are said since every name is the industry's and the levels are named Greek first
 #: (operator 2026-11-22): the words alone, never which one is said
@@ -133,7 +141,8 @@ def test_every_value_is_what_it_was():
     its values are proved on real chains kept with their quotes in
     tests/test_terrain_engine_v1.py). Net delta and net DEX are the signed sum of Schwab's deltas
     since 2026-11-22 (DEX_KEYS: their places are what they were; their values are proved on the
-    raw chain in tests/test_one_faucet_units_v1.py), and nothing else moved with them.
+    raw chain in tests/test_one_faucet_units_v1.py), and nothing else moved with them. The
+    instant each chain was valued at (VALUED_AT, new) is the `now` it was computed at.
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
@@ -141,6 +150,8 @@ def test_every_value_is_what_it_was():
         was = _as_said_now(_per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"}))
         was = _dex_unread(was)
         now = _dex_unread(_per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"}))
+        assert _field(now, VALUED_AT) == VALUED[tk], tk
+        now = [e for e in now if e[1] != VALUED_AT]
         _same([e for e in was if e[1] != ATM_IV], [e for e in now if e[1] != ATM_IV], tk)
         assert [e[1] for e in _field(was, ATM_IV)] == [e[1] for e in _field(now, ATM_IV)], tk
         # the whole book's charm rows (new) are its charm map's nets, the map the record holds

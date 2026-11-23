@@ -1,7 +1,7 @@
 /*
  * Confluence Matrix. The page draws the `confluence` panel on its socket and computes nothing.
  * The panel sent again (the chain or the levels changed) redraws the table at the page's one
- * expiry choice (the shared expiry dropdown; none chosen: the program ranks the front one).
+ * expiry choice (the shared expiry dropdown; none chosen: the program reads the front one).
  *
  * Real data: the confluence body as the real code served it on MRVL's full chain captured
  * 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_confluence_payloads_2026_10_07.json).
@@ -12,6 +12,39 @@ const FX = require("../fixtures/real_mrvl_confluence_payloads_2026_10_07.json");
 
 const FRONT = "2026-10-09";
 const NEXT = "2026-10-16";
+// the columns in the order decision 62 reads them, Composite first
+const HEADS = [
+  "Read · strength",
+  "Strike",
+  "Δ pts",
+  "σ",
+  "Key levels here",
+  "Gamma if here",
+  "Visits",
+  "Net GEX",
+  "OI",
+  "ΔOI 1d",
+  "DEX",
+  "Charm",
+  "Vanna",
+  "IV",
+  "IV chg",
+  "Volume",
+  "Vol/OI",
+  "P/C vol",
+  "Pace",
+  "Bought−sold",
+  "Flow",
+];
+const GROUPS = [
+  "Composite",
+  "Price and levels",
+  "Gamma profile and levels",
+  "Positioning (open interest)",
+  "Second-order Greeks (charm, vanna, IV)",
+  "Volume and flow",
+  "Hedging flow (est.)",
+];
 
 function served(expiry) {
   return FX.by_expiry[expiry] || FX.by_expiry[FRONT];
@@ -26,6 +59,23 @@ async function openMatrix(page) {
   await page.goto("/");
 }
 
+// a strike row's cell of one column, by its head
+const cellOf = (page, i, head) =>
+  page.locator('#cmRows tr[data-i="' + i + '"] td').nth(HEADS.indexOf(head));
+
+test("the groups and columns read left to right by importance, the Composite first", async ({
+  page,
+}) => {
+  await mockPriceSocket(page, [], [], undefined, { confluence: served(FRONT) });
+  await openMatrix(page);
+  await expect(page.locator("#cmFrame thead tr").first().locator("th")).toHaveText(GROUPS);
+  const heads = page.locator("#cmFrame thead tr").nth(1).locator("th");
+  await expect(heads).toHaveCount(HEADS.length);
+  for (let k = 0; k < HEADS.length; k++) {
+    await expect(heads.nth(k)).toContainText(HEADS[k]);
+  }
+});
+
 test("a cell shades by its value against its column peak, in the theme heat colours", async ({
   page,
 }) => {
@@ -38,7 +88,7 @@ test("a cell shades by its value against its column peak, in the theme heat colo
   expect(i).toBeGreaterThan(0);
   const v = body.rows[i].net_gex,
     peak = body.peaks.net_gex;
-  const cell = page.locator('#cmRows tr[data-i="' + i + '"] td').nth(3); // strike, distance, score, net
+  const cell = cellOf(page, i, "Net GEX");
   await expect(cell).toHaveText(body.rows[i].net_gex_text);
   const [zero, neg, bg] = await cell.evaluate((el) => {
     const cs = getComputedStyle(document.documentElement);
@@ -60,6 +110,28 @@ test("a cell shades by its value against its column peak, in the theme heat colo
   expect(bg).toBe("rgb(" + a.map((x, k) => Math.round(x + (b[k] - x) * t)).join(", ") + ")");
 });
 
+test("the Composite cell says the served words and shades by its served strength", async ({
+  page,
+}) => {
+  const body = served(FRONT);
+  const i = body.rows.findIndex((r) => r.composite_text != null);
+  expect(i).toBeGreaterThanOrEqual(0);
+  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await openMatrix(page);
+  const cell = cellOf(page, i, "Read · strength");
+  await expect(cell).toHaveText(body.rows[i].composite_text);
+  await expect(cell).toHaveAttribute("title", body.rows[i].composite_hover);
+  // a strike with no Composite says why on hover, never a number
+  const blank = body.rows.findIndex((r) => r.composite_text == null);
+  if (blank >= 0) {
+    await expect(cellOf(page, blank, "Read · strength")).toHaveText("-");
+    await expect(cellOf(page, blank, "Read · strength")).toHaveAttribute(
+      "title",
+      body.rows[blank].composite_reason,
+    );
+  }
+});
+
 test("a price that has stopped marks the spot not live with its time and age", async ({ page }) => {
   // AGENTS rule 5: the confluence panel as the real code serves it on SPY's 2026-10-22 close
   // publication, its 16:39 print the last price and the daemon's connection ended, read at 18:00
@@ -77,10 +149,16 @@ test("a price that has stopped marks the spot not live with its time and age", a
   expect(STOPPED.spot_not_live_text).toContain("last trade");
   await expect(page.locator("#cmBody")).toContainText(STOPPED.spot_text);
   await expect(page.locator("#cmBody")).toContainText(STOPPED.spot_not_live_text);
+  // the price row, where the program placed it, says the strikes it falls between
+  await expect(page.locator("#cmRows tr.price-row")).toContainText(STOPPED.price_between_text);
+  const rows = page.locator("#cmRows tr");
+  await expect(rows.nth(STOPPED.price_row_index)).toHaveClass(/price-row/);
   expect(errs).toEqual([]);
 });
 
-test("the matrix redraws when the priced chain updates and keeps the expiry", async ({ page }) => {
+test("the matrix redraws its served tags and readings as the chain updates, keeping the expiry", async ({
+  page,
+}) => {
   const errs = [];
   const expiries = [];
   page.on("pageerror", (e) => errs.push(e.message));
@@ -99,54 +177,43 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
   await openMatrix(page);
   const body = served(FRONT);
   const rows = body.rows;
-  const hi = rows[0].strike;
-  const lo = rows[rows.length - 1].strike;
-  await expect(page.locator("#cmBody")).toContainText(rows[0].score_text);
+  await expect(page.locator("#cmBody")).toContainText(rows[0].strike_text);
   await expect(page.locator("#cmBody td", { hasText: /^-$/ }).first()).toBeVisible();
   await expect(page.locator("#cmBody h1")).toHaveCount(0);
-  await expect(page.locator("#cmBody")).not.toContainText("Hover a level to trace its price");
   await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + FRONT); // served
   await expect(page.locator("#cmBody select")).toHaveCount(0); // no dropdown of its own
-  // the served rail (push.confluence._rail): each lane's levels inside the rows, those past them
-  const inside = [...body.rail_lanes.session, ...body.rail_lanes.options];
-  expect(inside.length).toBeGreaterThan(0);
-  for (const lv of inside) {
-    expect(lv.price <= hi && lv.price >= lo).toBe(true);
-    await expect(
-      page.locator(".level-pill", { hasText: lv.abbrev + " " + lv.price_text }).first(),
-    ).toBeAttached();
+  // each served tag on the row the program placed it, its served words on hover
+  const tagged = rows.map((r, i) => [r, i]).filter(([r]) => r.tags.length);
+  expect(tagged.length).toBeGreaterThan(0);
+  for (const [r, i] of tagged) {
+    const tags = cellOf(page, i, "Key levels here").locator(".cm-tag");
+    await expect(tags).toHaveText(r.tags.map((t) => t.text));
+    await expect(tags.first()).toHaveAttribute("title", r.tags[0].hover);
   }
   for (const lv of body.levels_above) {
-    await expect(page.locator("#cmAbove")).toContainText(lv.abbrev + " " + lv.price_text);
+    await expect(page.locator("#cmAbove")).toContainText(lv.text);
   }
   for (const lv of body.levels_below) {
-    await expect(page.locator("#cmBelow")).toContainText(lv.abbrev + " " + lv.price_text);
+    await expect(page.locator("#cmBelow")).toContainText(lv.text);
   }
-  // a level's readout names every level at its price, as served
-  await page.locator(".level-pill").first().hover();
-  const at = await page.locator(".level-pill").first().getAttribute("data-price");
-  await expect(page.locator("#cmRead")).toHaveText(body.level_names[at] + " · " + at);
   const font = await page.locator(".cm-page").evaluate((el) => getComputedStyle(el).fontSize);
   expect(font).toBe("13px");
   const opened = expiries.length;
   expect(opened).toBeGreaterThan(0);
 
-  const row = rows.find((r) => r.score_text && r.contributions.length);
-  const first = row.contributions[0];
+  // a strike clicked: its served readings and their words
+  const row = rows.find((r) => r.oi_hover && r.composite_hover);
   await page.locator('#cmBody tbody tr[data-i="' + rows.indexOf(row) + '"]').click();
-  await expect(page.locator("#cmDetail")).toContainText(first.label + " " + first.text);
-  await expect(page.locator("#cmDetail")).toContainText(row.net_gex_text + "M");
-  await expect(page.locator("#cmDetail")).toContainText(row.charm_text + "k");
-  await expect(page.locator("#cmDetail")).toContainText("$ per 1% move");
-  await expect(page.locator("#cmDetail")).toContainText("delta-shares / day");
+  await expect(page.locator("#cmDetail")).toContainText(row.composite_hover);
+  await expect(page.locator("#cmDetail")).toContainText(row.oi_hover);
 
   // the panel sent again: the front expiry stays (the page asked All Expirations, null: the
-  // program's front one)
+  // program's front one), and so does the strike clicked
   sock.changed("confluence");
   await expect.poll(() => expiries.length).toBe(opened + 1);
   expect(expiries[expiries.length - 1]).toBeNull();
   await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + FRONT);
-  await expect(page.locator("#cmDetail")).toContainText(first.label + " " + first.text);
+  await expect(page.locator("#cmDetail")).toContainText(row.oi_hover);
 
   // the one expiry dropdown's choice is the matrix's
   await page.evaluate((e) => window.EdShell.setExpiry(e), NEXT);
@@ -160,7 +227,7 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
 
   // the view opened again asks for the same panel of the same expiry: nothing new is asked or sent
   const asks = confluenceAsks();
-  expect(asks[asks.length - 1]).toBe(JSON.stringify({ expiry: NEXT }));
+  expect(asks[asks.length - 1]).toBe(JSON.stringify({ expiry: NEXT, lookback: null }));
   await page.getByRole("button", { name: "Confluence Matrix" }).click();
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
   expect(confluenceAsks()).toEqual(asks);
@@ -169,9 +236,7 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
   expect(errs).toEqual([]);
 });
 
-test("a chosen expiry that has passed is said, never another expiry's ranking", async ({
-  page,
-}) => {
+test("a chosen expiry that has passed is said, never another expiry's matrix", async ({ page }) => {
   const asked = [];
   let afterItPassed = false;
   const sock = await mockPriceSocket(page, [], [], undefined, {
@@ -183,7 +248,7 @@ test("a chosen expiry that has passed is said, never another expiry's ranking", 
   await openMatrix(page);
   await page.evaluate((e) => window.EdShell.setExpiry(e), FRONT);
   await expect.poll(() => asked[asked.length - 1]).toBe(FRONT);
-  await expect(page.locator("#cmBody")).toContainText(served(FRONT).rows[0].score_text);
+  await expect(page.locator("#cmBody")).toContainText(served(FRONT).rows[0].strike_text);
   afterItPassed = true;
   const before = asked.length;
   sock.changed("confluence");
@@ -195,46 +260,74 @@ test("a chosen expiry that has passed is said, never another expiry's ranking", 
   await expect(page.locator("#cmRows tr")).toHaveCount(0);
 });
 
-// the rail's regime cell, as drawn
+// the regime card's value, as drawn
 const regimeCell = (page) =>
-  page.locator("#cmBody .stat", { hasText: "GAMMA REGIME · CHAIN" }).locator("strong");
+  page.locator("#cmBody .stat", { hasText: "GAMMA REGIME" }).locator("strong");
 
-test("the rail says MRVL's regime in the served words", async ({ page }) => {
+test("the regime card says MRVL's regime in the served words and tone", async ({ page }) => {
   // MRVL's real answer: net GEX at the price is positive
   const body = served(FRONT);
-  expect([body.regime, body.regime_text]).toEqual(["POSITIVE_GAMMA", "Positive gamma"]);
+  const card = body.cards.find((c) => c.label === "GAMMA REGIME");
+  expect([card.value, card.tone]).toEqual(["Positive gamma", "pos"]);
   await mockPriceSocket(page, [], [], undefined, { confluence: body });
   await openMatrix(page);
   await expect(regimeCell(page)).toHaveText("Positive gamma");
+  await expect(regimeCell(page)).toHaveClass(/pos/);
 });
 
-// INDUCED: MRVL's answer with each other regime the server serves and the words it serves with it
-// (calc.terrain_read.REGIME_TEXT), then a regime and words the page has never held: the rail
-// draws the served words and picks none
-for (const [regime, words] of [
-  ["NEGATIVE_GAMMA", "Negative gamma"],
-  ["UNAVAILABLE", "unavailable"],
-  ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
+// INDUCED: MRVL's answer with each other word and tone the server serves on the card, then words
+// the page has never held: the card draws the served words and picks none
+for (const [words, tone] of [
+  ["Negative gamma", "neg"],
+  ["unavailable", null],
+  ["as only the server says", null],
 ]) {
-  test(`the rail says the regime ${regime} in the served words`, async ({ page }) => {
-    const body = Object.assign({}, served(FRONT), { regime: regime, regime_text: words });
-    await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  test(`the regime card draws the served words ${words}`, async ({ page }) => {
+    const body = served(FRONT);
+    const cards = body.cards.map((c) =>
+      c.label === "GAMMA REGIME" ? Object.assign({}, c, { value: words, tone: tone }) : c,
+    );
+    await mockPriceSocket(page, [], [], undefined, {
+      confluence: Object.assign({}, body, { cards: cards }),
+    });
     await openMatrix(page);
     await expect(regimeCell(page)).toHaveText(words);
   });
 }
 
-test("the Composite column says what it measures: size, not direction", async ({ page }) => {
-  // the score ranks unsigned sizes (calc.confluence_composite.magnitudes), so the header says so,
-  // beside the served scale and preset
+test("a look-back picked is asked for, and the served one is drawn on with its start", async ({
+  page,
+}) => {
+  const asked = [];
+  // the program's answer at each look-back asked: the served body, its choice marked on as the
+  // program marks it (push.confluence._lookback), its start as served
+  await mockPriceSocket(page, [], [], undefined, {
+    confluence: (key, params) => {
+      asked.push(params.lookback);
+      const body = served(FRONT);
+      const chosen = params.lookback || body.lookback.chosen;
+      return Object.assign({}, body, {
+        lookback: Object.assign({}, body.lookback, {
+          chosen: chosen,
+          choices: body.lookback.choices.map((c) => Object.assign({}, c, { on: c.key === chosen })),
+        }),
+      });
+    },
+  });
+  await openMatrix(page);
+  const picker = page.locator("#cmBody .cm-lookback");
+  await expect(picker.locator("button.on")).toHaveText("5 min");
+  await expect(picker.locator("small")).toHaveText(served(FRONT).lookback.start_text);
+  await picker.getByRole("button", { name: "15 min" }).click();
+  await expect.poll(() => asked[asked.length - 1]).toBe("15");
+  await expect(picker.locator("button.on")).toHaveText("15 min");
+});
+
+test("the headline says the kind of move in the served words, untested", async ({ page }) => {
   const body = served(FRONT);
   await mockPriceSocket(page, [], [], undefined, { confluence: body });
   await openMatrix(page);
-  const head = page.locator("#cmFrame thead th", { hasText: "Composite" });
-  await expect(head.locator("small")).toHaveText([
-    "size, not direction",
-    body.scale_text,
-    body.preset,
-  ]);
-  await expect(head).toHaveAttribute("title", /It carries no direction\.$/);
+  await expect(page.locator("#cmBody .cm-kind")).toContainText(body.headline.text);
+  await expect(page.locator("#cmBody .cm-kind")).toHaveClass(new RegExp(body.headline.tone));
+  await expect(page.locator("#cmBody .cm-record")).toContainText("untested");
 });

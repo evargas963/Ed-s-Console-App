@@ -70,10 +70,17 @@ def _top_as_sent(fields: dict) -> StreamedTop:
 
 
 def _read_as_sent(topic: str, rec: dict) -> Streamed:
-    """Read a record's merged fields as sent, each Greek and the volume at its own receive time."""
+    """Read a record's merged fields as sent, each at its own receive time.
+
+    Each Greek, the stock's price the message carried (UNDERLYING_PRICE) and the volume.
+    """
     content = _fields(topic, rec)
     at = rec["field_ts"]
-    greeks = {f.lower(): Received(_as_sent(content[f]), at[f][1]) for f in _GREEKS if f in content}
+    greeks = {
+        f.lower(): Received(_as_sent(content[f]), at[f][1])
+        for f in (*_GREEKS, "UNDERLYING_PRICE")
+        if f in content
+    }
     volume = _as_sent(content.get("TOTAL_VOLUME"), count=True)
     if volume is not None:
         greeks["total_volume"] = Received(volume, at["TOTAL_VOLUME"][1])

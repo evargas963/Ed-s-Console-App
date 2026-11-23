@@ -75,6 +75,6 @@ def sent(messages: list[dict], key: str) -> list[dict]:
 
 
 def rail_levels(body: dict) -> list[dict]:
-    """Every level a Confluence answer serves: each lane's inside the rows, then those past."""
-    lanes = body["rail_lanes"]
-    return [*lanes["session"], *lanes["options"], *body["levels_above"], *body["levels_below"]]
+    """Every level a Confluence answer serves: each row's tags, then the levels past the rows."""
+    tags = [tag for row in body["rows"] for tag in row["tags"]]
+    return [*tags, *body["levels_above"], *body["levels_below"]]

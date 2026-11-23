@@ -323,6 +323,9 @@ class TerrainSnapshot:
     iv_by_expiry: dict[str | None, dict[float, float | None]] = field(
         default_factory=dict[str | None, dict[float, float | None]], repr=False
     )
+    #: the valuation instant every time to expiry in it was taken at (compute_terrain's `now`):
+    #: a reader pricing more of the same chain prices it at that instant. None: nothing priced.
+    valued_at: datetime | None = None
     #: {expiry: put OI / call OI} for each listed expiry: put/call OI (positions held)
     pcr_by_expiry: dict[str, float | None] = field(default_factory=dict[str, float | None])
     #: each expiry's ATM implied vol, percent (atm_sigma_by_expiry); None when a leg has no IV
@@ -1220,6 +1223,7 @@ def compute_terrain(
     return TerrainSnapshot(
         ticker=ticker,
         spot=float(spot),
+        valued_at=now,
         regime=read.regime,
         headline=read.headline,
         headline_source=read.headline_source,

@@ -284,9 +284,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   ask in force when it traded, never the quote that followed it
   (`calc.l1_trade_observation.quote_in_force`, `tests/test_quote_in_force_v1.py`); the page writes
   no reading of its own (a session volume of 0 is served with what it means,
-  `push.strikes._shown_migration`); the Confluence Composite ranks sizes and says so on the screen
-  ("size, not direction", `tests/e2e/console-confluence.spec.js`): a reading of ours is called a
-  direction only once recorded data supports it (operator 2026-11-21).
+  `push.strikes._shown_migration`); the Confluence matrix's readings say "untested" and carry no
+  direction word (`tests/e2e/console-confluence.spec.js`): a reading of ours is called a direction
+  only once recorded data supports it (operator 2026-11-21). The matrix revamp (decisions 61 to 64
+  of the operator's matrix plan) is built as one change and deployed when ready (operator
+  2026-11-23); what it leaves for later, each needing sessions of the record: each reading's running
+  record session by session, pace's 20-session baseline, and the stock book and tape's vote.
 - Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
   at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
   streamed option trades land against the bid and ask (tabled by him).
