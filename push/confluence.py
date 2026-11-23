@@ -102,7 +102,7 @@ def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime) -> list[d
                 }
             )
     for gid, label in SAME_DAY_LEVELS:
-        price = live.same_day.get(gid)  # an unavailable snapshot holds no same-day level
+        price = live.same_day[gid]  # None: not known (an unavailable snapshot's every one)
         if price is not None:
             markers.append(
                 {

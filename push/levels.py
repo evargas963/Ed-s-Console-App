@@ -349,10 +349,10 @@ def _same_day_rows(published: PublishedLevels | None) -> list[SameDayRow]:
         {
             "id": gid,
             "label": label,
-            "price": snap.same_day.get(gid),
+            "price": snap.same_day[gid],
             "note": same_day_note(snap),
             "carried": snap.level(gid),
-            "price_text": price_text(snap.same_day.get(gid)),
+            "price_text": price_text(snap.same_day[gid]),
             "carried_text": price_text(snap.level(gid)),
             "staleness": stamp.copy(),
         }

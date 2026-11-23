@@ -209,6 +209,11 @@ class TerrainFields(TypedDict):
     pcr_volume_by_expiry_text: dict[str, str | None]
 
 
+def no_same_day_levels() -> dict[str, float | None]:
+    """Return every same-day level (SAME_DAY_LEVELS) as not known."""
+    return {name: None for name, _label in SAME_DAY_LEVELS}
+
+
 @dataclass(frozen=True)
 class TerrainSnapshot:
     """Everything the terrain tab renders, computed from one chain."""
@@ -265,8 +270,9 @@ class TerrainSnapshot:
     gsf: float | None = None
     grc: float | None = None
 
-    #: The levels on a 0DTE basis (same_day_levels). Keys are SAME_DAY_LEVELS.
-    same_day: dict[str, float | None] = field(default_factory=dict[str, float | None])
+    #: The levels on a 0DTE basis (same_day_levels), every one of SAME_DAY_LEVELS; each is None
+    #: while not known, an unavailable snapshot's all of them
+    same_day: dict[str, float | None] = field(default_factory=no_same_day_levels)
     #: the expiry the same-day levels were re-priced from to today's close (a model, said on
     #: hover); None when they are today's own expiry as held, or absent
     same_day_repriced_from: str | None = None
@@ -524,7 +530,7 @@ class TotalGammaRecord:
 
 def total_gamma_strikes(snap: TerrainSnapshot) -> TotalGammaStrikes:
     """Return the largest total gamma strike of the whole book and of the same-day book."""
-    return snap.absolute_gamma_strike, snap.same_day.get("absolute_gamma_strike")
+    return snap.absolute_gamma_strike, snap.same_day["absolute_gamma_strike"]
 
 
 def total_gamma_record(
@@ -1116,7 +1122,7 @@ def same_day_levels(
     today's close (a chain is valued at that close, time_et.valuation_instant, so they stand
     there) or no option window is held for today.
     """
-    blank: dict[str, float | None] = {name: None for name, _label in SAME_DAY_LEVELS}
+    blank = no_same_day_levels()
     today = now.astimezone(ET).date().isoformat()
     front = min((e for e in expiry_rows if e is not None and e >= today), default=None)
     if front is None:
