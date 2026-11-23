@@ -116,18 +116,12 @@ class GammaSurface(SurfaceState):
     cells: list[GridCell]
 
 
-class SpotStamp(TypedDict):
-    """A price's source and its time, as the terrain panel carries them."""
-
-    spot_source: str
-    spot_as_of_ts_utc: float | None
-
-
-class ServedLevels(TerrainFields, SpotStamp):
+class ServedLevels(TerrainFields):
     """A ticker's published levels as the terrain panel sends them (PublishedLevels.served).
 
-    The snapshot's fields with the chain's time as `computed_ts_utc`, the newest option value's as
-    `levels_ts_utc`, and the price they were computed at.
+    The snapshot's fields with the chain's time as `computed_ts_utc` and the newest option
+    value's as `levels_ts_utc`. Not the price they were computed at, its source or its time: the
+    price on every screen is the price row's alone (one producer).
     """
 
     levels_ts_utc: float
@@ -176,8 +170,6 @@ class PublishedLevels:
             "computed_ts_utc": self.computed_ts_utc,
             "levels_ts_utc": self.levels_ts_utc,
             "chain_basis": self.chain_basis,
-            "spot_source": self.spot_source,
-            "spot_as_of_ts_utc": self.spot_as_of_ts_utc,
         }
 
 

@@ -21,7 +21,7 @@ const SURFACE = REAL.surface,
   TERRAIN = REAL.terrain,
   STRIKES = REAL.strikes,
   CHAIN = REAL.chain;
-const SPOT = TERRAIN.spot;
+const SPOT = REAL.price_row.spot; // Schwab's last trade, the price row's (one producer)
 const EXPS = SURFACE.expirations;
 // price bars around the real price (the set holds no bars)
 const BARS = {

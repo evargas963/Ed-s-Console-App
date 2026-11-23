@@ -1,7 +1,8 @@
 """The `desk` panel: the Trade Desk's alerts, one item per event, newest first.
 
 Read from State: the recorded level crosses (state.cross_store), the terrain panel at the live
-price (push.terrain) and the chart's bars (push.bars).
+price (push.terrain), the live price itself (push.spot.resolve_spot, the price row's) and the
+chart's bars (push.bars).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from calc.micro_structure import Candle
 from calc.terrain_engine import OPTION_LEVELS, WALL_BREACHED
 from numeric_contract import count_text, price_text
 from push.bars import chart_bars, held_minutes
+from push.spot import resolve_spot
 from push.terrain import terrain
 from push.verdict import LEVELS_STALE
 from state import cross_store
@@ -173,6 +175,7 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
     """
     items: list[dict[str, Any]] = []
     t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
+    spot, _src, spot_ts = resolve_spot(tk, now=now.timestamp())  # the price they are through
     names = dict(OPTION_LEVELS)
     walls = (
         ("call_wall", "cw", "up", t["call_wall_state"], t["call_wall"]),
@@ -183,11 +186,11 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
             items.append(
                 _item(
                     key,
-                    t["spot_as_of_ts_utc"],
+                    spot_ts,
                     "OPTIONS",
                     way,
                     f"Spot through {names[level]}",
-                    f"{names[level]} {price_text(wall)} · spot {price_text(t['spot'])}",
+                    f"{names[level]} {price_text(wall)} · spot {price_text(spot)}",
                     "gamma levels",
                 )
             )

@@ -49,7 +49,7 @@ from push.answers import unavailable
 from push.levels import pin_note
 from push.liquidity import hold_text
 from push.spot import resolve_spot
-from push.strike_rows import expiry_unreadable, window
+from push.strike_rows import WindowView, centre_asked, expiry_unreadable, window
 from push.verdict import LevelsVerdict, terrain_staleness
 from state import bar_store
 from state.level_store import PublishedLevels, published_levels
@@ -507,16 +507,33 @@ def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]
 
     Over the look-back the page chose (`params["lookback"]`, one of LOOKBACKS; none or another:
     DEFAULT_LOOKBACK), its rows held at the centre the page was last served (`params["centre"]`,
-    a strike; none or not a number: around the price).
+    a strike, or None: around the price; read as every panel reads one, centre_asked).
     """
     unreadable = expiry_unreadable(params)
     if unreadable is not None:
         return unavailable(tk, unreadable, **NO_LEVELS)
+    centre = centre_asked(params)
+    if isinstance(centre, str):
+        return unavailable(tk, centre, **NO_LEVELS)
     chosen = params.get("lookback")
     lookback = chosen if isinstance(chosen, str) and chosen in LOOKBACKS else DEFAULT_LOOKBACK
-    held = params.get("centre")
-    centre = float(held) if isinstance(held, int | float) and not isinstance(held, bool) else None
     return confluence_payload(tk, params["expiry"], now, lookback, centre)
+
+
+def _held_window(
+    strikes: list[float], spot: float | None, centre: float | None
+) -> tuple[int, int, WindowView]:
+    """Return the matrix's rows: around `centre` while the live price lies within them.
+
+    As a trading ladder holds its rows and moves only its price; around the strike nearest the
+    price once it has left them, or with no listed centre (strike_rows.window, Auto).
+    """
+    spot_strike = nearest_strike(strikes, spot)
+    held = centre if centre in strikes else None
+    lo, hi, view = window(strikes, spot_strike, "auto", held, 0)
+    if held is not None and spot is not None and not strikes[lo] <= spot <= strikes[hi]:
+        return window(strikes, spot_strike, "auto", None, 0)
+    return lo, hi, view
 
 
 def _lookback(choice: str, start: int | None) -> dict[str, Any]:
@@ -577,11 +594,7 @@ def confluence_payload(
     markers = _confluence_markers(live, tk, now, chosen == today)
     levels = _screen_levels(markers, live_spot, sigma_root_t)
     strikes = stored.strikes
-    spot_strike = nearest_strike(strikes, live_spot)
-    held = centre if centre in strikes else None
-    lo, hi, view = window(strikes, spot_strike, "auto", held, 0)
-    if held is not None and live_spot is not None and not strikes[lo] <= live_spot <= strikes[hi]:
-        lo, hi, view = window(strikes, spot_strike, "auto", None, 0)
+    lo, hi, view = _held_window(strikes, live_spot, centre)
     rows = window_rows(stored, strikes[lo : hi + 1])
     body: dict[str, Any] = {
         "notes": [note for note in (view["note"],) if note is not None],

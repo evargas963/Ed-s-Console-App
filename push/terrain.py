@@ -1,7 +1,9 @@
-"""The `terrain` panel: a ticker's published levels at the live price, with its ATRs and mark.
+"""The `terrain` panel: a ticker's published levels at the live price, with its ATRs.
 
 Read from State: the published levels (state.level_store), the live price, and the daily, weekly
-and monthly candles the bar writer holds (state.bar_store, push.bars.daily_candles).
+and monthly candles the bar writer holds (state.bar_store, push.bars.daily_candles). The price
+itself, its time and whether it is live are the price row's, which the page draws (one producer):
+the panel carries none of them.
 """
 
 from __future__ import annotations
@@ -9,8 +11,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TypedDict
 
-import live_market_plane as lmp
-from app.options.order_flow.streaming import price_state
 from calc.terrain_atr import Atr, compute_atrs
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -27,15 +27,8 @@ from push.bars import daily_candles
 from push.spot import resolve_spot
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import bar_store, level_store
-from state.level_store import ServedLevels, SpotStamp
+from state.level_store import ServedLevels
 from time_et import ET, ct_label, sessions
-
-
-class LevelsMark(TypedDict):
-    """The one word the Key Levels line shows, and why (levels_mark)."""
-
-    levels_mark: str
-    levels_mark_reason: str | None
 
 
 class AtrFields(TypedDict):
@@ -61,12 +54,12 @@ class TotalGammaMoveText(TypedDict):
     time_ct: str
 
 
-class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, LevelsMark):
+class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields):
     """What the terrain panel carries beside the levels' own fields, published or not.
 
-    The levels' verdict, the live price's relations to them, the ATRs, the regime as
-    the screen says it (terrain_read), the Key Levels line's word, and the newest move of the
-    largest total gamma strike (None: none since the program started).
+    The levels' verdict, the live price's relations to them, the ATRs, the regime as the screen
+    says it (terrain_read), and the newest move of the largest total gamma strike (None: none
+    since the program started).
     """
 
     regime_text: str
@@ -92,24 +85,8 @@ class TerrainPanel(ServedLevels, BesideTheLevels):
     """The `terrain` panel: a ticker's published levels at the live price (terrain)."""
 
 
-class TerrainNotReady(TerrainFields, SpotStamp, BesideTheLevels):
+class TerrainNotReady(TerrainFields, BesideTheLevels):
     """The `terrain` panel before a ticker's first levels: each level unknown, and why (`error`)."""
-
-
-def levels_mark(levels: LevelsVerdict, ticker: str, now: float) -> LevelsMark:
-    """Return the one word the Key Levels line shows, from the levels' verdict and their price's.
-
-    From terrain_staleness and price_state: the levels' state while it is not LIVE, else the
-    price's state (the walls stand and are LIVE only while the price they are measured from is
-    live), with why.
-    """
-    if levels["levels_state"] != lmp.LIVE:
-        return {
-            "levels_mark": levels["levels_state"],
-            "levels_mark_reason": levels["levels_stale_reason"],
-        }
-    label, outage = price_state(ticker, now)
-    return {"levels_mark": label, "levels_mark_reason": outage}
 
 
 def atr(ticker: str, now: datetime) -> Atr:
@@ -150,34 +127,26 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
     """
     at = datetime.fromtimestamp(now, ET)
     cached, staleness = terrain_cache_get(tk, now)
-    spot, spot_source, spot_ts = resolve_spot(tk, now=now)
+    spot = resolve_spot(tk, now=now)[0]  # the live price every relation is at
     if cached is not None:
         served = cached.served()
-        # the levels as the producer published them; `spot` is the live price, and every relation
-        # of the price to the levels is at it (price_relations); internal fields (the kept chain,
-        # the heatmap grid, per-strike rows) are their own panels
+        # the levels as the producer published them, and every relation of the live price to them
+        # (price_relations); the price itself, its time and whether it is live are the price
+        # row's, which the page draws beside them. Internal fields (the kept chain, the heatmap
+        # grid, per-strike rows) are their own panels
         return {
             **served,
             **staleness,
-            "spot": spot,
-            "spot_source": spot_source,
-            "spot_as_of_ts_utc": spot_ts,
             **price_relations(served, spot).to_dict(),
             **_atr_fields(tk, at),  # live: today's candle from the bars held now
             "regime_text": REGIME_TEXT[cached.snap.regime],
             "total_gamma_change": total_gamma_text(cached.total_gamma.move),
-            # the chain's verdict is levels_state, above; whether the live price the relations are
-            # computed from is live is the price row's (the page draws it beside them)
-            **levels_mark(staleness, tk, now),
         }
     _why = level_store.chain_failure(tk)
     empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
     return {
         **empty,
         **price_relations(empty, spot).to_dict(),
-        **levels_mark(staleness, tk, now),
-        "spot_source": spot_source,
-        "spot_as_of_ts_utc": spot_ts,
         **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
         "regime_text": REGIME_TEXT[empty["regime"]],
         "total_gamma_change": None,

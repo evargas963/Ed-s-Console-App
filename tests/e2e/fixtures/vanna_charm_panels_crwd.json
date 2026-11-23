@@ -7012,7 +7012,6 @@
   },
   "terrain": {
     "ticker": "CRWD",
-    "spot": 269.395,
     "schema_version": 7,
     "regime": "POSITIVE_GAMMA",
     "headline": "Net GEX is positive: research links this to smaller price swings, not to a trade direction.",
@@ -7105,8 +7104,6 @@
     },
     "levels_ts_utc": 1791383920.598783,
     "chain_basis": "every_expiry_strike_range_ALL",
-    "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1791383880.289,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
     "levels_age_text": "0s",
@@ -7124,9 +7121,7 @@
     "atr_weekly_text": null,
     "atr_monthly_text": null,
     "regime_text": "Positive gamma",
-    "total_gamma_change": null,
-    "levels_mark": "OFFLINE",
-    "levels_mark_reason": "Schwab LEVELONE_EQUITIES feed down during RTH"
+    "total_gamma_change": null
   },
   "surface": {
     "ticker": "CRWD",

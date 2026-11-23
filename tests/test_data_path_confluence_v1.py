@@ -827,9 +827,11 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     listed = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
     try:
         _publish_mrvl()
-        opened = push_confluence.confluence(tk, _SUNDAY, {"expiry": None})
-        asked = push_confluence.confluence(tk, _SUNDAY, {"expiry": listed[0]})
+        opened = push_confluence.confluence(tk, _SUNDAY, {"expiry": None, "centre": None})
+        asked = push_confluence.confluence(tk, _SUNDAY, {"expiry": listed[0], "centre": None})
         unread = push_confluence.confluence(tk, _SUNDAY, {})
+        uncentred = push_confluence.confluence(tk, _SUNDAY, {"expiry": None})
+        miscentred = push_confluence.confluence(tk, _SUNDAY, {"expiry": None, "centre": "305"})
     finally:
         level_store._levels.pop(tk, None)
     assert listed[:2] == ["2026-10-09", "2026-10-16"]
@@ -839,6 +841,9 @@ def test_a_passed_expiry_is_not_the_one_the_matrix_opens_on():
     assert asked["reason"] == "the chain lists no open contracts for 2026-10-09"
     assert "rows" not in asked
     assert unread["reason"] == "the request names no expiry"
+    # a centre not sent is not a centre of None; one that is no strike is said (centre_asked)
+    assert (uncentred["available"], uncentred["reason"]) == (False, "the window names no centre")
+    assert miscentred["reason"] == "centre '305' is not a strike"
 
 
 def test_the_matrix_reads_the_expiry_charm_map_and_does_not_rebuild_it():
