@@ -104,8 +104,8 @@ def test_api_levels_b1_contract_single_session_prior_day():
         forget_bars(tk)
 
     assert payload["schema_version"] == 1
-    assert payload["spot"] is None, (
-        "Schwab has sent the stand-in no price: absent, never a stand-in value"
+    assert "spot" not in payload and all(lv["distance"] is None for lv in payload["levels"]), (
+        "Schwab has sent the stand-in no price: every distance absent, never a stand-in value"
     )
 
     ids = [lv["id"] for lv in payload["levels"]]

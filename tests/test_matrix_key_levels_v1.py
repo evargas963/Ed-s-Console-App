@@ -126,10 +126,15 @@ def test_the_front_expiry_of_spy_is_that_days_own_and_amzns_is_not() -> None:
 def test_each_strike_and_level_is_its_distance_in_points_and_in_implied_moves(
     name: str, key: str
 ) -> None:
-    """ln(price / spot) over the expiry's at-the-money volatility × √(time left), signed."""
+    """ln(price / spot) over the expiry's at-the-money volatility × √(time left), signed.
+
+    `spot` is the live price at that instant, the price row's (Schwab's last trade), which the
+    terrain panel carries as the price its relations are from; the matrix serves no copy of it.
+    """
     panels = _panels(name)
     body = panels[key]
-    spot, expiry = body["spot"], body["expiry"]
+    spot, expiry = panels["terrain"]["spot"], body["expiry"]
+    assert "spot" not in body
     iv = panels["terrain"]["atm_iv_pct_by_expiry"][expiry] / 100.0
     years = (_settles(name, expiry) - _captured_at(name)).total_seconds() / (365 * 86400)
     assert iv > 0 and years > 0, "the case has a volatility and time left: not vacuous"
