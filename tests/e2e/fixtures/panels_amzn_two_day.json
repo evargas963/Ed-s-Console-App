@@ -62,11 +62,11 @@
           },
           {
             "kind": "call",
-            "label": "Largest call gamma strike"
+            "label": "Gamma Call"
           },
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "32,975"
@@ -167,11 +167,11 @@
               },
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               },
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -274,11 +274,11 @@
               },
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               },
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -977,7 +977,7 @@
       "grew_text": "275/270",
       "shrank_text": "255/260",
       "busiest_text": "275\u2013280",
-      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
+      "busiest_vs_walls_text": "ABOVE Gamma Call",
       "note": null,
       "volume_zero_text": null
     },
@@ -987,7 +987,7 @@
         "prior": 270.0,
         "today": 270.0,
         "change": 0.0,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": "270",
         "today_text": "270",
         "change_text": "unchanged"
@@ -997,7 +997,7 @@
         "prior": 265.0,
         "today": 270.0,
         "change": 5.0,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": "265",
         "today_text": "270",
         "change_text": "+5"
@@ -1007,7 +1007,7 @@
         "prior": 243.23779388064705,
         "today": 243.91411813739333,
         "change": 0.6763242567462839,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": "243.24",
         "today_text": "243.91",
         "change_text": "+0.68"
@@ -1135,11 +1135,11 @@
           },
           {
             "kind": "call",
-            "label": "Largest call gamma strike"
+            "label": "Gamma Call"
           },
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "32,975"
@@ -1336,11 +1336,11 @@
               },
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               },
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -1527,11 +1527,11 @@
               },
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               },
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -2272,7 +2272,7 @@
       "grew_text": "275/270",
       "shrank_text": "255/260",
       "busiest_text": "275\u2013280",
-      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
+      "busiest_vs_walls_text": "ABOVE Gamma Call",
       "note": null,
       "volume_zero_text": null
     },
@@ -2282,7 +2282,7 @@
         "prior": 270.0,
         "today": 270.0,
         "change": 0.0,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": "270",
         "today_text": "270",
         "change_text": "unchanged"
@@ -2292,7 +2292,7 @@
         "prior": 265.0,
         "today": 270.0,
         "change": 5.0,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": "265",
         "today_text": "270",
         "change_text": "+5"
@@ -2302,7 +2302,7 @@
         "prior": 243.23779388064705,
         "today": 243.91411813739333,
         "change": 0.6763242567462839,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": "243.24",
         "today_text": "243.91",
         "change_text": "+0.68"
@@ -2376,11 +2376,11 @@
           },
           {
             "kind": "call",
-            "label": "Largest call gamma strike"
+            "label": "Gamma Call"
           },
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "3,866"
@@ -2481,11 +2481,11 @@
               },
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               },
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -2588,11 +2588,11 @@
               },
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               },
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -3070,7 +3070,7 @@
         "prior": 270.0,
         "today": 270.0,
         "change": 0.0,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": "270",
         "today_text": "270",
         "change_text": "unchanged"
@@ -3080,7 +3080,7 @@
         "prior": 265.0,
         "today": 270.0,
         "change": 5.0,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": "265",
         "today_text": "270",
         "change_text": "+5"
@@ -3090,7 +3090,7 @@
         "prior": 243.23779388064705,
         "today": 243.91411813739333,
         "change": 0.6763242567462839,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": "243.24",
         "today_text": "243.91",
         "change_text": "+0.68"
@@ -3333,7 +3333,7 @@
     "call_wall_lean": null,
     "put_wall_lean": "BREACHED \u2014 spot below",
     "flip_relation": "ABOVE",
-    "flip_relation_text": "Above gamma flip",
+    "flip_relation_text": "Above Gamma Flip",
     "atr_daily": 9.452408341900341,
     "atr_weekly": 17.39414267906555,
     "atr_monthly": 32.792381399428905,
@@ -77461,25 +77461,25 @@
           {
             "id": "call_wall",
             "value": 270.0,
-            "label": "Largest call gamma strike",
+            "label": "Gamma Call",
             "value_text": "270.00"
           },
           {
             "id": "put_wall",
             "value": 270.0,
-            "label": "Largest put gamma strike",
+            "label": "Gamma Put",
             "value_text": "270.00"
           },
           {
             "id": "put_delta_wall",
             "value": 270.0,
-            "label": "Largest put delta strike",
+            "label": "Delta Put",
             "value_text": "270.00"
           },
           {
             "id": "absolute_gamma_strike",
             "value": 270.0,
-            "label": "Largest total gamma strike",
+            "label": "Gamma Total",
             "value_text": "270.00"
           },
           {
@@ -77654,7 +77654,7 @@
           {
             "id": "lvp",
             "value": 275.0,
-            "label": "Largest positive net GEX strike",
+            "label": "Gamma Net Positive",
             "value_text": "275.00"
           }
         ],
@@ -77692,7 +77692,7 @@
           {
             "id": "max_pain",
             "value": 260.0,
-            "label": "Max pain",
+            "label": "Max Pain",
             "value_text": "260.00"
           }
         ],
@@ -77711,7 +77711,7 @@
           {
             "id": "call_delta_wall",
             "value": 250.0,
-            "label": "Largest call delta strike",
+            "label": "Delta Call",
             "value_text": "250.00"
           }
         ],
@@ -77730,7 +77730,7 @@
           {
             "id": "gamma_flip",
             "value": 243.91411813739333,
-            "label": "Gamma flip",
+            "label": "Gamma Flip",
             "value_text": "243.91"
           }
         ],
@@ -77749,7 +77749,7 @@
           {
             "id": "hvp",
             "value": 240.0,
-            "label": "Largest negative net GEX strike",
+            "label": "Gamma Net Negative",
             "value_text": "240.00"
           }
         ],
@@ -77859,8 +77859,8 @@
           "id": "lvp",
           "price": 275.0,
           "family": "gamma",
-          "label": "Largest positive net GEX strike",
-          "short": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
+          "short": "Gamma Net Positive",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -77880,8 +77880,8 @@
           "id": "call_charm_wall",
           "price": 275.0,
           "family": "gamma",
-          "label": "Largest call charm strike",
-          "short": "Largest call charm strike",
+          "label": "Charm Call",
+          "short": "Charm Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78069,8 +78069,8 @@
           "id": "call_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest call gamma strike",
-          "short": "Largest call gamma strike",
+          "label": "Gamma Call",
+          "short": "Gamma Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78090,8 +78090,8 @@
           "id": "put_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest put gamma strike",
-          "short": "Largest put gamma strike",
+          "label": "Gamma Put",
+          "short": "Gamma Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78111,8 +78111,8 @@
           "id": "absolute_gamma_strike",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest total gamma strike",
-          "short": "Largest total gamma strike",
+          "label": "Gamma Total",
+          "short": "Gamma Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78132,8 +78132,8 @@
           "id": "put_delta_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest put delta strike",
-          "short": "Largest put delta strike",
+          "label": "Delta Put",
+          "short": "Delta Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78345,8 +78345,8 @@
           "id": "max_pain",
           "price": 260.0,
           "family": "gamma",
-          "label": "Max pain",
-          "short": "Max pain",
+          "label": "Max Pain",
+          "short": "Max Pain",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78366,8 +78366,8 @@
           "id": "put_charm_wall",
           "price": 260.0,
           "family": "gamma",
-          "label": "Largest put charm strike",
-          "short": "Largest put charm strike",
+          "label": "Charm Put",
+          "short": "Charm Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78408,8 +78408,8 @@
           "id": "key_delta_strike",
           "price": 250.0,
           "family": "gamma",
-          "label": "Largest total delta strike",
-          "short": "Largest total delta strike",
+          "label": "Delta Total",
+          "short": "Delta Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78429,8 +78429,8 @@
           "id": "call_delta_wall",
           "price": 250.0,
           "family": "gamma",
-          "label": "Largest call delta strike",
-          "short": "Largest call delta strike",
+          "label": "Delta Call",
+          "short": "Delta Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78450,8 +78450,8 @@
           "id": "gamma_flip",
           "price": 243.91411813739333,
           "family": "gamma",
-          "label": "Gamma flip",
-          "short": "Gamma flip",
+          "label": "Gamma Flip",
+          "short": "Gamma Flip",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78471,8 +78471,8 @@
           "id": "hvp",
           "price": 240.0,
           "family": "gamma",
-          "label": "Largest negative net GEX strike",
-          "short": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
+          "short": "Gamma Net Negative",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -78523,7 +78523,7 @@
       "zero_dte": [
         {
           "id": "call_wall",
-          "label": "Largest call gamma strike",
+          "label": "Gamma Call",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -78535,7 +78535,7 @@
         },
         {
           "id": "put_wall",
-          "label": "Largest put gamma strike",
+          "label": "Gamma Put",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -78547,7 +78547,7 @@
         },
         {
           "id": "gamma_flip",
-          "label": "Gamma flip",
+          "label": "Gamma Flip",
           "price": 258.49264280576534,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 243.91411813739333,
@@ -78559,7 +78559,7 @@
         },
         {
           "id": "absolute_gamma_strike",
-          "label": "Largest total gamma strike",
+          "label": "Gamma Total",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -78595,7 +78595,7 @@
         },
         {
           "id": "hvp",
-          "label": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
           "price": 262.5,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 240.0,
@@ -78607,7 +78607,7 @@
         },
         {
           "id": "lvp",
-          "label": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
@@ -78619,7 +78619,7 @@
         },
         {
           "id": "key_delta_strike",
-          "label": "Largest total delta strike",
+          "label": "Delta Total",
           "price": 260.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 250.0,
@@ -78631,7 +78631,7 @@
         },
         {
           "id": "call_delta_wall",
-          "label": "Largest call delta strike",
+          "label": "Delta Call",
           "price": 260.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 250.0,
@@ -78643,7 +78643,7 @@
         },
         {
           "id": "put_delta_wall",
-          "label": "Largest put delta strike",
+          "label": "Delta Put",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -78655,7 +78655,7 @@
         },
         {
           "id": "call_charm_wall",
-          "label": "Largest call charm strike",
+          "label": "Charm Call",
           "price": 267.5,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
@@ -78667,7 +78667,7 @@
         },
         {
           "id": "put_charm_wall",
-          "label": "Largest put charm strike",
+          "label": "Charm Put",
           "price": 265.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 260.0,
@@ -79390,8 +79390,8 @@
           "id": "lvp",
           "price": 275.0,
           "family": "gamma",
-          "label": "Largest positive net GEX strike",
-          "short": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
+          "short": "Gamma Net Positive",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79411,8 +79411,8 @@
           "id": "call_charm_wall",
           "price": 275.0,
           "family": "gamma",
-          "label": "Largest call charm strike",
-          "short": "Largest call charm strike",
+          "label": "Charm Call",
+          "short": "Charm Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79600,8 +79600,8 @@
           "id": "call_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest call gamma strike",
-          "short": "Largest call gamma strike",
+          "label": "Gamma Call",
+          "short": "Gamma Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79621,8 +79621,8 @@
           "id": "put_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest put gamma strike",
-          "short": "Largest put gamma strike",
+          "label": "Gamma Put",
+          "short": "Gamma Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79642,8 +79642,8 @@
           "id": "absolute_gamma_strike",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest total gamma strike",
-          "short": "Largest total gamma strike",
+          "label": "Gamma Total",
+          "short": "Gamma Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79663,8 +79663,8 @@
           "id": "put_delta_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest put delta strike",
-          "short": "Largest put delta strike",
+          "label": "Delta Put",
+          "short": "Delta Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79876,8 +79876,8 @@
           "id": "max_pain",
           "price": 260.0,
           "family": "gamma",
-          "label": "Max pain",
-          "short": "Max pain",
+          "label": "Max Pain",
+          "short": "Max Pain",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79897,8 +79897,8 @@
           "id": "put_charm_wall",
           "price": 260.0,
           "family": "gamma",
-          "label": "Largest put charm strike",
-          "short": "Largest put charm strike",
+          "label": "Charm Put",
+          "short": "Charm Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79939,8 +79939,8 @@
           "id": "key_delta_strike",
           "price": 250.0,
           "family": "gamma",
-          "label": "Largest total delta strike",
-          "short": "Largest total delta strike",
+          "label": "Delta Total",
+          "short": "Delta Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79960,8 +79960,8 @@
           "id": "call_delta_wall",
           "price": 250.0,
           "family": "gamma",
-          "label": "Largest call delta strike",
-          "short": "Largest call delta strike",
+          "label": "Delta Call",
+          "short": "Delta Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -79981,8 +79981,8 @@
           "id": "gamma_flip",
           "price": 243.91411813739333,
           "family": "gamma",
-          "label": "Gamma flip",
-          "short": "Gamma flip",
+          "label": "Gamma Flip",
+          "short": "Gamma Flip",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -80002,8 +80002,8 @@
           "id": "hvp",
           "price": 240.0,
           "family": "gamma",
-          "label": "Largest negative net GEX strike",
-          "short": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
+          "short": "Gamma Net Negative",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -80054,7 +80054,7 @@
       "zero_dte": [
         {
           "id": "call_wall",
-          "label": "Largest call gamma strike",
+          "label": "Gamma Call",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -80066,7 +80066,7 @@
         },
         {
           "id": "put_wall",
-          "label": "Largest put gamma strike",
+          "label": "Gamma Put",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -80078,7 +80078,7 @@
         },
         {
           "id": "gamma_flip",
-          "label": "Gamma flip",
+          "label": "Gamma Flip",
           "price": 258.49264280576534,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 243.91411813739333,
@@ -80090,7 +80090,7 @@
         },
         {
           "id": "absolute_gamma_strike",
-          "label": "Largest total gamma strike",
+          "label": "Gamma Total",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -80126,7 +80126,7 @@
         },
         {
           "id": "hvp",
-          "label": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
           "price": 262.5,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 240.0,
@@ -80138,7 +80138,7 @@
         },
         {
           "id": "lvp",
-          "label": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
@@ -80150,7 +80150,7 @@
         },
         {
           "id": "key_delta_strike",
-          "label": "Largest total delta strike",
+          "label": "Delta Total",
           "price": 260.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 250.0,
@@ -80162,7 +80162,7 @@
         },
         {
           "id": "call_delta_wall",
-          "label": "Largest call delta strike",
+          "label": "Delta Call",
           "price": 260.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 250.0,
@@ -80174,7 +80174,7 @@
         },
         {
           "id": "put_delta_wall",
-          "label": "Largest put delta strike",
+          "label": "Delta Put",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -80186,7 +80186,7 @@
         },
         {
           "id": "call_charm_wall",
-          "label": "Largest call charm strike",
+          "label": "Charm Call",
           "price": 267.5,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
@@ -80198,7 +80198,7 @@
         },
         {
           "id": "put_charm_wall",
-          "label": "Largest put charm strike",
+          "label": "Charm Put",
           "price": 265.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 260.0,
@@ -80866,8 +80866,8 @@
           "id": "lvp",
           "price": 275.0,
           "family": "gamma",
-          "label": "Largest positive net GEX strike",
-          "short": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
+          "short": "Gamma Net Positive",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -80887,8 +80887,8 @@
           "id": "call_charm_wall",
           "price": 275.0,
           "family": "gamma",
-          "label": "Largest call charm strike",
-          "short": "Largest call charm strike",
+          "label": "Charm Call",
+          "short": "Charm Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81076,8 +81076,8 @@
           "id": "call_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest call gamma strike",
-          "short": "Largest call gamma strike",
+          "label": "Gamma Call",
+          "short": "Gamma Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81097,8 +81097,8 @@
           "id": "put_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest put gamma strike",
-          "short": "Largest put gamma strike",
+          "label": "Gamma Put",
+          "short": "Gamma Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81118,8 +81118,8 @@
           "id": "absolute_gamma_strike",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest total gamma strike",
-          "short": "Largest total gamma strike",
+          "label": "Gamma Total",
+          "short": "Gamma Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81139,8 +81139,8 @@
           "id": "put_delta_wall",
           "price": 270.0,
           "family": "gamma",
-          "label": "Largest put delta strike",
-          "short": "Largest put delta strike",
+          "label": "Delta Put",
+          "short": "Delta Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81352,8 +81352,8 @@
           "id": "max_pain",
           "price": 260.0,
           "family": "gamma",
-          "label": "Max pain",
-          "short": "Max pain",
+          "label": "Max Pain",
+          "short": "Max Pain",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81373,8 +81373,8 @@
           "id": "put_charm_wall",
           "price": 260.0,
           "family": "gamma",
-          "label": "Largest put charm strike",
-          "short": "Largest put charm strike",
+          "label": "Charm Put",
+          "short": "Charm Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81415,8 +81415,8 @@
           "id": "key_delta_strike",
           "price": 250.0,
           "family": "gamma",
-          "label": "Largest total delta strike",
-          "short": "Largest total delta strike",
+          "label": "Delta Total",
+          "short": "Delta Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81436,8 +81436,8 @@
           "id": "call_delta_wall",
           "price": 250.0,
           "family": "gamma",
-          "label": "Largest call delta strike",
-          "short": "Largest call delta strike",
+          "label": "Delta Call",
+          "short": "Delta Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81457,8 +81457,8 @@
           "id": "gamma_flip",
           "price": 243.91411813739333,
           "family": "gamma",
-          "label": "Gamma flip",
-          "short": "Gamma flip",
+          "label": "Gamma Flip",
+          "short": "Gamma Flip",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81478,8 +81478,8 @@
           "id": "hvp",
           "price": 240.0,
           "family": "gamma",
-          "label": "Largest negative net GEX strike",
-          "short": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
+          "short": "Gamma Net Negative",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -81530,7 +81530,7 @@
       "zero_dte": [
         {
           "id": "call_wall",
-          "label": "Largest call gamma strike",
+          "label": "Gamma Call",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -81542,7 +81542,7 @@
         },
         {
           "id": "put_wall",
-          "label": "Largest put gamma strike",
+          "label": "Gamma Put",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -81554,7 +81554,7 @@
         },
         {
           "id": "gamma_flip",
-          "label": "Gamma flip",
+          "label": "Gamma Flip",
           "price": 258.49264280576534,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 243.91411813739333,
@@ -81566,7 +81566,7 @@
         },
         {
           "id": "absolute_gamma_strike",
-          "label": "Largest total gamma strike",
+          "label": "Gamma Total",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -81602,7 +81602,7 @@
         },
         {
           "id": "hvp",
-          "label": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
           "price": 262.5,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 240.0,
@@ -81614,7 +81614,7 @@
         },
         {
           "id": "lvp",
-          "label": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
@@ -81626,7 +81626,7 @@
         },
         {
           "id": "key_delta_strike",
-          "label": "Largest total delta strike",
+          "label": "Delta Total",
           "price": 260.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 250.0,
@@ -81638,7 +81638,7 @@
         },
         {
           "id": "call_delta_wall",
-          "label": "Largest call delta strike",
+          "label": "Delta Call",
           "price": 260.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 250.0,
@@ -81650,7 +81650,7 @@
         },
         {
           "id": "put_delta_wall",
-          "label": "Largest put delta strike",
+          "label": "Delta Put",
           "price": 270.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 270.0,
@@ -81662,7 +81662,7 @@
         },
         {
           "id": "call_charm_wall",
-          "label": "Largest call charm strike",
+          "label": "Charm Call",
           "price": 267.5,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 275.0,
@@ -81674,7 +81674,7 @@
         },
         {
           "id": "put_charm_wall",
-          "label": "Largest put charm strike",
+          "label": "Charm Put",
           "price": 265.0,
           "note": "Modeled: the 2026-11-13 expiry re-priced as if it expired at today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)",
           "carried": 260.0,
@@ -82329,8 +82329,8 @@
           "dom": "OPTIONS",
           "dir": "down",
           "warn": false,
-          "title": "Spot through the largest put gamma strike",
-          "detail": "Largest put gamma strike 270.00 \u00b7 spot 269.43",
+          "title": "Spot through Gamma Put",
+          "detail": "Gamma Put 270.00 \u00b7 spot 269.43",
           "src": "gamma levels",
           "time_ct": "Thu 11/12 09:39 AM CT"
         },
@@ -82508,8 +82508,8 @@
           "dom": "OPTIONS",
           "dir": "down",
           "warn": false,
-          "title": "Spot through the largest put gamma strike",
-          "detail": "Largest put gamma strike 270.00 \u00b7 spot 269.43",
+          "title": "Spot through Gamma Put",
+          "detail": "Gamma Put 270.00 \u00b7 spot 269.43",
           "src": "gamma levels",
           "time_ct": "Thu 11/12 09:39 AM CT"
         },
@@ -123599,8 +123599,8 @@
         "dom": "OPTIONS",
         "dir": "down",
         "warn": false,
-        "title": "Spot through the largest put gamma strike",
-        "detail": "Largest put gamma strike 270.00 \u00b7 spot 269.43",
+        "title": "Spot through Gamma Put",
+        "detail": "Gamma Put 270.00 \u00b7 spot 269.43",
         "src": "gamma levels",
         "time_ct": "Thu 11/12 09:39 AM CT"
       },

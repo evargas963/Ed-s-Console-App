@@ -941,8 +941,8 @@ def _marks(tk, listed, **walls):
     at = {"spot": spot, **walls}
     labels = {
         "spot": "SPOT",
-        "call": "Largest call gamma strike",
-        "put": "Largest put gamma strike",
+        "call": "Gamma Call",
+        "put": "Gamma Put",
     }
     return lambda strike: [
         {"kind": kind, "label": labels[kind]} for kind, k in at.items() if k == strike

@@ -961,17 +961,15 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     // INDUCED: the move the program serves when AMZN's next day is published (the 0DTE column's
     // 265 → 270 between its 2026-11-11 and 2026-11-12 captures), as push.terrain words it
     const move = {
-      id: "1794497958.2236 Largest total gamma strike · 0DTE 265.00 → 270.00",
-      text: "Largest total gamma strike · 0DTE 265.00 → 270.00",
+      id: "1794497958.2236 Gamma Total ·0DTE 265.00 → 270.00",
+      text: "Gamma Total ·0DTE 265.00 → 270.00",
       time_ct: "09:39:18 CT",
     };
     panels.terrain = Object.assign({}, TERRAIN, { total_gamma_change: move });
     sock.changed("terrain");
     // the page's ticker is SPY, and the stand-in socket sends each panel as that ticker's
     const toast = page.locator("#edToast");
-    await expect(toast).toHaveText(
-      "SPY · Largest total gamma strike · 0DTE 265.00 → 270.00 · 09:39:18 CT×",
-    );
+    await expect(toast).toHaveText("SPY · Gamma Total ·0DTE 265.00 → 270.00 · 09:39:18 CT×");
     await expect(toast).toHaveAttribute("role", "status");
     const box = await toast.boundingBox();
     const view = page.viewportSize();
@@ -998,8 +996,8 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     // after that click the page may sound: the next move shows and chimes (INDUCED: the regular
     // column one strike higher)
     const next = {
-      id: "1794498000.5 Largest total gamma strike · Regular 270.00 → 275.00",
-      text: "Largest total gamma strike · Regular 270.00 → 275.00",
+      id: "1794498000.5 Gamma Total ·Regular 270.00 → 275.00",
+      text: "Gamma Total ·Regular 270.00 → 275.00",
       time_ct: "09:40:00 CT",
     };
     panels.terrain = Object.assign({}, TERRAIN, { total_gamma_change: next });
@@ -1250,7 +1248,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator("#hFeed")).toHaveText("OFFLINE", { timeout: 6000 });
     await expect(page.locator("#chartBody .gchart-head")).toContainText("last trade 14:00:01 CT");
     await expect.poll(async () => (await cs()).liveTitle).toBe("LAST · last trade 14:00:01 CT");
-    await expect.poll(async () => (await cs()).levels).toContain("Gamma flip");
+    await expect.poll(async () => (await cs()).levels).toContain("Gamma Flip");
     await page.setViewportSize({ width: 2560, height: 1440 });
     await page.screenshot({
       path: require("path").join("test-results", "console-gamma-chart-2560x1440.png"),

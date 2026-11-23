@@ -431,12 +431,7 @@
       ],
       ["GAMMA REGIME · CHAIN", orDash(body.regime_text), ""], // served: the regime in words
       ["GAMMA FLIP · CHAIN", body.flip_text, body.expiry ? body.expiry : ""],
-      [
-        "LARGEST OPEN INTEREST STRIKE NEAR PRICE · CHAIN",
-        body.pin_text,
-        body.pin_text ? "expiry closing today" : "",
-        body.pin_note,
-      ],
+      ["OI PIN · CHAIN", body.pin_text, body.pin_text ? "expiry closing today" : "", body.pin_note],
     ]
       .map(function (cell) {
         var small = cell[2] ? "<small>" + esc(cell[2]) + "</small>" : "";

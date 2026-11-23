@@ -3,11 +3,10 @@
    One page for the SELECTED ticker, one global timeframe:
      PRICE CHART  <- the bars panel (completed Schwab bars at the timeframe), the levels panel
                      (value area, VWAP, prior day, opening range, extended hours), the terrain
-                     panel (largest call and put gamma strikes, gamma flip, max pain -- full
-                     chain)
+                     panel (Gamma Call, Gamma Put, Gamma Flip, Max Pain -- full chain)
      ALERTS       <- the desk panel (served, numbered; each marker is its alert, linked both
-                     ways): level crosses judged by their minute's bar, the price through a
-                     largest call or put gamma strike, stale levels
+                     ways): level crosses judged by their minute's bar, the price through Gamma
+                     Call or Gamma Put, stale levels
      CARDS        <- the book, terrain, bars and liquidity panels (value/VWAP relation) and the
                      price row (Schwab LEVELONE)
      DATA STATUS  <- the same panels' own state/age fields
@@ -368,10 +367,10 @@
       gamma: [P.stale, 2, 1],
     };
     var gamma = {
-      call_wall: ["Largest call gamma strike", P.up, 0, 2],
-      put_wall: ["Largest put gamma strike", P.down, 0, 2],
-      gamma_flip: ["Gamma flip", P.accent, 0, 2],
-      max_pain: ["Max pain", P.ink3, 3, 1],
+      call_wall: ["Gamma Call", P.up, 0, 2],
+      put_wall: ["Gamma Put", P.down, 0, 2],
+      gamma_flip: ["Gamma Flip", P.accent, 0, 2],
+      max_pain: ["Max Pain", P.ink3, 3, 1],
     };
     var byId = {};
     (S.levels ? S.levels.levels : []).forEach(function (l) {
@@ -647,21 +646,13 @@
           orDash(t.net_gex_at_spot_text) +
           "</span> <small>net GEX at spot, $ per 1% move</small>";
         src(c, "Schwab option chain · " + esc(chainAgeLabel(t)));
-        // the largest call and put gamma strikes share one row, so the card's rows take two
-        // lines on the operator's 1920×950 window and the Desk does not scroll
         c.querySelector(".tdm-rows").innerHTML =
-          row(
-            "Largest call / put gamma strike",
-            '<span class="up">' +
-              orDash(t.call_wall_text) +
-              '</span> / <span class="dn">' +
-              orDash(t.put_wall_text) +
-              "</span>",
-          ) +
+          row("Gamma Call", orDash(t.call_wall_text), "up") +
+          row("Gamma Put", orDash(t.put_wall_text), "dn") +
+          row("Gamma Flip", orDash(t.gamma_flip_text)) +
+          (t.flip_note != null ? row("Gamma Flip note", esc(t.flip_note)) : "") +
           row("Put/call OI", orDash(t.pcr_all_text)) +
-          row("Gamma flip", orDash(t.gamma_flip_text)) +
-          (t.flip_note != null ? row("Gamma flip note", esc(t.flip_note)) : "") +
-          row("Max pain", orDash(t.max_pain_text)) +
+          row("Max Pain", orDash(t.max_pain_text)) +
           row("Option series", orDash(t.contracts_used_text));
       }
       paintLean(c);

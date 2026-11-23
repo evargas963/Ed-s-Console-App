@@ -88,7 +88,7 @@ const LEVELS = {
 // with its text
 const ZERO_DTE_CALL_WALL = {
   id: "call_wall",
-  label: "Largest call gamma strike",
+  label: "Gamma Call",
   carried: 600,
   price: 580,
   carried_text: "600.00",
@@ -194,7 +194,7 @@ test.describe("D — Gamma Levels view", () => {
   }) => {
     panels.levels = Object.assign({}, LEVELS, { zero_dte: [ZERO_DTE_CALL_WALL] });
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const row = page.locator("#levelsBody .zd-row", { hasText: "Largest call gamma strike" });
+    const row = page.locator("#levelsBody .zd-row", { hasText: "Gamma Call" });
     await expect(row.locator(".lv-px").nth(0)).toContainText("600.00");
     await expect(row.locator(".lv-px").nth(1)).toContainText("580.00");
     await expect(row.locator(".lv-px").nth(1).locator(".lv-age")).toHaveText("12:32:07 CT");
@@ -209,7 +209,7 @@ test.describe("D — Gamma Levels view", () => {
     expect(pin.note).toContain("expected moves");
     panels.levels = SERVED;
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const row = page.locator("#levelsBody .lv-row", { hasText: "Largest open interest strike" });
+    const row = page.locator("#levelsBody .lv-row", { hasText: "OI Pin" });
     await expect(row).toHaveAttribute("title", pin.note);
     await expect(row.locator(".lv-px").nth(0)).toContainText(pin.price.toFixed(2));
   });

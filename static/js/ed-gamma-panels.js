@@ -194,7 +194,8 @@
     announceTotalGamma(d);
   }
 
-  // The largest total gamma strike's newest move, served with the levels (total_gamma_change):
+  // Gamma Total's newest move (the largest total gamma strike), served with the levels
+  // (total_gamma_change):
   // a toast and a chime for a move this page sees arrive. A ticker's first levels on this page
   // bring the move already standing, which is not new to the operator: it is kept, not announced.
   var _announced = {};

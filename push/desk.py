@@ -167,7 +167,7 @@ def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
 
 
 def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
-    """Return a largest call or put gamma strike the live price is through, and stale levels.
+    """Return Gamma Call or Gamma Put when the live price is through it, and stale levels.
 
     In the terrain panel's words, each level by its name in the one list (OPTION_LEVELS).
     """
@@ -186,7 +186,7 @@ def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
                     t["spot_as_of_ts_utc"],
                     "OPTIONS",
                     way,
-                    f"Spot through the {names[level].lower()}",
+                    f"Spot through {names[level]}",
                     f"{names[level]} {price_text(wall)} · spot {price_text(t['spot'])}",
                     "gamma levels",
                 )

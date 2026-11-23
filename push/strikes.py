@@ -145,12 +145,13 @@ class NotListed(LevelsVerdict):
 
 #: each level compared day over day (terrain_engine.LEVELS_COMPARED) by its name in the one list
 LEVEL_TEXT = {key: name for key, name in OPTION_LEVELS if key in LEVELS_COMPARED}
-#: where the busiest strikes sit against the largest call and put gamma strikes, as the screen
-#: says it
+_NAMES = dict(OPTION_LEVELS)
+#: where the busiest strikes sit against Gamma Call and Gamma Put, as the screen says it, each by
+#: its name in the one list
 BUSIEST_VS_WALLS_TEXT = {
-    ABOVE_CALL_WALL: "ABOVE the largest call gamma strike",
-    BELOW_PUT_WALL: "BELOW the largest put gamma strike",
-    INSIDE_WALLS: "between the largest put and call gamma strikes",
+    ABOVE_CALL_WALL: f"ABOVE {_NAMES['call_wall']}",
+    BELOW_PUT_WALL: f"BELOW {_NAMES['put_wall']}",
+    INSIDE_WALLS: f"between {_NAMES['put_wall']} and {_NAMES['call_wall']}",
 }
 
 

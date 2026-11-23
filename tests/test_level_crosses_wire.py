@@ -64,10 +64,10 @@ AFTER_HOURS = SPY_AFTER_HOURS_PRINT["native"]["LAST_PRICE"]
 #: capture holds only the 2026-10-22 expiry, settled at that close: no time left, so no gamma
 #: curve and no flip (operator 2026-11-15: no floor of ours on the time left; a value not known
 #: is "-")
-BETWEEN = {"Largest call gamma strike", "Largest total gamma strike"}
+BETWEEN = {"Gamma Call", "Gamma Total"}
 
 
-def _cross(name: str = "Largest call gamma strike", value: float | None = 765.0) -> LevelCrossEvent:
+def _cross(name: str = "Gamma Call", value: float | None = 765.0) -> LevelCrossEvent:
     """Return SPY's cross of the level `name` at `value`, up, at the print a strike away."""
     return LevelCrossEvent(
         ticker="SPY",
@@ -468,7 +468,7 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
     edb = EdDB(tmp_path / "level_crosses.db")
     stored = stored_crosses(writer, [_cross()])
     assert [(c.level_name, c.level_value, c.direction, c.spot_at_cross) for c in stored] == [
-        ("Largest call gamma strike", 765.0, CROSSED_UP, STRIKE_AWAY)
+        ("Gamma Call", 765.0, CROSSED_UP, STRIKE_AWAY)
     ]
     # a cross recorded live and the same cross loaded at startup are the same row, cross_id included
     assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == stored
@@ -515,7 +515,7 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
     """
     writer = CaptureWriter(tmp_path / "level_crosses.db")
     edb = EdDB(tmp_path / "level_crosses.db")
-    sent = [asdict(_cross()), asdict(_cross("Gamma flip", None))]
+    sent = [asdict(_cross()), asdict(_cross("Gamma Flip", None))]
     msg = {"ticker": "SPY", "ts_utc": SPY_PRINT_A_STRIKE_AWAY["ts_recv"], "crosses": sent}
     assert writer.store_crosses(msg, 10.0) == (CAPTURE_REFUSED, ())
     assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == []

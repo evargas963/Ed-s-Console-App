@@ -33,8 +33,7 @@ VALUE_TEXT = {
 }
 
 #: each mark a strike row can carry, as the screen names it: the listed strike nearest the live
-#: price, and the published levels' largest call and put gamma strikes, by their names in the one
-#: list
+#: price, and the published levels' Gamma Call and Gamma Put, by their names in the one list
 MARK_LABELS = {
     "spot": "SPOT",
     "call": dict(OPTION_LEVELS)["call_wall"],

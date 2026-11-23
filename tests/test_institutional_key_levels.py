@@ -128,26 +128,23 @@ def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
     """Each list that names a level calls the two by what they hold, and each has its pill."""
     for levels in (SAME_DAY_LEVELS, OPTION_LEVELS):
         named = dict(levels)
-        assert (named["hvp"], named["lvp"]) == (
-            "Largest negative net GEX strike",
-            "Largest positive net GEX strike",
-        )
+        assert (named["hvp"], named["lvp"]) == ("Gamma Net Negative", "Gamma Net Positive")
     # one list names the levels: the same-day levels are its own entries, in its order
     assert [level for level in OPTION_LEVELS if level in SAME_DAY_LEVELS] == list(SAME_DAY_LEVELS)
     assert {key for key, _label in OPTION_LEVELS} - {key for key, _label in SAME_DAY_LEVELS} == {
         "max_pain",
         "pin_candidate",
     }
-    for _key, label in OPTION_LEVELS:
-        assert label in push_confluence._OPTION_SHORT, label
-    assert (
-        push_confluence._option_abbrev("Largest negative net GEX strike", same_day=False)
-        == "−Net GEX"
-    )
-    assert (
-        push_confluence._option_abbrev("Largest positive net GEX strike", same_day=True)
-        == "0DTE +Net GEX"
-    )
+    # each level's pill is its own name, but the two net GEX strikes', whose sign is a sign
+    pills = {
+        label: push_confluence._option_abbrev(label, same_day=False) for _k, label in OPTION_LEVELS
+    }
+    assert pills == {label: label for _k, label in OPTION_LEVELS} | {
+        "Gamma Net Negative": "Gamma Net −",
+        "Gamma Net Positive": "Gamma Net +",
+    }
+    assert push_confluence._option_abbrev("Gamma Net Negative", same_day=False) == "Gamma Net −"
+    assert push_confluence._option_abbrev("Gamma Net Positive", same_day=True) == "0DTE Gamma Net +"
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():

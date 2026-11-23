@@ -337,9 +337,11 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     used only where no accepted name exists, and then it says in standard words what the value is;
     one vendor's product name or trademark is never used as a generic word. A modelled sign is never
     worded as a fact: the assumption (dealers long calls, short puts) is stated once, beside the
-    estimate. Enforced by: `tests/test_industry_names_v1.py` (no screen says a name that was
-    replaced), `tests/test_level_names_one_list_v1.py` (in force); a new name's source — the
-    builder's audit (rule 14)
+    estimate. The strike levels are the operator's own naming: the Greek (or OI) first, then the
+    side or the kind of level (Gamma Call, Delta Put, Charm Call, Gamma Total, Gamma Flip, OI Pin),
+    one list, `calc.terrain_engine.OPTION_LEVELS`. Enforced by: `tests/test_industry_names_v1.py`
+    (no screen says a name that was replaced), `tests/test_level_names_one_list_v1.py` (in force); a
+    new name's source — the builder's audit (rule 14)
 
 ## Fix what you find
 

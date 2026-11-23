@@ -1071,25 +1071,26 @@ def pin_by_open_interest(
 
 
 #: The terrain's price levels and the name each is shown under, in the order they are listed: the
-#: industry's name where it has one (Gamma flip, Max pain), else what the level is, in one pattern
-#: of standard words ("Largest <side> <measure> strike"; the walls are the largest call and put
-#: gamma, the word "wall" defined three ways by vendors).
+#: operator's pattern (AGENTS.md rule 17), the Greek or OI first, then the side or the kind of
+#: level: Gamma Call is the strike of the largest call gamma, Gamma Total of the largest call plus
+#: put gamma, Gamma Net Positive of the most positive net GEX, OI Pin of the largest open interest
+#: near the price.
 OPTION_LEVELS = (
-    ("call_wall", "Largest call gamma strike"),
-    ("put_wall", "Largest put gamma strike"),
-    ("gamma_flip", "Gamma flip"),
-    ("max_pain", "Max pain"),
-    ("absolute_gamma_strike", "Largest total gamma strike"),
-    ("pin_candidate", "Largest open interest strike near price"),
+    ("call_wall", "Gamma Call"),
+    ("put_wall", "Gamma Put"),
+    ("gamma_flip", "Gamma Flip"),
+    ("max_pain", "Max Pain"),
+    ("absolute_gamma_strike", "Gamma Total"),
+    ("pin_candidate", "OI Pin"),
     ("gsf", "GSF"),
     ("grc", "GRC"),
-    ("hvp", "Largest negative net GEX strike"),
-    ("lvp", "Largest positive net GEX strike"),
-    ("key_delta_strike", "Largest total delta strike"),
-    ("call_delta_wall", "Largest call delta strike"),
-    ("put_delta_wall", "Largest put delta strike"),
-    ("call_charm_wall", "Largest call charm strike"),
-    ("put_charm_wall", "Largest put charm strike"),
+    ("hvp", "Gamma Net Negative"),
+    ("lvp", "Gamma Net Positive"),
+    ("key_delta_strike", "Delta Total"),
+    ("call_delta_wall", "Delta Call"),
+    ("put_delta_wall", "Delta Put"),
+    ("call_charm_wall", "Charm Call"),
+    ("put_charm_wall", "Charm Put"),
 )
 #: The levels a same-day clock can move: all but the two read on the whole book alone.
 SAME_DAY_LEVELS = tuple(

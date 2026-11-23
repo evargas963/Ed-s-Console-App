@@ -90,7 +90,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "187,791"
@@ -186,7 +186,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -219,7 +219,7 @@
           "marks": [
             {
               "kind": "call",
-              "label": "Largest call gamma strike"
+              "label": "Gamma Call"
             }
           ]
         }
@@ -295,7 +295,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -345,7 +345,7 @@
       "marks": [
         {
           "kind": "call",
-          "label": "Largest call gamma strike"
+          "label": "Gamma Call"
         }
       ],
       "volume_text": "9,877"
@@ -3809,7 +3809,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -3819,7 +3819,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -3829,7 +3829,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -3985,7 +3985,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "187,791"
@@ -4177,7 +4177,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -4252,7 +4252,7 @@
           "marks": [
             {
               "kind": "call",
-              "label": "Largest call gamma strike"
+              "label": "Gamma Call"
             }
           ]
         }
@@ -4370,7 +4370,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -4462,7 +4462,7 @@
       "marks": [
         {
           "kind": "call",
-          "label": "Largest call gamma strike"
+          "label": "Gamma Call"
         }
       ],
       "volume_text": "9,877"
@@ -7926,7 +7926,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -7936,7 +7936,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -7946,7 +7946,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -8048,7 +8048,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "19,638"
@@ -8144,7 +8144,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -8177,7 +8177,7 @@
           "marks": [
             {
               "kind": "put",
-              "label": "Largest put gamma strike"
+              "label": "Gamma Put"
             }
           ]
         }
@@ -8253,7 +8253,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -8303,7 +8303,7 @@
       "marks": [
         {
           "kind": "put",
-          "label": "Largest put gamma strike"
+          "label": "Gamma Put"
         }
       ],
       "volume_text": "19,638"
@@ -9517,7 +9517,7 @@
       "grew_text": "766/740",
       "shrank_text": "760/755",
       "busiest_text": "756\u2013757",
-      "busiest_vs_walls_text": "BELOW the largest put gamma strike",
+      "busiest_vs_walls_text": "BELOW Gamma Put",
       "note": null,
       "volume_zero_text": null
     },
@@ -9527,7 +9527,7 @@
         "prior": 760.0,
         "today": 775.0,
         "change": 15.0,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": "760",
         "today_text": "775",
         "change_text": "+15"
@@ -9537,7 +9537,7 @@
         "prior": 760.0,
         "today": 760.0,
         "change": 0.0,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": "760",
         "today_text": "760",
         "change_text": "unchanged"
@@ -9547,7 +9547,7 @@
         "prior": 760.7703771219186,
         "today": 761.2225055632189,
         "change": 0.4521284413002604,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": "760.77",
         "today_text": "761.22",
         "change_text": "+0.45"
@@ -9840,7 +9840,7 @@
     "call_wall_lean": null,
     "put_wall_lean": "BREACHED \u2014 spot below",
     "flip_relation": "BELOW",
-    "flip_relation_text": "Below gamma flip",
+    "flip_relation_text": "Below Gamma Flip",
     "atr_daily": 11.064105444079996,
     "atr_weekly": 19.863970115131707,
     "atr_monthly": 37.92614433481697,
@@ -42481,7 +42481,7 @@
           {
             "id": "max_pain",
             "value": 757.0,
-            "label": "Max pain",
+            "label": "Max Pain",
             "value_text": "757.00"
           },
           {
@@ -42567,19 +42567,19 @@
           {
             "id": "put_wall",
             "value": 760.0,
-            "label": "Largest put gamma strike",
+            "label": "Gamma Put",
             "value_text": "760.00"
           },
           {
             "id": "put_delta_wall",
             "value": 760.0,
-            "label": "Largest put delta strike",
+            "label": "Delta Put",
             "value_text": "760.00"
           },
           {
             "id": "absolute_gamma_strike",
             "value": 760.0,
-            "label": "Largest total gamma strike",
+            "label": "Gamma Total",
             "value_text": "760.00"
           },
           {
@@ -42597,7 +42597,7 @@
           {
             "id": "gamma_flip",
             "value": 761.2225055632189,
-            "label": "Gamma flip",
+            "label": "Gamma Flip",
             "value_text": "761.22"
           },
           {
@@ -42666,7 +42666,7 @@
           {
             "id": "hvp",
             "value": 750.0,
-            "label": "Largest negative net GEX strike",
+            "label": "Gamma Net Negative",
             "value_text": "750.00"
           }
         ],
@@ -42685,19 +42685,19 @@
           {
             "id": "call_wall",
             "value": 775.0,
-            "label": "Largest call gamma strike",
+            "label": "Gamma Call",
             "value_text": "775.00"
           },
           {
             "id": "call_delta_wall",
             "value": 775.0,
-            "label": "Largest call delta strike",
+            "label": "Delta Call",
             "value_text": "775.00"
           },
           {
             "id": "lvp",
             "value": 775.0,
-            "label": "Largest positive net GEX strike",
+            "label": "Gamma Net Positive",
             "value_text": "775.00"
           }
         ],
@@ -42786,8 +42786,8 @@
           "id": "call_wall",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest call gamma strike",
-          "short": "Largest call gamma strike",
+          "label": "Gamma Call",
+          "short": "Gamma Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -42807,8 +42807,8 @@
           "id": "lvp",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest positive net GEX strike",
-          "short": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
+          "short": "Gamma Net Positive",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -42828,8 +42828,8 @@
           "id": "call_delta_wall",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest call delta strike",
-          "short": "Largest call delta strike",
+          "label": "Delta Call",
+          "short": "Delta Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -42849,8 +42849,8 @@
           "id": "call_charm_wall",
           "price": 765.0,
           "family": "gamma",
-          "label": "Largest call charm strike",
-          "short": "Largest call charm strike",
+          "label": "Charm Call",
+          "short": "Charm Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -42918,8 +42918,8 @@
           "id": "gamma_flip",
           "price": 761.2225055632189,
           "family": "gamma",
-          "label": "Gamma flip",
-          "short": "Gamma flip",
+          "label": "Gamma Flip",
+          "short": "Gamma Flip",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -42987,8 +42987,8 @@
           "id": "put_wall",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest put gamma strike",
-          "short": "Largest put gamma strike",
+          "label": "Gamma Put",
+          "short": "Gamma Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43008,8 +43008,8 @@
           "id": "absolute_gamma_strike",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest total gamma strike",
-          "short": "Largest total gamma strike",
+          "label": "Gamma Total",
+          "short": "Gamma Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43029,8 +43029,8 @@
           "id": "put_delta_wall",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest put delta strike",
-          "short": "Largest put delta strike",
+          "label": "Delta Put",
+          "short": "Delta Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43146,8 +43146,8 @@
           "id": "max_pain",
           "price": 757.0,
           "family": "gamma",
-          "label": "Max pain",
-          "short": "Max pain",
+          "label": "Max Pain",
+          "short": "Max Pain",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43239,8 +43239,8 @@
           "id": "pin_candidate",
           "price": 756.0,
           "family": "gamma",
-          "label": "Largest open interest strike near price",
-          "short": "Largest open interest strike near price",
+          "label": "OI Pin",
+          "short": "OI Pin",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43356,8 +43356,8 @@
           "id": "hvp",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest negative net GEX strike",
-          "short": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
+          "short": "Gamma Net Negative",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43377,8 +43377,8 @@
           "id": "key_delta_strike",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest total delta strike",
-          "short": "Largest total delta strike",
+          "label": "Delta Total",
+          "short": "Delta Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43398,8 +43398,8 @@
           "id": "put_charm_wall",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest put charm strike",
-          "short": "Largest put charm strike",
+          "label": "Charm Put",
+          "short": "Charm Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -43449,7 +43449,7 @@
       "zero_dte": [
         {
           "id": "call_wall",
-          "label": "Largest call gamma strike",
+          "label": "Gamma Call",
           "price": 759.0,
           "note": null,
           "carried": 775.0,
@@ -43461,7 +43461,7 @@
         },
         {
           "id": "put_wall",
-          "label": "Largest put gamma strike",
+          "label": "Gamma Put",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -43473,7 +43473,7 @@
         },
         {
           "id": "gamma_flip",
-          "label": "Gamma flip",
+          "label": "Gamma Flip",
           "price": 759.8723887322883,
           "note": null,
           "carried": 761.2225055632189,
@@ -43485,7 +43485,7 @@
         },
         {
           "id": "absolute_gamma_strike",
-          "label": "Largest total gamma strike",
+          "label": "Gamma Total",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -43521,7 +43521,7 @@
         },
         {
           "id": "hvp",
-          "label": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -43533,7 +43533,7 @@
         },
         {
           "id": "lvp",
-          "label": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
           "price": 761.0,
           "note": null,
           "carried": 775.0,
@@ -43545,7 +43545,7 @@
         },
         {
           "id": "key_delta_strike",
-          "label": "Largest total delta strike",
+          "label": "Delta Total",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -43557,7 +43557,7 @@
         },
         {
           "id": "call_delta_wall",
-          "label": "Largest call delta strike",
+          "label": "Delta Call",
           "price": 754.0,
           "note": null,
           "carried": 775.0,
@@ -43569,7 +43569,7 @@
         },
         {
           "id": "put_delta_wall",
-          "label": "Largest put delta strike",
+          "label": "Delta Put",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -43581,7 +43581,7 @@
         },
         {
           "id": "call_charm_wall",
-          "label": "Largest call charm strike",
+          "label": "Charm Call",
           "price": 765.0,
           "note": null,
           "carried": 765.0,
@@ -43593,7 +43593,7 @@
         },
         {
           "id": "put_charm_wall",
-          "label": "Largest put charm strike",
+          "label": "Charm Put",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -44231,8 +44231,8 @@
           "id": "call_wall",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest call gamma strike",
-          "short": "Largest call gamma strike",
+          "label": "Gamma Call",
+          "short": "Gamma Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44252,8 +44252,8 @@
           "id": "lvp",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest positive net GEX strike",
-          "short": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
+          "short": "Gamma Net Positive",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44273,8 +44273,8 @@
           "id": "call_delta_wall",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest call delta strike",
-          "short": "Largest call delta strike",
+          "label": "Delta Call",
+          "short": "Delta Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44294,8 +44294,8 @@
           "id": "call_charm_wall",
           "price": 765.0,
           "family": "gamma",
-          "label": "Largest call charm strike",
-          "short": "Largest call charm strike",
+          "label": "Charm Call",
+          "short": "Charm Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44363,8 +44363,8 @@
           "id": "gamma_flip",
           "price": 761.2225055632189,
           "family": "gamma",
-          "label": "Gamma flip",
-          "short": "Gamma flip",
+          "label": "Gamma Flip",
+          "short": "Gamma Flip",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44432,8 +44432,8 @@
           "id": "put_wall",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest put gamma strike",
-          "short": "Largest put gamma strike",
+          "label": "Gamma Put",
+          "short": "Gamma Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44453,8 +44453,8 @@
           "id": "absolute_gamma_strike",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest total gamma strike",
-          "short": "Largest total gamma strike",
+          "label": "Gamma Total",
+          "short": "Gamma Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44474,8 +44474,8 @@
           "id": "put_delta_wall",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest put delta strike",
-          "short": "Largest put delta strike",
+          "label": "Delta Put",
+          "short": "Delta Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44591,8 +44591,8 @@
           "id": "max_pain",
           "price": 757.0,
           "family": "gamma",
-          "label": "Max pain",
-          "short": "Max pain",
+          "label": "Max Pain",
+          "short": "Max Pain",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44684,8 +44684,8 @@
           "id": "pin_candidate",
           "price": 756.0,
           "family": "gamma",
-          "label": "Largest open interest strike near price",
-          "short": "Largest open interest strike near price",
+          "label": "OI Pin",
+          "short": "OI Pin",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44801,8 +44801,8 @@
           "id": "hvp",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest negative net GEX strike",
-          "short": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
+          "short": "Gamma Net Negative",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44822,8 +44822,8 @@
           "id": "key_delta_strike",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest total delta strike",
-          "short": "Largest total delta strike",
+          "label": "Delta Total",
+          "short": "Delta Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44843,8 +44843,8 @@
           "id": "put_charm_wall",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest put charm strike",
-          "short": "Largest put charm strike",
+          "label": "Charm Put",
+          "short": "Charm Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -44894,7 +44894,7 @@
       "zero_dte": [
         {
           "id": "call_wall",
-          "label": "Largest call gamma strike",
+          "label": "Gamma Call",
           "price": 759.0,
           "note": null,
           "carried": 775.0,
@@ -44906,7 +44906,7 @@
         },
         {
           "id": "put_wall",
-          "label": "Largest put gamma strike",
+          "label": "Gamma Put",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -44918,7 +44918,7 @@
         },
         {
           "id": "gamma_flip",
-          "label": "Gamma flip",
+          "label": "Gamma Flip",
           "price": 759.8723887322883,
           "note": null,
           "carried": 761.2225055632189,
@@ -44930,7 +44930,7 @@
         },
         {
           "id": "absolute_gamma_strike",
-          "label": "Largest total gamma strike",
+          "label": "Gamma Total",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -44966,7 +44966,7 @@
         },
         {
           "id": "hvp",
-          "label": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -44978,7 +44978,7 @@
         },
         {
           "id": "lvp",
-          "label": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
           "price": 761.0,
           "note": null,
           "carried": 775.0,
@@ -44990,7 +44990,7 @@
         },
         {
           "id": "key_delta_strike",
-          "label": "Largest total delta strike",
+          "label": "Delta Total",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -45002,7 +45002,7 @@
         },
         {
           "id": "call_delta_wall",
-          "label": "Largest call delta strike",
+          "label": "Delta Call",
           "price": 754.0,
           "note": null,
           "carried": 775.0,
@@ -45014,7 +45014,7 @@
         },
         {
           "id": "put_delta_wall",
-          "label": "Largest put delta strike",
+          "label": "Delta Put",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -45026,7 +45026,7 @@
         },
         {
           "id": "call_charm_wall",
-          "label": "Largest call charm strike",
+          "label": "Charm Call",
           "price": 765.0,
           "note": null,
           "carried": 765.0,
@@ -45038,7 +45038,7 @@
         },
         {
           "id": "put_charm_wall",
-          "label": "Largest put charm strike",
+          "label": "Charm Put",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -45628,8 +45628,8 @@
           "id": "call_wall",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest call gamma strike",
-          "short": "Largest call gamma strike",
+          "label": "Gamma Call",
+          "short": "Gamma Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45649,8 +45649,8 @@
           "id": "lvp",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest positive net GEX strike",
-          "short": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
+          "short": "Gamma Net Positive",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45670,8 +45670,8 @@
           "id": "call_delta_wall",
           "price": 775.0,
           "family": "gamma",
-          "label": "Largest call delta strike",
-          "short": "Largest call delta strike",
+          "label": "Delta Call",
+          "short": "Delta Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45691,8 +45691,8 @@
           "id": "call_charm_wall",
           "price": 765.0,
           "family": "gamma",
-          "label": "Largest call charm strike",
-          "short": "Largest call charm strike",
+          "label": "Charm Call",
+          "short": "Charm Call",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45760,8 +45760,8 @@
           "id": "gamma_flip",
           "price": 761.2225055632189,
           "family": "gamma",
-          "label": "Gamma flip",
-          "short": "Gamma flip",
+          "label": "Gamma Flip",
+          "short": "Gamma Flip",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45829,8 +45829,8 @@
           "id": "put_wall",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest put gamma strike",
-          "short": "Largest put gamma strike",
+          "label": "Gamma Put",
+          "short": "Gamma Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45850,8 +45850,8 @@
           "id": "absolute_gamma_strike",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest total gamma strike",
-          "short": "Largest total gamma strike",
+          "label": "Gamma Total",
+          "short": "Gamma Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45871,8 +45871,8 @@
           "id": "put_delta_wall",
           "price": 760.0,
           "family": "gamma",
-          "label": "Largest put delta strike",
-          "short": "Largest put delta strike",
+          "label": "Delta Put",
+          "short": "Delta Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -45988,8 +45988,8 @@
           "id": "max_pain",
           "price": 757.0,
           "family": "gamma",
-          "label": "Max pain",
-          "short": "Max pain",
+          "label": "Max Pain",
+          "short": "Max Pain",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -46081,8 +46081,8 @@
           "id": "pin_candidate",
           "price": 756.0,
           "family": "gamma",
-          "label": "Largest open interest strike near price",
-          "short": "Largest open interest strike near price",
+          "label": "OI Pin",
+          "short": "OI Pin",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -46198,8 +46198,8 @@
           "id": "hvp",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest negative net GEX strike",
-          "short": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
+          "short": "Gamma Net Negative",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -46219,8 +46219,8 @@
           "id": "key_delta_strike",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest total delta strike",
-          "short": "Largest total delta strike",
+          "label": "Delta Total",
+          "short": "Delta Total",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -46240,8 +46240,8 @@
           "id": "put_charm_wall",
           "price": 750.0,
           "family": "gamma",
-          "label": "Largest put charm strike",
-          "short": "Largest put charm strike",
+          "label": "Charm Put",
+          "short": "Charm Put",
           "evidence_tier": "DERIVED",
           "provenance": {
             "producer": "calc.terrain_engine.compute_terrain",
@@ -46291,7 +46291,7 @@
       "zero_dte": [
         {
           "id": "call_wall",
-          "label": "Largest call gamma strike",
+          "label": "Gamma Call",
           "price": 759.0,
           "note": null,
           "carried": 775.0,
@@ -46303,7 +46303,7 @@
         },
         {
           "id": "put_wall",
-          "label": "Largest put gamma strike",
+          "label": "Gamma Put",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -46315,7 +46315,7 @@
         },
         {
           "id": "gamma_flip",
-          "label": "Gamma flip",
+          "label": "Gamma Flip",
           "price": 759.8723887322883,
           "note": null,
           "carried": 761.2225055632189,
@@ -46327,7 +46327,7 @@
         },
         {
           "id": "absolute_gamma_strike",
-          "label": "Largest total gamma strike",
+          "label": "Gamma Total",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -46363,7 +46363,7 @@
         },
         {
           "id": "hvp",
-          "label": "Largest negative net GEX strike",
+          "label": "Gamma Net Negative",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -46375,7 +46375,7 @@
         },
         {
           "id": "lvp",
-          "label": "Largest positive net GEX strike",
+          "label": "Gamma Net Positive",
           "price": 761.0,
           "note": null,
           "carried": 775.0,
@@ -46387,7 +46387,7 @@
         },
         {
           "id": "key_delta_strike",
-          "label": "Largest total delta strike",
+          "label": "Delta Total",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -46399,7 +46399,7 @@
         },
         {
           "id": "call_delta_wall",
-          "label": "Largest call delta strike",
+          "label": "Delta Call",
           "price": 754.0,
           "note": null,
           "carried": 775.0,
@@ -46411,7 +46411,7 @@
         },
         {
           "id": "put_delta_wall",
-          "label": "Largest put delta strike",
+          "label": "Delta Put",
           "price": 756.0,
           "note": null,
           "carried": 760.0,
@@ -46423,7 +46423,7 @@
         },
         {
           "id": "call_charm_wall",
-          "label": "Largest call charm strike",
+          "label": "Charm Call",
           "price": 765.0,
           "note": null,
           "carried": 765.0,
@@ -46435,7 +46435,7 @@
         },
         {
           "id": "put_charm_wall",
-          "label": "Largest put charm strike",
+          "label": "Charm Put",
           "price": 756.0,
           "note": null,
           "carried": 750.0,
@@ -47048,8 +47048,8 @@
           "dom": "OPTIONS",
           "dir": "down",
           "warn": false,
-          "title": "Spot through the largest put gamma strike",
-          "detail": "Largest put gamma strike 760.00 \u00b7 spot 757.08",
+          "title": "Spot through Gamma Put",
+          "detail": "Gamma Put 760.00 \u00b7 spot 757.08",
           "src": "gamma levels",
           "time_ct": "Thu 11/12 09:30 AM CT"
         },
@@ -47451,8 +47451,8 @@
           "dom": "OPTIONS",
           "dir": "down",
           "warn": false,
-          "title": "Spot through the largest put gamma strike",
-          "detail": "Largest put gamma strike 760.00 \u00b7 spot 757.08",
+          "title": "Spot through Gamma Put",
+          "detail": "Gamma Put 760.00 \u00b7 spot 757.08",
           "src": "gamma levels",
           "time_ct": "Thu 11/12 09:30 AM CT"
         },
@@ -88596,8 +88596,8 @@
         "dom": "OPTIONS",
         "dir": "down",
         "warn": false,
-        "title": "Spot through the largest put gamma strike",
-        "detail": "Largest put gamma strike 760.00 \u00b7 spot 757.08",
+        "title": "Spot through Gamma Put",
+        "detail": "Gamma Put 760.00 \u00b7 spot 757.08",
         "src": "gamma levels",
         "time_ct": "Thu 11/12 09:30 AM CT"
       },
