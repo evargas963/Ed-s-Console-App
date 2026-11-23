@@ -274,7 +274,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   tolerance; depth to 5 levels); a book side with no levels has no depth total.
 - INTERPRET (NEXT; operator 2026-11-20): every reading of ours laid over Schwab's data, found and
   listed with what it adds over the field as sent: a buyer/seller label (Lee-Ready against the bid
-  and ask, `calc/l1_trade_observation.py`), a sum or split of ours (the Options Book's lean, marked
+  and ask, `calc/l1_trade_observation.py`), a sum or split of ours (Options Level II's lean, marked
   INTERPRET in `docs/derived_register.md`), a threshold, a rule that blanks or merges a value. Each
   one shown to be needed and sourced, or deleted; one Schwab sends only changed fields (Streamer
   API), so a field missing from a message is unchanged, its held value current. The option book's

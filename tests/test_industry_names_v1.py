@@ -45,6 +45,7 @@ REPLACED = {
     r"\b(?:CΔW|PΔW|CCh|PCh|Net PΓ|Net CΓ)\b": "the level's own words",
     r"market map": "Price Chart (MARKETMAP is a registered mark)",
     r"bookmap panel": "Order Book Heatmap (BOOKMAP is a registered mark)",
+    r"options book": "Options Level II",
     r"book (?:/|·) dom|book/dom": "Level II",
     r"dot map": "Bubbles",
     r"multi-map": "Small Multiples",

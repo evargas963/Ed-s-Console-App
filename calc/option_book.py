@@ -1,9 +1,9 @@
-"""The Options Book: each contract's resting book and volume, their summary and the options lean.
+"""Options Level II: each contract's resting book and volume, their summary and the options lean.
 
 Schwab sends each contract's book (OPTIONS_BOOK, every level's TOTAL_VOLUME) and its volume today
 (LEVELONE_OPTIONS TOTAL_VOLUME), not their totals, shares or a lean. Each is computed here, once
-(docs/derived_register.md, the Options Book rows). A Calculator: it takes its inputs and reads no
-clock, State, database or network (AGENTS.md rule 11).
+(docs/derived_register.md, the Options Level II rows). A Calculator: it takes its inputs and reads
+no clock, State, database or network (AGENTS.md rule 11).
 """
 
 from __future__ import annotations

@@ -1,12 +1,12 @@
-"""The `option_book` panel: the Options Book of one expiry, its summary and the options lean.
+"""The `option_book` panel: Options Level II of one expiry, its summary and the options lean.
 
 Read from State: one expiry of the published chain with each contract's newest values, as the
 chain screens show them (push.chain.expiry_asked), each contract's newest OPTIONS_BOOK (the
 order-flow state), the daemon's heartbeat and the live price. Computed once by calc.option_book;
 every text is formatted here. Sent again on each streamed quote or book of the ticker or its
 contracts (server.FLOW_PANELS, OPTION_PANELS) and on each publication of its levels
-(server.LEVELS_PANELS). The Options Book subview asks it at the selected expiry, the Trade Desk's
-Options Positioning card at the front one.
+(server.LEVELS_PANELS). The Options Level II subview asks it at the selected expiry, the Trade
+Desk's Options Positioning card at the front one.
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ class ServedSummary(TypedDict):
 
 
 class OptionBookPanel(LevelsVerdict):
-    """The `option_book` panel (option_book): the Options Book of one expiry.
+    """The `option_book` panel (option_book): Options Level II of one expiry.
 
     The expiry answered, the levels' verdict, the window's view, the rows with their bars'
     scales, the summary, the lean with its zones' names, and the books' state: how many
@@ -291,7 +291,7 @@ def _book_state(
 def option_book(
     ticker: str, now: float, params: dict[str, Any]
 ) -> OptionBookPanel | NoOptionBook | NotAvailable:
-    """Return the Options Book of `ticker` at `now` in the window and expiry `params` ask for.
+    """Return Options Level II of `ticker` at `now` in the window and expiry `params` ask for.
 
     One row per strike of the window (push.strike_rows.window: the scope's strikes around the
     listed strike nearest the live price, or the operator's pan), each with its call's and put's

@@ -530,8 +530,8 @@
   }
 
   // ------------------------------------------------------------------ cards
-  // the options lean of the Options Book at the expiry chosen, else the front one (the
-  // `option_book:desk` panel, its expiry served), its gauge drawn as the Book view draws it
+  // the options lean of Options Level II at the expiry chosen, else the front one (the
+  // `option_book:desk` panel, its expiry served), its gauge drawn as the Level II view draws it
   // (EdOptionLean); with nothing to draw, why
   function paintLean(card) {
     var host = card.querySelector(".tdm-lean"),
@@ -539,7 +539,7 @@
     if (!b || b.available === false) {
       host.innerHTML =
         '<div class="tdm-plot-none">Options lean: ' +
-        esc(b ? b.reason : noneText(b, "options book", "")) +
+        esc(b ? b.reason : noneText(b, "options level II", "")) +
         "</div>";
       return;
     }
@@ -1259,7 +1259,7 @@
     document.addEventListener("ed:view", start);
     document.addEventListener("ed:ticker", start);
     document.addEventListener("ed:book_venue", askPanels); // the book is the venue's
-    document.addEventListener("ed:scope", askPanels); // the Options Book's window is the scope's
+    document.addEventListener("ed:scope", askPanels); // Options Level II's window is the scope's
     document.addEventListener("ed:expiry", askPanels); // its expiry is the one chosen
     document.addEventListener("ed:panel", function (e) {
       if (onDesk()) takePanel(e.detail);

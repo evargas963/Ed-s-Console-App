@@ -3,8 +3,8 @@
    GEX by Strike    <- the page's socket      (the `strikes:gbs` panel, per-strike net_gex_1pct$)
    Strike Detail    <- the page's socket      (the `chain:detail` panel, vendor per-contract OI/vol/greeks)
    Vanna / Charm    <- the page's socket      (the `vanna` / `charm` panels, per-strike net)
-   Structures       <- the page's socket      (the `chain:structures` panel, contract terms)
-   The Options Book is ed-gamma-book.js's.
+   Specifications   <- the page's socket      (the `chain:structures` panel, contract terms)
+   Options Level II is ed-gamma-book.js's.
    No trading semantics are computed here. Bar scaling is visual normalisation over the
    already-computed displayed values; distances/positions are formatting only. */
 (function () {

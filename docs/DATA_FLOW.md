@@ -234,22 +234,22 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   set, taken only while all six arrived in this hold (`option_contract.streamed_greek_set`,
   `capture.Daemon.option_record`). Enforced by: `tests/test_data_path_option_quote_time_v1.py`,
   `tests/test_data_path_rest_one_connection_v1.py`.
-- **Options Book** (each contract's resting book and volume, their summary and the options lean).
-  One expiry of the published chain with each contract's newest values (`push.chain.expiry_asked`,
-  the chain screens' own), each contract's newest OPTIONS_BOOK (`order_flow.state.newest_book`) and
-  the live price → the one producer, `calc.option_book` (a Calculator: each side's levels summed,
-  the summary over the rows whose call and put both have a book, the lean; registered in
-  `docs/derived_register.md`) → the `option_book` panel (`push.option_book.option_book`, every text
-  formatted there), sent again on each quote or book of the ticker or its contracts
-  (`server.FLOW_PANELS`, `server.OPTION_PANELS`) and each publication of its levels
-  (`server.LEVELS_PANELS`). Its lifecycle owner is the order-flow state's books (State) and the
-  levels producer's chain; when the OPTIONS_BOOK feed stops, the last books stand and the panel says
-  NOT LIVE or OFFLINE with why and the oldest book's time; a contract with no book held is "-",
-  never 0. The rows' volumes and their listing are the chain's, so the panel carries the levels'
-  verdict and the subview shows it beside the books' own state: a chain no longer delivered stands,
-  marked STALE with its time, its age and why. With no live price the window is the chain's middle
-  strikes and the subview says so. Read by the Options Book subview at the selected expiry and the
-  Trade Desk's Options Positioning card (its gauge) at the front one. Enforced by:
+- **Options Level II** (each contract's resting book and volume, their summary and the options
+  lean). One expiry of the published chain with each contract's newest values
+  (`push.chain.expiry_asked`, the chain screens' own), each contract's newest OPTIONS_BOOK
+  (`order_flow.state.newest_book`) and the live price → the one producer, `calc.option_book` (a
+  Calculator: each side's levels summed, the summary over the rows whose call and put both have a
+  book, the lean; registered in `docs/derived_register.md`) → the `option_book` panel
+  (`push.option_book.option_book`, every text formatted there), sent again on each quote or book of
+  the ticker or its contracts (`server.FLOW_PANELS`, `server.OPTION_PANELS`) and each publication of
+  its levels (`server.LEVELS_PANELS`). Its lifecycle owner is the order-flow state's books (State)
+  and the levels producer's chain; when the OPTIONS_BOOK feed stops, the last books stand and the
+  panel says NOT LIVE or OFFLINE with why and the oldest book's time; a contract with no book held
+  is "-", never 0. The rows' volumes and their listing are the chain's, so the panel carries the
+  levels' verdict and the subview shows it beside the books' own state: a chain no longer delivered
+  stands, marked STALE with its time, its age and why. With no live price the window is the chain's
+  middle strikes and the subview says so. Read by the Options Level II subview at the selected
+  expiry and the Trade Desk's Options Positioning card (its gauge) at the front one. Enforced by:
   `tests/test_option_book_v1.py`, `tests/e2e/console-options-book.spec.js`.
 - **The option contracts streamed (the option rule).** `capture.Daemon.pick_options` orders what is
   asked on LEVELONE_OPTIONS and OPTIONS_BOOK: the Flow panel's contract, then every ticker's kept
@@ -359,7 +359,7 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   sweep's rounds, or NOT LIVE, with the levels' time and age. Each panel that serves the levels'
   values serves that verdict with them and its screen shows it as its badge: Key Levels, the
   heatmap, GEX by strike, Vanna and Charm by strike, the Chain, Strike Detail, Contract
-  Specifications, the Options Book, the Levels view in its two homes, the zones chart (its zones
+  Specifications, Options Level II, the Levels view in its two homes, the zones chart (its zones
   hold the option levels) and Right Now's Frame, Confirm and migration
   (`tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`,
   `tests/test_e2e_panels_two_day_v1.py`, `tests/e2e/console-options-vanna-charm.spec.js`,
@@ -418,7 +418,7 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **One expiry choice.** The strike views follow the expiry the operator picks in the one expiry
   dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`), shown on the
   Options and the Trade Desk bars: the heatmap, GEX by Strike, the Chart's GEX, DEX and OI profiles,
-  Vanna and Charm by strike, Right Now's migration, and the Options Book and the Desk map's options
+  Vanna and Charm by strike, Right Now's migration, and Options Level II and the Desk map's options
   lean (an expiry each, so none chosen is the front one, as on the chain screens:
   `push.chain.expiry_asked`), and the Confluence matrix (one expiry ranked by its days to
   expiration, so none chosen is the front one still open: `push.confluence.confluence_payload`). A
