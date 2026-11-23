@@ -4,84 +4,70 @@
  "expiry": "2026-10-22",
  "flip_text": null,
  "level_names": {
-  "763.00": "Delta Call + 0DTE Delta Call",
-  "764.00": "Gamma Put + Gamma Net Negative + 0DTE Gamma Put + 0DTE Gamma Net Negative",
-  "765.00": "Gamma Call + Gamma Total + 0DTE Gamma Call + 0DTE Gamma Total",
-  "771.00": "Max Pain",
-  "772.00": "Delta Total + Delta Put + 0DTE Delta Total + 0DTE Delta Put",
-  "776.00": "Gamma Net Positive + 0DTE Gamma Net Positive"
+  "764.00": "Gamma Put + 0DTE Gamma Put",
+  "765.00": "Gamma Call + Gamma Total + 0DTE Gamma Call + 0DTE Gamma Total"
  },
  "levels_above": [],
  "levels_below": [
   {
    "abbrev": "Gamma Call",
+   "distance_text": "-8.13",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
+   "sigma": null,
+   "sigma_text": null,
    "title": "Gamma Call"
   },
   {
    "abbrev": "Gamma Put",
+   "distance_text": "-9.13",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
+   "sigma": null,
+   "sigma_text": null,
    "title": "Gamma Put"
   },
   {
    "abbrev": "Gamma Total",
+   "distance_text": "-8.13",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
+   "sigma": null,
+   "sigma_text": null,
    "title": "Gamma Total"
   },
   {
-   "abbrev": "Gamma Net \u2212",
-   "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
-   "title": "Gamma Net Negative"
-  },
-  {
-   "abbrev": "Delta Call",
-   "lane": "options",
-   "price": 763.0,
-   "price_text": "763.00",
-   "title": "Delta Call"
-  },
-  {
    "abbrev": "0DTE Gamma Call",
+   "distance_text": "-8.13",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
+   "sigma": null,
+   "sigma_text": null,
    "title": "0DTE Gamma Call"
   },
   {
    "abbrev": "0DTE Gamma Put",
+   "distance_text": "-9.13",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
+   "sigma": null,
+   "sigma_text": null,
    "title": "0DTE Gamma Put"
   },
   {
    "abbrev": "0DTE Gamma Total",
+   "distance_text": "-8.13",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
+   "sigma": null,
+   "sigma_text": null,
    "title": "0DTE Gamma Total"
-  },
-  {
-   "abbrev": "0DTE Gamma Net \u2212",
-   "lane": "options",
-   "price": 764.0,
-   "price_text": "764.00",
-   "title": "0DTE Gamma Net Negative"
-  },
-  {
-   "abbrev": "0DTE Delta Call",
-   "lane": "options",
-   "price": 763.0,
-   "price_text": "763.00",
-   "title": "0DTE Delta Call"
   }
  ],
  "notes": [],
@@ -102,76 +88,10 @@
  "pin_text": null,
  "preset": "0DTE",
  "rail_lanes": {
-  "options": [
-   {
-    "abbrev": "Gamma Net +",
-    "lane": "options",
-    "price": 776.0,
-    "price_text": "776.00",
-    "title": "Gamma Net Positive"
-   },
-   {
-    "abbrev": "0DTE Gamma Net +",
-    "lane": "options",
-    "price": 776.0,
-    "price_text": "776.00",
-    "title": "0DTE Gamma Net Positive"
-   },
-   {
-    "abbrev": "Delta Total",
-    "lane": "options",
-    "price": 772.0,
-    "price_text": "772.00",
-    "title": "Delta Total"
-   },
-   {
-    "abbrev": "Delta Put",
-    "lane": "options",
-    "price": 772.0,
-    "price_text": "772.00",
-    "title": "Delta Put"
-   },
-   {
-    "abbrev": "0DTE Delta Total",
-    "lane": "options",
-    "price": 772.0,
-    "price_text": "772.00",
-    "title": "0DTE Delta Total"
-   },
-   {
-    "abbrev": "0DTE Delta Put",
-    "lane": "options",
-    "price": 772.0,
-    "price_text": "772.00",
-    "title": "0DTE Delta Put"
-   },
-   {
-    "abbrev": "Max Pain",
-    "lane": "options",
-    "price": 771.0,
-    "price_text": "771.00",
-    "title": "Max Pain"
-   }
-  ],
+  "options": [],
   "session": []
  },
- "rail_lines": [
-  {
-   "price": 771.0,
-   "price_text": "771.00",
-   "session": false
-  },
-  {
-   "price": 776.0,
-   "price_text": "776.00",
-   "session": false
-  },
-  {
-   "price": 772.0,
-   "price_text": "772.00",
-   "session": false
-  }
- ],
+ "rail_lines": [],
  "reason": null,
  "regime": "NEGATIVE_GAMMA",
  "regime_text": "Negative gamma",
@@ -214,6 +134,8 @@
    "pc_vol_text": "0.02",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 778.0,
    "strike_text": "778.00",
@@ -265,6 +187,8 @@
    "pc_vol_text": "0.03",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 777.0,
    "strike_text": "777.00",
@@ -316,6 +240,8 @@
    "pc_vol_text": "0.04",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 776.0,
    "strike_text": "776.00",
@@ -367,6 +293,8 @@
    "pc_vol_text": "0.07",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 775.0,
    "strike_text": "775.00",
@@ -418,6 +346,8 @@
    "pc_vol_text": "0.04",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": true,
    "strike": 774.0,
    "strike_text": "774.00",
@@ -469,6 +399,8 @@
    "pc_vol_text": "0.06",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 773.0,
    "strike_text": "773.00",
@@ -520,6 +452,8 @@
    "pc_vol_text": "0.06",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 772.0,
    "strike_text": "772.00",
@@ -571,6 +505,8 @@
    "pc_vol_text": "0.03",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 771.0,
    "strike_text": "771.00",
@@ -622,6 +558,8 @@
    "pc_vol_text": "0.06",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 770.0,
    "strike_text": "770.00",
@@ -673,6 +611,8 @@
    "pc_vol_text": "0.11",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 769.0,
    "strike_text": "769.00",
@@ -724,6 +664,8 @@
    "pc_vol_text": "0.08",
    "score": null,
    "score_text": null,
+   "sigma": null,
+   "sigma_text": null,
    "spot_line": false,
    "strike": 768.0,
    "strike_text": "768.00",

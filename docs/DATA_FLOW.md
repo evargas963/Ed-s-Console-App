@@ -436,6 +436,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_data_path_confluence_v1.py`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
+- **The Confluence matrix's levels and distances.** The matrix marks only the key levels
+  (`push.confluence.KEY_OPTION_LEVELS`, `KEY_SAME_DAY_LEVELS`, `KEY_SESSION_LEVELS`, defined in
+  `docs/derived_register.md` "Confluence key levels"): Gamma Flip, Gamma Call, Gamma Put, Gamma
+  Total and OI Pin from the published levels, their same-day copies only when the chosen expiry
+  settles that day, and VWAP and the prior close from the session's price levels; each inside the
+  strikes shown on its lane, the rest listed above or below. Each strike and each level carries its
+  distance from the live price in points and in the expiry's implied moves (σ), one producer
+  (`calc.confluence_composite.distance`). Enforced by: `tests/test_matrix_key_levels_v1.py`,
+  `tests/test_data_path_confluence_v1.py`, `tests/e2e/console-confluence.spec.js`.
 - **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept
   before it (derived register, "A print on the tape"). Each print is kept with the quote in force
   when it traded (`calc.l1_trade_observation.quote_in_force`, taken once, in

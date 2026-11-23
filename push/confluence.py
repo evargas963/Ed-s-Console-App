@@ -6,10 +6,11 @@ Read from State: the published levels (state.level_store), the price-level snaps
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any
 
-from calc.confluence_composite import Matrix, at_price, build_matrix, window_rows
+from calc.confluence_composite import Matrix, at_price, build_matrix, distance, window_rows
 from calc.math_exposure_core import merge_exposure_books
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -26,9 +27,9 @@ from push.levels import pin_note
 from push.spot import price_mark, resolve_spot
 from push.strike_rows import expiry_unreadable, window
 from push.verdict import LevelsVerdict, terrain_staleness
-from state.level_store import published_levels
+from state.level_store import PublishedLevels, published_levels
 from state.price_level_store import canonical_price_level_snapshot
-from time_et import age_text, ct_label
+from time_et import age_text, ct_label, option_close_product, sessions, time_to_expiry_years
 
 
 def _expiry_order(item: tuple[str, float | None]) -> tuple[int, float, str]:
@@ -45,66 +46,59 @@ def _confluence_expiries(books: dict[ExpiryKey, Book]) -> list[dict[str, Any]]:
     return [{"expiry": exp, "dte": dte} for exp, dte in sorted(found.items(), key=_expiry_order)]
 
 
-#: Pill text for the chain's option levels: the level's own name (OPTION_LEVELS), but the two net
-#: GEX strikes, whose sign is shown as a sign. Same-day copies take "0DTE " in front.
-_OPTION_SHORT = {
-    "Gamma Net Negative": "Gamma Net −",
-    "Gamma Net Positive": "Gamma Net +",
-}
+#: The matrix's key levels: only those institutions have a mechanical reason to trade at
+#: (docs/derived_register.md "Confluence key levels"). From the chain, where options dealers'
+#: hedging turns and concentrates (Gamma Flip, Gamma Call, Gamma Put, Gamma Total) and the pin
+#: of the expiry settling today (OI Pin); the first four's same-day copies only on the chosen
+#: expiry's own day, where the pinning evidence is. From the session, the execution desks'
+#: benchmarks: VWAP and the prior close.
+_KEY_OPTION_IDS = ("gamma_flip", "call_wall", "put_wall", "absolute_gamma_strike")
+KEY_OPTION_LEVELS = tuple(
+    level for level in OPTION_LEVELS if level[0] in (*_KEY_OPTION_IDS, "pin_candidate")
+)
+KEY_SAME_DAY_LEVELS = tuple(level for level in SAME_DAY_LEVELS if level[0] in _KEY_OPTION_IDS)
+KEY_SESSION_LEVELS = ("VWAP", "PDC")
 
 
-def _option_abbrev(label: str, same_day: bool) -> str:
-    base = _OPTION_SHORT[label] if label in _OPTION_SHORT else label
-    if same_day:
-        return "0DTE " + base
-    return base
+def _confluence_markers(
+    live: TerrainSnapshot, tk: str, now: datetime, expiry_day: bool
+) -> list[dict[str, Any]]:
+    """Return the key levels of this priced snapshot and of the session's published levels.
 
-
-def _confluence_markers(live: TerrainSnapshot, tk: str, now: datetime) -> list[dict[str, Any]]:
-    """Levels carried from this same priced snapshot, plus the session levels already published."""
+    `expiry_day`: the chosen expiry settles today, so the same-day levels are its own.
+    """
     markers: list[dict[str, Any]] = []
     snap = canonical_price_level_snapshot(tk, now)
     if snap is not None:
-        for value in snap.levels.values():
-            row = value.to_contract_dict()
-            markers.append(
-                {
-                    "label": row["label"],
-                    "short": row["short"],
-                    "title": row["label"],
-                    "lane": "session",
-                    "price": row["price"],
-                }
-            )
-    for gid, label in OPTION_LEVELS:
-        price = live.level(gid)
-        if price is not None:
-            markers.append(
-                {
-                    "label": label,
-                    "short": _option_abbrev(label, False),
-                    "title": label,
-                    "lane": "options",
-                    "price": price,
-                }
-            )
-    for gid, label in SAME_DAY_LEVELS:
-        price = live.same_day[gid]  # None: not known (an unavailable snapshot's every one)
-        if price is not None:
-            markers.append(
-                {
-                    "label": "0DTE " + label,
-                    "short": _option_abbrev(label, True),
-                    "title": "0DTE " + label,
-                    "lane": "options",
-                    "price": price,
-                }
-            )
+        for lid, value in snap.levels.items():
+            if lid in KEY_SESSION_LEVELS:
+                row = value.to_contract_dict()
+                markers.append(
+                    {
+                        "short": row["short"],
+                        "title": row["label"],
+                        "lane": "session",
+                        "price": row["price"],
+                    }
+                )
+    named = [(label, live.level(gid)) for gid, label in KEY_OPTION_LEVELS]
+    if expiry_day:
+        named += [("0DTE " + label, live.same_day[gid]) for gid, label in KEY_SAME_DAY_LEVELS]
+    markers += [
+        {"short": label, "title": label, "lane": "options", "price": price}
+        for label, price in named
+        if price is not None
+    ]
     return markers
 
 
-def _screen_levels(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Each level at its own price, for the rail. The page does not move it onto a strike."""
+def _screen_levels(
+    markers: list[dict[str, Any]], spot: float | None, sigma_root_t: float | None
+) -> list[dict[str, Any]]:
+    """Each level at its own price, with its distance from the live price, for the rail.
+
+    The page does not move a level onto a strike.
+    """
     levels: list[dict[str, Any]] = []
     for marker in markers:
         price = marker.get("price")
@@ -117,6 +111,7 @@ def _screen_levels(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "price": float(price),
                 "price_text": price_text(price),
                 "title": marker["title"],
+                **distance(float(price), spot, sigma_root_t),
             }
         )
     return levels
@@ -178,6 +173,30 @@ def _ranked_matrix(snap: TerrainSnapshot, spot: float, chosen: str, dte: float) 
     )
 
 
+def _sigma_root_t(published: PublishedLevels, tk: str, expiry: str, now: datetime) -> float | None:
+    """Return the expiry's one implied move: its at-the-money volatility × √(time left), or None.
+
+    The volatility is the expiry's own (TerrainSnapshot.atm_iv_pct_by_expiry, a percent); the
+    time is to its settlement at `now`, in years, by the one clock (time_et.time_to_expiry_years)
+    from each of its contracts' expirationDate and settlementType as Schwab sent them. None when
+    either is not known, or when the expiry's contracts settle at different times (an AM and a
+    PM index series on one date): the expiry then has no one time left.
+    """
+    iv_pct = published.snap.atm_iv_pct_by_expiry[expiry]
+    held, product = sessions(), option_close_product(tk)
+    times = {
+        time_to_expiry_years(
+            c.expiration, now, sessions=held, settlement_type=c.settlement, product=product
+        )
+        for c in published.chain
+        if c.expiry == expiry and c.expiration is not None
+    }
+    t = times.pop() if len(times) == 1 else None
+    if iv_pct is None or t is None:
+        return None
+    return iv_pct / 100.0 * math.sqrt(t)
+
+
 def _chain_status(verdict: LevelsVerdict, fetched: float, now: float) -> str:
     """Return the matrix's status line: the levels' word, the chain's time and age, and why."""
     parts = [
@@ -230,8 +249,9 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
     stored = _ranked_matrix(live, priced_at, chosen, match["dte"])
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
-    markers = _confluence_markers(live, tk, now)
-    levels = _screen_levels(markers)
+    sigma_root_t = _sigma_root_t(published, tk, chosen, now)
+    markers = _confluence_markers(live, tk, now, chosen == today)
+    levels = _screen_levels(markers, live_spot, sigma_root_t)
     ranked = sorted(stored.ranked)
     lo, hi, view = window(ranked, nearest_strike(ranked, live_spot), "auto", None, 0)
     body: dict[str, Any] = {
@@ -242,7 +262,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
         "peaks": stored.peaks,
         "rows": window_rows(stored, ranked[lo : hi + 1]),
     }
-    body.update(at_price(body["rows"], stored.strikes, live_spot))
+    body.update(at_price(body["rows"], stored.strikes, live_spot, sigma_root_t))
     body.update(
         {
             "ticker": tk,

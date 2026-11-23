@@ -41,6 +41,7 @@ from db import StoredCross
 from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
+from push import confluence as push_confluence
 from push import desk as push_desk
 from push import levels as push_levels
 from push import liquidity as push_liquidity
@@ -278,6 +279,12 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         }
                         if real is AMZN
                         else {}
+                    ),
+                    # the Confluence matrix at the front expiry (that day's own) and at the chain's
+                    # second
+                    "confluence": push_confluence.confluence(tk, now, {"expiry": None}),
+                    "confluence_second_expiry": push_confluence.confluence(
+                        tk, now, {"expiry": real.captures[1]["rows"][1]["expiry"]}
                     ),
                     "chain": push_chain.chain(tk, at, {"expiry": None}),
                     # the Chain tests' expiry switch: the chain's second expiry

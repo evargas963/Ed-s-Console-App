@@ -140,6 +140,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -260,6 +262,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -380,6 +384,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -500,6 +506,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -620,6 +628,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -740,6 +750,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -860,6 +872,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -980,6 +994,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -1100,6 +1116,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -1220,6 +1238,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -1340,6 +1360,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     }
    ],
@@ -1357,66 +1379,13 @@
     "options": [
      {
       "lane": "options",
-      "abbrev": "0DTE GSF",
-      "price": 274.3766856566115,
-      "price_text": "274.38",
-      "title": "0DTE GSF"
-     },
-     {
-      "lane": "options",
       "abbrev": "Gamma Put",
       "price": 270.0,
       "price_text": "270.00",
-      "title": "Gamma Put"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Max Pain",
-      "price": 270.0,
-      "price_text": "270.00",
-      "title": "Max Pain"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Delta Call",
-      "price": 270.0,
-      "price_text": "270.00",
-      "title": "0DTE Delta Call"
-     },
-     {
-      "lane": "options",
-      "abbrev": "GSF",
-      "price": 267.8408795429012,
-      "price_text": "267.84",
-      "title": "GSF"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Gamma Flip",
-      "price": 267.44689374750476,
-      "price_text": "267.45",
-      "title": "0DTE Gamma Flip"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Gamma Net \u2212",
-      "price": 265.0,
-      "price_text": "265.00",
-      "title": "0DTE Gamma Net Negative"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Charm Put",
-      "price": 260.0,
-      "price_text": "260.00",
-      "title": "Charm Put"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Delta Put",
-      "price": 250.0,
-      "price_text": "250.00",
-      "title": "Delta Put"
+      "title": "Gamma Put",
+      "distance_text": null,
+      "sigma": null,
+      "sigma_text": null
      }
     ]
    },
@@ -1424,36 +1393,6 @@
     {
      "price": 270.0,
      "price_text": "270.00",
-     "session": false
-    },
-    {
-     "price": 267.8408795429012,
-     "price_text": "267.84",
-     "session": false
-    },
-    {
-     "price": 250.0,
-     "price_text": "250.00",
-     "session": false
-    },
-    {
-     "price": 260.0,
-     "price_text": "260.00",
-     "session": false
-    },
-    {
-     "price": 267.44689374750476,
-     "price_text": "267.45",
-     "session": false
-    },
-    {
-     "price": 274.3766856566115,
-     "price_text": "274.38",
-     "session": false
-    },
-    {
-     "price": 265.0,
-     "price_text": "265.00",
      "session": false
     }
    ],
@@ -1463,112 +1402,20 @@
      "abbrev": "Gamma Call",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Gamma Call"
+     "title": "Gamma Call",
+     "distance_text": null,
+     "sigma": null,
+     "sigma_text": null
     },
     {
      "lane": "options",
      "abbrev": "Gamma Total",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Gamma Total"
-    },
-    {
-     "lane": "options",
-     "abbrev": "GRC",
-     "price": 464.1238672971819,
-     "price_text": "464.12",
-     "title": "GRC"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Gamma Net +",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Gamma Net Positive"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Delta Total",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Delta Total"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Delta Call",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Delta Call"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Charm Call",
-     "price": 300.0,
-     "price_text": "300.00",
-     "title": "Charm Call"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Call",
-     "price": 282.5,
-     "price_text": "282.50",
-     "title": "0DTE Gamma Call"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Put",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Gamma Put"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Total",
-     "price": 285.0,
-     "price_text": "285.00",
-     "title": "0DTE Gamma Total"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE GRC",
-     "price": 331.0487147181457,
-     "price_text": "331.05",
-     "title": "0DTE GRC"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Net +",
-     "price": 282.5,
-     "price_text": "282.50",
-     "title": "0DTE Gamma Net Positive"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Delta Total",
-     "price": 280.0,
-     "price_text": "280.00",
-     "title": "0DTE Delta Total"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Delta Put",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Delta Put"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Charm Call",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Charm Call"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Charm Put",
-     "price": 290.0,
-     "price_text": "290.00",
-     "title": "0DTE Charm Put"
+     "title": "Gamma Total",
+     "distance_text": null,
+     "sigma": null,
+     "sigma_text": null
     }
    ],
    "levels_below": [
@@ -1577,33 +1424,16 @@
      "abbrev": "Gamma Flip",
      "price": 249.97153629136815,
      "price_text": "249.97",
-     "title": "Gamma Flip"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Gamma Net \u2212",
-     "price": 200.0,
-     "price_text": "200.00",
-     "title": "Gamma Net Negative"
+     "title": "Gamma Flip",
+     "distance_text": null,
+     "sigma": null,
+     "sigma_text": null
     }
    ],
    "level_names": {
-    "300.00": "Gamma Call + Gamma Total + Gamma Net Positive + Delta Total + Delta Call + Charm Call",
-    "270.00": "Gamma Put + Max Pain + 0DTE Delta Call",
-    "249.97": "Gamma Flip",
-    "267.84": "GSF",
-    "464.12": "GRC",
-    "200.00": "Gamma Net Negative",
-    "250.00": "Delta Put",
-    "260.00": "Charm Put",
-    "282.50": "0DTE Gamma Call + 0DTE Gamma Net Positive",
-    "290.00": "0DTE Gamma Put + 0DTE Delta Put + 0DTE Charm Call + 0DTE Charm Put",
-    "267.45": "0DTE Gamma Flip",
-    "285.00": "0DTE Gamma Total",
-    "274.38": "0DTE GSF",
-    "331.05": "0DTE GRC",
-    "265.00": "0DTE Gamma Net Negative",
-    "280.00": "0DTE Delta Total"
+    "300.00": "Gamma Call + Gamma Total",
+    "270.00": "Gamma Put",
+    "249.97": "Gamma Flip"
    },
    "regime": "POSITIVE_GAMMA",
    "regime_text": "Positive gamma",
@@ -1750,6 +1580,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -1870,6 +1702,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -1990,6 +1824,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2110,6 +1946,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2230,6 +2068,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2350,6 +2190,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2470,6 +2312,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2590,6 +2434,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2710,6 +2556,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2830,6 +2678,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     },
     {
@@ -2950,6 +2800,8 @@
       }
      ],
      "distance_text": null,
+     "sigma": null,
+     "sigma_text": null,
      "spot_line": false
     }
    ],
@@ -2970,70 +2822,20 @@
       "abbrev": "Gamma Call",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Gamma Call"
+      "title": "Gamma Call",
+      "distance_text": null,
+      "sigma": null,
+      "sigma_text": null
      },
      {
       "lane": "options",
       "abbrev": "Gamma Total",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Gamma Total"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Gamma Net +",
-      "price": 300.0,
-      "price_text": "300.00",
-      "title": "Gamma Net Positive"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Delta Total",
-      "price": 300.0,
-      "price_text": "300.00",
-      "title": "Delta Total"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Delta Call",
-      "price": 300.0,
-      "price_text": "300.00",
-      "title": "Delta Call"
-     },
-     {
-      "lane": "options",
-      "abbrev": "Charm Call",
-      "price": 300.0,
-      "price_text": "300.00",
-      "title": "Charm Call"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Gamma Put",
-      "price": 290.0,
-      "price_text": "290.00",
-      "title": "0DTE Gamma Put"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Delta Put",
-      "price": 290.0,
-      "price_text": "290.00",
-      "title": "0DTE Delta Put"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Charm Call",
-      "price": 290.0,
-      "price_text": "290.00",
-      "title": "0DTE Charm Call"
-     },
-     {
-      "lane": "options",
-      "abbrev": "0DTE Charm Put",
-      "price": 290.0,
-      "price_text": "290.00",
-      "title": "0DTE Charm Put"
+      "title": "Gamma Total",
+      "distance_text": null,
+      "sigma": null,
+      "sigma_text": null
      }
     ]
    },
@@ -3042,153 +2844,35 @@
      "price": 300.0,
      "price_text": "300.00",
      "session": false
-    },
-    {
-     "price": 290.0,
-     "price_text": "290.00",
-     "session": false
     }
    ],
-   "levels_above": [
-    {
-     "lane": "options",
-     "abbrev": "GRC",
-     "price": 464.1238672971819,
-     "price_text": "464.12",
-     "title": "GRC"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE GRC",
-     "price": 331.0487147181457,
-     "price_text": "331.05",
-     "title": "0DTE GRC"
-    }
-   ],
+   "levels_above": [],
    "levels_below": [
     {
      "lane": "options",
      "abbrev": "Gamma Put",
      "price": 270.0,
      "price_text": "270.00",
-     "title": "Gamma Put"
+     "title": "Gamma Put",
+     "distance_text": null,
+     "sigma": null,
+     "sigma_text": null
     },
     {
      "lane": "options",
      "abbrev": "Gamma Flip",
      "price": 249.97153629136815,
      "price_text": "249.97",
-     "title": "Gamma Flip"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Max Pain",
-     "price": 270.0,
-     "price_text": "270.00",
-     "title": "Max Pain"
-    },
-    {
-     "lane": "options",
-     "abbrev": "GSF",
-     "price": 267.8408795429012,
-     "price_text": "267.84",
-     "title": "GSF"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Gamma Net \u2212",
-     "price": 200.0,
-     "price_text": "200.00",
-     "title": "Gamma Net Negative"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Delta Put",
-     "price": 250.0,
-     "price_text": "250.00",
-     "title": "Delta Put"
-    },
-    {
-     "lane": "options",
-     "abbrev": "Charm Put",
-     "price": 260.0,
-     "price_text": "260.00",
-     "title": "Charm Put"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Call",
-     "price": 282.5,
-     "price_text": "282.50",
-     "title": "0DTE Gamma Call"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Flip",
-     "price": 267.44689374750476,
-     "price_text": "267.45",
-     "title": "0DTE Gamma Flip"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Total",
-     "price": 285.0,
-     "price_text": "285.00",
-     "title": "0DTE Gamma Total"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE GSF",
-     "price": 274.3766856566115,
-     "price_text": "274.38",
-     "title": "0DTE GSF"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Net \u2212",
-     "price": 265.0,
-     "price_text": "265.00",
-     "title": "0DTE Gamma Net Negative"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Gamma Net +",
-     "price": 282.5,
-     "price_text": "282.50",
-     "title": "0DTE Gamma Net Positive"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Delta Total",
-     "price": 280.0,
-     "price_text": "280.00",
-     "title": "0DTE Delta Total"
-    },
-    {
-     "lane": "options",
-     "abbrev": "0DTE Delta Call",
-     "price": 270.0,
-     "price_text": "270.00",
-     "title": "0DTE Delta Call"
+     "title": "Gamma Flip",
+     "distance_text": null,
+     "sigma": null,
+     "sigma_text": null
     }
    ],
    "level_names": {
-    "300.00": "Gamma Call + Gamma Total + Gamma Net Positive + Delta Total + Delta Call + Charm Call",
-    "270.00": "Gamma Put + Max Pain + 0DTE Delta Call",
-    "249.97": "Gamma Flip",
-    "267.84": "GSF",
-    "464.12": "GRC",
-    "200.00": "Gamma Net Negative",
-    "250.00": "Delta Put",
-    "260.00": "Charm Put",
-    "282.50": "0DTE Gamma Call + 0DTE Gamma Net Positive",
-    "290.00": "0DTE Gamma Put + 0DTE Delta Put + 0DTE Charm Call + 0DTE Charm Put",
-    "267.45": "0DTE Gamma Flip",
-    "285.00": "0DTE Gamma Total",
-    "274.38": "0DTE GSF",
-    "331.05": "0DTE GRC",
-    "265.00": "0DTE Gamma Net Negative",
-    "280.00": "0DTE Delta Total"
+    "300.00": "Gamma Call + Gamma Total",
+    "270.00": "Gamma Put",
+    "249.97": "Gamma Flip"
    },
    "regime": "POSITIVE_GAMMA",
    "regime_text": "Positive gamma",

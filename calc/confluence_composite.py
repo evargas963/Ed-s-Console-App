@@ -342,21 +342,52 @@ def _text(n: float | None, digits: int) -> str | None:
     return f"{n:.{digits}f}"
 
 
+class Distance(TypedDict):
+    """A price's distance from the live price: in dollars, and in the expiry's implied moves."""
+
+    distance_text: str | None
+    sigma: float | None
+    sigma_text: str | None
+
+
+def distance(price: float, spot: float | None, sigma_root_t: float | None) -> Distance:
+    """Return `price`'s distance from the live price `spot`, in dollars and in implied moves.
+
+    In dollars: the price less `spot`, signed. In implied moves (σ): ln(price / spot) over the
+    expiry's at-the-money volatility times the square root of its time left (`sigma_root_t`),
+    the distance options desks quote because it compares across tickers and expiries (the
+    normalised strike, z = ln(K / F) / (σ √T); `Trading/matrix_research_key_levels_2026_11_23.md`).
+    It is measured from the live price, the base of the dollar distance beside it, not the
+    forward: the two differ by the interest to the expiry, under 0.1 σ for SPY within two months.
+    Unknown without a price, or with no volatility or no time left.
+    """
+    sigma = None if spot is None or not sigma_root_t else math.log(price / spot) / sigma_root_t
+    return {
+        "distance_text": None if spot is None else _signed(price - spot, 2),
+        "sigma": sigma,
+        "sigma_text": None if sigma is None else f"{_signed(sigma, 1)}σ",
+    }
+
+
 def at_price(
-    rows: list[dict[str, Any]], strikes: list[float], spot: float | None
+    rows: list[dict[str, Any]],
+    strikes: list[float],
+    spot: float | None,
+    sigma_root_t: float | None,
 ) -> dict[str, Any]:
     """Return the shown rows, each with its distance from the live price and its spot line.
 
     The spot line marks the strike the price sits under; the price and its text come with them.
-    The matrix is ranked at the book's price, the price on screen is the live one. Pure: the
-    rows given are not changed.
+    The matrix is ranked at the book's price, the price on screen is the live one; each row's
+    distance is `distance`'s, in dollars and in the expiry's implied moves (`sigma_root_t`).
+    Pure: the rows given are not changed.
     """
     under = None if spot is None else under_strike(spot, strikes)
     return {
         "rows": [
             {
                 **row,
-                "distance_text": None if spot is None else _signed(row["strike"] - spot, 2),
+                **distance(row["strike"], spot, sigma_root_t),
                 "spot_line": row["strike"] == under,
             }
             for row in rows
