@@ -647,12 +647,20 @@
           orDash(t.net_gex_at_spot_text) +
           "</span> <small>net GEX at spot, $ per 1% move</small>";
         src(c, "Schwab option chain · " + esc(chainAgeLabel(t)));
+        // the largest call and put gamma strikes share one row, so the card's rows take two
+        // lines on the operator's 1920×950 window and the Desk does not scroll
         c.querySelector(".tdm-rows").innerHTML =
-          row("Largest call gamma strike", orDash(t.call_wall_text), "up") +
-          row("Largest put gamma strike", orDash(t.put_wall_text), "dn") +
+          row(
+            "Largest call / put gamma strike",
+            '<span class="up">' +
+              orDash(t.call_wall_text) +
+              '</span> / <span class="dn">' +
+              orDash(t.put_wall_text) +
+              "</span>",
+          ) +
+          row("Put/call OI", orDash(t.pcr_all_text)) +
           row("Gamma flip", orDash(t.gamma_flip_text)) +
           (t.flip_note != null ? row("Gamma flip note", esc(t.flip_note)) : "") +
-          row("Put/call OI", orDash(t.pcr_all_text)) +
           row("Max pain", orDash(t.max_pain_text)) +
           row("Option series", orDash(t.contracts_used_text));
       }

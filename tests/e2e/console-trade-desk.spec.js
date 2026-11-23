@@ -729,7 +729,13 @@ test("Desk: the chain age keeps the chain's time", async ({ page }) => {
   await expect(page.locator("#tdmCardOpt .tdm-src")).toContainText(
     "Schwab option chain · " + CHAIN_TIME + " · LIVE · 4s",
   );
-  await expect(page.locator("#tdmCardOpt")).toContainText("775.00"); // SPY's real call wall
+  // SPY's real largest call and put gamma strikes, in one row, each in its colour
+  const strikes = page.locator("#tdmCardOpt .tdm-r", {
+    hasText: "Largest call / put gamma strike",
+  });
+  await expect(strikes).toHaveText("Largest call / put gamma strike 775.00 / 760.00");
+  await expect(strikes.locator(".up")).toHaveText("775.00");
+  await expect(strikes.locator(".dn")).toHaveText("760.00");
   // the served regime word (SPY's: NEGATIVE_GAMMA), toned from the one regime table
   await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveText("Negative gamma");
   await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveClass("tdm-state dn");
