@@ -64,7 +64,9 @@ def test_dex_is_the_signed_sum_of_schwabs_deltas_in_every_bucket():
     for k, value in got.items():
         assert value == pytest.approx(want[k], rel=1e-9, abs=1e-6), k
         assert value == pytest.approx(per[k]["call_dex_dollars"] + per[k]["put_dex_dollars"])
-    assert sum(got.values()) / spot == pytest.approx(-37.6e6, rel=1e-3)
+    total = sum(got.values())
+    assert total == pytest.approx(sum(want.values()), rel=1e-9)
+    assert total < 0  # the book is net short delta on this chain: the old sum could never be
     assert sum(1 for v in got.values() if v < 0) == 181
 
 

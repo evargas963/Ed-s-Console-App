@@ -1,5 +1,6 @@
 /* The page's drawing math, its one home: where a served value is placed on the screen, how long
-   or how dark it is drawn, how many columns fit the window. It makes no number the operator reads:
+   or how dark it is drawn, how many columns fit the window, when a notice's chime sounds. It makes
+   no number the operator reads:
    every number, total and label is served (AGENTS.md rule 4). The chart (ed-tv-chart.js) draws
    its own; ESLint refuses Math, .sort and .reduce in every other page script. */
 (function () {
@@ -300,7 +301,32 @@
     return svg + '<circle class="hub" cx="' + cx + '" cy="' + cy + '" r="6"/>';
   }
 
+  // the toast's chime (ed-core.js toast): two soft sine notes a fifth apart, the second 0.14 s
+  // after the first, each rising in 20 ms and fading out by 0.9 s: [hertz, start]. The audio
+  // clock places them (`audio`, a running AudioContext): no time of day, and no value shown.
+  var CHIME = [
+    [880, 0],
+    [1318.51, 0.14],
+  ];
+  function chime(audio) {
+    var t0 = audio.currentTime;
+    CHIME.forEach(function (note) {
+      var osc = audio.createOscillator(),
+        gain = audio.createGain(),
+        at = t0 + note[1];
+      osc.type = "sine";
+      osc.frequency.value = note[0];
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.2, at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(at);
+      osc.stop(at + 0.95);
+    });
+  }
+
   window.EdDraw = {
+    chime: chime,
     gauge: gauge,
     strength: strength,
     barWidth: barWidth,
