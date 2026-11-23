@@ -1,11 +1,17 @@
 /* Trade Desk / Confluence Matrix. Draws the `confluence` panel. Computes nothing: every number,
-   word, colour tone, level placement and the price row's place is served. */
+   word, colour tone and level placement is served; the live price is the header's own row (one
+   producer), drawn as one line at its place between the strikes (the drawing module places it). */
 (function () {
   "use strict";
 
   var selectedStrike = null;
   var lastRows = [];
   var bound = false;
+  // the selected ticker's price row, the header's own; null before its first
+  var quote = null;
+  // the strike the rows were last served centred on: asked with again, so the rows hold while the
+  // price moves among them (the program centres them on the price once it leaves them)
+  var centre = null;
   // the look-back the operator picked (a served choice's key); null until one is picked: the
   // program's own (5 minutes). Kept in this browser only, a convenience, never a value.
   var lookback = (function () {
@@ -255,7 +261,9 @@
   function load() {
     window.EdShell.showPanel(
       "confluence",
-      isMatrix() ? { expiry: window.EdShell.getExpiry(), lookback: lookback } : null,
+      isMatrix()
+        ? { expiry: window.EdShell.getExpiry(), lookback: lookback, centre: centre }
+        : null,
     );
   }
 
@@ -289,9 +297,43 @@
     if (d.type !== "confluence" || !box || !isMatrix()) return;
     if (d.failed != null) {
       box.innerHTML = '<div class="placeholder"><div class="sm">' + esc(d.failed) + "</div></div>";
-    } else {
-      draw(d);
+      return;
     }
+    draw(d);
+    // the rows as served: ask with their centre from now on, so the next answers hold them
+    var served = d.view ? d.view.centre : null;
+    if (served !== centre) {
+      centre = served;
+      load();
+    }
+  });
+
+  // the live price's line, at its place among the drawn rows (between the middles of the two
+  // strikes that hold it), from the price row; none while the price lies outside the rows shown
+  // or none has come
+  function placeLine() {
+    var line = document.getElementById("cmSpot"),
+      wrap = document.getElementById("cmWrap");
+    if (!line || !wrap) return;
+    var within = wrap.getBoundingClientRect();
+    var points = [];
+    wrap.querySelectorAll("tr[data-i]").forEach(function (tr) {
+      var row = lastRows[Number(tr.getAttribute("data-i"))];
+      points.push({
+        price: row.strike,
+        y: window.EdDraw.middleY(tr.getBoundingClientRect(), within),
+      });
+    });
+    var y = quote && quote.spot != null ? window.EdDraw.priceY(quote.spot, points) : null;
+    line.hidden = y == null;
+    if (y != null) line.style.top = y + "px";
+  }
+  // every streamed price row: the selected ticker's moves the line at once, nothing else
+  window.addEventListener("ed:quote_tick", function (e) {
+    var q = e.detail;
+    if (!q || q.ticker !== state().key) return;
+    quote = q;
+    if (isMatrix()) placeLine();
   });
 
   // a cell's shade: its served number against its column's served peak, by the shell's one
@@ -351,26 +393,6 @@
       ">" +
       (missing ? "-" : esc(shown)) +
       "</td>"
-    );
-  }
-
-  // the price row, where the program placed it (price_row_index): the price, the two strikes it
-  // falls between and Schwab's last trade, or its not-live mark
-  function priceRow(body) {
-    var when = body.spot_not_live_text
-      ? body.spot_not_live_text
-      : body.spot_time_ct
-        ? "Schwab last trade " + body.spot_time_ct
-        : "";
-    var between = body.price_between_text ? body.price_between_text : "";
-    return (
-      '<tr class="price-row"><td colspan="' +
-      COLS.length +
-      '"><b>▸ Price ' +
-      esc(orDash(body.spot_text)) +
-      "</b> <span>" +
-      esc([between, when].filter(Boolean).join(" · ")) +
-      "</span></td></tr>"
     );
   }
 
@@ -506,6 +528,14 @@
   function cards(list) {
     return (Array.isArray(list) ? list : [])
       .map(function (c) {
+        // the live price's card: the header's own row, painted by the shell (its price, and its
+        // trade time or why it is not live)
+        if (c.live_price)
+          return (
+            '<div class="stat"><label>' +
+            esc(c.label) +
+            "</label><strong data-live-price></strong><small data-live-price-when></small></div>"
+          );
         return (
           '<div class="stat"' +
           (c.hover ? ' title="' + esc(c.hover) + '"' : "") +
@@ -565,7 +595,6 @@
       "</tr>";
     var bodyRows = "";
     rows.forEach(function (row, i) {
-      if (i === body.price_row_index) bodyRows += priceRow(body);
       bodyRows +=
         '<tr tabindex="0" class="data-row' +
         (row.strike === selectedStrike ? " selected" : "") +
@@ -577,19 +606,19 @@
         }).join("") +
         "</tr>";
     });
-    if (body.price_row_index === rows.length && rows.length) bodyRows += priceRow(body);
     var notes = Array.isArray(body.notes) ? body.notes : [];
     var cols = WIDTHS.map(function (w) {
       return '<col style="width:' + w + 'px">';
     }).join("");
     var table = rows.length
-      ? '<div class="frame" id="cmFrame"><div class="matrix-wrap"><table><colgroup>' +
+      ? '<div class="frame" id="cmFrame"><div class="matrix-wrap" id="cmWrap"><table><colgroup>' +
         cols +
         "</colgroup><thead>" +
         heads +
         '</thead><tbody id="cmRows">' +
         bodyRows +
-        "</tbody></table></div></div>"
+        '</tbody></table><div class="cm-spot" id="cmSpot" hidden><span data-live-price></span>' +
+        "</div></div></div>"
       : '<div class="status">' + esc(orDash(body.reason)) + "</div>";
     box.innerHTML =
       '<div class="cm-page">' +
@@ -611,19 +640,26 @@
       (notes.length ? '<p class="foot">' + esc(notes.join(" ")) + "</p>" : "") +
       "</div>";
     showDetail(kept);
+    window.EdShell.paintLivePrice(box);
+    placeLine();
   }
 
+  // the view opened again keeps its rows where they were (the program centres them on the price
+  // once it has left them)
   document.addEventListener("ed:view", function () {
     selectedStrike = null;
     load();
   });
-  // a new expiry chosen is a new matrix: its own strikes
+  // a new expiry chosen is a new matrix: its own strikes, around the price
   document.addEventListener("ed:expiry", function () {
     selectedStrike = null;
+    centre = null;
     load();
   });
   document.addEventListener("ed:ticker", function () {
     selectedStrike = null;
+    centre = null;
+    quote = null;
     load();
   });
 })();

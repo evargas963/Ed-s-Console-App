@@ -24,7 +24,7 @@ from calc.terrain_read import REGIME_TEXT
 from instrument_identity import ticker_storage_key
 from numeric_contract import price_text
 from push.bars import daily_candles
-from push.spot import PriceMark, price_mark, resolve_spot
+from push.spot import resolve_spot
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import bar_store, level_store
 from state.level_store import ServedLevels, SpotStamp
@@ -61,10 +61,10 @@ class TotalGammaMoveText(TypedDict):
     time_ct: str
 
 
-class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, PriceMark, LevelsMark):
+class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields, LevelsMark):
     """What the terrain panel carries beside the levels' own fields, published or not.
 
-    The levels' verdict, the live price's relations to them and its mark, the ATRs, the regime as
+    The levels' verdict, the live price's relations to them, the ATRs, the regime as
     the screen says it (terrain_read), the Key Levels line's word, and the newest move of the
     largest total gamma strike (None: none since the program started).
     """
@@ -166,9 +166,8 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
             **_atr_fields(tk, at),  # live: today's candle from the bars held now
             "regime_text": REGIME_TEXT[cached.snap.regime],
             "total_gamma_change": total_gamma_text(cached.total_gamma.move),
-            # the chain's verdict is levels_state, above. The live price the relations are computed
-            # from is a separate fact: the numbers stay, marked with whether that price is live
-            **price_mark(tk, spot_ts, now),
+            # the chain's verdict is levels_state, above; whether the live price the relations are
+            # computed from is live is the price row's (the page draws it beside them)
             **levels_mark(staleness, tk, now),
         }
     _why = level_store.chain_failure(tk)
@@ -176,7 +175,6 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
     return {
         **empty,
         **price_relations(empty, spot).to_dict(),
-        **price_mark(tk, spot_ts, now),
         **levels_mark(staleness, tk, now),
         "spot_source": spot_source,
         "spot_as_of_ts_utc": spot_ts,

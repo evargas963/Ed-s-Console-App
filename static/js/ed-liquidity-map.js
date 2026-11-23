@@ -3,7 +3,7 @@
    served label, side and count of levels) on the one TradingView-style chart every chart in the
    console uses (ed-tv-chart.js), over the price (the `bars` panel, completed Schwab bars, the toolbar's timeframe),
    with the levels the levels panel marks as reference lines (the prior day's and the extended hours')
-   and the live price from that panel on the page's socket -- the one level producer. The zone list
+   and the live price from the header's own price row (the one price producer). The zone list
    below the chart names each zone's source levels. */
 (function () {
   "use strict";
@@ -28,7 +28,7 @@
     if (!window.EdTvChart || !window.LightweightCharts) return null;
     h.innerHTML =
       '<div class="liqm-tb"></div><div class="liqm-plot"></div><div class="liqm-empty" hidden></div><div class="liqm-zones"></div>' +
-      '<div class="fl-foot">Zones from the liquidity panel; prior-day and extended-hours levels and the price from the levels and bars panels. The chart arranges them; it computes nothing.</div>';
+      '<div class="fl-foot">Zones from the liquidity panel; prior-day and extended-hours levels from the levels panel; the bars from the bars panel; the price from the header\'s price row. The chart arranges them; it computes nothing.</div>';
     _chart = window.EdTvChart.create(h.querySelector(".liqm-plot"), { nearestN: 99 });
     window.EdTvChart.toolbar(h.querySelector(".liqm-tb"), _chart, {
       tf: _tf,
@@ -123,12 +123,7 @@
           };
         }),
     );
-    var spot = levels && levels.spot != null ? Number(levels.spot) : null;
-    c.setLivePrice(
-      spot,
-      null,
-      spot != null && levels.spot_time_ct != null ? levels.spot_time_ct : null,
-    );
+    livePrice(c);
     var empty = h.querySelector(".liqm-empty");
     empty.hidden = !words.length;
     empty.textContent = words.join(" · ");
@@ -177,13 +172,24 @@
     "forming:liq": "forming",
   };
   var _panels = {},
-    _panelsTicker = null;
+    _panelsTicker = null,
+    _quote = null; // the selected ticker's price row, the header's own (one producer)
+  // the chart's live price line: the price row's price, with its trade time and age
+  function livePrice(c) {
+    var q = _quote;
+    c.setLivePrice(
+      q ? q.spot : null,
+      q ? q.trade_age_text : null,
+      q && q.spot != null ? q.trade_time_ct : null,
+    );
+  }
   function load() {
     var on = isMap(),
       h = host();
     if (_panelsTicker !== ticker()) {
       _panelsTicker = ticker();
       _panels = {};
+      _quote = null;
     }
     // the map as held for the ticker on screen: of a new ticker nothing yet, so nothing of the
     // last one's stays (its zones, lines, price and badges)
@@ -208,6 +214,13 @@
     // the bars forming from the trades, drawn over the bars as they come (push.bars.forming)
     if (key === "forming" && _chart && e.detail.failed == null) _chart.forming(e.detail);
     else render(h, ticker());
+  });
+  // every streamed price row: the selected ticker's moves the chart's price line at once
+  window.addEventListener("ed:quote_tick", function (e) {
+    var q = e.detail;
+    if (!q || q.ticker !== window.EdShell.getState().key) return;
+    _quote = q;
+    if (_chart && isMap()) livePrice(_chart);
   });
   // read-only view for tests (e2e) -- never a control surface
   window.EdLiquidityMap = {

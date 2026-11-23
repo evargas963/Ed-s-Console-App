@@ -411,8 +411,9 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     assert liquidity["snapshot_time_ct"] is not None and liquidity["snapshot_age_text"] is not None
     # INDUCED: read LATER on with no chain, bar, trade or heartbeat since, the last values stand
     # (every zone, hold rate, level and distance as it was) and only their marks change: the
-    # levels STALE with their age and why (their time stands), the snapshot older by as much,
-    # and the price not live with its last trade's time and age
+    # levels STALE with their age and why (their time stands) and the snapshot older by as much.
+    # Whether the price is live is the price row's alone, which the page draws: no panel carries
+    # a copy of it
     later = panels["later"]
     stale = {k: later["liquidity"][k] for k in VERDICT if k != "levels_time_ct"}
     assert (stale["levels_state"], stale["levels_age_text"]) == ("STALE", "10m")
@@ -422,12 +423,11 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
         "snapshot_age_text": later["levels"]["snapshot_age_text"],
     }
     assert later["liquidity"]["snapshot_age_text"] != liquidity["snapshot_age_text"]
-    not_live = f"not live · last trade {levels['spot_time_ct']}, 10m old"
-    assert levels["spot_not_live_text"] is None
-    assert later["levels"] == {**later["liquidity"], "spot_not_live_text": not_live}
+    copies = {"spot", "spot_text", "spot_time_ct", "spot_not_live_text", "spot_source"}
+    assert not copies & levels.keys(), copies & levels.keys()
+    assert later["levels"] == later["liquidity"]
     assert later["terrain"] == {
         **stale,
-        "spot_not_live_text": not_live,
         "levels_mark": "STALE",
         "levels_mark_reason": stale["levels_stale_reason"],
     }

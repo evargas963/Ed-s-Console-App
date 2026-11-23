@@ -3342,8 +3342,6 @@
     "atr_monthly_text": "32.79",
     "regime_text": "Positive gamma",
     "total_gamma_change": null,
-    "spot_time_ct": "Thu 11/12 09:39 AM CT",
-    "spot_not_live_text": null,
     "levels_mark": "LIVE",
     "levels_mark_reason": null
   },
@@ -69531,16 +69529,13 @@
         "tags": []
       }
     ],
-    "spot": 269.425,
-    "spot_text": "269.43",
-    "price_between_text": "between 270.00 and 267.50",
-    "price_row_index": 6,
+    "view": {
+      "centre": 270.0
+    },
     "ticker": "AMZN",
     "available": true,
     "reason": null,
     "expiry": "2026-11-13",
-    "spot_time_ct": "Thu 11/12 09:39 AM CT",
-    "spot_not_live_text": null,
     "status_text": "LIVE \u00b7 chain as of Thu 11/12 09:39 AM CT, 0s old",
     "levels_above": [],
     "levels_below": [
@@ -69631,10 +69626,11 @@
     "cards": [
       {
         "label": "SPOT",
-        "value": "269.43",
-        "sub": "Schwab last trade Thu 11/12 09:39 AM CT",
+        "value": null,
+        "sub": null,
         "tone": null,
-        "hover": null
+        "hover": null,
+        "live_price": true
       },
       {
         "label": "GAMMA REGIME",
@@ -70508,16 +70504,13 @@
         "tags": []
       }
     ],
-    "spot": 269.425,
-    "spot_text": "269.43",
-    "price_between_text": "between 270.00 and 267.50",
-    "price_row_index": 6,
+    "view": {
+      "centre": 270.0
+    },
     "ticker": "AMZN",
     "available": true,
     "reason": null,
     "expiry": "2026-11-16",
-    "spot_time_ct": "Thu 11/12 09:39 AM CT",
-    "spot_not_live_text": null,
     "status_text": "LIVE \u00b7 chain as of Thu 11/12 09:39 AM CT, 0s old",
     "levels_above": [],
     "levels_below": [
@@ -70608,10 +70601,11 @@
     "cards": [
       {
         "label": "SPOT",
-        "value": "269.43",
-        "sub": "Schwab last trade Thu 11/12 09:39 AM CT",
+        "value": null,
+        "sub": null,
         "tone": null,
-        "hover": null
+        "hover": null,
+        "live_price": true
       },
       {
         "label": "GAMMA REGIME",
@@ -70645,8 +70639,6 @@
   },
   "chain": {
     "ticker": "AMZN",
-    "spot_text": "269.43",
-    "spot_time_ct": "Thu 11/12 09:39 AM CT",
     "expiry": "2026-11-13",
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
@@ -74215,8 +74207,6 @@
   },
   "chain_second_expiry": {
     "ticker": "AMZN",
-    "spot_text": "269.43",
-    "spot_time_ct": "Thu 11/12 09:39 AM CT",
     "expiry": "2026-11-16",
     "has_duplicate_contracts": false,
     "levels_state": "LIVE",
@@ -79775,11 +79765,6 @@
     "1": {
       "ticker": "AMZN",
       "schema_version": 1,
-      "spot": 269.425,
-      "spot_text": "269.43",
-      "spot_source": "streaming_plane",
-      "spot_time_ct": "Thu 11/12 09:39 AM CT",
-      "spot_not_live_text": null,
       "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
       "snapshot_age_text": "78s",
       "levels_state": "LIVE",
@@ -81306,11 +81291,6 @@
     "5": {
       "ticker": "AMZN",
       "schema_version": 1,
-      "spot": 269.425,
-      "spot_text": "269.43",
-      "spot_source": "streaming_plane",
-      "spot_time_ct": "Thu 11/12 09:39 AM CT",
-      "spot_not_live_text": null,
       "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
       "snapshot_age_text": "78s",
       "levels_state": "LIVE",
@@ -82782,11 +82762,6 @@
     "15": {
       "ticker": "AMZN",
       "schema_version": 1,
-      "spot": 269.425,
-      "spot_text": "269.43",
-      "spot_source": "streaming_plane",
-      "spot_time_ct": "Thu 11/12 09:39 AM CT",
-      "spot_not_live_text": null,
       "snapshot_time_ct": "Thu 11/12 09:38 AM CT",
       "snapshot_age_text": "78s",
       "levels_state": "LIVE",
@@ -84252,7 +84227,6 @@
       "levels_state": "STALE",
       "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
       "levels_age_text": "10m",
-      "spot_not_live_text": "not live \u00b7 last trade Thu 11/12 09:39 AM CT, 10m old",
       "levels_mark": "STALE",
       "levels_mark_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)"
     },
@@ -84263,7 +84237,6 @@
       "snapshot_age_text": "11m"
     },
     "levels": {
-      "spot_not_live_text": "not live \u00b7 last trade Thu 11/12 09:39 AM CT, 10m old",
       "snapshot_age_text": "11m",
       "levels_state": "STALE",
       "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",

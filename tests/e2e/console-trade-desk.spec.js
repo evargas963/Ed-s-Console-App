@@ -167,10 +167,9 @@ test("a desk load asks for each value once; a timeframe switch asks only for tha
 });
 
 test("Liquidity map: the live price keeps its last trade time", async ({ page }) => {
-  await intercept(page);
-  deskPanels().levels = levelsAt(
-    Object.assign({}, LEVELS, { spot_time_ct: "Fri 10/02 10:00 AM CT" }),
-  );
+  // the price line is the header's own row (one producer), not a panel's copy
+  await intercept(page, [priceRow("SPY", SPOT, { trade_time_ct: "Fri 10/02 10:00 AM CT" })]);
+  deskPanels().levels = levelsAt(LEVELS);
   await openView(page, "liquidity", "map");
   await expect
     .poll(() =>
@@ -310,7 +309,8 @@ test("Liquidity map: a ticker switch leaves nothing of the last ticker: its zone
   page,
 }) => {
   const errs = watchErrors(page);
-  await intercept(page);
+  // SPY's live price, the header's own row (one producer), pushed on each subscribe
+  await intercept(page, [priceRow("SPY", SPOT)]);
   await routeWatchlist(page, ["SPY", "QQQ"]);
   // the program sends SPY's panels and holds QQQ's back
   const spyOnly = (panel) => (key, params, name) =>
@@ -760,14 +760,14 @@ test("Desk: the levels pill keeps the snapshot time", async ({ page }) => {
 });
 
 test("Right Now: the spot keeps its last trade time", async ({ page }) => {
-  await intercept(page);
-  deskPanels().levels = levelsAt(
-    Object.assign({}, LEVELS, { spot_time_ct: "Fri 10/02 10:00 AM CT" }),
-  );
+  // the header's own row (one producer): its price and its trade time and age, as the header
+  await intercept(page, [priceRow("SPY", SPOT, { trade_time_ct: "Fri 10/02 10:00 AM CT" })]);
+  deskPanels().levels = levelsAt(LEVELS);
   await openView(page, "trade-desk", "right-now");
   await expect(page.locator("#tdBody .fl-meta")).toHaveText(
-    "spot " + SPOT.toFixed(2) + " · last trade Fri 10/02 10:00 AM CT",
+    "spot " + SPOT.toFixed(2) + " · last trade Fri 10/02 10:00 AM CT · 1s",
   );
+  await expect(page.locator("#hPx")).toHaveText(SPOT.toFixed(2));
 });
 
 test.describe("Trade Desk renders served values", () => {
@@ -777,7 +777,9 @@ test.describe("Trade Desk renders served values", () => {
     // 2026-09-28 21:40 ET: after the close the levels served an empty by_distance and the chart drew
     // no key level; the spot is now Schwab's last trade at any hour and orders them (by_distance)
     const errs = watchErrors(page);
-    await intercept(page); // every panel sent in its real shape; after the close, nothing crossed
+    // every panel sent in its real shape, and the price live (the header's own row); after the
+    // close, nothing crossed
+    await intercept(page, [priceRow("SPY", SPOT)]);
     deskPanels().desk = tfAt(
       Object.assign({}, EVENTS, { items: [], cross_counts: { up: 0, down: 0 } }),
     );
@@ -1322,10 +1324,19 @@ test.describe("Trade Desk renders served values", () => {
   const STOPPED = require(
     path.join(__dirname, "..", "fixtures", "real_spy_levels_at_a_stopped_price_2026_10_22.json"),
   );
+  // the price row of that print as the daemon serves it then: OFFLINE, with its trade time and age
+  const STOPPED_ROW = priceRow("SPY", 773.1269, {
+    feed_live: false,
+    feed_label: "OFFLINE",
+    outage: "Schwab LEVELONE_EQUITIES feed down during After-Hours",
+    trade_time_ct: "Thu 10/22 03:39 PM CT",
+    trade_age_text: "1h 21m",
+  });
+  // the words the header's row puts beside every value computed from that price (one producer)
+  const STOPPED_MARK =
+    " · OFFLINE: Schwab LEVELONE_EQUITIES feed down during After-Hours · last trade Thu 10/22 03:39 PM CT · 1h 21m";
   async function routeStopped(page) {
-    const terrain = Object.assign({}, TERRAIN, { spot_not_live_text: STOPPED.spot_not_live_text });
-    await intercept(page); // every route answered in its real shape, then the stopped price's two
-    deskPanels().terrain = terrain;
+    await intercept(page, [STOPPED_ROW]); // every route answered in its real shape, then the stopped price's levels
     deskPanels().levels = levelsAt(STOPPED);
   }
 
@@ -1338,15 +1349,13 @@ test.describe("Trade Desk renders served values", () => {
     const row = (id) => STOPPED.levels.find((r) => r.id === id);
     const nearest = row(STOPPED.by_distance[0]);
     const body = page.locator("#tdBody");
-    expect(STOPPED.spot_not_live_text).toContain("last trade");
-    await expect(body).toContainText(nearest.from_spot_text + " · " + STOPPED.spot_not_live_text);
+    await expect(body).toContainText(nearest.from_spot_text + STOPPED_MARK);
     await expect(body).toContainText(
       "Gamma Put " +
         row("put_wall").from_spot_text +
         ", Gamma Call " +
         row("call_wall").from_spot_text +
-        " · " +
-        STOPPED.spot_not_live_text,
+        STOPPED_MARK,
     );
     expect(errs).toEqual([]);
   });
@@ -1357,10 +1366,8 @@ test.describe("Trade Desk renders served values", () => {
     const errs = watchErrors(page);
     await routeStopped(page);
     await openView(page, "trade-desk", "desk");
-    // the flip side is the terrain's (SPY's real one: below the flip), marked with the stopped price's words
-    await expect(page.locator("#tdmAgree")).toContainText(
-      "Below Gamma Flip · " + STOPPED.spot_not_live_text,
-    );
+    // the flip side is the terrain's (SPY's real one: below the flip), marked with the header row's words
+    await expect(page.locator("#tdmAgree")).toContainText("Below Gamma Flip" + STOPPED_MARK);
     expect(errs).toEqual([]);
   });
 
@@ -1969,14 +1976,16 @@ test.describe("Trade Desk renders served values", () => {
   test("Right Now: a panel landing after a scope change draws only the new window", async ({
     page,
   }) => {
-    const sock = await intercept(page);
+    // the price is the header's own row (one producer), with its trade time and age
+    const sock = await intercept(page, [
+      priceRow("SPY", SPOT, { trade_time_ct: "Thu 11/12 09:30 AM CT" }),
+    ]);
     // the server's own windows: Auto, then Wider as its scope is asked
     const wide =
       listed(REAL.strikes_wider).join(",") +
       " | spot " +
       SPOT.toFixed(2) +
-      " · last trade " +
-      REAL.levels["1"].spot_time_ct;
+      " · last trade Thu 11/12 09:30 AM CT · 1s";
     await page.addInitScript(() => {
       localStorage.setItem("ed_ticker", "SPY");
       localStorage.setItem("ed_ws", "trade-desk");

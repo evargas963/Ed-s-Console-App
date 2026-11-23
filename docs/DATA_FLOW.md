@@ -210,14 +210,16 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 
 - **Equity quote.** LEVELONE_EQUITIES → the bus → (a) the Recorder, `stream_quotes_raw`; (b)
   `capture.Daemon._took_quote` → `live_market_plane.record_from_level_one_equity` → the price row
-  (`live_price_rows.price_row`) → `/ws` → header, watchlist and every panel's live price
-  (`push.spot.resolve_spot`); (c) the console's intake → the tape and the level-cross check. The
-  last trade's price, size and time have one reader, `calc.l1_trade_observation.last_print`. Every
-  page asks for the market context's rows with its own ticker's (`live_push.MARKET_CONTEXT`): the
-  header's second row draws all three on every page, the volatility index
-  (`live_push.VOLATILITY_INDEX`) first, and the Trade Desk's Desk page draws the same rows (§6,
-  decision 11). Enforced by: `tests/test_last_print_one_reader_v1.py`,
-  `tests/test_data_path_quote_time_v1.py`, `tests/e2e/console-header.spec.js`.
+  (`live_price_rows.price_row`) → `/ws` → header, watchlist and every price the pages show (the one
+  producer of the live price on screen: `EdShell.paintLivePrice`, the Confluence matrix's price line
+  among them), and every panel's calculations from the live price (`push.spot.resolve_spot`); (c)
+  the console's intake → the tape and the level-cross check. The last trade's price, size and time
+  have one reader, `calc.l1_trade_observation.last_print`. Every page asks for the market context's
+  rows with its own ticker's (`live_push.MARKET_CONTEXT`): the header's second row draws all three
+  on every page, the volatility index (`live_push.VOLATILITY_INDEX`) first, and the Trade Desk's
+  Desk page draws the same rows (§6, decision 11). Enforced by:
+  `tests/test_last_print_one_reader_v1.py`, `tests/test_data_path_quote_time_v1.py`,
+  `tests/e2e/console-header.spec.js`.
 - **Order book.** NYSE_BOOK, NASDAQ_BOOK and OPTIONS_BOOK → the bus → the Recorder,
   `stream_book_raw` (D4) → the console (`order_flow.state.OrderFlowState`, one book per service,
   never combined) → the `book` and `book_heatmap` panels (`push.book.book`, `push/book_heatmap.py`),
@@ -400,10 +402,15 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   ENF-12.
 - **Price relations.** Each level's distance and side from the live price, the walls' state and the
   side of the flip are computed when served, at the live price
-  (`calc.terrain_engine.price_relations`, `calc.terrain_read.level_side`), with the price's own mark
-  (`push.spot.price_mark`). While a price is stopped, `server.refresh_not_live_pages` tells its
-  pages to read again each minute so the age keeps counting. Enforced by:
-  `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
+  (`calc.terrain_engine.price_relations`, `calc.terrain_read.level_side`). The price itself, its
+  trade time and whether it is live have one producer, the price row (`live_price_rows.price_row`):
+  no panel serves a copy of them, and the page draws them, and the mark beside every value computed
+  from the price, from that row alone (`EdShell.paintLivePrice`, `EdShell.livePriceMark`), its age
+  counting with each beat. While the published levels are not live, `server.refresh_not_live_pages`
+  tells their pages to read them again each minute so their age keeps counting. Enforced by:
+  `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`,
+  `tests/test_page_one_faucet_v1.py`, `tests/e2e/console-confluence.spec.js`,
+  `tests/e2e/console-gamma-levels.spec.js`.
 - **Heatmap cells.** The `surface` panel (`push.surface.gamma_surface`): every listed strike a row,
   each cell the book's value for its strike and expiry; a cell with no value is None, drawn "-". Its
   streaming words come from `push.surface._stream_coverage`. Enforced by:

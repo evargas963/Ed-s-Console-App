@@ -796,16 +796,13 @@
      "tags": []
     }
    ],
-   "spot": null,
-   "spot_text": null,
-   "price_between_text": null,
-   "price_row_index": null,
+   "view": {
+    "centre": 262.5
+   },
    "ticker": "MRVL",
    "available": true,
    "reason": null,
    "expiry": "2026-10-09",
-   "spot_time_ct": null,
-   "spot_not_live_text": "not live",
    "status_text": "LIVE \u00b7 chain as of Wed 10/07 09:31 AM CT, 0s old",
    "levels_above": [
     {
@@ -922,9 +919,10 @@
     {
      "label": "SPOT",
      "value": null,
-     "sub": "not live",
+     "sub": null,
      "tone": null,
-     "hover": null
+     "hover": null,
+     "live_price": true
     },
     {
      "label": "GAMMA REGIME",
@@ -1763,16 +1761,13 @@
      "tags": []
     }
    ],
-   "spot": null,
-   "spot_text": null,
-   "price_between_text": null,
-   "price_row_index": null,
+   "view": {
+    "centre": 302.5
+   },
    "ticker": "MRVL",
    "available": true,
    "reason": null,
    "expiry": "2026-10-16",
-   "spot_time_ct": null,
-   "spot_not_live_text": "not live",
    "status_text": "LIVE \u00b7 chain as of Wed 10/07 09:31 AM CT, 0s old",
    "levels_above": [],
    "levels_below": [
@@ -1876,9 +1871,10 @@
     {
      "label": "SPOT",
      "value": null,
-     "sub": "not live",
+     "sub": null,
      "tone": null,
-     "hover": null
+     "hover": null,
+     "live_price": true
     },
     {
      "label": "GAMMA REGIME",

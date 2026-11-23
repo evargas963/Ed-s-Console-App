@@ -48,7 +48,7 @@ from option_contract import OptionContract
 from push.answers import unavailable
 from push.levels import pin_note
 from push.liquidity import hold_text
-from push.spot import price_mark, resolve_spot
+from push.spot import resolve_spot
 from push.strike_rows import expiry_unreadable, window
 from push.verdict import LevelsVerdict, terrain_staleness
 from state import bar_store
@@ -426,13 +426,17 @@ def _kind_note(live: TerrainSnapshot, effect: str) -> str:
 
 
 def _cards(
-    body: dict[str, Any],
+    spot: float | None,
     live: TerrainSnapshot,
     chosen: str,
     sigma_root_t: float | None,
 ) -> list[dict[str, Any]]:
-    """Return the summary's cards, each its label, value, line beneath, tone and hover."""
-    spot = body["spot"]
+    """Return the summary's cards, each its label, value, line beneath, tone and hover.
+
+    The SPOT card is the live price's place (`live_price`): the page draws the price row in it,
+    the one producer, never a copy served here. The others' distances are from `spot`, the live
+    price.
+    """
     flip = distance(live.gamma_flip, spot, sigma_root_t) if live.gamma_flip else None
     pin = distance(live.pin_candidate, spot, sigma_root_t) if live.pin_candidate else None
     kind = KIND_OF_MOVE[live.regime]
@@ -441,11 +445,11 @@ def _cards(
     return [
         {
             "label": "SPOT",
-            "value": body["spot_text"],
-            "sub": body["spot_not_live_text"]
-            or (f"Schwab last trade {body['spot_time_ct']}" if body["spot_time_ct"] else None),
+            "value": None,
+            "sub": None,
             "tone": None,
             "hover": None,
+            "live_price": True,
         },
         {
             "label": "GAMMA REGIME",
@@ -502,14 +506,17 @@ def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]
     """Return the `confluence` panel at the page's one expiry choice (`params["expiry"]`).
 
     Over the look-back the page chose (`params["lookback"]`, one of LOOKBACKS; none or another:
-    DEFAULT_LOOKBACK).
+    DEFAULT_LOOKBACK), its rows held at the centre the page was last served (`params["centre"]`,
+    a strike; none or not a number: around the price).
     """
     unreadable = expiry_unreadable(params)
     if unreadable is not None:
         return unavailable(tk, unreadable, **NO_LEVELS)
     chosen = params.get("lookback")
     lookback = chosen if isinstance(chosen, str) and chosen in LOOKBACKS else DEFAULT_LOOKBACK
-    return confluence_payload(tk, params["expiry"], now, lookback)
+    held = params.get("centre")
+    centre = float(held) if isinstance(held, int | float) and not isinstance(held, bool) else None
+    return confluence_payload(tk, params["expiry"], now, lookback, centre)
 
 
 def _lookback(choice: str, start: int | None) -> dict[str, Any]:
@@ -523,13 +530,20 @@ def _lookback(choice: str, start: int | None) -> dict[str, Any]:
 
 
 def confluence_payload(
-    tk: str, expiry: str | None, now: datetime, lookback: str = DEFAULT_LOOKBACK
+    tk: str,
+    expiry: str | None,
+    now: datetime,
+    lookback: str = DEFAULT_LOOKBACK,
+    centre: float | None = None,
 ) -> dict[str, Any]:
     """Return the matrix of the priced chain, for the expiry and look-back the operator picks.
 
     `expiry`: the page's one expiry choice. None (All Expirations) is the front expiry still open.
     An expiry the chain does not list as open is answered with why, never another expiry's
-    matrix. `lookback`: one of LOOKBACKS.
+    matrix. `lookback`: one of LOOKBACKS. `centre`: the strike the rows were last centred on; they
+    stay there while the live price lies within them, as a trading ladder holds its rows and
+    moves only its price, and are centred on the price again once it leaves them (`view`, sent
+    back by the page).
     """
     published = published_levels(tk)
     priced_at = None if published is None else published.snap.spot
@@ -558,26 +572,30 @@ def confluence_payload(
     start = _window_start(lookback, now)
     stored = _matrix(tk, published, (priced_at, valued_at), chosen, now, start)
     fetched = published.computed_ts_utc
-    live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
+    live_spot, _src, _ts = resolve_spot(tk, now=now.timestamp())
     sigma_root_t = _sigma_root_t(published, tk, chosen, now)
     markers = _confluence_markers(live, tk, now, chosen == today)
     levels = _screen_levels(markers, live_spot, sigma_root_t)
     strikes = stored.strikes
-    lo, hi, view = window(strikes, nearest_strike(strikes, live_spot), "auto", None, 0)
+    spot_strike = nearest_strike(strikes, live_spot)
+    held = centre if centre in strikes else None
+    lo, hi, view = window(strikes, spot_strike, "auto", held, 0)
+    if held is not None and live_spot is not None and not strikes[lo] <= live_spot <= strikes[hi]:
+        lo, hi, view = window(strikes, spot_strike, "auto", None, 0)
+    rows = window_rows(stored, strikes[lo : hi + 1])
     body: dict[str, Any] = {
         "notes": [note for note in (view["note"],) if note is not None],
         "peaks": stored.peaks,
-        "rows": window_rows(stored, strikes[lo : hi + 1]),
+        "rows": at_price(rows, strikes, live_spot, sigma_root_t),
+        # the strike the rows are centred on: the page asks with it again, so they hold
+        "view": {"centre": view["centre"]},
     }
-    body.update(at_price(body["rows"], strikes, live_spot, sigma_root_t))
     body.update(
         {
             "ticker": tk,
             "available": True,
             "reason": None,
             "expiry": chosen,
-            # the distances and the price row are from the live price: its mark
-            **price_mark(tk, live_ts, now.timestamp()),
             # the levels' one verdict (terrain_staleness): its word, the chain's time and age,
             # and why when it is not LIVE or CLOSE (AGENTS rule 5)
             "status_text": _chain_status(
@@ -596,5 +614,5 @@ def confluence_payload(
             "lookback": _lookback(lookback, start),
         }
     )
-    body["cards"] = _cards(body, live, chosen, sigma_root_t)
+    body["cards"] = _cards(live_spot, live, chosen, sigma_root_t)
     return body
