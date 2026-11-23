@@ -919,7 +919,7 @@
       (r.touch_pct == null ? "" : '<i style="left:' + liqLeft(r.touch_pct) + '"></i>') +
       "</div></div>" +
       '<div><div class="liq-lbl"><span>IMBALANCE</span><span class="liq-pill plain">◷ ' +
-      esc(v.held_text || "FOR -") +
+      esc(orDash(v.held_text)) + // served: how long the side has stood; none known, "-"
       "</span></div>" +
       (v.lean
         ? '<div class="liq-lean"><span>2m</span>' +
