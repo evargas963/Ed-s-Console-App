@@ -36,7 +36,12 @@ from calc.terrain_engine import (
     TerrainSnapshot,
     nearest_strike,
 )
-from calc.terrain_read import REGIME_NEGATIVE_GAMMA, REGIME_POSITIVE_GAMMA, REGIME_TEXT
+from calc.terrain_read import (
+    REGIME_NEGATIVE_GAMMA,
+    REGIME_POSITIVE_GAMMA,
+    REGIME_TEXT,
+    REGIME_UNAVAILABLE,
+)
 from numeric_contract import dollars_text, iv_text, price_text
 from option_contract import OptionContract
 from push.answers import unavailable
@@ -77,14 +82,14 @@ def _window_start(choice: str, now: datetime) -> int | None:
     minute = int(now.timestamp() // 60)
     if choice != "open":
         return minute - int(choice)
-    held = sessions().get(now.astimezone(ET).date().isoformat())
-    if held is None or not held.regular or now < held.regular[0][0]:
+    held, day = sessions(), now.astimezone(ET).date().isoformat()
+    if day not in held or not held[day].regular or now < held[day].regular[0][0]:
         return None
-    return int(held.regular[0][0].timestamp() // 60)
+    return int(held[day].regular[0][0].timestamp() // 60)
 
 
 def _window_open(tk: str, start: int | None) -> float | None:
-    """The open of Schwab's 1-minute bar of the look-back's first minute; None: not held."""
+    """Return the open of Schwab's 1-minute bar of the look-back's first minute; None: not held."""
     if start is None:
         return None
     bars = bar_store.bars_1m(tk, bar_store.BARS_KEPT)
@@ -142,7 +147,7 @@ NO_LEVELS: dict[str, list[Any]] = {"levels_above": [], "levels_below": []}
 
 
 def _hold_rate(tk: str, now: datetime) -> str:
-    """The prior close's hold rate at 15 and 30 minutes, as the Liquidity page words it."""
+    """Return the prior close's hold rate at 15 and 30 minutes, as the Liquidity page words it."""
     counts = materialize_hold_counts(
         tk,
         bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT)),
@@ -241,7 +246,7 @@ def _tags(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str,
 
 
 def _book(snap: TerrainSnapshot, chosen: str) -> dict[float, Bucket]:
-    """The exposure book of one expiry of `snap`: the merge of its books (none: no strike)."""
+    """Return the exposure book of one expiry of `snap`: its books merged (none: no strike)."""
     selected = [book for key, book in snap.books.items() if str(key[0])[:10] == chosen]
     return selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
 
@@ -312,8 +317,9 @@ def _chain_status(verdict: LevelsVerdict, fetched: float, now: float) -> str:
 
 #: the kind of move the options' gamma at the price makes, the read the research supports (true
 #: positions: Ni, Pearson, Poteshman and White 2021; Baltussen, Da, Lammers and Martens 2021;
-#: Adams and co-authors 2026 for same-day options), as (headline, tone, what the hedging does)
-KIND_OF_MOVE = {
+#: Adams and co-authors 2026 for same-day options), as (headline, tone, what the hedging does),
+#: by every regime the levels serve: none while the gamma at the price is not known
+KIND_OF_MOVE: dict[str, tuple[str, str, str] | None] = {
     REGIME_NEGATIVE_GAMMA: (
         "Wider, continuing moves",
         "neg",
@@ -325,6 +331,7 @@ KIND_OF_MOVE = {
         "pos",
         "the hedging absorbs moves: smaller ranges and more reversals",
     ),
+    REGIME_UNAVAILABLE: None,
 }
 #: what every reading of direction says until its record passes the test of decision 56
 UNTESTED = "untested · direction words wait for 20 ordinary sessions and the test (decision 56)"
@@ -349,7 +356,7 @@ NOT_VOTED = {
 
 
 def _family_text(vote: FamilyVote) -> str:
-    """What one family read, in words: its reading and its vote."""
+    """Return what one family read, in words: its reading and its vote."""
     if vote.vote is None:
         return NOT_VOTED[vote.family]
     words = VOTE_WORDS[vote.vote]
@@ -367,7 +374,7 @@ def _signed_text(n: float | None) -> str | None:
 
 
 def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str, Any]:
-    """The Composite's headline: the kind of move the gamma at the price makes, est.
+    """Return the Composite's headline: the kind of move the gamma at the price makes, est.
 
     With each family's card and how many of those measured agree with it, every one untested.
     """
@@ -379,7 +386,7 @@ def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str,
         }
         for v in votes
     ]
-    kind = KIND_OF_MOVE.get(live.regime)
+    kind = KIND_OF_MOVE[live.regime]
     measured = [v for v in votes if v.vote is not None]
     agree = sum(v.vote == votes[0].vote for v in measured)
     return {
@@ -399,7 +406,7 @@ GAMMA_UNKNOWN = "the gamma at the price is not known"
 
 
 def _kind_note(live: TerrainSnapshot, effect: str) -> str:
-    """What the gamma at the price does, in words, and where the price is against the flip."""
+    """Return what the gamma at the price does, in words, and the price's side of the flip."""
     note = (
         f"The options' gamma at the price is {REGIME_TEXT[live.regime].lower()} ({ASSUMPTION}), "
         f"so {effect}."
@@ -415,11 +422,12 @@ def _cards(
     chosen: str,
     sigma_root_t: float | None,
 ) -> list[dict[str, Any]]:
-    """The summary's cards, each its label, value, line beneath, tone and hover."""
+    """Return the summary's cards, each its label, value, line beneath, tone and hover."""
     spot = body["spot"]
     flip = distance(live.gamma_flip, spot, sigma_root_t) if live.gamma_flip else None
     pin = distance(live.pin_candidate, spot, sigma_root_t) if live.pin_candidate else None
-    tone = KIND_OF_MOVE[live.regime][1] if live.regime in KIND_OF_MOVE else None
+    kind = KIND_OF_MOVE[live.regime]
+    tone = None if kind is None else kind[1]
     minutes = live.pin_minutes_to_close
     return [
         {
@@ -472,7 +480,7 @@ def _cards(
         },
         {
             "label": f"AT-THE-MONEY IV · {chosen}",
-            "value": iv_text(live.atm_iv_pct_by_expiry.get(chosen)),
+            "value": iv_text(live.atm_iv_pct_by_expiry[chosen]),
             "sub": "derived · the two strikes the price is between",
             "tone": None,
             "hover": "The chosen expiry's at-the-money volatility: the mean of Schwab's volatility "
@@ -496,7 +504,7 @@ def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]
 
 
 def _lookback(choice: str, start: int | None) -> dict[str, Any]:
-    """The look-back as served: the choice, the choices and the window's start in words."""
+    """Return the look-back as served: the choice, the choices and the window's start in words."""
     return {
         "chosen": choice,
         "choices": [{"key": k, "text": t, "on": k == choice} for k, t in LOOKBACKS.items()],

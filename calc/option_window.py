@@ -71,7 +71,7 @@ class LookBack:
 
 
 def _blend(looks: list[tuple[OptionContract, LookBack]], end: int) -> float | None:
-    """The strike's volatility blend (iv_by_strike) on each contract's volume and volatility.
+    """Return the strike's volatility blend (iv_by_strike) on its contracts' volume and volatility.
 
     At one end of the window (`end`: 0 its start, 1 now); None when a contract's is not known.
     """

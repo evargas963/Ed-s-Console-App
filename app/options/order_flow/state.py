@@ -257,9 +257,9 @@ class OrderFlowState:
         day = datetime.fromtimestamp(ts, ET).date().isoformat()
         adds = [0.0] * len(TOTALS)
         with self._lock:
-            held = self._records.get(sym)
-            if held is None or held.day != day:
-                held = self._records[sym] = _Record(day)
+            if sym not in self._records or self._records[sym].day != day:
+                self._records[sym] = _Record(day)
+            held = self._records[sym]
             if volume is not None and held.volume is not None and volume > held.volume:
                 quote = (
                     NO_TOP
@@ -287,8 +287,10 @@ class OrderFlowState:
         out: dict[str, LookBack] = {}
         with self._lock:
             for sym in symbols:
-                held = self._records.get(ticker_storage_key(sym))
-                look = None if held is None or held.day != day else held.look_back(start)
+                key = ticker_storage_key(sym)
+                if key not in self._records or self._records[key].day != day:
+                    continue
+                look = self._records[key].look_back(start)
                 if look is not None:
                     out[sym] = look
         return out

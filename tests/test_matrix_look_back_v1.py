@@ -30,7 +30,7 @@ QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
 
 
 def _replayed() -> OrderFlowState:
-    """The fixture's items on a bus as the daemon puts them, applied as the console applies them."""
+    """Return the state the fixture's items make, put on a bus and applied as in production."""
     bus = MessageBus()
     state = OrderFlowState()
     state.current = bus.current
@@ -178,7 +178,7 @@ def test_a_strike_is_its_calls_and_its_puts_or_nothing():
 
 
 def _underlying(before_ts: float | None) -> float:
-    """The stock price the last item received before `before_ts` (None: of all) carried."""
+    """Return the stock price the last item received before `before_ts` (None: of all) carried."""
     held = [
         m["item"]["UNDERLYING_PRICE"]
         for m in FX["messages"]

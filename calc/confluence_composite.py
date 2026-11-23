@@ -274,7 +274,7 @@ def family_votes(
 
 
 def expiry_flow(matrix: Matrix) -> float | None:
-    """The expiry's hedging flow over the look-back: every strike's, None when one is not known."""
+    """Return the expiry's hedging flow over the look-back: every strike's; None when one is not."""
     flows = [r.look.flow for r in matrix.readings.values()]
     if not flows or any(f is None for f in flows):
         return None
@@ -282,7 +282,7 @@ def expiry_flow(matrix: Matrix) -> float | None:
 
 
 def atm_iv_change(matrix: Matrix, spot: float | None) -> float | None:
-    """The expiry's at-the-money volatility change over the look-back.
+    """Return the expiry's at-the-money volatility change over the look-back.
 
     The mean of the two listed strikes the price lies between (the at-the-money rule as built,
     calc.terrain_engine.atm_sigma_by_expiry), each its blend's change; one strike when the
@@ -532,7 +532,7 @@ def _signed(n: float | None, digits: int) -> str | None:
 
 
 def _signed_count(n: float | None) -> str | None:
-    """A change in a count as the screen shows it: whole, signed, a rise with its plus."""
+    """Return a change in a count as the screen shows it: whole, signed, a rise with its plus."""
     text = count_text(n)
     if n is None or text is None:
         return None
@@ -546,7 +546,7 @@ def _absent(value: float | None, words: str) -> str | None:
 
 
 def _legs_text(legs: tuple[float, float] | None, read: str) -> str | None:
-    """A sum's parts on hover: the calls' and the puts' count."""
+    """Return a sum's parts on hover: the calls' and the puts' count."""
     if legs is None:
         return None
     return f"{read}: calls {count_text(legs[0])} · puts {count_text(legs[1])}"
@@ -575,7 +575,7 @@ GAMMA_REASON = "no priced contract gives the gamma at this price"
 
 
 def _composite_shown(c: Composite) -> tuple[float, str, str]:
-    """A known Composite's cell: its shading number, its text and its hover.
+    """Return a known Composite's cell: its shading number, its text and its hover.
 
     Shaded by the strength against a peak of 1, red where the gamma is negative.
     """
@@ -590,7 +590,7 @@ def _composite_shown(c: Composite) -> tuple[float, str, str]:
 
 
 def _composite_cells(c: Composite | None) -> dict[str, Any]:
-    """The Composite's cell; "-" with why when it is not known."""
+    """Return the Composite's cell; "-" with why when it is not known."""
     shown = None if c is None else _composite_shown(c)
     return {
         "composite": None if shown is None else shown[0],
@@ -601,7 +601,7 @@ def _composite_cells(c: Composite | None) -> dict[str, Any]:
 
 
 def _gamma_cells(gamma: float | None) -> dict[str, Any]:
-    """The gamma-if-here cell: the sign's words, the model on hover; "-" with why without it."""
+    """Return the gamma-if-here cell: the sign's words, the model on hover; "-" with why without."""
     sign = None if gamma is None else _sign(gamma)
     return {
         "gamma_here_text": None if sign is None else GAMMA_WORDS[sign],
@@ -659,7 +659,7 @@ PACE_REASON = "needs the same time of day over 20 sessions of the record; not he
 
 
 def _look_cells(r: StrikeReadings) -> dict[str, Any]:
-    """The look-back's columns: volume, the volatility's change, bought less sold, flow, pace."""
+    """Return the look-back's columns: volume, volatility change, bought less sold, flow, pace."""
     look = r.look
     day = _legs_text(r.volume_legs, "Today")
     traded = _legs_text(look.volume, "In the look-back")
