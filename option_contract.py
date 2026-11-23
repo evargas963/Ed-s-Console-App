@@ -203,7 +203,8 @@ class StreamedGreeks:
     """A contract's Greeks, volatility and volume as LEVELONE_OPTIONS last sent each one.
 
     Each field with its own receive time (a message carries only the fields that changed);
-    NOT_SENT until the stream sends it.
+    NOT_SENT until the stream sends it. With them the stock's price the record carries
+    (UNDERLYING_PRICE), the price its delta is at.
     """
 
     gamma: Received = NOT_SENT
@@ -213,6 +214,7 @@ class StreamedGreeks:
     rho: Received = NOT_SENT
     volatility: Received = NOT_SENT
     total_volume: Received = NOT_SENT
+    underlying_price: Received = NOT_SENT
 
     def newest_ts(self) -> float | None:
         """Return when the newest of its gamma, delta and volume was received; None: none was."""

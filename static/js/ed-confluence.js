@@ -6,6 +6,15 @@
   var selectedStrike = null;
   var lastRows = [];
   var bound = false;
+  // the look-back the operator picked (a served choice's key); null until one is picked: the
+  // program's own (5 minutes). Kept in this browser only, a convenience, never a value.
+  var lookback = (function () {
+    try {
+      return localStorage.getItem("ed_cm_lookback");
+    } catch (e) {
+      return null;
+    }
+  })();
 
   // the groups, read left to right by importance (decision 62), each with its columns and class,
   // and each column: its head, unit, what it is (hover), the served row keys of its text, shading
@@ -246,7 +255,31 @@
   function load() {
     window.EdShell.showPanel(
       "confluence",
-      isMatrix() ? { expiry: window.EdShell.getExpiry() } : null,
+      isMatrix() ? { expiry: window.EdShell.getExpiry(), lookback: lookback } : null,
+    );
+  }
+
+  // the served look-back choices, the one in use marked on, and the window's served start
+  function lookbackPicker(lb) {
+    if (!lb) return "";
+    return (
+      '<span class="cm-lookback"><span>Look-back</span>' +
+      lb.choices
+        .map(function (c) {
+          return (
+            '<button type="button" data-lookback="' +
+            esc(c.key) +
+            '"' +
+            (c.on ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"') +
+            ">" +
+            esc(c.text) +
+            "</button>"
+          );
+        })
+        .join("") +
+      "<small>" +
+      esc(orDash(lb.start_text || lb.reason)) +
+      "</small></span>"
     );
   }
 
@@ -404,7 +437,20 @@
     var box = document.getElementById("cmBody");
     if (!box) return;
     bound = true;
-    box.addEventListener("click", onClick);
+    box.addEventListener("click", function (e) {
+      var pickLb = e.target.closest("[data-lookback]");
+      if (pickLb && box.contains(pickLb)) {
+        lookback = pickLb.getAttribute("data-lookback");
+        try {
+          localStorage.setItem("ed_cm_lookback", lookback);
+        } catch (err) {
+          // a browser that keeps nothing still shows the choice for this page
+        }
+        load();
+        return;
+      }
+      onClick(e);
+    });
     box.addEventListener("keydown", function (e) {
       if ((e.key === "Enter" || e.key === " ") && e.target.closest("tr[data-i]")) {
         e.preventDefault();
@@ -538,6 +584,7 @@
       '</div><div class="status"><span>' +
       esc(status) +
       "</span>" +
+      lookbackPicker(body.lookback) +
       pick +
       '</div><div class="offscreen" id="cmAbove">' +
       pastLevels(body.levels_above || [], "↑") +

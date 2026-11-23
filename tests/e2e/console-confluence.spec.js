@@ -225,7 +225,7 @@ test("the matrix redraws when the priced chain updates and keeps the expiry", as
 
   // the view opened again asks for the same panel of the same expiry: nothing new is asked or sent
   const asks = confluenceAsks();
-  expect(asks[asks.length - 1]).toBe(JSON.stringify({ expiry: NEXT }));
+  expect(asks[asks.length - 1]).toBe(JSON.stringify({ expiry: NEXT, lookback: null }));
   await page.getByRole("button", { name: "Confluence Matrix" }).click();
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
   expect(confluenceAsks()).toEqual(asks);
@@ -292,6 +292,34 @@ for (const [words, tone] of [
     await expect(regimeCell(page)).toHaveText(words);
   });
 }
+
+test("a look-back picked is asked for, and the served one is drawn on with its start", async ({
+  page,
+}) => {
+  const asked = [];
+  // the program's answer at each look-back asked: the served body, its choice marked on as the
+  // program marks it (push.confluence._lookback), its start as served
+  await mockPriceSocket(page, [], [], undefined, {
+    confluence: (key, params) => {
+      asked.push(params.lookback);
+      const body = served(FRONT);
+      const chosen = params.lookback || body.lookback.chosen;
+      return Object.assign({}, body, {
+        lookback: Object.assign({}, body.lookback, {
+          chosen: chosen,
+          choices: body.lookback.choices.map((c) => Object.assign({}, c, { on: c.key === chosen })),
+        }),
+      });
+    },
+  });
+  await openMatrix(page);
+  const picker = page.locator("#cmBody .cm-lookback");
+  await expect(picker.locator("button.on")).toHaveText("5 min");
+  await expect(picker.locator("small")).toHaveText(served(FRONT).lookback.start_text);
+  await picker.getByRole("button", { name: "15 min" }).click();
+  await expect.poll(() => asked[asked.length - 1]).toBe("15");
+  await expect(picker.locator("button.on")).toHaveText("15 min");
+});
 
 test("the headline says the kind of move in the served words, untested", async ({ page }) => {
   const body = served(FRONT);

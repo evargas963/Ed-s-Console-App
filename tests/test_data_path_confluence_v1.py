@@ -15,6 +15,7 @@ import live_price_rows
 import server
 from app.options.order_flow import streaming as ofs
 from calc.confluence_composite import (
+    NOT_HELD,
     SHADED,
     at_price,
     build_matrix,
@@ -189,6 +190,7 @@ def _published_matrix(tk: str, fx_chain: list, ts_utc: float, spot: float, expir
         live.gamma_by_expiry[expiry],
         None,
         {},
+        {},
     )
 
 
@@ -308,7 +310,7 @@ def _matrix_of(tk: str, contracts: list, spot: float, at: datetime):
     charm = compute_charm_by_strike(chain, spot, now=at, sessions=sessions(), product=product)
     priced, _unpriced = contract_inputs(chain, at, sessions=sessions(), product=product)
     gamma = gamma_at_strikes(priced, book)
-    return build_matrix(book, charm, iv_by_strike(chain), spot, gamma, None, {})
+    return build_matrix(book, charm, iv_by_strike(chain), spot, gamma, None, {}, {})
 
 
 def _expiry(held, expiry: str) -> list:
@@ -319,7 +321,6 @@ def _expiry(held, expiry: str) -> list:
 _REASONS = {
     "net_gex_text": ("net_reason", "net gamma is missing"),
     "oi_text": ("oi_reason", "open interest is missing"),
-    "volume_text": ("volume_reason", "volume is missing"),
     "pc_vol_text": ("pc_vol_reason", "put/call volume is missing"),
     "vol_oi_text": ("vol_oi_reason", "volume/open interest is missing"),
     "dex_text": ("dex_reason", "delta exposure is missing"),
@@ -367,12 +368,13 @@ def test_each_missing_column_says_why_and_an_unreported_count_is_not_called_zero
     for text in _REASONS:
         assert any(r[text] is None for r in rows) and any(r[text] is not None for r in rows), text
     counts = {
-        r["strike"]: (r["oi_text"], r["volume_text"])
+        r["strike"]: (r["oi_text"], r["volume_hover"])
         for r in window_rows(close, close.strikes)
         if r["strike"] in untraded
     }
+    zero = "Today: calls 0 · puts 0"
     assert counts == {
-        s: (None, "0") if s == no_oi else ("0", None) if s == no_volume else ("0", "0")
+        s: (None, zero) if s == no_oi else ("0", None) if s == no_volume else ("0", zero)
         for s in untraded
     }
 
@@ -524,7 +526,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         level_store._levels.pop("SPY", None)
 
     def charm_of(c):
-        return readings(bucket, c, None, SPY_CLOSE.spot, None, None, False, None).charm
+        return readings(bucket, c, None, SPY_CLOSE.spot, None, None, False, None, NOT_HELD).charm
 
     assert charm_of(charm[strike]) == 0.0
     assert charm_of(None) is None
@@ -569,7 +571,9 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_zero_counts(
     shown = [r for r in body["rows"] if r["strike"] in zero]
     assert len(shown) >= 4
     assert all(r["charm_text"] == "0" and r["charm_reason"] is None for r in shown)
-    assert all(r["oi_text"] == "0" and r["volume_text"] == "0" for r in shown)
+    assert all(
+        r["oi_text"] == "0" and r["volume_hover"] == "Today: calls 0 · puts 0" for r in shown
+    )
     assert all(r["net_gex"] == 0 and r["net_gex_text"] is not None for r in shown)
     assert all(c.get("interestRate") is None for c in fx["contracts"])
     assert all(r["gamma_here"] is None and r["gamma_here_reason"] for r in body["rows"])
@@ -696,7 +700,7 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     book, _diag = compute_exposures_by_strike(
         chain, spot=held.spot, now=held.now, sessions=sessions(), product=INDEX_OPTIONS
     )
-    matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, {}, None, {})
+    matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, {}, None, {}, {})
     rows = window_rows(matrix, _around(matrix.strikes, price))
     assert price > max(matrix.strikes)
     assert under_strike(price, matrix.strikes) is None
@@ -783,7 +787,7 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
         "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
     )
     front = served["by_expiry"]["2026-10-09"]
-    assert set(front["peaks"]) == {*SHADED, "pc_vol_lean"}
+    assert set(front["peaks"]) == {*SHADED, "pc_vol_lean", "iv_change", "flow"}
     # the regime on its card, as the screen says it: served, the page picks no words
     regime = next(c for c in front["cards"] if c["label"] == "GAMMA REGIME")
     assert (regime["value"], regime["tone"]) == ("Positive gamma", "pos")
@@ -918,8 +922,8 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
         contract_inputs(chain, at, sessions=on_file, product=INDEX_OPTIONS)[0], after
     )
     assert gamma_close == gamma_late == {}
-    close = build_matrix(at_close, charm_close, iv, held.spot, gamma_close, None, {})
-    late = build_matrix(after, charm_late, iv, held.spot, gamma_late, None, {})
+    close = build_matrix(at_close, charm_close, iv, held.spot, gamma_close, None, {}, {})
+    late = build_matrix(after, charm_late, iv, held.spot, gamma_late, None, {}, {})
     close_rows = window_rows(close, _around(close.strikes, held.spot))
     late_rows = window_rows(late, _around(late.strikes, held.spot))
     assert not _window_has(close_rows, "vanna_text")
@@ -1144,12 +1148,12 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_zero_counts(held.chain), after, after, after)
     near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
-    kept = (near["oi_text"], near["volume_text"], near["composite_text"], near["vanna_text"])
+    kept = (near["oi_text"], near["volume_hover"], near["composite_text"], near["vanna_text"])
     assert None not in kept[:2] and kept[2:] == (None, None)
     again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
     assert (
         again["oi_text"],
-        again["volume_text"],
+        again["volume_hover"],
         again["composite_text"],
         again["vanna_text"],
     ) == kept
@@ -1170,7 +1174,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
         server._publish_levels(tk, read_chain(fresh), now.timestamp(), chain_spot=spot, now=now)
         first = push_confluence.confluence_payload(tk, expiry, now)
         shown = next(row for row in first["rows"] if row["pc_vol_text"] is not None)
-        kept = (shown["oi_text"], shown["volume_text"], shown["pc_vol_text"])
+        kept = (shown["oi_text"], shown["volume_hover"], shown["pc_vol_text"])
         with level_store._lock:  # a restart: no levels and no captures held
             level_store._levels.pop(tk, None)
         capture_store.clear()
@@ -1180,7 +1184,7 @@ def _first_chain_keeps_the_capture(now, capture_at):
         )
         second = push_confluence.confluence_payload(tk, expiry, now)
         again = next(row for row in second["rows"] if row["strike"] == shown["strike"])
-        assert (again["oi_text"], again["volume_text"], again["pc_vol_text"]) == kept
+        assert (again["oi_text"], again["volume_hover"], again["pc_vol_text"]) == kept
     finally:
         _forget(tk)
 
@@ -1515,8 +1519,8 @@ def test_during_the_session_a_zero_count_replaces_the_old_count():
     later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
     _first, body = _spy_0dte_twice(_zero_counts(held.chain), session, later, later)
     near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
-    assert (near["oi_text"], near["volume_text"]) == ("0", "0")
-    assert near["oi"] == near["volume"] == 0
+    assert (near["oi_text"], near["volume_hover"]) == ("0", "Today: calls 0 · puts 0")
+    assert near["oi"] == 0
 
 
 def test_an_after_hours_print_keeps_the_close_book():

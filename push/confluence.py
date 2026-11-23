@@ -1,7 +1,8 @@
 """The `confluence` panel: the Confluence matrix of one expiry, its key levels and its summary.
 
 Read from State: the published levels (state.level_store), the price-level snapshot and the hold
-counts (state.price_level_store), the 1-minute bars (state.bar_store) and the live price.
+counts (state.price_level_store), the 1-minute bars (state.bar_store), each option contract's
+look-back record (app.options.order_flow.state) and the live price.
 """
 
 from __future__ import annotations
@@ -9,9 +10,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from app.options.order_flow.state import look_back
 from calc.confluence_composite import (
     ASSUMPTION,
     Matrix,
+    StrikeLookBack,
     at_price,
     build_matrix,
     distance,
@@ -20,6 +23,7 @@ from calc.confluence_composite import (
 )
 from calc.liquidity_value_engine import bars_from_candles, visits
 from calc.math_exposure_core import Bucket, merge_exposure_books
+from calc.option_window import strike_look_back
 from calc.terrain_engine import (
     OPTION_LEVELS,
     SAME_DAY_LEVELS,
@@ -30,6 +34,7 @@ from calc.terrain_engine import (
 )
 from calc.terrain_read import REGIME_NEGATIVE_GAMMA, REGIME_POSITIVE_GAMMA, REGIME_TEXT
 from numeric_contract import iv_text, price_text
+from option_contract import OptionContract
 from push.answers import unavailable
 from push.levels import pin_note
 from push.liquidity import hold_text
@@ -39,7 +44,53 @@ from push.verdict import LevelsVerdict, terrain_staleness
 from state import bar_store
 from state.level_store import PublishedLevels, published_levels
 from state.price_level_store import canonical_price_level_snapshot, materialize_hold_counts
-from time_et import age_text, ct_label, option_close_product, sessions, time_to_expiry_years
+from time_et import ET, age_text, ct_label, option_close_product, sessions, time_to_expiry_years
+
+#: the look-back windows the page offers (decision 11): minutes, or since the regular open; each
+#: column of the look-back follows the one chosen
+LOOKBACKS = {
+    "1": "1 min",
+    "3": "3 min",
+    "5": "5 min",
+    "15": "15 min",
+    "30": "30 min",
+    "60": "60 min",
+    "open": "since the open",
+}
+#: the window the matrix opens on (decision 11)
+DEFAULT_LOOKBACK = "5"
+
+
+def _window_start(choice: str, now: datetime) -> int | None:
+    """Return the look-back's first whole minute (minutes since the epoch), or None.
+
+    `choice` minutes before the minute `now` is in, so a window covers at least that long, as a
+    bar does; "open": the minute the regular session opened, today's as Schwab's /markets sent
+    it. None before that open, or with no regular session held for the day.
+    """
+    minute = int(now.timestamp() // 60)
+    if choice != "open":
+        return minute - int(choice)
+    held = sessions().get(now.astimezone(ET).date().isoformat())
+    if held is None or not held.regular or now < held.regular[0][0]:
+        return None
+    return int(held.regular[0][0].timestamp() // 60)
+
+
+def _looks(
+    contracts: list[OptionContract], now: datetime, start: int | None
+) -> dict[float, StrikeLookBack]:
+    """Each strike's readings over the look-back from minute `start` (None: none held)."""
+    if start is None:
+        return {}
+    by_strike: dict[float, list[OptionContract]] = {}
+    for c in contracts:
+        if c.strike is not None and c.symbol:
+            by_strike.setdefault(float(c.strike), []).append(c)
+    held = look_back(
+        [c.symbol for c in contracts if c.symbol], now.astimezone(ET).date().isoformat(), start
+    )
+    return {s: strike_look_back(cs, held) for s, cs in by_strike.items()}
 
 
 def _expiry_order(item: tuple[str, float | None]) -> tuple[int, float, str]:
@@ -184,17 +235,20 @@ def _book(snap: TerrainSnapshot, chosen: str) -> dict[float, Bucket] | None:
 
 
 def _matrix(
-    tk: str, snap: TerrainSnapshot, prior_day: TerrainSnapshot | None, chosen: str, now: datetime
+    tk: str, published: PublishedLevels, chosen: str, now: datetime, start: int | None
 ) -> Matrix:
     """Return the readings of one expiry of a priced chain: the one the matrix request shows.
 
-    `chosen` is an expiry of `snap`'s books (_confluence_expiries); its book on the prior day
-    (`prior_day`: None, no prior day held; an expiry it does not list: every strike new); the
-    regular session's visits at each strike so far.
+    `chosen` is an expiry of the snapshot's books (_confluence_expiries); its book on the prior
+    day (None, no prior day held; an expiry that day does not list: every strike new); the
+    regular session's visits at each strike so far; each strike over the look-back from minute
+    `start` (_looks).
     """
+    snap, prior_day = published.snap, published.prior_day
     exposures = _book(snap, chosen) or {}
     prior = None if prior_day is None else (_book(prior_day, chosen) or {})
     bars = bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
+    contracts = [c for c in published.chain if c.expiry == chosen]
     return build_matrix(
         exposures,
         snap.charm_by_expiry[chosen],
@@ -203,6 +257,7 @@ def _matrix(
         snap.gamma_by_expiry.get(chosen, {}),
         prior,
         visits(bars, sorted(exposures), now, sessions()),
+        _looks(contracts, now, start),
     )
 
 
@@ -348,19 +403,37 @@ def _cards(
 
 
 def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]:
-    """Return the `confluence` panel at the page's one expiry choice (`params["expiry"]`)."""
+    """Return the `confluence` panel at the page's one expiry choice (`params["expiry"]`).
+
+    Over the look-back the page chose (`params["lookback"]`, one of LOOKBACKS; none or another:
+    DEFAULT_LOOKBACK).
+    """
     unreadable = expiry_unreadable(params)
     if unreadable is not None:
         return unavailable(tk, unreadable, **NO_LEVELS)
-    return confluence_payload(tk, params["expiry"], now)
+    chosen = params.get("lookback")
+    lookback = chosen if isinstance(chosen, str) and chosen in LOOKBACKS else DEFAULT_LOOKBACK
+    return confluence_payload(tk, params["expiry"], now, lookback)
 
 
-def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, Any]:
-    """Return the matrix of the priced chain, for the expiry the operator picks.
+def _lookback(choice: str, start: int | None) -> dict[str, Any]:
+    """The look-back as served: the choice, the choices and the window's start in words."""
+    return {
+        "chosen": choice,
+        "choices": [{"key": k, "text": t, "on": k == choice} for k, t in LOOKBACKS.items()],
+        "start_text": None if start is None else f"since {ct_label(start * 60.0)}",
+        "reason": "the regular session has not opened" if start is None else None,
+    }
+
+
+def confluence_payload(
+    tk: str, expiry: str | None, now: datetime, lookback: str = DEFAULT_LOOKBACK
+) -> dict[str, Any]:
+    """Return the matrix of the priced chain, for the expiry and look-back the operator picks.
 
     `expiry`: the page's one expiry choice. None (All Expirations) is the front expiry still open.
     An expiry the chain does not list as open is answered with why, never another expiry's
-    matrix.
+    matrix. `lookback`: one of LOOKBACKS.
     """
     published = published_levels(tk)
     if published is None or not published.snap.books or published.snap.spot is None:
@@ -384,7 +457,8 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             else "that expiry did not carry days to expiration"
         )
         return unavailable(tk, reason, expiry=chosen, **NO_LEVELS)
-    stored = _matrix(tk, live, published.prior_day, chosen, now)
+    start = _window_start(lookback, now)
+    stored = _matrix(tk, published, chosen, now, start)
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
     sigma_root_t = _sigma_root_t(published, tk, chosen, now)
@@ -413,6 +487,7 @@ def confluence_payload(tk: str, expiry: str | None, now: datetime) -> dict[str, 
             ),
             **_tags(levels, body["rows"]),
             "headline": _headline(live),
+            "lookback": _lookback(lookback, start),
         }
     )
     body["cards"] = _cards(body, live, chosen, sigma_root_t)

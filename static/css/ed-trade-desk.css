@@ -1702,6 +1702,29 @@
   border-radius: 5px;
 }
 
+/* the look-back picker: every look-back column follows the one on */
+.cm-page .cm-lookback {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.cm-page .cm-lookback button {
+  font-size: 11px;
+  padding: 3px 7px;
+}
+
+.cm-page .cm-lookback button.on {
+  background: #2f8cff;
+  border-color: #79b7ff;
+}
+
+.cm-page .cm-lookback small {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
 /* the Composite's headline: the kind of move, its words and its record */
 .cm-page .cm-headline {
   margin: 0 0 10px;

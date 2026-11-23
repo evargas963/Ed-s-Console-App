@@ -44,7 +44,8 @@ class StrikeReadings:
     The open interest and volume with their (call, put) legs; the change in open interest since
     the prior day's capture (`oi_new`: the prior day listed no contract at this strike); the
     expiry's gamma profile at this strike's price (`gamma_here`); the regular session's touches
-    and holds at the strike so far (calc.liquidity_value_engine.visits; None before it opens).
+    and holds at the strike so far (calc.liquidity_value_engine.visits; None before it opens);
+    its readings over the look-back window (`look`).
     """
 
     net_gex: float | None
@@ -64,6 +65,41 @@ class StrikeReadings:
     gamma_here: float | None
     touches: int | None
     holds: int | None
+    look: StrikeLookBack
+
+    @property
+    def look_volume(self) -> float | None:
+        """Contracts traded at the strike in the look-back, calls and puts."""
+        return _sum(self.look.volume)
+
+    @property
+    def bought_sold(self) -> float | None:
+        """Contracts bought less sold at the strike in the look-back (est.)."""
+        b, s = self.look.bought, self.look.sold
+        return None if b is None or s is None else b - s
+
+
+@dataclass(frozen=True)
+class StrikeLookBack:
+    """One strike's readings over the look-back window (calc.option_window.strike_look_back).
+
+    `volume`: contracts traded in the window, (calls, puts); `iv_change`: the strike's volatility
+    blend now less at the window's start, in vol points; `bought`, `sold`, `unknown`: contracts,
+    calls and puts together; `flow`: the hedging flow in dollars, with `unpriced`, the contracts
+    whose flow is not known. Each None when not known.
+    """
+
+    volume: tuple[float, float] | None
+    iv_change: float | None
+    bought: float | None
+    sold: float | None
+    unknown: float | None
+    flow: float | None
+    unpriced: float | None
+
+
+#: a strike whose contracts the stream did not hold over the whole window: nothing known
+NOT_HELD = StrikeLookBack(None, None, None, None, None, None, None)
 
 
 def _sum(legs: tuple[float, float] | None) -> float | None:
@@ -93,12 +129,14 @@ def readings(
     prior: Bucket | None,
     prior_held: bool,
     visit: tuple[int, int] | None,
+    look: StrikeLookBack,
 ) -> StrikeReadings:
     """Return one strike's readings from its producers' values.
 
     Each leg's gamma is Schwab's as sent, whatever its sign (AGENTS rule 2). `prior` is the
     prior day's bucket of this strike (None: that day listed no contract here, or no prior day is
-    held, `prior_held` False); `visit` its (touches, holds) today (None: the session not open).
+    held, `prior_held` False); `visit` its (touches, holds) today (None: the session not open);
+    `look` its readings over the look-back (calc.option_window.strike_look_back).
     """
     oi_legs = strike_oi_legs(bucket)
     volume_legs = strike_volume_legs(bucket)
@@ -125,6 +163,7 @@ def readings(
         gamma_here=gamma_here,
         touches=None if visit is None else visit[0],
         holds=None if visit is None else visit[1],
+        look=look,
     )
 
 
@@ -235,19 +274,23 @@ SHADED = {
     "charm": "charm",
     "vanna": "vanna",
     "iv": "iv",
-    "volume": "volume",
+    "volume": "look_volume",
     "vol_oi": "vol_oi",
     "visits": "touches",
+    "bought_sold": "bought_sold",
 }
 
 
 def _shades(r: StrikeReadings) -> dict[str, float | None]:
     """Return the numbers the page shades each column's cell by, against the column's peak.
 
-    The put/call volume shades by 1 - put/call: positive call-heavy, negative put-heavy.
+    The put/call volume shades by 1 - put/call: positive call-heavy, negative put-heavy; the
+    look-back's volatility change and hedging flow by their own signed numbers.
     """
     out: dict[str, float | None] = {key: getattr(r, name) for key, name in SHADED.items()}
     out["pc_vol_lean"] = None if r.pc_vol is None else 1 - r.pc_vol
+    out["iv_change"] = r.look.iv_change
+    out["flow"] = r.look.flow
     return out
 
 
@@ -259,13 +302,17 @@ def build_matrix(
     gamma_profile: Mapping[float, float],
     prior: dict[float, Bucket] | None,
     visits: Mapping[float, tuple[int, int]],
+    looks: Mapping[float, StrikeLookBack],
 ) -> Matrix:
     """Build the readings of one expiry's book and each strike's Composite.
 
     `gamma_profile`: the expiry's gamma profile by price (its value at each listed strike);
     `prior`: the prior day's book of the same expiry (None: no prior day held); `visits`: each
-    strike's (touches, holds) in today's regular session (empty before it opens). The rows the
-    page shows are drawn from it (window_rows).
+    strike's (touches, holds) in today's regular session (empty before it opens); `looks`: each
+    strike's readings over the look-back (a strike not in it: NOT_HELD). The families measured
+    at a strike: positioning (|net GEX|), option trades (the look-back's volume) and volatility
+    (|the look-back's change in it|), each against its largest on the expiry. The rows the page
+    shows are drawn from it (window_rows).
     """
     strikes = sorted(float(s) for s in exposures)
     by_strike = {
@@ -278,13 +325,21 @@ def build_matrix(
             None if prior is None else prior.get(s),
             prior is not None,
             visits.get(s),
+            looks.get(s, NOT_HELD),
         )
         for s in strikes
     }
     shades = [_shades(r) for r in by_strike.values()]
-    peaks = {key: _peak(s[key] for s in shades) for key in (*SHADED, "pc_vol_lean")}
+    peaks = {key: _peak(s[key] for s in shades) for key in shades[0]} if shades else {}
     composites = {
-        s: composite(r.gamma_here, {"positioning": _share(r.net_gex, peaks["net_gex"])})
+        s: composite(
+            r.gamma_here,
+            {
+                "positioning": _share(r.net_gex, peaks["net_gex"]),
+                "option trades": _share(r.look_volume, peaks["volume"]),
+                "volatility": _share(r.look.iv_change, peaks["iv_change"]),
+            },
+        )
         for s, r in by_strike.items()
     }
     return Matrix(readings=by_strike, composites=composites, peaks=peaks, strikes=strikes)
@@ -512,14 +567,61 @@ def _row(strike: float, r: StrikeReadings, c: Composite | None) -> dict[str, Any
         "vanna_reason": _absent(r.vanna, "vanna is missing"),
         "iv_text": iv_text(r.iv),
         "iv_reason": _absent(r.iv, "implied volatility is missing"),
-        "volume_text": count_text(r.volume),
-        "volume_reason": _absent(r.volume, "volume is missing"),
-        "volume_hover": _legs_text(r.volume_legs, "Today's volume"),
+        **_look_cells(r),
         "pc_vol_text": _text(r.pc_vol, 2),
         "pc_vol_reason": _absent(r.pc_vol, "put/call volume is missing"),
         "vol_oi_text": _text(r.vol_oi, 2),
         "vol_oi_reason": _absent(r.vol_oi, "volume/open interest is missing"),
         **_visits_cells(r.touches, r.holds),
+    }
+
+
+#: why a look-back reading is "-": a contract at the strike was not held over the whole window
+LOOK_REASON = "the stream did not hold every contract at this strike over the whole look-back"
+#: why pace is "-": its baseline, the same time of day over 20 sessions (decision 63), is not held
+PACE_REASON = "needs the same time of day over 20 sessions of the record; not held yet"
+
+
+def _look_cells(r: StrikeReadings) -> dict[str, Any]:
+    """The look-back's columns: volume, the volatility's change, bought less sold, flow, pace."""
+    look = r.look
+    day = _legs_text(r.volume_legs, "Today")
+    traded = _legs_text(look.volume, "In the look-back")
+    unknown_share = None
+    b, s, u = look.bought, look.sold, look.unknown
+    if b is not None and s is not None and u is not None and b + s + u > 0:
+        unknown_share = f"{100.0 * u / (b + s + u):.0f}%"
+    return {
+        "volume_text": count_text(r.look_volume),
+        "volume_reason": _absent(r.look_volume, LOOK_REASON),
+        "volume_hover": " · ".join(t for t in (traded, day) if t) or None,
+        "iv_change_text": None if look.iv_change is None else _signed(look.iv_change, 2),
+        "iv_change_reason": _absent(look.iv_change, LOOK_REASON),
+        "iv_change_hover": (
+            "Schwab's volatility at the strike now less at the look-back's start (the blend over "
+            "calls and puts); it moves with the price too, not only with volatility."
+        ),
+        "bought_sold_text": _signed_count(r.bought_sold),
+        "bought_sold_reason": _absent(r.bought_sold, LOOK_REASON),
+        "bought_sold_hover": None
+        if unknown_share is None
+        else (
+            f"Bought {count_text(b)} · sold {count_text(s)} · unknown {count_text(u)} "
+            f"({unknown_share}). est.: each rise in a contract's volume read whole by its last "
+            "trade against the middle of the quote in force; on the middle, unknown."
+        ),
+        "flow_text": dollars_text(look.flow),
+        "flow_reason": _absent(look.flow, LOOK_REASON),
+        "flow_hover": None
+        if look.flow is None
+        else (
+            "est.: the stock the look-back's option trades would have the dealers trade, bought "
+            f"less sold x Schwab's delta x 100 x the stock's price ({ASSUMPTION}); "
+            f"{count_text(look.unpriced)} contracts with no side, delta or price left out."
+        ),
+        "pace_text": None,
+        "pace_reason": PACE_REASON,
+        "pace_hover": None,
     }
 
 

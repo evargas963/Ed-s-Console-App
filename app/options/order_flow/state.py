@@ -10,9 +10,13 @@ Feeds OrderFlowEngine with content.* structure for book_imbalance_5 and cum_delt
 from __future__ import annotations
 
 import logging
+import math
 import threading
+from array import array
+from bisect import bisect_left
 from collections import defaultdict, deque
 from collections.abc import Iterable
+from datetime import datetime
 from typing import Any
 
 from app.options.order_flow import history
@@ -21,14 +25,24 @@ from calc.l1_trade_observation import (
     VENDOR_LAST_SIZE,
     VENDOR_TRADE_TIME,
     KeptPrint,
+    TradePrint,
     extract_vendor_print,
     is_adjacent_restatement,
     quote_in_force,
 )
+from calc.option_window import TOTALS, LookBack, step_totals
 from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
-from option_contract import Streamed, StreamedTop, quote_values
-from stream_spine import NOT_STREAMED, held_key, quote_before, read_book, streamed_record
+from option_contract import NO_TOP, Streamed, StreamedTop, quote_values
+from stream_spine import (
+    NOT_STREAMED,
+    held_key,
+    quote_before,
+    read_book,
+    read_streamed,
+    streamed_record,
+)
+from time_et import ET
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
@@ -36,6 +50,89 @@ MAX_TAPE_PRINTS = 500
 _PRINT_FIELDS = (VENDOR_LAST_PRICE, VENDOR_LAST_SIZE, VENDOR_TRADE_TIME)
 
 log = logging.getLogger(__name__)
+
+
+def _held(value: float | None) -> float:
+    return math.nan if value is None else value
+
+
+def _value(held: float) -> float | None:
+    return None if math.isnan(held) else held
+
+
+class _Record:
+    """One contract's look-back record of one ET market day (OrderFlowState.look_back).
+
+    At the first message of each minute: the minute, and the contract's volume, volatility and
+    running totals (calc.option_window.TOTALS) in force at its start, before that message; and
+    the newest of each. A value not yet received is NaN in the arrays, None outside them.
+    """
+
+    __slots__ = (
+        "day",
+        "iv",
+        "iv_at",
+        "minute",
+        "minutes",
+        "totals",
+        "totals_at",
+        "volume",
+        "volume_at",
+    )
+
+    def __init__(self, day: str) -> None:
+        self.day = day
+        self.minutes = array("q")
+        self.volume_at = array("d")
+        self.iv_at = array("d")
+        self.totals_at = [array("d") for _ in TOTALS]
+        self.minute = -1
+        self.volume: float | None = None
+        self.iv: float | None = None
+        self.totals = [0.0] * len(TOTALS)
+
+    def take(self, minute: int, volume: float | None, iv: float | None, adds: list[float]) -> None:
+        """Take one message's values at `minute`: a new minute keeps the values before it."""
+        if minute != self.minute:
+            self.minutes.append(minute)
+            self.volume_at.append(_held(self.volume))
+            self.iv_at.append(_held(self.iv))
+            for held, total in zip(self.totals_at, self.totals, strict=True):
+                held.append(total)
+            self.minute = minute
+        for k, add in enumerate(adds):
+            self.totals[k] += add
+        if volume is not None:
+            self.volume = volume
+        if iv is not None:
+            self.iv = iv
+
+    def look_back(self, start: int) -> LookBack | None:
+        """Return the record over the window from minute `start` to now.
+
+        None when the record began at or after `start` (its values then are not known). The values
+        in force at `start` are those at the first minute recorded from it on, no message having
+        come between; with none, they are the newest.
+        """
+        if not self.minutes or self.minutes[0] >= start:
+            return None
+        j = bisect_left(self.minutes, start)
+        if j == len(self.minutes):
+            volume, iv, totals = self.volume, self.iv, list(self.totals)
+        else:
+            volume, iv = _value(self.volume_at[j]), _value(self.iv_at[j])
+            totals = [held[j] for held in self.totals_at]
+        return LookBack(
+            volume=(volume, self.volume),
+            iv=(iv, self.iv),
+            totals=(
+                self.totals[0] - totals[0],
+                self.totals[1] - totals[1],
+                self.totals[2] - totals[2],
+                self.totals[3] - totals[3],
+                self.totals[4] - totals[4],
+            ),
+        )
 
 
 class OrderFlowState:
@@ -48,6 +145,9 @@ class OrderFlowState:
         # Schwab has not changed stands, however many the other service sends
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque[KeptPrint]] = {}
+        #: each option contract's look-back record of the market day (_Record), from its first
+        #: LEVELONE_OPTIONS message since the start or the stream's last reconnect
+        self._records: dict[str, _Record] = {}
         #: the bus's current records (stream_spine.MessageBus.current, bind): each symbol's top of
         #: book, Greeks and volume are read from them, never kept here
         self.current: dict[str, tuple[str, Any]] = {}
@@ -93,7 +193,8 @@ class OrderFlowState:
         That quote is the newest Schwab timed at or before the trade (quote_in_force): Schwab
         sends a trade with the quote that followed it. A current record merged from several
         messages (the daemon's bus) carries each field's own receive time in `field_received`;
-        the print is stamped with the newest of its fields'.
+        the print is stamped with the newest of its fields'. An option contract's record also
+        goes to its look-back record (_take_record).
         """
         if not content_item:
             return
@@ -104,16 +205,15 @@ class OrderFlowState:
             # the daemon's receive time is required: stamping "now" would make a replayed or
             # delayed message read as live
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
-
-        def received(field: str) -> float:
-            return ts_recv if field_received is None else field_received[field]
-
+        stamps = {f: ts_recv if field_received is None else field_received[f] for f in content_item}
         trade = extract_vendor_print(content_item)
-        if trade is None:
-            return
         # the symbol's record on the bus, taken once: its newest quote and the one that replaced,
         # read from the same version of it
         record = self.current.get(held_key(service, sym))
+        if service == "LEVELONE_OPTIONS":
+            self._take_record(sym, ts_recv, content_item, stamps, trade, record)
+        if trade is None:
+            return
         sent = streamed_record(record)
         with self._lock:
             tape = self._get_tape(sym)
@@ -128,13 +228,70 @@ class OrderFlowState:
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
                     # unchanged price carries a new time and size but no LAST_PRICE (Change)
-                    float(max(received(f) for f in _PRINT_FIELDS if f in content_item)),
+                    float(max(stamps[f] for f in _PRINT_FIELDS if f in content_item)),
                     # the bid and ask in force when the trade was made, by Schwab's own quote and
                     # trade times (never the quote that followed it), and the record's Greeks
                     quote_in_force(trade.time_millis, sent.top, quote_before(record)),
                     sent.greeks,
                 )
             )
+
+    def _take_record(
+        self,
+        sym: str,
+        ts: float,
+        content: dict[str, Any],
+        stamps: dict[str, float],
+        trade: TradePrint | None,
+        record: tuple[str, Any] | None,
+    ) -> None:
+        """Take one LEVELONE_OPTIONS record into the contract's look-back record at `ts`.
+
+        Its fields as this version of the record carries them (stream_spine.read_streamed, the
+        one reader); a rise of its TOTAL_VOLUME is one step, read by its last trade against the
+        quote in force then (calc.option_window.step_totals). A record of an earlier ET day is
+        begun anew: Schwab's volume counts from each day's start.
+        """
+        own = read_streamed(content, {f: (None, t) for f, t in stamps.items()})
+        volume, iv = own.greeks.total_volume.value, own.greeks.volatility.value
+        day = datetime.fromtimestamp(ts, ET).date().isoformat()
+        adds = [0.0] * len(TOTALS)
+        with self._lock:
+            held = self._records.get(sym)
+            if held is None or held.day != day:
+                held = self._records[sym] = _Record(day)
+            if volume is not None and held.volume is not None and volume > held.volume:
+                quote = (
+                    NO_TOP
+                    if trade is None
+                    else quote_in_force(trade.time_millis, own.top, quote_before(record))
+                )
+                adds = list(
+                    step_totals(
+                        volume - held.volume,
+                        None if trade is None else trade.price,
+                        quote.bid,
+                        quote.ask,
+                        own.greeks.delta.value,
+                        own.greeks.underlying_price.value,
+                    )
+                )
+            held.take(int(ts // 60), volume, iv, adds)
+
+    def look_back(self, symbols: Iterable[str], day: str, start: int) -> dict[str, LookBack]:
+        """Return each of `symbols`' look-back from minute `start` of ET day `day` to now.
+
+        A contract with no record of that day, or one begun at or after `start` (the stream did
+        not hold it over the whole window), is left out.
+        """
+        out: dict[str, LookBack] = {}
+        with self._lock:
+            for sym in symbols:
+                held = self._records.get(ticker_storage_key(sym))
+                look = None if held is None or held.day != day else held.look_back(start)
+                if look is not None:
+                    out[sym] = look
+        return out
 
     def prints(self, symbol: str) -> list[KeptPrint]:
         """Return the symbol's tape: each print it kept, in receive order."""
@@ -154,11 +311,16 @@ class OrderFlowState:
             self._clear_all_session_state_unlocked()
 
     def _clear_all_session_state_unlocked(self) -> None:
-        """Drop session state. Caller holds ``self._lock``."""
+        """Drop session state. Caller holds ``self._lock``.
+
+        With it each contract's look-back record: a step across a reconnect's gap would be read
+        by a trade made after it, so the records begin again from the next message.
+        """
         for values in self._tape.values():
             values.clear()
         for values in self._book.values():
             values.clear()
+        self._records.clear()
 
     def clear_symbol(self, symbol: str) -> None:
         """Clear all state for one symbol, its recent prints and books included."""
@@ -167,6 +329,7 @@ class OrderFlowState:
         history.LEAN.forget(sym)
         with self._lock:
             self._book.pop(sym, None)
+            self._records.pop(sym, None)
             if sym in self._tape:
                 self._tape[sym].clear()
 
@@ -212,6 +375,11 @@ def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, 
     with _rest_lock:
         kept = {s: _REST_QUOTES[s] for s in symbols if s in _REST_QUOTES}
     return {s: answer for s, answer in kept.items() if answer[0] >= since}
+
+
+def look_back(symbols: Iterable[str], day: str, start: int) -> dict[str, LookBack]:
+    """Return the live singleton's look-back of each of `symbols` (OrderFlowState.look_back)."""
+    return _LIVE_STATE.look_back(symbols, day, start)
 
 
 def option_top(symbol: str) -> StreamedTop:
