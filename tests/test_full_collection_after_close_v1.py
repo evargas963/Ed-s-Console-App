@@ -28,8 +28,6 @@ import sys
 import weakref
 from pathlib import Path
 
-import pytest
-
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from tests.conftest import MARKETS_ANSWERS
@@ -50,21 +48,6 @@ class _Ring:
 
     def __init__(self) -> None:
         self.next = self
-
-
-@pytest.fixture
-def collector():
-    """Set the collector as the program's start sets it; give it back as it was after the test.
-
-    Yields Python's own thresholds (the test process's, which no test leaves changed). The
-    thresholds are the process's, so they are restored whatever the test did.
-    """
-    own = gc.get_threshold()
-    capture.set_collector()
-    try:
-        yield own
-    finally:
-        gc.set_threshold(*own)
 
 
 def _allocate() -> None:
@@ -107,14 +90,15 @@ async def _until(ok, seconds: float = 30.0) -> None:
         await asyncio.sleep(0.01)
 
 
-def test_the_collector_as_the_program_sets_it_runs_no_full_collection_by_itself(collector):
+def test_the_collector_as_the_program_sets_it_runs_no_full_collection_by_itself():
     """The oldest generation is left alone; the young and middle keep Python's own thresholds.
 
-    With the collector as the program's start sets it, making and dropping 300,000 containers
-    runs many young and middle collections and not one of the oldest generation, and cycles
-    that live there stay until a full collection is asked for.
+    With the collector as the program's start sets it (as tests/conftest.py sets it for every
+    test), making and dropping 300,000 containers runs many young and middle collections and not
+    one of the oldest generation, and cycles that live there stay until a full collection is
+    asked for.
     """
-    young, middle, _oldest = collector
+    young, middle, _oldest = gc.get_threshold()
     assert gc.get_threshold() == (young, middle, capture.NO_FULL_COLLECTION)
     one = _in_the_oldest_generation()
     before = gc.get_stats()
@@ -158,7 +142,6 @@ def test_the_program_sets_its_collector_as_it_starts(tmp_path):
     ) in log, log
 
 
-@pytest.mark.usefixtures("collector")
 def test_one_full_collection_runs_after_each_close_and_none_in_the_session(caplog):
     """Wednesday 2026-10-07 15:00 ET to Saturday 10-10: one collection per close, logged.
 
@@ -211,7 +194,6 @@ def test_one_full_collection_runs_after_each_close_and_none_in_the_session(caplo
     assert first[2] == second[2] == 0  # nothing it could not free
 
 
-@pytest.mark.usefixtures("collector")
 def test_a_start_after_the_close_runs_no_collection_for_it(caplog):
     """A program started after the day's close holds nothing a session left: no collection.
 
