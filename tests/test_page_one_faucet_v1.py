@@ -114,13 +114,14 @@ ASKED["venue"] = "NYSE_BOOK"
 def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held):
     """Every page panel, found from the app (no GET route answers a ticker).
 
-    A panel that serves a price serves the live price, and not the price the payload was
-    computed at, which no page reads (operator 2026-11-12: "Yes, remove it"): as the number
-    (`spot`) where a reader takes it, and as the text its page prints (`spot_text`), which is the
-    chain's whole price. The strikes panel, the heatmap and the vanna and charm bars serve neither:
-    their pages mark the price's row by the served mark and take the price from the header row.
-    The price's trade time is the text the page shows (`spot_time_ct`); its instant is on the
-    terrain alone, where the desk's Right Now takes it (push.desk), and no page reads one.
+    One producer of the price on every screen: the header's price row (live_price_rows), which
+    the page draws wherever the price is shown, with its trade time and whether it is live. No
+    page panel serves the price as its page prints it (`spot_text`), its time (`spot_time_ct`)
+    or its mark (`spot_not_live_text`). The live price's number is carried by the terrain alone,
+    the price its relations are computed at, where the desk's Right Now takes it with its instant
+    (push.desk); it is the live price, not the price the payload was computed at (operator
+    2026-11-12: "Yes, remove it"), and no page draws it. The strikes panel, the heatmap, the chain
+    and the vanna and charm bars mark the price's row by the served mark.
     """
     now = time_et.now()
     served, printed, instant, drawn = {}, {}, set(), {}
@@ -129,14 +130,16 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
         body = drawn[kind] = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
             served[kind] = (body.get("spot"), "priced_at_spot" in body)
-        if "spot_text" in body:
-            printed[kind] = body["spot_text"]
+        if {"spot_text", "spot_time_ct", "spot_not_live_text"} & set(body):
+            printed[kind] = {"spot_text", "spot_time_ct", "spot_not_live_text"} & set(body)
         if "spot_as_of_ts_utc" in body:
             instant.add(kind)
-    assert {"terrain", "levels"} <= set(served)
-    assert not {"strikes", "surface", "chain", "vanna", "charm"} & set(served)
-    # one price on every screen that prints it: the live price's text, the chain's among them
-    assert {"chain", "levels"} <= set(printed) and set(printed.values()) == {f"{LIVE:.2f}"}
+    assert "terrain" in served
+    assert not {"levels", "strikes", "surface", "chain", "vanna", "charm", "confluence"} & set(
+        served
+    )
+    # no panel prints the price, its time or its mark: the page draws them from the price row
+    assert printed == {}
     # the heatmap, the chain and the bars are drawn, the price's row marked on their rows: no
     # key beside it
     assert drawn["surface"]["available"] and drawn["chain"]["status"] == "ok"

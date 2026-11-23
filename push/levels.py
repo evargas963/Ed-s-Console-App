@@ -20,7 +20,7 @@ from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, TerrainSnapshot
 from calc.terrain_read import from_spot_text, level_side
 from numeric_contract import price_text
 from push.bars import aggregate_vwap
-from push.spot import PriceMark, price_mark, resolve_spot
+from push.spot import resolve_spot
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state.level_store import PublishedLevels
 from state.price_level_store import canonical_price_level_snapshot
@@ -170,14 +170,15 @@ class SessionFields(SnapshotStamp):
     degraded: list[str] | None
 
 
-class LevelsPanel(PriceMark, LevelsVerdict, SessionFields):
-    """The `levels` panel: the session's price levels and the terrain's, each from the price."""
+class LevelsPanel(LevelsVerdict, SessionFields):
+    """The `levels` panel: the session's price levels and the terrain's, each from the price.
+
+    The price itself is not served: the page draws it, and whether it is live, from the price row
+    (one producer).
+    """
 
     ticker: str
     schema_version: int
-    spot: float | None
-    spot_text: str | None
-    spot_source: str
     levels: list[SessionLevelRow | CarriedLevelRow]
     by_distance: list[str]
     zero_dte: list[SameDayRow]
@@ -367,8 +368,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
     whether the liquidity map draws it as a reference line.
     """
     served_ts = now.timestamp()
-    spot, spot_source, spot_ts = resolve_spot(tk, now=served_ts)
-    mark = price_mark(tk, spot_ts, served_ts)  # each value computed from that price carries it
+    spot = resolve_spot(tk, now=served_ts)[0]  # each level's distance and side are from it
     snap = canonical_price_level_snapshot(tk, now)
     published, verdict = terrain_cache_get(tk, served_ts)
     levels: list[SessionLevelRow | CarriedLevelRow] = []
@@ -392,10 +392,6 @@ def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
     return {
         "ticker": tk,
         "schema_version": 1,
-        "spot": spot,
-        "spot_text": price_text(spot),
-        "spot_source": spot_source,
-        **mark,  # each level's distance and side are from that price
         "snapshot_time_ct": session["snapshot_time_ct"],
         "snapshot_age_text": session["snapshot_age_text"],
         # the gamma levels' verdict (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE)

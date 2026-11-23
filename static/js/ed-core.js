@@ -1054,14 +1054,41 @@
     var shown = said != null ? said : a ? a.textContent : "";
     var fresh = document.getElementById("aiCtxFresh");
     if (fresh) fresh.textContent = label + (shown && shown !== "-" ? " · " + shown : "");
-    // Key Levels' Spot is this price: not live, it says so with the reason, the trade time and age
-    var spot = document.getElementById("klSpot");
-    if (spot) {
-      spot.style.color = cls ? "var(--ed-stale)" : "";
-      spot.title = [cls ? label + (ageTitle != null ? ": " + ageTitle : "") : "", shown]
-        .filter(Boolean)
-        .join(" · ");
-    }
+    // every other surface of this price: not live, it says so with the reason, the trade time
+    // and age
+    _live.stale = !!cls;
+    _live.words = [cls ? label + (ageTitle != null ? ": " + ageTitle : "") : "", shown]
+      .filter(Boolean)
+      .join(" · ");
+    paintLivePrice(document);
+  }
+  // The selected ticker's live price on every surface beyond the header's own cells, each drawn
+  // from the header's one row (live_price_rows.price_row, the one producer), never a panel's copy:
+  // an element drawn with data-live-price shows the price, dimmed while it is not live, its title
+  // the feed's word, why, and the trade's time and age; one with data-live-price-when shows those
+  // words; one with data-live-price-mark, beside a value computed from the price, shows them while
+  // the price is not live and nothing while it is. Painted with the header (paintQuote, setFeed);
+  // a page that draws one paints it at once (EdShell.paintLivePrice).
+  var _live = { price: "-", stale: true, words: "" };
+  function paintLivePrice(root) {
+    root.querySelectorAll("[data-live-price]").forEach(function (el) {
+      el.textContent = _live.price;
+      el.style.color = _live.stale ? "var(--ed-stale)" : "";
+      el.classList.toggle("stale", _live.stale);
+      el.title = _live.words;
+    });
+    root.querySelectorAll("[data-live-price-when]").forEach(function (el) {
+      el.textContent = _live.words;
+      el.classList.toggle("stale", _live.stale);
+    });
+    root.querySelectorAll("[data-live-price-mark]").forEach(function (el) {
+      el.textContent = livePriceMark();
+    });
+  }
+  // the mark beside a value computed from the live price, as text (for a chart's label, which
+  // holds no element): the row's words while the price is not live, nothing while it is
+  function livePriceMark() {
+    return _live.stale && _live.words ? " · " + _live.words : "";
   }
   // ---- header quote + watchlist: PUSHED BY THE CAPTURE DAEMON over the page's socket (/ws on
   //      the program's own port, app/market_data/schwab/streaming/live_ui.py) -- the finished
@@ -1074,8 +1101,7 @@
       chg = document.getElementById("hChg"),
       ba = document.getElementById("hBidAsk");
     if (px) px.textContent = q.spot_disp == null ? "-" : q.spot_disp;
-    var spot = document.getElementById("klSpot");
-    if (spot) spot.textContent = q.spot_disp == null ? "-" : q.spot_disp;
+    _live.price = q.spot_disp == null ? "-" : q.spot_disp; // painted with the feed's words below
     if (ba) {
       ba.textContent = orDash(q.bidText) + " × " + orDash(q.askText); // served
       ba.title = q.quoteTime ? "quote " + q.quoteTime : "";
@@ -1596,7 +1622,6 @@
     var connecting = _priceConnecting;
     var label = connecting ? "WAITING" : PUSH_OFFLINE;
     var age = connecting ? "no push yet" : PUSH_DOWN;
-    emit("ed:price_push_down", { label: label }); // every surface of this price says so (the desk map)
     if (_quoteShown)
       setFeed("stale", label, _tradeCell != null ? _tradeCell : age, null, _tradeShown);
     else
@@ -1611,6 +1636,8 @@
         ageLabel: age,
       });
     paintRecord(null);
+    // every surface of this price says so (the desk map), once the words above are its own
+    emit("ed:price_push_down", { label: label });
   }
 
   // ================= CT clock: the program's, from its heartbeat; none until the first =========
@@ -1813,10 +1840,6 @@
     var v = map ? map[key] : null;
     return typeof v === "string" && v ? v : null;
   }
-  // a value computed from the live price, marked when that price is not live (served words)
-  function notLive(d) {
-    return d && d.spot_not_live_text ? " · " + d.spot_not_live_text : "";
-  }
   // a served classification word as a badge (its first word is the CSS hook); none sent, nothing
   function classTag(c) {
     if (c == null) return "";
@@ -1856,7 +1879,8 @@
     rowsHtml: rowsHtml,
     classOf: classOf,
     served: served,
-    notLive: notLive,
+    paintLivePrice: paintLivePrice,
+    livePriceMark: livePriceMark,
     ticker: function () {
       return state.ticker;
     },

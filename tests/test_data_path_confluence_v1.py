@@ -656,7 +656,7 @@ def test_with_no_live_price_the_window_is_the_chains_middle_and_says_so():
         _forget(tk)
     on, middle = listed.index(fx["spot"]), len(listed) // 2
     assert abs(on - middle) > 10
-    assert body["spot"] is None and "priced_at_spot" not in body
+    assert "priced_at_spot" not in body and "spot" not in body  # the price is the price row's
     assert sorted(r["strike"] for r in body["rows"]) == listed[middle - 5 : middle + 6]
     assert body["notes"][-1] == strike_rows.WINDOW_NO_PRICE
     assert not any(r["spot_line"] for r in body["rows"])
@@ -674,7 +674,7 @@ def test_the_window_follows_the_live_price_off_the_chains_price():
     live = quote["native"]["LAST_PRICE"]
     body = _close_then_print(quote)
     listed = _close_strikes()
-    assert body["spot"] == live and "priced_at_spot" not in body
+    assert "priced_at_spot" not in body and "spot" not in body  # the price is the price row's
     assert (
         sorted(r["strike"] for r in body["rows"])
         == _around(listed, live)
@@ -696,14 +696,14 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     body = _close_then_print(quote)
     listed = _close_strikes()
     k = listed.index(on)
-    assert body["spot"] == on and k >= 5
+    assert k >= 5
     assert sorted(r["strike"] for r in body["rows"]) == listed[k - 5 : k + 6]
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [on]
     assert [r["distance_text"] for r in body["rows"]] == [
         "0.00" if r["strike"] == on else f"{r['strike'] - on:+.2f}" for r in body["rows"]
     ]
     above = on + 0.004  # INDUCED: a LAST_PRICE a rounding above the strike (four decimals sent)
-    nudged = at_price(body["rows"], listed, above, None)["rows"]
+    nudged = at_price(body["rows"], listed, above, None)
     assert [r["distance_text"] for r in nudged] == [
         "0.00" if r["strike"] == on else f"{r['strike'] - above:+.2f}" for r in nudged
     ]
@@ -715,7 +715,7 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
 
     The chain's 20 strikes nearest the price, 767 to 786, and SPY's first kept print above all
     of them (LAST_PRICE 787.5169, received 2026-10-23 17:09:50 ET): no listed strike is at or
-    above the price, so no row carries the spot line, and the price is still shown.
+    above the price, so no row carries the spot line; every row's distance is from that price.
     """
     held, price = SPY_0DTE, _SPY_PRINT_ABOVE["native"]["LAST_PRICE"]
     chain = read_chain(held.chain)
@@ -727,8 +727,8 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     assert price > max(matrix.strikes)
     assert under_strike(price, matrix.strikes) is None
     shown = at_price(rows, matrix.strikes, price, None)
-    assert (shown["spot"], shown["spot_text"]) == (price, price_text(price))
-    assert shown["rows"] and not any(r["spot_line"] for r in shown["rows"])
+    assert [r["distance_text"] for r in shown] == [f"{r['strike'] - price:+.2f}" for r in rows]
+    assert shown and not any(r["spot_line"] for r in shown)
     assert all("spot_line" not in r for r in rows), "the rows given are not changed"
 
 
@@ -1575,7 +1575,10 @@ def test_an_after_hours_print_keeps_the_close_book():
     assert print_["native"]["LAST_PRICE"] != held.spot
     assert (again["net_gex_text"], again["vanna_text"], again["charm_text"]) == close_texts
     assert second_snap.spot == held.spot and "priced_at_spot" not in second
-    assert second["spot"] == print_["native"]["LAST_PRICE"]
+    # the distances are from the print, the live price
+    live = print_["native"]["LAST_PRICE"]
+    rows = second["rows"]
+    assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in rows)
 
 
 def test_a_chain_whose_every_expiry_has_passed_says_so():
@@ -1600,8 +1603,9 @@ def test_the_matrix_shows_the_live_price():
     The chain is published at the price Schwab sent in that chain answer (its stored capture's
     spot, 269.04), and CRWD's LEVELONE_EQUITIES message the daemon received at 10:38:00 ET
     (LAST_PRICE 269.395), taken in by the plane and made the price row by the daemon's own
-    function. The matrix stays ranked at the chain's price; its window, its spot and each row's
-    distance are the live price's.
+    function. The matrix stays ranked at the chain's price; its window and each row's distance
+    are the live price's. The price itself, its time and whether it is live are the price row's,
+    which the page draws (one producer): the matrix serves no copy of them.
     """
     tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
     live = _QUOTE["native"]["LAST_PRICE"]
@@ -1617,12 +1621,58 @@ def test_the_matrix_shows_the_live_price():
     listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
     assert live not in listed
     assert sorted(r["strike"] for r in body["rows"]) == _around(listed, live)
-    assert (body["spot"], body["spot_text"]) == (live, f"{live:.2f}")
     assert "priced_at_spot" not in body
-    # Schwab's trade time is served once, as the text the page shows: no second, raw copy
-    assert "spot_as_of_ts_utc" not in body
-    assert body["spot_time_ct"] == ct_label(_QUOTE["native"]["TRADE_TIME_MILLIS"] / 1000.0)
+    copies = {"spot", "spot_text", "spot_time_ct", "spot_not_live_text", "spot_as_of_ts_utc"}
+    assert not copies & body.keys(), copies & body.keys()
+    # the SPOT card is the price row's place: no value of the matrix's own
+    (spot,) = [c for c in body["cards"] if c.get("live_price")]
+    assert (spot["label"], spot["value"], spot["sub"]) == ("SPOT", None, None)
     assert all(abs(float(r["distance_text"]) - (r["strike"] - live)) <= 0.005 for r in body["rows"])
     assert [r["strike"] for r in body["rows"] if r["spot_line"]] == [
         min(r["strike"] for r in body["rows"] if r["strike"] >= live)
     ]
+
+
+def test_the_rows_hold_while_the_price_moves_among_them_and_follow_it_out():
+    """CRWD's captured chain (2026-10-16 expiry, captured 2026-10-07 10:38:40 ET) and its print.
+
+    The rows are centred on the strike nearest CRWD's print (LAST_PRICE 269.395). Asked again
+    with that centre, as the page sends back the one it was served, they hold while the price
+    moves among them, as a trading ladder's rows do, even past the middle of the next strike
+    (INDUCED: the price two strikes higher), and are centred on the price again once it has left
+    them (INDUCED: a price above the top row). Each answer's rows are every row's distance from
+    the price of its own moment.
+    """
+    tk, at = server.ticker_storage_key(CRWD.ticker), CRWD.now
+    expiry = str(CRWD.chain[0]["expirationDate"])[:10]
+    listed = sorted({float(c["strikePrice"]) for c in CRWD.chain})
+
+    def asked(last: float, n: int, centre: float | None) -> dict:
+        native = {**_QUOTE["native"], "LAST_PRICE": last}
+        lmp.record_from_level_one_equity(tk, native, received_ts=_QUOTE["ts_recv"] + n)
+        params = {"expiry": expiry, "lookback": "5", "centre": centre}
+        return push_confluence.confluence(tk, at, params)
+
+    live = _QUOTE["native"]["LAST_PRICE"]
+    lmp.record_feed_heartbeat(
+        daemon_status(at.timestamp(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [tk]})
+    )
+    try:
+        publish_capture(tk, CRWD.chain, at.timestamp(), CRWD.spot, at.date().isoformat(), at)
+        first = asked(live, 0, None)
+        held = first["view"]["centre"]
+        strikes = sorted(r["strike"] for r in first["rows"])
+        moved = listed[listed.index(held) + 2]  # two strikes up, still among the rows
+        among = asked(moved, 1, held)
+        out = max(strikes) + 1.0  # past the top row
+        left = asked(out, 2, held)
+    finally:
+        _forget(tk)
+    assert strikes == _around(listed, live) and held == min(listed, key=lambda s: abs(s - live))
+    assert min(strikes) < moved < max(strikes)
+    assert sorted(r["strike"] for r in among["rows"]) == strikes != _around(listed, moved)
+    assert among["view"]["centre"] == held
+    rows = among["rows"]
+    assert all(abs(float(r["distance_text"]) - (r["strike"] - moved)) <= 0.005 for r in rows)
+    assert sorted(r["strike"] for r in left["rows"]) == _around(listed, out) != strikes
+    assert left["view"]["centre"] == min(listed, key=lambda s: abs(s - out))

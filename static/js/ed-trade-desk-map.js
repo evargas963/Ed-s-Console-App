@@ -44,7 +44,6 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  var notLive = window.EdShell.notLive;
   // Schwab's book time stands beside the age words. A book that is not live keeps that
   // time and says so. The words are unchanged when no book time was sent.
   function bookAgeLabel(m, word) {
@@ -387,7 +386,8 @@
           id: l.id,
           price: Number(l.price),
           price_text: l.price_text,
-          label: g[0] + (lean ? " · " + lean + notLive(S.terrain) : ""),
+          // the lean is from the live price: its mark, the price row's words (the shell's)
+          label: g[0] + (lean ? " · " + lean + window.EdShell.livePriceMark() : ""),
           color: g[1],
           style: g[2],
           width: g[3],
@@ -408,9 +408,15 @@
     });
     return out;
   }
+  // the lines' labels drawn again once the live price's mark has changed (it went not live, or
+  // live again), so a lean from a stopped price says so
+  function markLevels() {
+    if (S.chart && S.levelsMark !== window.EdShell.livePriceMark()) paintChartLevels();
+  }
   function paintChartLevels() {
     if (!S.chart) return;
     paintFamilies();
+    S.levelsMark = window.EdShell.livePriceMark(); // the mark the lines' labels carry
     S.chart.setLevels(levelList());
     // the band is yesterday's value area as served, as the reference draws it; today's are lines
     var pd = S.fam.prior_day !== 0 && S.levels && S.levels.prior_value_area;
@@ -1055,9 +1061,10 @@
       ["OPTIONS", t && !why(t) && t.regime ? t.regime_text : "-", ""], // served: the regime in words
       [
         "GAMMA",
-        // served: the price's side of the flip, in words
-        t && t.flip_relation ? t.flip_relation_text + notLive(t) : "-",
+        // served: the price's side of the flip, in words, with the live price's mark
+        t && t.flip_relation ? t.flip_relation_text : "-",
         t && t.flip_relation === "ABOVE" ? "up" : t && t.flip_relation === "BELOW" ? "dn" : "",
+        t && t.flip_relation,
       ],
     ];
     host.innerHTML =
@@ -1070,11 +1077,13 @@
             c[2] +
             '">' +
             esc(c[1]) +
+            (c[3] ? "<span data-live-price-mark></span>" : "") +
             "</b></div>"
           );
         })
         .join("") +
       '<div class="tdm-ag tdm-ag-note">Each domain\'s own served label. No combined agreement score is produced yet.</div>';
+    window.EdShell.paintLivePrice(host);
   }
 
   // ------------------------------------------------------------------ header trust + footer
@@ -1275,6 +1284,7 @@
       if (onDesk()) {
         paintTrust();
         paintCards();
+        markLevels();
       }
     });
     // a market context row as the shell marks it: when its row arrives, and while the push is
@@ -1296,6 +1306,7 @@
         if (S.chart)
           S.chart.setLivePrice(q.spot, q.trade_age_text, q.spot != null ? q.trade_time_ct : null);
         paintCards(); // the Order Flow card's Schwab fields, on every row
+        markLevels();
       }
     });
     $("tdmQueue").addEventListener("click", function (e) {

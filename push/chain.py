@@ -23,7 +23,7 @@ from push.strike_rows import expiry_unreadable
 from push.verdict import LevelsVerdict, terrain_cache_get
 from state import level_store
 from state.level_store import GammaSurface, PublishedLevels
-from time_et import ct_label, et_date_str_from_ts_utc
+from time_et import et_date_str_from_ts_utc
 
 # the program's one log (capture._start_log: the day's file and the window)
 log = logging.getLogger("ed_server")
@@ -104,13 +104,12 @@ class NoChainScope(ChainScope):
 class ChainPanel(LevelsVerdict):
     """The `chain` panel (chain): one expiry of the ticker's chain, with the levels' verdict.
 
-    The live price as the screen shows it with Schwab's trade time, the expiry answered, whether
-    Schwab lists two contracts at one strike and side, the ladder and how many strikes it holds.
+    The expiry answered, whether Schwab lists two contracts at one strike and side, the ladder
+    (its spot row at the live price) and how many strikes it holds. The price itself is the
+    price row's, which the page draws (one producer).
     """
 
     ticker: str
-    spot_text: str | None
-    spot_time_ct: str | None
     expiry: str
     has_duplicate_contracts: bool
     status: Literal["ok"]
@@ -330,7 +329,7 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> ChainPanel | NoCha
         }
     response_contracts = asked.contracts
     shown = _shown(response_contracts)
-    live_spot, _src, live_ts = resolve_spot(t, now=now)  # the one spot, with Schwab's trade time
+    live_spot = resolve_spot(t, now=now)[0]  # the one spot: the ladder's spot row is at it
     ladder, not_on_ladder = chain_ladder(response_contracts, live_spot, shown)
     if not_on_ladder:
         log.warning(
@@ -343,8 +342,6 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> ChainPanel | NoCha
     served = _served_ladder(ladder, _net_gex_column(held.gamma_surface, resolved_expiry))
     return {
         "ticker": t,
-        "spot_text": price_text(live_spot),
-        "spot_time_ct": ct_label(live_ts) if live_ts is not None else None,
         "expiry": resolved_expiry,
         "has_duplicate_contracts": _has_duplicates(response_contracts),
         **verdict,

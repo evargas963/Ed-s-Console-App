@@ -1093,7 +1093,8 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
     """The levels served for Fri 2026-10-02 11:00 ET (RTH) with SPY's last trade in the price row.
 
     The daemon's price row: that trade is the spot with its trade time, the heartbeat live or
-    not.
+    not, and the levels' distances are from it. The price and its time are the row's alone (one
+    producer, which the page draws); the levels serve no copy of them.
     """
     at = et_ts("2026-10-02 11:00")
     served = {}
@@ -1107,11 +1108,15 @@ def test_d5_the_levels_spot_is_judged_at_the_time_they_are_served_for():
         )
         try:
             body = push_levels.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
+            row = live_price_rows.price_row("SPY", at)
         finally:
             lmp._by_ticker.pop("SPY", None)
             lmp._fields_by_ticker.pop("SPY", None)
             mark_feed_down()
-        served[live] = (body["spot"], body["spot_source"], body["spot_time_ct"])
+        served[live] = (row["spot"], row["spot_source"], row["trade_time_ct"])
+        priced = [r for r in body["levels"] if r["price"] is not None]
+        assert all(r["distance"] == r["price"] - 767.39 for r in priced), live
+        assert not {"spot", "spot_text", "spot_time_ct", "spot_source"} & body.keys(), live
     assert (
         served[True] == served[False] == (767.39, server.SPOT_SOURCE_PLANE, "Fri 10/02 10:00 AM CT")
     )

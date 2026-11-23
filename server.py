@@ -28,7 +28,6 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT, VOLATILIT
 from app.options.order_flow.state import rest_quotes, streamed_values
 from app.options.order_flow.streaming import (
     FEED,
-    price_state,
     select_flow_contract,
     start_order_flow_stream,
     stop_order_flow_stream,
@@ -1367,19 +1366,17 @@ def _wait_for(what: str, ready: Callable[[], bool]) -> None:
 
 
 def refresh_not_live_pages(now: float) -> None:
-    """Tell each open page whose ticker's price or levels are not live at `now` to read again.
+    """Tell each open page whose ticker's levels are not live at `now` to read them again.
 
-    The price is price_state's, the published levels levels_state's; the page reads its levels
-    again, so each not-live age (price_mark, terrain_staleness) keeps counting while nothing new
-    arrives: a stopped price, or the close values after the ticker's own option close. The levels
-    loop calls it every STATUS_EVERY_SEC; a page whose price and levels are both live is told by
-    each new price and chain instead.
+    The published levels' verdict is levels_state's; the page reads its levels again, so their
+    not-live age (terrain_staleness) keeps counting while nothing new arrives: the close values
+    after the ticker's own option close. The levels loop calls it every STATUS_EVERY_SEC; a page
+    whose levels are live is told by each new chain instead. The price's own age needs no read:
+    the price row carries it on every beat.
     """
     for tk in live_ui.selected(app.state):
         levels, verdict = terrain_cache_get(tk, now)
-        if price_state(tk, now)[0] != lmp.LIVE or (
-            levels is not None and verdict["levels_state"] != lmp.LIVE
-        ):
+        if levels is not None and verdict["levels_state"] != lmp.LIVE:
             _levels_changed(tk)
 
 

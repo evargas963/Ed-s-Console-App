@@ -1674,7 +1674,9 @@ def test_each_price_row_of_the_ticker_sends_its_levels_again_from_that_price():
                 received_ts=at,
             )
             frame = await _next(ws, "levels:desk")
-            assert frame["spot"] == moved
+            # its levels' distances are from that price (the price itself is the price row's)
+            priced = [r for r in frame["levels"] if r["price"] is not None]
+            assert priced and all(r["distance"] == r["price"] - moved for r in priced)
             lmp.record_from_level_one_equity(  # another ticker's price is not this panel's
                 B,
                 {"LAST_PRICE": MRVL.spot, "TRADE_TIME_MILLIS": int(at * 1000)},

@@ -94,10 +94,8 @@
       " strikes" +
       (dup ? ' · <span class="chn-dup">duplicate contracts retained</span>' : "") +
       "</span>" +
-      "<span>spot " +
-      orDash(d.spot_text) +
-      (d.spot_time_ct ? " · last trade " + esc(d.spot_time_ct) : "") +
-      "</span></div>";
+      // the price, the header's own row, painted by the shell (its trade time, or why not live)
+      "<span>spot <span data-live-price></span> · <span data-live-price-when></span></span></div>";
     // a served text, or every digit Schwab sent (its Greeks)
     function cell(c, k) {
       var v = c ? c[k] : null;
@@ -207,6 +205,7 @@
     var oldScroll = host.querySelector(".chn-scroll");
     var savedScrollTop = oldScroll ? oldScroll.scrollTop : 0;
     host.innerHTML = h;
+    window.EdShell.paintLivePrice(host);
     // C: the CALL side selects the exact CALL vendor symbol, the PUT side the exact PUT symbol; the
     // centre Strike selects ONLY the shared strike. The symbol is the vendor's own, verbatim — never
     // reconstructed. A contract click selects it for Flow (EdFlow); it asks Schwab for nothing.

@@ -18,8 +18,10 @@
     orDash = window.EdShell.orDash;
   var ticker = window.EdShell.ticker,
     classOf = window.EdShell.classOf,
-    served = window.EdShell.served,
-    notLive = window.EdShell.notLive;
+    served = window.EdShell.served;
+  // beside a value computed from the live price: the price row's mark while that price is not
+  // live, painted by the shell from the one row (EdShell.paintLivePrice)
+  var LIVE_MARK = "<span data-live-price-mark></span>";
   function isRightNow() {
     var s = window.EdShell.getState();
     return s.workspace === "trade-desk" && s.subview === "right-now";
@@ -34,8 +36,21 @@
   var TILT_GLYPH = { BID_HEAVY: "▲", BALANCED: "", OFFER_HEAVY: "▼" };
   var TILT_CLS = { BID_HEAVY: "pos", BALANCED: "", OFFER_HEAVY: "neg" };
   // `asof`: the as-of badges of the levels the card draws (served: their time, age and verdict),
-  // on their own line under the title; none for a card that draws no level
-  function stage(n, accentCls, title, hero, heroUnit, heroTilt, rows, badgeText, badgeCls, asof) {
+  // on their own line under the title; none for a card that draws no level. `priced`: the
+  // hero's unit is computed from the live price, and carries its mark
+  function stage(
+    n,
+    accentCls,
+    title,
+    hero,
+    heroUnit,
+    heroTilt,
+    rows,
+    badgeText,
+    badgeCls,
+    asof,
+    priced,
+  ) {
     var dirGlyph = heroTilt ? TILT_GLYPH[heroTilt] : "";
     var dirCls = heroTilt ? TILT_CLS[heroTilt] : "";
     var h =
@@ -65,7 +80,9 @@
       (dirGlyph ? dirGlyph + " " : "") +
       esc(hero) +
       "</span>" +
-      (heroUnit ? '<span class="unit">' + esc(heroUnit) + "</span>" : "") +
+      (heroUnit
+        ? '<span class="unit">' + esc(heroUnit) + (priced ? LIVE_MARK : "") + "</span>"
+        : "") +
       "</div>";
     return h + window.EdShell.rowsHtml(rows) + "</div>";
   }
@@ -205,12 +222,13 @@
       "td-accent-green",
       "Frame — nearest reference level",
       heroVal,
-      nearest.from_spot_text + notLive(levelsD),
+      nearest.from_spot_text,
       null,
       rows,
       null,
       null,
       window.EdShell.levelsBadges(levelsD),
+      true,
     );
   }
 
@@ -336,8 +354,9 @@
           ", " +
           walls.call_wall.label +
           " " +
-          walls.call_wall.from_spot_text +
-          notLive(levelsD),
+          walls.call_wall.from_spot_text,
+        null,
+        true, // from the live price: its mark
       ]);
     }
     if (!lines.length) return "";
@@ -352,6 +371,7 @@
             (l[2] ? ' title="' + esc(l[2]) + '"' : "") + // a line's sources, on hover
             ">" +
             esc(l[1]) +
+            (l[3] ? LIVE_MARK : "") + // a line computed from the live price carries its mark
             "</span></div>"
           );
         })
@@ -622,15 +642,13 @@
       levelsSent = _panels["levels:desk"];
     var terrain = served(sent),
       levelsD = served(levelsSent);
-    // the spot is the levels panel's alone, as served; none yet, or none sent, is absent, never 0
-    var spotText = levelsD ? levelsD.spot_text : null;
-    var when = levelsD && levelsD.spot_time_ct ? " · last trade " + esc(levelsD.spot_time_ct) : "";
+    // the spot is the header's own row, painted by the shell: its price, and its trade time or
+    // why it is not live
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Right now</span><span class="fl-sym">' +
       esc(tk) +
-      '</span><span class="fl-meta">' +
-      (spotText != null ? "spot " + esc(spotText) + when : "") +
-      "</span></div></div>" +
+      '</span><span class="fl-meta">spot <span data-live-price></span> · ' +
+      "<span data-live-price-when></span></span></div></div>" +
       '<div class="td-grid">' +
       detectStage(_panels["book:desk"]) +
       frameStage(levelsSent) +
@@ -641,6 +659,7 @@
       '<div class="notproven" style="margin-top:14px;">HOME PRESERVED — DECISION AUTHORITY NOT_PROVEN. ' +
       "This page assembles already-canonical Detect/Frame/Confirm signals and classifies them in plain English; it computes no new value and renders no Execute step. " +
       "THE CALL and 1m/5m/15m/60m horizons remain excluded until ticker-universal evidence earns them.</div>";
+    window.EdShell.paintLivePrice(h);
     var migEl = document.getElementById("tdMigration");
     if (migEl) wireMigration(migEl);
   }

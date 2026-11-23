@@ -109,11 +109,14 @@ test.describe("D — Gamma Chain subview", () => {
   });
 
   test("the chain spot keeps its last trade time", async ({ page }) => {
+    // the spot is the header's own row (one producer): Schwab's last trade the panels were made
+    // with (757.075), its trade time and age
     await toChain(page);
-    await expect(page.locator("#chainBody .chn-head")).toContainText("spot " + FRONT.spot_text);
+    sock.quotes([priceRow("SPY", 757.075, { trade_time_ct: "Thu 11/12 09:30 AM CT" })]);
     await expect(page.locator("#chainBody .chn-head")).toContainText(
-      "last trade " + FRONT.spot_time_ct,
+      "spot 757.08 · last trade Thu 11/12 09:30 AM CT · 1s",
     );
+    await expect(page.locator("#hPx")).toHaveText("757.08");
   });
 
   test("CALL click selects the exact CALL vendor symbol; PUT click the exact PUT symbol, each named to stream", async ({
