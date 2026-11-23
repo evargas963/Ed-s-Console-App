@@ -202,7 +202,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   valued at Schwab's `quoteTimeInLong` (operator call); the regime's reason and walls worded by
   their side of the price; one rule for whether options are open, from Schwab's windows, for every
   reader; a pre-market real chain's Greeks, volume and open interest; a half day's windows when
-  Schwab sends one; a stock 0DTE chain from 16:00 to 16:15 on a stock expiry day.
+  Schwab sends one.
 - TU-05 (QUEUED, after the rest): Options → Small Multiples and Key Levels: vanna and charm exposure
   in dollars per strike and expiry.
 - TU-08 (QUEUED, after the rest): Key Levels: the regime's dead zone around the gamma flip.

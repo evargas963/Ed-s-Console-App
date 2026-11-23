@@ -46,7 +46,7 @@ import socket
 import sqlite3
 import sys
 import threading
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from itertools import zip_longest
@@ -95,11 +95,15 @@ from stream_spine import (
 )
 from time_et import (
     ET,
+    Session,
     ct_label,
+    option_close_product,
     option_market_open,
     options_closed_at,
     session_label,
+    sessions,
     sessions_since,
+    settles_at,
 )
 
 log = logging.getLogger("capture")
@@ -224,7 +228,25 @@ def watchlist_message(
 chain_ordering = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chain-ordering")
 
 
-def shown_first(contracts: list[OptionContract], price: float, now: float) -> tuple[str, ...]:
+def _trading(c: OptionContract, at: datetime, product: str, held: Mapping[str, Session]) -> bool:
+    """Tell whether `c` has time to expiry left at `at` (time_et.settles_at).
+
+    A contract whose settlement is not yet known (an AM-settled one whose date /markets has not
+    answered) has not settled.
+    """
+    ends = settles_at(
+        c.expiration, at, sessions=held, settlement_type=c.settlement, product=product
+    )
+    return ends is None or ends > at
+
+
+def shown_first(
+    contracts: list[OptionContract],
+    price: float,
+    now: float,
+    product: str,
+    held: Mapping[str, Session],
+) -> tuple[str, ...]:
     """`contracts` (a chain as the sweep delivers it) in the option rule's order at `now`.
 
     The contracts the heatmap shows come first. A contract's distance is the larger of two counts:
@@ -234,12 +256,14 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
     order grows as the heatmap's window does: as many strikes as expirations (strike_window's
     rows of the nearest expirations). Of equal distances the highest Schwab gamma, as sent (one
     Schwab sent none of, or as -999, last); then the nearest expiration, the strike nearest
-    `price` (the lower of two equally near), calls before puts. A contract has expired once now
-    passes its
-    expirationDate and is left out (it stays in the records; it is never streamed); so is one
-    whose strike or expiration is not a number, whose side is not CALL or PUT, or that has no
-    symbol to stream (rule 2).
+    `price` (the lower of two equally near), calls before puts. A contract has expired once its
+    time to expiry has run out (_trading, on the ticker's option market `product` and Schwab's
+    /markets answers `held`: the end of its expiry date's option day, 16:15 ET on a full day,
+    while Schwab's expirationDate says 16:00) and is left out (it stays in the records; it is
+    never streamed); so is one whose strike or expiration is not a number, whose side is not CALL
+    or PUT, or that has no symbol to stream (rule 2).
     """
+    at = datetime.fromtimestamp(now, ET)
     listed = [
         (c.expires_at, c.strike, c.side, c.symbol, c.gamma)
         for c in contracts
@@ -247,7 +271,7 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
         and c.strike is not None
         and c.expires_at is not None
         and c.side is not None
-        and c.expires_at > now
+        and _trading(c, at, product, held)
     ]
     expirations = sorted({expires for expires, *_ in listed})
     strikes = sorted({strike for _e, strike, *_ in listed})
@@ -271,33 +295,49 @@ def shown_first(contracts: list[OptionContract], price: float, now: float) -> tu
 #: recorded (the operator's setting; Daemon.saves)
 STRIKES_SAVED = 5
 
-#: one expiration of a chain: its time, its listed strikes ascending, each strike's symbols
-type Ladder = tuple[float, list[float], dict[float, list[str]]]
+#: one expiration of a chain: its time (Schwab's expirationDate), when its last contract's time
+#: to expiry runs out (None while none of theirs is known), its listed strikes ascending, each
+#: strike's symbols
+type Ladder = tuple[float, float | None, list[float], dict[float, list[str]]]
 
 
-def strike_ladders(contracts: list[OptionContract]) -> list[Ladder]:
+def strike_ladders(
+    contracts: list[OptionContract], now: float, product: str, held: Mapping[str, Session]
+) -> list[Ladder]:
     """Return a chain's expirations, soonest first.
 
-    Each is (expiration time, its listed strikes ascending, each strike's contract symbols). A
+    Each is (expiration time, when its time to expiry runs out, its listed strikes ascending,
+    each strike's contract symbols): the latest settlement of its contracts (time_et.settles_at
+    at `now`, on the ticker's option market `product` and Schwab's /markets answers `held`). A
     contract whose strike or expiration is not a number, or that has no symbol to stream, is
     left out (rule 2).
     """
+    at = datetime.fromtimestamp(now, ET)
     by: dict[float, dict[float, list[str]]] = {}
+    ends: dict[float, list[float]] = {}
     for c in contracts:
         if c.symbol and c.strike is not None and c.expires_at is not None:
             by.setdefault(c.expires_at, {}).setdefault(c.strike, []).append(c.symbol)
-    return [(expires, sorted(by_strike), by_strike) for expires, by_strike in sorted(by.items())]
+            settles = settles_at(
+                c.expiration, at, sessions=held, settlement_type=c.settlement, product=product
+            )
+            if settles is not None:
+                ends.setdefault(c.expires_at, []).append(settles.timestamp())
+    return [
+        (expires, max(ends[expires]) if expires in ends else None, sorted(by_strike), by_strike)
+        for expires, by_strike in sorted(by.items())
+    ]
 
 
 def saved_window(ladders: list[Ladder], price: float, now: float) -> frozenset[str]:
     """Return the contracts recorded of one ticker.
 
-    They are its soonest expiration not passed at `now` (today's when one is listed, else the
-    nearest), at the strike nearest `price` (the lower of two equally near) and the
-    STRIKES_SAVED listed strikes each side of it.
+    They are its soonest expiration whose time to expiry has not run out at `now` (today's when
+    one is listed, through the end of its option day, else the nearest), at the strike nearest
+    `price` (the lower of two equally near) and the STRIKES_SAVED listed strikes each side of it.
     """
-    for expires, strikes, symbols in ladders:
-        if expires > now:
+    for _expires, ends, strikes, symbols in ladders:
+        if ends is None or ends > now:
             i = nearest_position(strikes, price)
             return frozenset(
                 s
@@ -498,7 +538,13 @@ class Daemon:
         if price is not None:
             chain = self._chains.pop(ticker)
             ranked = await asyncio.get_running_loop().run_in_executor(
-                chain_ordering, shown_first, chain, price, now
+                chain_ordering,
+                shown_first,
+                chain,
+                price,
+                now,
+                option_close_product(ticker),
+                sessions(),
             )
             if ticker in self.watchlist:
                 self._ranked[ticker] = ranked
@@ -542,7 +588,7 @@ class Daemon:
             now = self.clock()
             chain: list[OptionContract] = [ct for part in record for ct in part["contracts"]]
             ladders = await asyncio.get_running_loop().run_in_executor(
-                chain_ordering, strike_ladders, chain
+                chain_ordering, strike_ladders, chain, now, option_close_product(ticker), sessions()
             )
             if ticker in self.watchlist:
                 self._chains[ticker], self._ladders[ticker] = chain, ladders
