@@ -35,6 +35,7 @@ from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
 from option_contract import NO_TOP, Streamed, StreamedTop, quote_values
 from stream_spine import (
+    FIELD_DELTA,
     NOT_STREAMED,
     held_key,
     quote_before,
@@ -48,6 +49,8 @@ from time_et import ET
 MAX_TAPE_PRINTS = 500
 #: a print's three fields: a new value of any makes a new print
 _PRINT_FIELDS = (VENDOR_LAST_PRICE, VENDOR_LAST_SIZE, VENDOR_TRADE_TIME)
+#: the fields a contract's look-back record takes: a message bringing neither only marks its minute
+_LOOK_FIELDS = ("TOTAL_VOLUME", "VOLATILITY")
 
 log = logging.getLogger(__name__)
 
@@ -205,15 +208,18 @@ class OrderFlowState:
             # the daemon's receive time is required: stamping "now" would make a replayed or
             # delayed message read as live
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
-        stamps = {f: ts_recv if field_received is None else field_received[f] for f in content_item}
         trade = extract_vendor_print(content_item)
         # the symbol's record on the bus, taken once: its newest quote and the one that replaced,
         # read from the same version of it
         record = self.current.get(held_key(service, sym))
         if service == "LEVELONE_OPTIONS":
-            self._take_record(sym, ts_recv, content_item, stamps, trade, record)
+            self._take_record(sym, ts_recv, content_item, field_received, trade, record)
         if trade is None:
             return
+
+        def received(field: str) -> float:
+            return ts_recv if field_received is None else field_received[field]
+
         sent = streamed_record(record)
         with self._lock:
             tape = self._get_tape(sym)
@@ -228,7 +234,7 @@ class OrderFlowState:
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
                     # unchanged price carries a new time and size but no LAST_PRICE (Change)
-                    float(max(stamps[f] for f in _PRINT_FIELDS if f in content_item)),
+                    float(max(received(f) for f in _PRINT_FIELDS if f in content_item)),
                     # the bid and ask in force when the trade was made, by Schwab's own quote and
                     # trade times (never the quote that followed it), and the record's Greeks
                     quote_in_force(trade.time_millis, sent.top, quote_before(record)),
@@ -241,26 +247,51 @@ class OrderFlowState:
         sym: str,
         ts: float,
         content: dict[str, Any],
-        stamps: dict[str, float],
+        field_received: dict[str, Any] | None,
         trade: TradePrint | None,
         record: tuple[str, Any] | None,
     ) -> None:
         """Take one LEVELONE_OPTIONS record into the contract's look-back record at `ts`.
 
-        Its fields as this version of the record carries them (stream_spine.read_streamed, the
-        one reader); a rise of its TOTAL_VOLUME is one step, read by its last trade against the
-        quote in force then (calc.option_window.step_totals). A record of an earlier ET day is
-        begun anew: Schwab's volume counts from each day's start.
+        Its fields as this version of the record carries them, read by the one reader: the bus
+        record's own reading when `content` is that record's (stream_spine.streamed_record, read
+        once per version), else stream_spine.read_streamed; a rise of its TOTAL_VOLUME is one
+        step, read by its last trade against the quote in force then
+        (calc.option_window.step_totals). A record of an earlier ET day is begun anew: Schwab's
+        volume counts from each day's start.
         """
-        own = read_streamed(content, {f: (None, t) for f, t in stamps.items()})
-        volume, iv = own.greeks.total_volume.value, own.greeks.volatility.value
-        day = datetime.fromtimestamp(ts, ET).date().isoformat()
+        minute = int(ts // 60)
+        brought = any(
+            f in content and (field_received is None or field_received[f] == ts)
+            for f in _LOOK_FIELDS
+        )
+        # a message bringing neither (a quote alone) only marks the minute: its values stand
+        own = (
+            None
+            if not brought
+            else streamed_record(record)
+            if record is not None and record[1][FIELD_DELTA["optquote"]] is content
+            else read_streamed(
+                content,
+                {f: (None, ts if field_received is None else field_received[f]) for f in content},
+            )
+        )
+        volume = None if own is None else own.greeks.total_volume.value
+        iv = None if own is None else own.greeks.volatility.value
         adds = [0.0] * len(TOTALS)
         with self._lock:
-            if sym not in self._records or self._records[sym].day != day:
-                self._records[sym] = _Record(day)
+            if sym not in self._records or self._records[sym].minute != minute:
+                # the ET day is read only on a new minute: one minute is one day
+                day = datetime.fromtimestamp(ts, ET).date().isoformat()
+                if sym not in self._records or self._records[sym].day != day:
+                    self._records[sym] = _Record(day)
             held = self._records[sym]
-            if volume is not None and held.volume is not None and volume > held.volume:
+            if (
+                own is not None
+                and volume is not None
+                and held.volume is not None
+                and volume > held.volume
+            ):
                 quote = (
                     NO_TOP
                     if trade is None
@@ -276,7 +307,7 @@ class OrderFlowState:
                         own.greeks.underlying_price.value,
                     )
                 )
-            held.take(int(ts // 60), volume, iv, adds)
+            held.take(minute, volume, iv, adds)
 
     def look_back(self, symbols: Iterable[str], day: str, start: int) -> dict[str, LookBack]:
         """Return each of `symbols`' look-back from minute `start` of ET day `day` to now.
