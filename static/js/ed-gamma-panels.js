@@ -184,10 +184,13 @@
       // relations are from the live price, that price's mark: the header's own row's, painted
       // by the shell (one producer of the price's verdict). #5: terrain levels are AGGREGATE
       // across expiries; with one expiry chosen the line says they are still all-exp.
-      src.innerHTML =
-        esc(chainMarked(d.levels_state + (d.levels_age_text ? " · " + d.levels_age_text : ""))) +
-        "<span data-live-price-mark></span>" +
-        (window.EdShell.getExpiry() ? " · all-exp" : "");
+      src.textContent = chainMarked(
+        d.levels_state + (d.levels_age_text ? " · " + d.levels_age_text : ""),
+      );
+      var mark = document.createElement("span");
+      mark.setAttribute("data-live-price-mark", "");
+      src.appendChild(mark);
+      if (window.EdShell.getExpiry()) src.appendChild(document.createTextNode(" · all-exp"));
       src.title = d.levels_stale_reason == null ? "" : d.levels_stale_reason;
       src.style.color = d.levels_state === "LIVE" ? "" : "var(--ed-stale)";
       window.EdShell.paintLivePrice(src);
