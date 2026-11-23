@@ -21,6 +21,9 @@ from option_contract import OptionContract
 #: hedging flow in dollars of stock, and the contracts whose flow is not known (no delta or no
 #: price of the stock on the message, or no side)
 TOTALS = ("bought", "sold", "unknown", "flow", "unpriced")
+#: the total a step's side adds it to: above the middle bought, below sold, no side unknown
+SIDE_TOTAL = {1: 0, -1: 1, None: 2}
+FLOW, UNPRICED = 3, 4
 #: contracts a listed option is on (Schwab's multiplier for every contract the matrix reads)
 CONTRACT_SHARES = 100.0
 
@@ -44,12 +47,13 @@ def step_totals(
     counted apart (`unpriced`), never guessed.
     """
     side = trade_sign(price, bid, ask, None)
-    bought = step if side == 1 else 0.0
-    sold = step if side == -1 else 0.0
-    unknown = step if side is None else 0.0
+    adds = [0.0] * len(TOTALS)
+    adds[SIDE_TOTAL[side]] += step
     if side is None or delta is None or underlying is None:
-        return bought, sold, unknown, 0.0, step
-    return bought, sold, unknown, side * step * delta * CONTRACT_SHARES * underlying, 0.0
+        adds[UNPRICED] += step
+    else:
+        adds[FLOW] += side * step * delta * CONTRACT_SHARES * underlying
+    return adds[0], adds[1], adds[2], adds[3], adds[4]
 
 
 @dataclass(frozen=True)

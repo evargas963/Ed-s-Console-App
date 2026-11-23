@@ -476,7 +476,7 @@
     return (
       '<section class="cm-headline"><div class="eyebrow">COMPOSITE · THE KIND OF MOVE</div>' +
       '<div class="cm-kind ' +
-      esc(h.tone || "") +
+      esc(h.tone) +
       '">' +
       esc(orDash(h.text)) +
       (h.text ? " <small>est.</small>" : "") +
@@ -490,7 +490,7 @@
         .map(function (f) {
           return (
             '<div class="cm-family ' +
-            esc(f.tone || "") +
+            esc(f.tone) +
             '"><div class="eyebrow">' +
             esc(f.title) +
             "</div><div>" +
@@ -512,7 +512,7 @@
           "><label>" +
           esc(c.label) +
           '</label><strong class="' +
-          esc(c.tone || "") +
+          esc(c.tone) +
           '">' +
           esc(orDash(c.value)) +
           "</strong>" +
@@ -530,7 +530,7 @@
     // the expiry the program read, as served (the one chosen, else the front one still open)
     var pick = body.expiry ? '<span class="cm-exp">Expiry ' + esc(body.expiry) + "</span>" : "";
     var rows = Array.isArray(body.rows) ? body.rows : [];
-    var peaks = body.peaks || {},
+    var peaks = body.peaks,
       heat = window.EdShell.heatColors();
     lastRows = rows;
     var kept = null;
@@ -602,11 +602,11 @@
       lookbackPicker(body.lookback) +
       pick +
       '</div><div class="offscreen" id="cmAbove">' +
-      pastLevels(body.levels_above || [], "↑") +
+      pastLevels(body.levels_above, "↑") +
       "</div>" +
       table +
       '<div class="offscreen" id="cmBelow">' +
-      pastLevels(body.levels_below || [], "↓") +
+      pastLevels(body.levels_below, "↓") +
       '</div><div class="legend"><span>Read first, left to right by importance: the Composite, where the strike is, what the hedging does there, the positions behind it, how time and volatility move them, the trading, and last the hedging-flow estimate.</span><span>Heat: each cell from the zero colour toward green (+) or red (−) by its value against its column\'s largest on the expiry; open interest, volume, Vol/OI, IV and Visits are size only (green); P/C red put-heavy, green call-heavy. est. and model rest on the convention: dealers long calls, short puts.</span></div><div class="detail" id="cmDetail"></div>' +
       (notes.length ? '<p class="foot">' + esc(notes.join(" ")) + "</p>" : "") +
       "</div>";

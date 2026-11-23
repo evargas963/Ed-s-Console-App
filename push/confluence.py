@@ -63,6 +63,8 @@ LOOKBACKS = {
 }
 #: the window the matrix opens on (decision 11)
 DEFAULT_LOOKBACK = "5"
+#: why "since the open" has no window yet
+NOT_OPEN = "the regular session has not opened"
 
 
 def _window_start(choice: str, now: datetime) -> int | None:
@@ -91,10 +93,10 @@ def _window_open(tk: str, start: int | None) -> float | None:
 
 def _looks(
     contracts: list[OptionContract], now: datetime, start: int | None
-) -> dict[float, StrikeLookBack]:
-    """Each strike's readings over the look-back from minute `start` (None: none held)."""
+) -> dict[float, StrikeLookBack] | None:
+    """Each strike's readings over the look-back from minute `start`; None: no window."""
     if start is None:
-        return {}
+        return None
     by_strike: dict[float, list[OptionContract]] = {}
     for c in contracts:
         if c.strike is not None and c.symbol:
@@ -226,47 +228,50 @@ def _tags(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str,
         return {"rows": [], **NO_LEVELS}
     strikes = [r["strike"] for r in rows]
     top, bottom = strikes[0], strikes[-1]
-    tags: dict[float, list[dict[str, Any]]] = {}
+    tags: dict[float, list[dict[str, Any]]] = {s: [] for s in strikes}
     for lv in levels:
         at = nearest_strike(strikes, lv["price"]) if bottom <= lv["price"] <= top else None
         if at is not None:
-            tags.setdefault(at, []).append(lv)
+            tags[at].append(lv)
     return {
-        "rows": [{**r, "tags": tags.get(r["strike"], [])} for r in rows],
+        "rows": [{**r, "tags": tags[r["strike"]]} for r in rows],
         "levels_above": [lv for lv in levels if lv["price"] > top],
         "levels_below": [lv for lv in levels if lv["price"] < bottom],
     }
 
 
-def _book(snap: TerrainSnapshot, chosen: str) -> dict[float, Bucket] | None:
-    """The exposure book of one expiry of `snap` (None: `snap` lists no contract of it)."""
+def _book(snap: TerrainSnapshot, chosen: str) -> dict[float, Bucket]:
+    """The exposure book of one expiry of `snap`: the merge of its books (none: no strike)."""
     selected = [book for key, book in snap.books.items() if str(key[0])[:10] == chosen]
-    if not selected:
-        return None
     return selected[0][0] if len(selected) == 1 else merge_exposure_books(selected)[0]
 
 
 def _matrix(
-    tk: str, published: PublishedLevels, chosen: str, now: datetime, start: int | None
+    tk: str,
+    published: PublishedLevels,
+    spot: float,
+    chosen: str,
+    now: datetime,
+    start: int | None,
 ) -> Matrix:
     """Return the readings of one expiry of a priced chain: the one the matrix request shows.
 
-    `chosen` is an expiry of the snapshot's books (_confluence_expiries); its book on the prior
-    day (None, no prior day held; an expiry that day does not list: every strike new); the
-    regular session's visits at each strike so far; each strike over the look-back from minute
-    `start` (_looks).
+    `spot`: the price the snapshot was priced at; `chosen` is an expiry of the snapshot's books
+    (_confluence_expiries); its book on the prior day (None, no prior day held; an expiry that
+    day does not list: every strike new); the regular session's visits at each strike so far;
+    each strike over the look-back from minute `start` (_looks).
     """
     snap, prior_day = published.snap, published.prior_day
-    exposures = _book(snap, chosen) or {}
-    prior = None if prior_day is None else (_book(prior_day, chosen) or {})
+    exposures = _book(snap, chosen)
+    prior = None if prior_day is None else _book(prior_day, chosen)
     bars = bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
     contracts = [c for c in published.chain if c.expiry == chosen]
     return build_matrix(
         exposures,
         snap.charm_by_expiry[chosen],
         snap.iv_by_expiry[chosen],
-        float(snap.spot or 0.0),
-        snap.gamma_by_expiry.get(chosen, {}),
+        spot,
+        snap.gamma_by_expiry[chosen],
         prior,
         visits(bars, sorted(exposures), now, sessions()),
         _looks(contracts, now, start),
@@ -375,33 +380,33 @@ def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str,
         for v in votes
     ]
     kind = KIND_OF_MOVE.get(live.regime)
-    if kind is None:
-        return {
-            "text": None,
-            "tone": None,
-            "note": "the gamma at the price is not known",
-            "families": families,
-            "grade_text": None,
-        }
-    text, tone, effect = kind
-    flip = price_text(live.gamma_flip)
-    side = "below" if live.regime == REGIME_NEGATIVE_GAMMA else "above"
+    measured = [v for v in votes if v.vote is not None]
+    agree = sum(v.vote == votes[0].vote for v in measured)
+    return {
+        "text": None if kind is None else kind[0],
+        "tone": None if kind is None else kind[1],
+        "note": GAMMA_UNKNOWN if kind is None else _kind_note(live, kind[2]),
+        "record": UNTESTED,
+        "families": families,
+        "grade_text": None
+        if kind is None
+        else f"{agree} of {len(measured)} families measured agree, one equal vote each",
+    }
+
+
+#: why the headline has no kind of move
+GAMMA_UNKNOWN = "the gamma at the price is not known"
+
+
+def _kind_note(live: TerrainSnapshot, effect: str) -> str:
+    """What the gamma at the price does, in words, and where the price is against the flip."""
     note = (
         f"The options' gamma at the price is {REGIME_TEXT[live.regime].lower()} ({ASSUMPTION}), "
         f"so {effect}."
     )
-    if flip is not None:
-        note += f" The price is {side} the Gamma Flip ({flip}), where the sign changes."
-    measured = [v for v in votes if v.vote is not None]
-    agree = sum(v.vote == votes[0].vote for v in measured)
-    return {
-        "text": text,
-        "tone": tone,
-        "note": note,
-        "record": UNTESTED,
-        "families": families,
-        "grade_text": f"{agree} of {len(measured)} families measured agree, one equal vote each",
-    }
+    flip = price_text(live.gamma_flip)
+    side = "below" if live.regime == REGIME_NEGATIVE_GAMMA else "above"
+    return note if flip is None else f"{note} The price is {side} the Gamma Flip ({flip})."
 
 
 def _cards(
@@ -496,7 +501,7 @@ def _lookback(choice: str, start: int | None) -> dict[str, Any]:
         "chosen": choice,
         "choices": [{"key": k, "text": t, "on": k == choice} for k, t in LOOKBACKS.items()],
         "start_text": None if start is None else f"since {ct_label(start * 60.0)}",
-        "reason": "the regular session has not opened" if start is None else None,
+        "reason": NOT_OPEN if start is None else None,
     }
 
 
@@ -510,7 +515,8 @@ def confluence_payload(
     matrix. `lookback`: one of LOOKBACKS.
     """
     published = published_levels(tk)
-    if published is None or not published.snap.books or published.snap.spot is None:
+    priced_at = None if published is None else published.snap.spot
+    if published is None or not published.snap.books or priced_at is None:
         return unavailable(tk, "no priced chain is held for this ticker", **NO_LEVELS)
     live = published.snap
     today = now.strftime("%Y-%m-%d")
@@ -532,7 +538,7 @@ def confluence_payload(
         )
         return unavailable(tk, reason, expiry=chosen, **NO_LEVELS)
     start = _window_start(lookback, now)
-    stored = _matrix(tk, published, chosen, now, start)
+    stored = _matrix(tk, published, priced_at, chosen, now, start)
     fetched = published.computed_ts_utc
     live_spot, _src, live_ts = resolve_spot(tk, now=now.timestamp())
     sigma_root_t = _sigma_root_t(published, tk, chosen, now)
@@ -541,7 +547,7 @@ def confluence_payload(
     strikes = stored.strikes
     lo, hi, view = window(strikes, nearest_strike(strikes, live_spot), "auto", None, 0)
     body: dict[str, Any] = {
-        "notes": [] if view["note"] is None else [view["note"]],
+        "notes": [note for note in (view["note"],) if note is not None],
         "peaks": stored.peaks,
         "rows": window_rows(stored, strikes[lo : hi + 1]),
     }

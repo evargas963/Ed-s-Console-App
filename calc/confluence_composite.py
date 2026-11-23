@@ -221,14 +221,11 @@ def composite(gamma: float | None, strengths: Mapping[str, float | None]) -> Com
     as a vote (decision 56: one equal vote a family, no fitted weights; Dawes 1979). None when
     the gamma there or every family is not known.
     """
-    measured = tuple(f for f in FAMILIES if strengths.get(f) is not None)
+    measured = [(f, v) for f in FAMILIES if (v := strengths[f]) is not None]
     if gamma is None or not measured:
         return None
-    total = 0.0
-    for family in measured:
-        value = strengths[family]
-        total += 0.0 if value is None else value
-    return Composite(gamma, 100.0 * total / len(measured), measured)
+    strength = 100.0 * sum(v for _f, v in measured) / len(measured)
+    return Composite(gamma, strength, tuple(f for f, _v in measured))
 
 
 @dataclass(frozen=True)
@@ -374,14 +371,15 @@ def build_matrix(
     gamma_profile: Mapping[float, float],
     prior: dict[float, Bucket] | None,
     visits: Mapping[float, tuple[int, int]],
-    looks: Mapping[float, StrikeLookBack],
+    looks: Mapping[float, StrikeLookBack] | None,
 ) -> Matrix:
     """Build the readings of one expiry's book and each strike's Composite.
 
     `gamma_profile`: the expiry's gamma profile by price (its value at each listed strike);
     `prior`: the prior day's book of the same expiry (None: no prior day held); `visits`: each
     strike's (touches, holds) in today's regular session (empty before it opens); `looks`: each
-    strike's readings over the look-back (a strike not in it: NOT_HELD). The families measured
+    strike's readings over the look-back (a strike not in it, or no window: NOT_HELD). The
+    families measured
     at a strike: positioning (|net GEX|), option trades (the look-back's volume) and volatility
     (|the look-back's change in it|), each against its largest on the expiry. The rows the page
     shows are drawn from it (window_rows).
@@ -397,7 +395,7 @@ def build_matrix(
             None if prior is None else prior.get(s),
             prior is not None,
             visits.get(s),
-            looks.get(s, NOT_HELD),
+            NOT_HELD if looks is None else looks.get(s, NOT_HELD),
         )
         for s in strikes
     }
@@ -410,6 +408,8 @@ def build_matrix(
                 "positioning": _share(r.net_gex, peaks["net_gex"]),
                 "option trades": _share(r.look_volume, peaks["volume"]),
                 "volatility": _share(r.look.iv_change, peaks["iv_change"]),
+                # measured on the price row only (decision 64, O-1), not yet on the matrix
+                "stock book": None,
             },
         )
         for s, r in by_strike.items()
@@ -570,41 +570,45 @@ def _sign(value: float) -> int:
     return (value > 0) - (value < 0)
 
 
-def _composite_cells(c: Composite | None) -> dict[str, Any]:
-    if c is None:
-        return {
-            "composite": None,
-            "composite_text": None,
-            "composite_reason": "the gamma at this strike or every family is not known",
-            "composite_hover": None,
-        }
+COMPOSITE_REASON = "the gamma at this strike or every family is not known"
+GAMMA_REASON = "no priced contract gives the gamma at this price"
+
+
+def _composite_shown(c: Composite) -> tuple[float, str, str]:
+    """A known Composite's cell: its shading number, its text and its hover.
+
+    Shaded by the strength against a peak of 1, red where the gamma is negative.
+    """
     sign = _sign(c.gamma)
+    hover = (
+        f"{GAMMA_WORDS[sign]} here ({ASSUMPTION}): {GAMMA_EFFECT[sign]}. Strength "
+        f"{c.strength:.0f} of 100: the equal vote of {len(c.measured)} of {len(FAMILIES)} "
+        f"families measured here ({', '.join(c.measured)}), each its size against the "
+        "expiry's largest. A size and a kind of move, not a direction; untested."
+    )
+    return sign * c.strength / 100.0, f"{GAMMA_SHORT[sign]} {c.strength:.0f}", hover
+
+
+def _composite_cells(c: Composite | None) -> dict[str, Any]:
+    """The Composite's cell; "-" with why when it is not known."""
+    shown = None if c is None else _composite_shown(c)
     return {
-        # shaded by the strength, red where the gamma is negative, against a peak of 1
-        "composite": sign * c.strength / 100.0,
-        "composite_text": f"{GAMMA_SHORT[sign]} {c.strength:.0f}",
-        "composite_reason": None,
-        "composite_hover": (
-            f"{GAMMA_WORDS[sign]} here ({ASSUMPTION}): {GAMMA_EFFECT[sign]}. Strength "
-            f"{c.strength:.0f} of 100: the equal vote of {len(c.measured)} of {len(FAMILIES)} "
-            f"families measured here ({', '.join(c.measured)}), each its size against the "
-            "expiry's largest. A size and a kind of move, not a direction; untested."
-        ),
+        "composite": None if shown is None else shown[0],
+        "composite_text": None if shown is None else shown[1],
+        "composite_reason": _absent(None if shown is None else shown[0], COMPOSITE_REASON),
+        "composite_hover": None if shown is None else shown[2],
     }
 
 
 def _gamma_cells(gamma: float | None) -> dict[str, Any]:
-    if gamma is None:
-        return {
-            "gamma_here_text": None,
-            "gamma_here_reason": "no priced contract gives the gamma at this price",
-            "gamma_here_hover": None,
-        }
-    sign = _sign(gamma)
+    """The gamma-if-here cell: the sign's words, the model on hover; "-" with why without it."""
+    sign = None if gamma is None else _sign(gamma)
     return {
-        "gamma_here_text": GAMMA_WORDS[sign],
-        "gamma_here_reason": None,
-        "gamma_here_hover": (
+        "gamma_here_text": None if sign is None else GAMMA_WORDS[sign],
+        "gamma_here_reason": _absent(gamma, GAMMA_REASON),
+        "gamma_here_hover": None
+        if sign is None
+        else (
             f"Model: the expiry's net gamma if the price were at this strike, "
             f"{dollars_text(gamma)} per 1% move; {GAMMA_EFFECT[sign]} ({ASSUMPTION})."
         ),

@@ -62,13 +62,14 @@ def _worked_out(start_ts: float) -> dict:
         item, ts = m["item"], m["ts_recv"]
         sym = item["key"]
         was = held.setdefault(sym, {})
+        s = sums.setdefault(sym, [0.0] * 5)  # the sum of no step is 0
         if ts >= start_ts and sym not in at_start:
             at_start[sym] = (_number(was.get("TOTAL_VOLUME")), _number(was.get("VOLATILITY")))
         before_volume = _number(was.get("TOTAL_VOLUME"))
         if any(f in item and f in was and item[f] != was[f] for f in QUOTE):
             replaced[sym] = {f: was[f] for f in QUOTE if f in was}
         was.update(item)
-        quotes = ({f: was.get(f) for f in QUOTE}, replaced.get(sym, {}))
+        quotes = [{f: was.get(f) for f in QUOTE}, *([replaced[sym]] if sym in replaced else [])]
         volume = _number(was.get("TOTAL_VOLUME"))
         if ts < start_ts or volume is None or before_volume is None or volume <= before_volume:
             continue
@@ -92,10 +93,7 @@ def _worked_out(start_ts: float) -> dict:
             mid = (bid + ask) / 2
             side = 1 if price > mid else -1 if price < mid else None
         delta, under = _number(was.get("DELTA")), _number(was.get("UNDERLYING_PRICE"))
-        s = sums.setdefault(sym, [0.0] * 5)
-        s[0] += step if side == 1 else 0.0
-        s[1] += step if side == -1 else 0.0
-        s[2] += step if side is None else 0.0
+        s[{1: 0, -1: 1, None: 2}[side]] += step
         if side is None or delta is None or under is None:
             s[4] += step
         else:
@@ -104,7 +102,7 @@ def _worked_out(start_ts: float) -> dict:
         sym: {
             "start": at_start[sym],
             "now": (_number(v.get("TOTAL_VOLUME")), _number(v.get("VOLATILITY"))),
-            "totals": tuple(sums.get(sym, [0.0] * 5)),
+            "totals": tuple(sums[sym]),
         }
         for sym, v in held.items()
     }
