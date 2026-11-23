@@ -54,10 +54,8 @@ from calc.terrain_engine import (
     Book,
     ExpiryKey,
     TerrainSnapshot,
-    TotalGammaMove,
     compute_terrain,
-    total_gamma_changes,
-    total_gamma_strikes,
+    total_gamma_record,
 )
 from calc.terrain_read import crossed
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
@@ -958,12 +956,6 @@ def _publish_levels(
     if spot is not None and snap.books:
         surface, surface_symbols = _published_surface(tk, p, snap, now)
     levels_ts = max([fetched_ts, *p.received])
-    # the largest total gamma strike against the one last published: a move is announced
-    known, changes = total_gamma_changes(
-        previous.total_gamma_known if previous is not None else (None, None),
-        total_gamma_strikes(snap),
-    )
-    move = TotalGammaMove(changes, levels_ts) if changes else None
     levels = PublishedLevels(
         snap=snap,
         computed_ts_utc=fetched_ts,
@@ -980,8 +972,7 @@ def _publish_levels(
         contracts=listed,
         prior_day=prior,
         captures_key=captures_key,
-        total_gamma_known=known,
-        total_gamma_move=move or (previous.total_gamma_move if previous is not None else None),
+        total_gamma=total_gamma_record(previous and previous.total_gamma, snap, levels_ts),
     )
     level_store.publish(tk, levels)
     _levels_changed(tk)

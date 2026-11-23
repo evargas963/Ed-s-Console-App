@@ -3,7 +3,7 @@
 The operator asked for a toast and a chime "whenever Largest total gamma strike changes for either
 the regular of 0dte column on the Option > Gamma page". The strike is the levels' own
 (`absolute_gamma_strike`, the whole book's and the same-day book's); its move is worked out once,
-as the levels are published (calc.terrain_engine.total_gamma_changes, server._publish_levels), and
+as the levels are published (calc.terrain_engine.total_gamma_record, server._publish_levels), and
 served with the terrain panel (push.terrain.total_gamma_text).
 
 Real data: SPY's last complete capture of 2026-11-11 (the close) and its complete capture of
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import gzip
 import json
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +25,12 @@ import pytest
 
 import server
 import time_et
-from calc.terrain_engine import TotalGammaChange, TotalGammaMove, total_gamma_changes
+from calc.terrain_engine import (
+    TotalGammaChange,
+    TotalGammaMove,
+    TotalGammaRecord,
+    total_gamma_record,
+)
 from calibration.complete_chain_capture import last_capture_per_day
 from push.terrain import terrain, total_gamma_text
 from state import level_store
@@ -44,7 +50,7 @@ MARKETS = [
 
 
 def _largest(contracts: list[dict]) -> float:
-    """The strike of the largest call GEX + put GEX, each as a size, with Schwab's gamma as sent.
+    """Return the strike of the largest call GEX + put GEX, sizes, with Schwab's gamma as sent.
 
     GEX per 1% = gamma x open interest x multiplier x spot^2 x 1%; the spot is common to every
     strike, so the largest is that of gamma x open interest x multiplier. The gamma is the one the
@@ -64,7 +70,7 @@ def _largest(contracts: list[dict]) -> float:
 
 
 def _worked_out(capture: dict) -> tuple[float, float]:
-    """The capture's largest total gamma strike, the whole book's and the same-day expiry's."""
+    """Return the capture's largest total gamma strike: the whole book's, the same-day one's."""
     day = capture["et"][:10]
     every = [c for row in capture["rows"] for c in row["contracts"]]
     same_day = [c for row in capture["rows"] if row["expiry"] == day for c in row["contracts"]]
@@ -112,12 +118,10 @@ def test_the_first_levels_announce_nothing_and_the_next_days_announce_the_move(p
     (first, first_panel), (second, second_panel) = published
     was, now = (_worked_out(capture) for capture in TWO_DAYS["captures"])
     assert (was, now) == ((760.0, 760.0), (760.0, 756.0))
-    assert first.total_gamma_known == was
-    assert first.total_gamma_move is None
+    assert first.total_gamma == TotalGammaRecord(was, None)
     assert first_panel["total_gamma_change"] is None
-    assert second.total_gamma_known == now
-    assert second.total_gamma_move == TotalGammaMove(
-        (TotalGammaChange("0DTE", 760.0, 756.0),), second.levels_ts_utc
+    assert second.total_gamma == TotalGammaRecord(
+        now, TotalGammaMove((TotalGammaChange("0DTE", 760.0, 756.0),), second.levels_ts_utc)
     )
     assert second_panel["total_gamma_change"] == {
         "id": f"{second.levels_ts_utc!r} Largest total gamma strike · 0DTE 760.00 → 756.00",
@@ -129,14 +133,19 @@ def test_the_first_levels_announce_nothing_and_the_next_days_announce_the_move(p
 def test_the_same_levels_again_move_nothing_and_the_last_move_stands(published):
     """A reprice that keeps both strikes announces nothing new: the move served is the last one."""
     _first, (second, _panel) = published
-    now = second.total_gamma_known
-    assert total_gamma_changes(now, now) == (now, ())
-    assert total_gamma_changes((None, None), now) == (now, ())
-    # a column not known now keeps the strike last known, and is no move
-    assert total_gamma_changes(now, (None, None)) == (now, ())
-    # INDUCED: the regular column one strike higher, the 0DTE column not known
-    assert total_gamma_changes(now, (761.0, None)) == (
-        (761.0, 756.0),
-        (TotalGammaChange("Regular", 760.0, 761.0),),
+    record, snap, at = second.total_gamma, second.snap, second.levels_ts_utc + 1.0
+    assert total_gamma_record(record, snap, at) == record
+    # the first strikes known move nothing, with no levels published before or none known in them
+    for first in (None, TotalGammaRecord()):
+        assert total_gamma_record(first, snap, at) == TotalGammaRecord(record.known)
+    # INDUCED: neither column known (as with no price): the strikes last known stand, no move
+    unknown = replace(
+        snap, absolute_gamma_strike=None, same_day={**snap.same_day, "absolute_gamma_strike": None}
+    )
+    assert total_gamma_record(record, unknown, at) == record
+    # INDUCED: the regular column one strike higher, the 0DTE column still not known
+    higher = replace(unknown, absolute_gamma_strike=761.0)
+    assert total_gamma_record(record, higher, at) == TotalGammaRecord(
+        (761.0, 756.0), TotalGammaMove((TotalGammaChange("Regular", 760.0, 761.0),), at)
     )
     assert total_gamma_text(None) is None

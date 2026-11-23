@@ -557,12 +557,12 @@ them".
   `tests/test_level_names_one_list_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`. A move
   of the largest total gamma strike, in either column, is announced on the Gamma page: the producer
   compares each publication's two strikes with the last known
-  (`calc.terrain_engine.total_gamma_changes`, in `server._publish_levels`, the levels' one lifecycle
-  owner), the newest move is held with the levels (`PublishedLevels.total_gamma_move`) and served on
-  the terrain panel in words (`push.terrain.total_gamma_text`), and the page shows it as a toast
-  with a chime (`static/js/ed-core.js` `toast`), once per move it sees arrive; a ticker's first
-  levels on the page, and the first levels after a start, announce nothing. A column not known keeps
-  the strike last known. If the producer stops, no move is served and none shown. Enforced by:
+  (`calc.terrain_engine.total_gamma_record`, in `server._publish_levels`, the levels' one lifecycle
+  owner), the newest move is held with the levels (`PublishedLevels.total_gamma`) and served on the
+  terrain panel in words (`push.terrain.total_gamma_text`), and the page shows it as a toast with a
+  chime (`static/js/ed-core.js` `toast`), once per move it sees arrive; a ticker's first levels on
+  the page, and the first levels after a start, announce nothing. A column not known keeps the
+  strike last known. If the producer stops, no move is served and none shown. Enforced by:
   `tests/test_total_gamma_move_v1.py`, `tests/e2e/console-gamma-heatmap.spec.js`.
 - **11. One header, the same on every page, in two rows.** The page has one header, drawn by the
   shell alone (`static/js/ed-core.js`); no style or script changes it by workspace or view, and each

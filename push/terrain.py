@@ -165,7 +165,7 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
             **price_relations(served, spot).to_dict(),
             **_atr_fields(tk, at),  # live: today's candle from the bars held now
             "regime_text": REGIME_TEXT[cached.snap.regime],
-            "total_gamma_change": total_gamma_text(cached.total_gamma_move),
+            "total_gamma_change": total_gamma_text(cached.total_gamma.move),
             # the chain's verdict is levels_state, above. The live price the relations are computed
             # from is a separate fact: the numbers stay, marked with whether that price is live
             **price_mark(tk, spot_ts, now),

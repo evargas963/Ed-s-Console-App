@@ -514,27 +514,40 @@ class TotalGammaMove:
     at: float
 
 
+@dataclass(frozen=True)
+class TotalGammaRecord:
+    """Each column's largest total gamma strike last known, and the newest move (None: none yet)."""
+
+    known: TotalGammaStrikes = (None, None)
+    move: TotalGammaMove | None = None
+
+
 def total_gamma_strikes(snap: TerrainSnapshot) -> TotalGammaStrikes:
     """Return the largest total gamma strike of the whole book and of the same-day book."""
     return snap.absolute_gamma_strike, snap.same_day.get("absolute_gamma_strike")
 
 
-def total_gamma_changes(
-    last: TotalGammaStrikes, now: TotalGammaStrikes
-) -> tuple[TotalGammaStrikes, tuple[TotalGammaChange, ...]]:
-    """Return each column's strike last known after `now`, and the columns `now` moved.
+def total_gamma_record(
+    last: TotalGammaRecord | None, snap: TerrainSnapshot, at: float
+) -> TotalGammaRecord:
+    """Return the record after the levels `snap`, published at `at`, from the one before them.
 
-    A column moves when its strike is known now and differs from the one known last; a strike not
-    known now keeps the one known last, so a strike gone for a while and back where it was is no
-    move, and the first one known is none (nothing was known before it).
+    `last` is the record of the levels published before (None: none were since the program
+    started). A column moves when its strike is known now and differs from the one known last; a
+    strike not known now keeps the one known last, so a strike gone for a while and back where it
+    was is no move, and the first one known is none (nothing was known before it). With no column
+    moved the newest move stands.
     """
-    known = tuple(n if n is not None else w for w, n in zip(last, now, strict=True))
+    was = TotalGammaRecord() if last is None else last
+    now = total_gamma_strikes(snap)
+    known = tuple(n if n is not None else w for w, n in zip(was.known, now, strict=True))
     changes = tuple(
         TotalGammaChange(column, w, n)
-        for column, w, n in zip(TOTAL_GAMMA_COLUMNS, last, now, strict=True)
+        for column, w, n in zip(TOTAL_GAMMA_COLUMNS, was.known, now, strict=True)
         if w is not None and n is not None and n != w
     )
-    return (known[0], known[1]), changes
+    move = TotalGammaMove(changes, at) if changes else was.move
+    return TotalGammaRecord((known[0], known[1]), move)
 
 
 def positioning_migration(
