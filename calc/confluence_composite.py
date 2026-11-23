@@ -361,11 +361,9 @@ def distance(price: float, spot: float | None, sigma_root_t: float | None) -> Di
     forward: the two differ by the interest to the expiry, under 0.1 σ for SPY within two months.
     Unknown without a price, or with no volatility or no time left.
     """
-    if spot is None:
-        return {"distance_text": None, "sigma": None, "sigma_text": None}
-    sigma = None if not sigma_root_t else math.log(price / spot) / sigma_root_t
+    sigma = None if spot is None or not sigma_root_t else math.log(price / spot) / sigma_root_t
     return {
-        "distance_text": _signed(price - spot, 2),
+        "distance_text": None if spot is None else _signed(price - spot, 2),
         "sigma": sigma,
         "sigma_text": None if sigma is None else f"{_signed(sigma, 1)}σ",
     }
