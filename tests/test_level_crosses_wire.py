@@ -279,8 +279,10 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     """The 16:39 print (773.1269) is past the call wall.
 
     While the feed delivers it, the wall's state and each level's distance are live. When the
-    daemon's connection ends, they stand, marked not live, with the print's trade time and its
-    age (AGENTS rule 5). Judged from the print's receipt on, in that After-Hours session.
+    daemon's connection ends, they stand, and the price they are from is marked not live, with
+    the print's trade time and its age (AGENTS rule 5), by the price row alone (one producer,
+    which the page draws beside them): no panel carries a copy of the price or its mark. Judged
+    from the print's receipt on, in that After-Hours session.
     """
     msg = SPY_PRINT_A_STRIKE_AWAY
     clock = clock_from(msg["ts_recv"])
@@ -290,9 +292,11 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     trade_ts = live_price_rows.price_row("SPY", clock())["trade_ts"]
     try:
         live = push_terrain.terrain("SPY", clock())
+        live_row = live_price_rows.price_row("SPY", clock())
         mark_feed_down()
         at = clock()
         down = push_terrain.terrain("SPY", at)
+        down_row = live_price_rows.price_row("SPY", at)
         levels = push_levels.levels_payload("SPY", "1", datetime.fromtimestamp(at, ET))
         # the matrix of the 2026-10-22 expiry, read that evening (the 18:00 print's instant)
         matrix = push_confluence.confluence_payload(
@@ -301,18 +305,16 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
     finally:
         _forget()
     assert (live["levels_mark"], down["levels_mark"]) == (down["levels_state"], "CLOSE")
-    assert live["spot_not_live_text"] is None
-    for body in (down, levels, matrix):
-        assert body["spot_not_live_text"].startswith(
-            f"not live · last trade {ct_label(trade_ts)}, "
-        )
+    # the price's mark is the price row's: live while the feed delivers it, then not live with
+    # the print's trade time and its age at that moment
+    assert live_row["feed_live"] is True and down_row["feed_live"] is False
+    assert down_row["spot"] == live_row["spot"] == STRIKE_AWAY
+    assert down_row["trade_time_ct"] == ct_label(trade_ts)
+    assert at > trade_ts and down_row["trade_age_text"] == age_text(at - trade_ts)
+    copies = {"spot_text", "spot_time_ct", "spot_not_live_text"}
+    for body in (live, down, levels, matrix):
+        assert not copies & body.keys(), copies & body.keys()
     assert live["call_wall_lean"] == down["call_wall_lean"] == "BREACHED — spot above"
-    for body in (down, levels):
-        assert body["spot"] == STRIKE_AWAY and body["spot_time_ct"] == ct_label(trade_ts)
-    assert at > trade_ts and down["spot_not_live_text"].endswith(f", {age_text(at - trade_ts)} old")
-    assert levels["spot_not_live_text"].endswith(  # at its own served time
-        f", {age_text(at - trade_ts)} old"
-    )
     call = next(r for r in levels["levels"] if r["id"] == "call_wall")
     assert call["from_spot_text"] == f"{STRIKE_AWAY - 765.0:.2f} below spot"
 
@@ -356,7 +358,8 @@ STOPPED_FIXTURES = {
     "strikes_next_close": "real_spy_strikes_after_the_next_close_2026_10_23.json",
     "surface_next_close": "real_spy_gamma_surface_after_the_next_close_2026_10_23.json",
 }
-#: the answers that carry the price's mark
+#: the answers computed from the live price, which carry no copy of it or of its mark (the price
+#: row's, one producer)
 PRICE_MARKED = ("levels", "confluence", "terrain")
 
 
@@ -448,8 +451,8 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
             },
         )
     for route in PRICE_MARKED:
-        assert served[route]["spot_time_ct"] is not None
-        assert served[route]["spot_not_live_text"].startswith("not live · last trade ")
+        copies = {"spot_text", "spot_time_ct", "spot_not_live_text"} & served[route].keys()
+        assert not copies, (route, copies)
     assert (served["terrain"]["levels_state"], served["terrain"]["levels_mark"]) == (
         "CLOSE",
         "CLOSE",

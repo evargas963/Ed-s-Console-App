@@ -4,9 +4,10 @@
   {
    "hover": null,
    "label": "SPOT",
-   "sub": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
+   "live_price": true,
+   "sub": null,
    "tone": null,
-   "value": "773.13"
+   "value": null
   },
   {
    "hover": "The sign of the whole book's net gamma at the price, on the convention: dealers long calls, short puts.",
@@ -202,8 +203,6 @@
   "vol_oi": 258.3359489946052,
   "volume": null
  },
- "price_between_text": "between 774.00 and 773.00",
- "price_row_index": 5,
  "reason": null,
  "rows": [
   {
@@ -966,10 +965,9 @@
    "volume_text": null
   }
  ],
- "spot": 773.1269,
- "spot_not_live_text": "not live \u00b7 last trade Thu 10/22 03:39 PM CT, 81m old",
- "spot_text": "773.13",
- "spot_time_ct": "Thu 10/22 03:39 PM CT",
  "status_text": "CLOSE \u00b7 chain as of Thu 10/22 03:17 PM CT, 2h old",
- "ticker": "SPY"
+ "ticker": "SPY",
+ "view": {
+  "centre": 773.0
+ }
 }

@@ -31,7 +31,6 @@ import server
 import time_et
 from option_contract import read_chain
 from push import book as push_book
-from push import spot as push_spot
 from push import surface as push_surface
 from state import level_store
 from stream_spine import MessageBus
@@ -373,9 +372,10 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
 
     The console in the same program reads the daemon's one price row. At 17:00 ET on
     2026-10-19 (After-Hours, the feed up and holding $SPX) the row says NOT LIVE, "Schwab marks
-    $SPX Closed"; the levels' price mark, the equity book's top and its book, the spot's reason
-    (a row with no price: Schwab's -999 for LAST_PRICE) and the not-live refresh (a page open
-    on $SPX is told to read its levels again) say the same.
+    $SPX Closed"; the price's state, the equity book's top and its book and the spot's reason
+    (a row with no price: Schwab's -999 for LAST_PRICE) say the same. The page draws the
+    price's mark from that row, which each beat carries: a page open on $SPX with no levels
+    published is not told to read its levels again for it (the not-live refresh is the levels').
     """
     spx_close = next(
         m for m in _STATUS if m["symbol"] == "$SPX" and m["item"]["SECURITY_STATUS"] == "Closed"
@@ -388,12 +388,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
         _all_held(at, "$SPX")
         row = live_price_rows.price_row("$SPX", at)
         assert (row["feed_label"], row["outage"]) == ("NOT LIVE", "Schwab marks $SPX Closed")
-        mark = push_spot.price_mark("$SPX", row["trade_ts"], at)
-        assert (mark["spot_not_live_text"] is None, *server.price_state("$SPX", at)) == (
-            False,
-            "NOT LIVE",
-            "Schwab marks $SPX Closed",
-        )
+        assert ofs.price_state("$SPX", at) == ("NOT LIVE", "Schwab marks $SPX Closed")
         book = push_book.order_flow_microstructure("$SPX", "NYSE_BOOK", at)
         assert (book["top_feed_label"], book["top_outage"]) == (
             "NOT LIVE",
@@ -404,7 +399,7 @@ def test_the_console_serves_the_daemons_verdict_on_a_price_schwab_marks_closed()
         with pages() as served:
             page = served.open("$SPX", "levels")
             server.refresh_not_live_pages(at)
-            assert served.told(page, 0.3) == {"levels"}
+            assert served.told(page, 0.3) == set()
         lmp.record_from_level_one_equity(
             "$SPX", {"key": "$SPX", "LAST_PRICE": -999.0}, received_ts=spx_close["ts_recv"]
         )
@@ -432,14 +427,17 @@ def test_a_row_the_daemon_no_longer_holds_is_not_live_and_no_row_is_not_live():
         "NOT LIVE",
         f"{TK} is not streamed on Schwab LEVELONE_EQUITIES",
     )
-    mark = push_spot.price_mark(TK, None, at)
-    assert (mark["spot_not_live_text"], mark["spot_time_ct"]) == ("not live", None)
+    row = live_price_rows.price_row(TK, at)
+    assert (row["feed_label"], row["outage"]) == (
+        "NOT LIVE",
+        f"{TK} is not streamed on Schwab LEVELONE_EQUITIES",
+    )
     _all_held(at, TK)
     for kept in (lmp._by_ticker, lmp._fields_by_ticker):  # held, no quote from Schwab yet
         kept.pop(TK, None)
     assert ofs.price_state(TK, at) == ("LIVE", None)
     assert live_price_rows.price_row(TK, at)["spot"] is None
-    assert push_spot.price_mark(TK, None, at)["spot_not_live_text"] is None
+    assert live_price_rows.price_row(TK, at)["feed_label"] == "LIVE"
     assert server.resolve_spot(TK, now=at) == (None, server.SPOT_SOURCE_NONE, None)
 
 

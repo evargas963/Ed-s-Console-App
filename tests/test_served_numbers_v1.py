@@ -161,11 +161,15 @@ def _sent(name: str) -> dict:
 
 
 def test_every_price_the_levels_panels_draw_is_served_with_two_decimals():
-    """SPY's and AMZN's levels: the spot, each level, each 0DTE pair, the POC and the zones."""
+    """SPY's and AMZN's levels: each level, each 0DTE pair, the POC and the zones.
+
+    The price itself is the price row's (live_price_rows, its `spot_disp`), which the page draws:
+    the levels serve no copy of it.
+    """
     for name in ("spy", "amzn"):
         p = _panels(name)
         for tf, lv in p["levels"].items():
-            assert lv["spot_text"] == price(lv["spot"]), (name, tf)
+            assert "spot_text" not in lv, (name, tf)
             assert lv["levels"], (name, tf)
             for r in lv["levels"]:
                 assert r["price_text"] == price(r["price"]), (name, tf, r["id"])
@@ -261,9 +265,9 @@ def test_the_strikes_and_their_moves_are_served_as_listed():
             else:
                 assert all(re.fullmatch(r"\d+\.\d\d", text) for text in shown), shown
     assert quoted == 200  # of the expiry's 258 contracts; Schwab streams the other 58
-    # the chain's price is Schwab's last trade, the message the panels were made with
-    last = json.loads((FX / "real_spy_quote_2026_11_12.json").read_text(encoding="utf-8"))
-    assert p["chain"]["spot_text"] == price(last["native"]["LAST_PRICE"])
+    # the price beside the chain is the price row's, which the page draws: the chain serves no
+    # copy of it
+    assert not {"spot_text", "spot_time_ct"} & p["chain"].keys()
     strikes = p["strikes"]
     # at All Expirations and at the expiry chosen
     for body in (strikes, p["strikes_second_expiry"]):

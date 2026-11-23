@@ -1899,19 +1899,40 @@
   border-color: #2f7be0;
 }
 
-/* the price row, between the two strikes the price falls between */
-.cm-page tr.price-row td {
-  height: auto;
-  padding: 5px 10px;
-  text-align: left;
-  background: #0c2544;
-  border-top: 1px solid #2f8cff;
-  border-bottom: 1px solid #2f8cff;
+/* the live price: one line across the rows at its place between the two strikes, moved with
+   each price row; the rows never move for it */
+.cm-page .cm-spot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px solid #2f8cff;
+  pointer-events: none;
+  z-index: 3;
 }
 
-.cm-page tr.price-row span {
-  font-weight: 600;
-  margin-left: 8px;
+.cm-page .cm-spot span {
+  position: absolute;
+  left: 104px;
+  top: -10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #2f8cff;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* not live (the price row's word, painted by the shell on its label): dashed and grey */
+.cm-page .cm-spot:has(span.stale) {
+  border-top-style: dashed;
+  border-top-color: #8a94a6;
+}
+
+.cm-page .cm-spot span.stale {
+  background: #1b2230;
+  border: 1px dashed #8a94a6;
 }
 
 .cm-page tr.selected td {

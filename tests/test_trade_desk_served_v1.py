@@ -661,8 +661,9 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade():
     /api/levels served 30 SPY levels and an empty by_distance, because it was measured only from a
     live price. The spot is Schwab's last trade at any hour (operator 2026-10-01: "we use what
     schwab gives us and we display it"): the levels are ordered, and their distance measured, from
-    it, carrying its trade time. Real SPY 1-minute bars (2026-10-01 and 02); the last trade is the
-    one the daemon captured on Friday 10-02 (its newest SPY message that evening).
+    it. The price and its trade time are the price row's (one producer), which the page draws
+    beside them. Real SPY 1-minute bars (2026-10-01 and 02); the last trade is the one the daemon
+    captured on Friday 10-02 (its newest SPY message that evening).
     """
     at = FRIDAY_CLOSE.timestamp()
     lmp.record_feed_heartbeat(
@@ -672,9 +673,10 @@ def test_after_the_close_the_levels_are_measured_from_schwabs_last_trade():
         DESK, {"LAST_PRICE": 769.5, "TRADE_TIME_MILLIS": 1790983830151}, received_ts=at
     )
     body = push_levels.levels_payload(DESK, "1", FRIDAY_CLOSE)
+    row = live_price_rows.price_row(DESK, at)
     priced = [r for r in body["levels"] if r["price"] is not None]
-    assert len(priced) > 5 and body["spot"] == 769.5
-    assert body["spot_time_ct"] == "Fri 10/02 06:30 PM CT"  # Schwab's TRADE_TIME_MILLIS
+    assert len(priced) > 5 and row["spot"] == 769.5
+    assert row["trade_time_ct"] == "Fri 10/02 06:30 PM CT"  # Schwab's TRADE_TIME_MILLIS
     assert body["by_distance"] == [
         r["id"] for r in sorted(priced, key=lambda r: abs(r["price"] - 769.5))
     ]

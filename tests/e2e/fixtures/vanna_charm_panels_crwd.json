@@ -7125,8 +7125,6 @@
     "atr_monthly_text": null,
     "regime_text": "Positive gamma",
     "total_gamma_change": null,
-    "spot_time_ct": "Wed 10/07 09:38 AM CT",
-    "spot_not_live_text": "not live \u00b7 last trade Wed 10/07 09:38 AM CT, 40s old",
     "levels_mark": "OFFLINE",
     "levels_mark_reason": "Schwab LEVELONE_EQUITIES feed down during RTH"
   },

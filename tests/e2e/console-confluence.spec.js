@@ -7,7 +7,7 @@
  * 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_confluence_payloads_2026_10_07.json).
  */
 const { test, expect } = require("@playwright/test");
-const { mockPriceSocket } = require("./fixtures/price_socket");
+const { mockPriceSocket, priceRow } = require("./fixtures/price_socket");
 const FX = require("../fixtures/real_mrvl_confluence_payloads_2026_10_07.json");
 
 const FRONT = "2026-10-09";
@@ -132,27 +132,108 @@ test("the Composite cell says the served words and shades by its served strength
   }
 });
 
-test("a price that has stopped marks the spot not live with its time and age", async ({ page }) => {
-  // AGENTS rule 5: the confluence panel as the real code serves it on SPY's 2026-10-22 close
-  // publication, its 16:39 print the last price and the daemon's connection ended, read at 18:00
-  // (tests/test_level_crosses_wire.py keeps this file equal to the program's answer)
-  const STOPPED = require("../fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json");
+// AGENTS rule 5: the confluence panel as the real code serves it on SPY's 2026-10-22 close
+// publication, its 16:39 print the last price and the daemon's connection ended, read at 18:00
+// (tests/test_level_crosses_wire.py keeps this file equal to the program's answer); the price row
+// of that print as the daemon serves it then: OFFLINE, its trade time and age
+const STOPPED = require("../fixtures/real_spy_confluence_at_a_stopped_price_2026_10_22.json");
+const STOPPED_ROW = priceRow("SPY", 773.1269, {
+  feed_live: false,
+  feed_label: "OFFLINE",
+  outage: "Schwab LEVELONE_EQUITIES feed down during After-Hours",
+  trade_time_ct: "Thu 10/22 03:39 PM CT",
+  trade_age_text: "1h 21m",
+});
+
+async function openSpyMatrix(page, rows) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  await mockPriceSocket(page, [], [], undefined, { confluence: STOPPED });
+  const sock = await mockPriceSocket(page, rows, [], undefined, { confluence: STOPPED });
   await page.addInitScript(() => {
     localStorage.setItem("ed_ticker", "SPY");
     localStorage.setItem("ed_ws", "trade-desk");
     localStorage.setItem("ed_sub", "confluence");
   });
   await page.goto("/");
-  expect(STOPPED.spot_not_live_text).toContain("last trade");
-  await expect(page.locator("#cmBody")).toContainText(STOPPED.spot_text);
-  await expect(page.locator("#cmBody")).toContainText(STOPPED.spot_not_live_text);
-  // the price row, where the program placed it, says the strikes it falls between
-  await expect(page.locator("#cmRows tr.price-row")).toContainText(STOPPED.price_between_text);
-  const rows = page.locator("#cmRows tr");
-  await expect(rows.nth(STOPPED.price_row_index)).toHaveClass(/price-row/);
+  return { sock, errs };
+}
+
+// where the price line sits, against the middles of the two rows whose strikes hold `price`,
+// worked out here from the drawn rows and the served strikes
+async function expectedTop(page, price) {
+  const mids = await page.locator("#cmRows tr[data-i]").evaluateAll((trs) => {
+    const top = document.getElementById("cmWrap").getBoundingClientRect().top;
+    return trs.map((tr) => {
+      const r = tr.getBoundingClientRect();
+      return r.top - top + r.height / 2;
+    });
+  });
+  const strikes = STOPPED.rows.map((r) => r.strike);
+  const k = strikes.findIndex(
+    (s, i) => i + 1 < strikes.length && s >= price && price >= strikes[i + 1],
+  );
+  expect(k).toBeGreaterThanOrEqual(0);
+  return mids[k] + ((strikes[k] - price) / (strikes[k] - strikes[k + 1])) * (mids[k + 1] - mids[k]);
+}
+
+test("a price that has stopped marks the spot not live with its time and age", async ({ page }) => {
+  // the price is one line at its place between the two strikes, drawn from the header's own row
+  // (one producer): its price, and while not live dashed, with the row's word, time and age
+  const { errs } = await openSpyMatrix(page, [STOPPED_ROW]);
+  const line = page.locator("#cmSpot");
+  await expect(line).toBeVisible();
+  await expect(page.locator("#hPx")).toHaveText("773.13");
+  await expect(line.locator("span")).toHaveText("773.13");
+  await expect(line.locator("span")).toHaveClass(/stale/);
+  const said =
+    "OFFLINE: Schwab LEVELONE_EQUITIES feed down during After-Hours · last trade Thu 10/22 03:39 PM CT · 1h 21m";
+  await expect(line.locator("span")).toHaveAttribute("title", said);
+  expect(await line.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("dashed");
+  const top = await line.evaluate((el) => parseFloat(el.style.top));
+  expect(Math.abs(top - (await expectedTop(page, 773.1269)))).toBeLessThan(0.5);
+  // the SPOT card is the same row's: its price, and the row's words beneath
+  const card = page.locator("#cmBody .stat").filter({ hasText: "SPOT" });
+  await expect(card.locator("strong")).toHaveText("773.13");
+  await expect(card.locator("small")).toHaveText(said);
+  // no price of the panel's own anywhere: no row inserted among the strikes
+  await expect(page.locator("#cmRows tr")).toHaveCount(STOPPED.rows.length);
+  expect(errs).toEqual([]);
+});
+
+test("a new price moves only its line; the rows hold, and a price past them hides it", async ({
+  page,
+}) => {
+  const strikes = STOPPED.rows.map((r) => r.strike);
+  const { sock, errs } = await openSpyMatrix(page, [priceRow("SPY", 773.1269)]);
+  const line = page.locator("#cmSpot");
+  await expect(line).toBeVisible();
+  await expect(line.locator("span")).not.toHaveClass(/stale/);
+  // the page asks again with the centre the rows were served on, so the next answers hold them
+  await expect
+    .poll(() =>
+      sock.subscribes.some(
+        (s) =>
+          s.panels && s.panels.confluence && s.panels.confluence.centre === STOPPED.view.centre,
+      ),
+    )
+    .toBe(true);
+  // mark one drawn row: a redraw would replace it
+  await page.locator('#cmRows tr[data-i="0"]').evaluate((tr) => (tr.dataset.kept = "yes"));
+  const moved = (strikes[1] + strikes[2]) / 2;
+  sock.quotes([priceRow("SPY", moved)]);
+  await expect(page.locator("#hPx")).toHaveText(moved.toFixed(2));
+  await expect(line.locator("span")).toHaveText(moved.toFixed(2));
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await line.evaluate((el) => parseFloat(el.style.top))) - (await expectedTop(page, moved)),
+      ),
+    )
+    .toBeLessThan(0.5);
+  await expect(page.locator('#cmRows tr[data-i="0"]')).toHaveAttribute("data-kept", "yes");
+  // a price above every row shown: no line drawn at a wrong place
+  sock.quotes([priceRow("SPY", strikes[0] + 5)]);
+  await expect(line).toBeHidden();
   expect(errs).toEqual([]);
 });
 
@@ -174,9 +255,15 @@ test("the matrix redraws its served tags and readings as the chain updates, keep
     },
   });
   const confluenceAsks = () => sock.subscribes.map((s) => JSON.stringify(s.panels.confluence));
+  // the page's ask once its rows are served: again, with the centre they were served on
+  const held = (expiry) =>
+    JSON.stringify({ expiry: expiry, lookback: null, centre: served(expiry).view.centre });
   await openMatrix(page);
   const body = served(FRONT);
   const rows = body.rows;
+  await expect
+    .poll(() => confluenceAsks().at(-1))
+    .toBe(JSON.stringify({ expiry: null, lookback: null, centre: body.view.centre }));
   await expect(page.locator("#cmBody")).toContainText(rows[0].strike_text);
   await expect(page.locator("#cmBody td", { hasText: /^-$/ }).first()).toBeVisible();
   await expect(page.locator("#cmBody h1")).toHaveCount(0);
@@ -215,9 +302,12 @@ test("the matrix redraws its served tags and readings as the chain updates, keep
   await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + FRONT);
   await expect(page.locator("#cmDetail")).toContainText(row.oi_hover);
 
-  // the one expiry dropdown's choice is the matrix's
+  // the one expiry dropdown's choice is the matrix's: asked around the price, then with the
+  // centre its rows were served on
   await page.evaluate((e) => window.EdShell.setExpiry(e), NEXT);
   await expect.poll(() => expiries[expiries.length - 1]).toBe(NEXT);
+  await expect.poll(() => confluenceAsks().at(-1)).toBe(held(NEXT));
+  await expect.poll(() => expiries.filter((e) => e === NEXT).length).toBe(2);
   const picked = expiries.length;
 
   sock.changed("confluence");
@@ -227,7 +317,7 @@ test("the matrix redraws its served tags and readings as the chain updates, keep
 
   // the view opened again asks for the same panel of the same expiry: nothing new is asked or sent
   const asks = confluenceAsks();
-  expect(asks[asks.length - 1]).toBe(JSON.stringify({ expiry: NEXT, lookback: null }));
+  expect(asks[asks.length - 1]).toBe(held(NEXT));
   await page.getByRole("button", { name: "Confluence Matrix" }).click();
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
   expect(confluenceAsks()).toEqual(asks);

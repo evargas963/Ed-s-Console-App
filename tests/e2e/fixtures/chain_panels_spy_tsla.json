@@ -9076,8 +9076,6 @@
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
     },
-    "spot_text": null,
-    "spot_time_ct": null,
     "status": "ok",
     "ticker": "SPY"
   },
@@ -18158,8 +18156,6 @@
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
     },
-    "spot_text": null,
-    "spot_time_ct": null,
     "status": "ok",
     "ticker": "SPY"
   },
@@ -24431,8 +24427,6 @@
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
     },
-    "spot_text": null,
-    "spot_time_ct": null,
     "status": "ok",
     "ticker": "TSLA"
   }

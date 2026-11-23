@@ -10,6 +10,7 @@
  */
 const { test, expect } = require("@playwright/test");
 const { pushExpiries } = require("./fixtures/expiries");
+const { priceRow } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
 // tests/test_vanna_charm_by_strike_v1.py)
@@ -38,9 +39,6 @@ const HOMES = [
 const LEVELS = {
   ticker: "SPY",
   schema_version: 1,
-  spot: 100.0,
-  spot_text: "100.00",
-  spot_source: "streaming_plane", // push.spot.SPOT_SOURCE_PLANE, as the program serves it
   bar_source: "price_bars_1m",
   // served in ladder order (price, highest first) with distance (server.py get_levels)
   levels: [
@@ -122,11 +120,13 @@ test.describe("D — Gamma Levels view", () => {
   });
 
   test("the levels spot keeps its last trade time", async ({ page }) => {
-    panels.levels = Object.assign({}, LEVELS, { spot_time_ct: "Fri 10/02 10:00 AM CT" });
+    // the spot is the header's own row (one producer): its price, trade time and age
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.locator("#levelsBody .lv-spot")).toHaveText(
-      "spot 100.00 · streaming_plane · last trade Fri 10/02 10:00 AM CT",
-    );
+    const spot = page.locator("#levelsBody .lv-spot");
+    await expect(spot).toContainText("spot -"); // drawn, before the price's first row
+    sock.quotes([priceRow("SPY", 100, { trade_time_ct: "Fri 10/02 10:00 AM CT" })]);
+    await expect(spot).toHaveText("spot 100.00 · last trade Fri 10/02 10:00 AM CT · 1s");
+    await expect(page.locator("#hPx")).toHaveText("100.00");
   });
 
   test("a level keeps its price with the time the server sent", async ({ page }) => {
@@ -268,27 +268,37 @@ test.describe("D — Gamma Levels view", () => {
       const spot = page.locator(host + " .lv-spot");
       const rows = page.locator(host + " .lv-row");
       // SPY's levels during its session: the snapshot's time and age, the verdict LIVE, and the
-      // price with its last trade's time
-      expect([SERVED.levels_state, SERVED.spot_not_live_text]).toEqual(["LIVE", null]);
+      // price, the header's own row (Schwab's last trade the panels were made with, 757.075),
+      // with its last trade's time
+      const TRADE = "Thu 11/12 09:30 AM CT";
+      expect(SERVED.levels_state).toBe("LIVE");
       await expect(asof).toHaveText(badges(SERVED));
       await expect(asof.nth(1)).toHaveClass("asof live");
-      await expect(spot).toHaveText(
-        `spot ${SERVED.spot_text} · ${SERVED.spot_source} · last trade ${SERVED.spot_time_ct}`,
-      );
+      sock.quotes([priceRow("SPY", 757.075, { trade_time_ct: TRADE })]);
+      await expect(spot).toHaveText(`spot 757.08 · last trade ${TRADE} · 1s`);
       const drawn = await rows.allTextContents();
       expect(drawn.length).toBeGreaterThan(SERVED.zero_dte.length);
       // INDUCED: the same levels ten minutes on with nothing renewed. The last values stand,
       // every row as it was; the verdict reads STALE with the chain's time, its age and why, the
-      // snapshot is ten minutes older, and the price is marked not live with its time and age
+      // snapshot is ten minutes older, and the price row (INDUCED: the feed down) marks the
+      // price not live with its time and age
       panels.levels = LATER;
       sock.changed("levels");
+      sock.quotes([
+        priceRow("SPY", 757.075, {
+          trade_time_ct: TRADE,
+          trade_age_text: "10m",
+          feed_live: false,
+          feed_label: "OFFLINE",
+          outage: "Schwab LEVELONE_EQUITIES feed down during RTH",
+        }),
+      ]);
       expect([LATER.levels_state, LATER.levels_age_text]).toEqual(["STALE", "10m"]);
       await expect(asof).toHaveText(badges(LATER));
       await expect(asof.nth(1)).toHaveClass("asof stale");
       await expect(asof.nth(1)).toHaveAttribute("title", LATER.levels_stale_reason);
-      expect(LATER.spot_not_live_text).toContain("not live · last trade " + LATER.spot_time_ct);
       await expect(spot).toHaveText(
-        `spot ${LATER.spot_text} · ${LATER.spot_source} · ${LATER.spot_not_live_text}`,
+        `spot 757.08 · OFFLINE: Schwab LEVELONE_EQUITIES feed down during RTH · last trade ${TRADE} · 10m`,
       );
       expect(await rows.allTextContents()).toEqual(drawn);
     });

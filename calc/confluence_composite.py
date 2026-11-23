@@ -483,38 +483,24 @@ def at_price(
     strikes: list[float],
     spot: float | None,
     sigma_root_t: float | None,
-) -> dict[str, Any]:
+) -> list[dict[str, Any]]:
     """Return the shown rows, each with its distance from the live price and its spot line.
 
-    The spot line marks the strike the price sits under; the price row is drawn after the rows at
-    or above the price (`price_row_index`, the rows running highest strike first), and
-    `price_between_text` names the two listed strikes the price falls between (one, when it is
-    on a strike). The matrix is read at the book's price, the price on screen is the live one;
-    each row's distance is `distance`'s, in dollars and in the expiry's implied moves
-    (`sigma_root_t`). Pure: the rows given are not changed.
+    The spot line marks the strike the price sits under (the strike the matrix selects first).
+    The matrix is read at the book's price; each row's distance is from the live price
+    (`distance`'s, in dollars and in the expiry's implied moves, `sigma_root_t`). The price itself
+    is not served here: the page draws it from the price row (one producer). Pure: the rows given
+    are not changed.
     """
     under = None if spot is None else under_strike(spot, strikes)
-    below = None if spot is None else max((s for s in strikes if s <= spot), default=None)
-    if under is None or below is None:
-        between = None
-    elif under == below:
-        between = f"at {price_text(under)}"
-    else:
-        between = f"between {price_text(under)} and {price_text(below)}"
-    return {
-        "rows": [
-            {
-                **row,
-                **distance(row["strike"], spot, sigma_root_t),
-                "spot_line": row["strike"] == under,
-            }
-            for row in rows
-        ],
-        "spot": spot,
-        "spot_text": price_text(spot),
-        "price_between_text": between,
-        "price_row_index": None if spot is None else sum(r["strike"] >= spot for r in rows),
-    }
+    return [
+        {
+            **row,
+            **distance(row["strike"], spot, sigma_root_t),
+            "spot_line": row["strike"] == under,
+        }
+        for row in rows
+    ]
 
 
 def _signed(n: float | None, digits: int) -> str | None:
