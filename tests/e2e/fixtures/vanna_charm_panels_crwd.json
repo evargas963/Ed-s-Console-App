@@ -430,7 +430,7 @@
         "marks": [
           {
             "kind": "call",
-            "label": "Largest call gamma strike"
+            "label": "Gamma Call"
           }
         ],
         "volume_text": "419"
@@ -540,7 +540,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               }
             ]
           },
@@ -644,7 +644,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               }
             ]
           },
@@ -1614,7 +1614,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
-      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
+      "busiest_vs_walls_text": "ABOVE Gamma Call",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -1624,7 +1624,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -1634,7 +1634,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -1644,7 +1644,7 @@
         "prior": null,
         "today": 238.1179647277906,
         "change": null,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": null,
         "today_text": "238.12",
         "change_text": null
@@ -1696,7 +1696,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "312"
@@ -1737,7 +1737,7 @@
         "marks": [
           {
             "kind": "call",
-            "label": "Largest call gamma strike"
+            "label": "Gamma Call"
           }
         ],
         "volume_text": "419"
@@ -1915,7 +1915,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -1948,7 +1948,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               }
             ]
           },
@@ -2108,7 +2108,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -2141,7 +2141,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               }
             ]
           },
@@ -3153,7 +3153,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
-      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
+      "busiest_vs_walls_text": "ABOVE Gamma Call",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -3163,7 +3163,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -3173,7 +3173,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -3183,7 +3183,7 @@
         "prior": null,
         "today": 238.1179647277906,
         "change": null,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": null,
         "today_text": "238.12",
         "change_text": null
@@ -3964,7 +3964,7 @@
         "marks": [
           {
             "kind": "put",
-            "label": "Largest put gamma strike"
+            "label": "Gamma Put"
           }
         ],
         "volume_text": "312"
@@ -4005,7 +4005,7 @@
         "marks": [
           {
             "kind": "call",
-            "label": "Largest call gamma strike"
+            "label": "Gamma Call"
           }
         ],
         "volume_text": "419"
@@ -4912,7 +4912,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -4945,7 +4945,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               }
             ]
           },
@@ -5798,7 +5798,7 @@
             "marks": [
               {
                 "kind": "put",
-                "label": "Largest put gamma strike"
+                "label": "Gamma Put"
               }
             ]
           },
@@ -5831,7 +5831,7 @@
             "marks": [
               {
                 "kind": "call",
-                "label": "Largest call gamma strike"
+                "label": "Gamma Call"
               }
             ]
           },
@@ -6969,7 +6969,7 @@
       "grew_text": "",
       "shrank_text": "",
       "busiest_text": "275\u2013300",
-      "busiest_vs_walls_text": "ABOVE the largest call gamma strike",
+      "busiest_vs_walls_text": "ABOVE Gamma Call",
       "note": "The first day-over-day comparison lands after the next wide morning capture.",
       "volume_zero_text": null
     },
@@ -6979,7 +6979,7 @@
         "prior": null,
         "today": 260.0,
         "change": null,
-        "level_text": "Largest call gamma strike",
+        "level_text": "Gamma Call",
         "prior_text": null,
         "today_text": "260",
         "change_text": null
@@ -6989,7 +6989,7 @@
         "prior": null,
         "today": 250.0,
         "change": null,
-        "level_text": "Largest put gamma strike",
+        "level_text": "Gamma Put",
         "prior_text": null,
         "today_text": "250",
         "change_text": null
@@ -6999,7 +6999,7 @@
         "prior": null,
         "today": 238.1179647277906,
         "change": null,
-        "level_text": "Gamma flip",
+        "level_text": "Gamma Flip",
         "prior_text": null,
         "today_text": "238.12",
         "change_text": null
@@ -7116,7 +7116,7 @@
     "call_wall_lean": "BREACHED \u2014 spot above",
     "put_wall_lean": null,
     "flip_relation": "ABOVE",
-    "flip_relation_text": "Above gamma flip",
+    "flip_relation_text": "Above Gamma Flip",
     "atr_daily": null,
     "atr_weekly": null,
     "atr_monthly": null,

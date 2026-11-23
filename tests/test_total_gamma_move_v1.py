@@ -124,8 +124,8 @@ def test_the_first_levels_announce_nothing_and_the_next_days_announce_the_move(p
         now, TotalGammaMove((TotalGammaChange("0DTE", 760.0, 756.0),), second.levels_ts_utc)
     )
     assert second_panel["total_gamma_change"] == {
-        "id": f"{second.levels_ts_utc!r} Largest total gamma strike · 0DTE 760.00 → 756.00",
-        "text": "Largest total gamma strike · 0DTE 760.00 → 756.00",
+        "id": f"{second.levels_ts_utc!r} Gamma Total · 0DTE 760.00 → 756.00",
+        "text": "Gamma Total · 0DTE 760.00 → 756.00",
         "time_ct": time_et.ct_label(second.levels_ts_utc),
     }
 

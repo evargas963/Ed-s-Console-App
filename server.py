@@ -982,8 +982,8 @@ def _publish_levels(
 
 
 #: the levels whose crossing by the price is recorded, each under its name in the one list
-#: (OPTION_LEVELS): the gamma flip, where the regime changes; the call and put walls, the range
-#: the industry reads; and the largest gamma strike, the pin (docs/DATA_FLOW.md, level crosses)
+#: (OPTION_LEVELS): Gamma Flip, where the regime changes; Gamma Call and Gamma Put, the range the
+#: industry reads; and Gamma Total (docs/DATA_FLOW.md, level crosses)
 CROSS_LEVELS = tuple(
     level
     for level in OPTION_LEVELS

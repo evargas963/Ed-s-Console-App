@@ -40,12 +40,14 @@ BEFORE = json.loads(_RECORD)["terrains"]
 
 #: the one field read another way since the record was written (test_every_value_is_what_it_was)
 ATM_IV = "atm_iv_pct_by_expiry"
-#: the words of the regime and the headline as the record holds them, and as they are said since
-#: every name is the industry's (operator 2026-11-22): the words alone, never which one is said
+#: the words of the regime, the headline and the flip's note as the record holds them, and as
+#: they are said since every name is the industry's and the levels are named Greek first
+#: (operator 2026-11-22): the words alone, never which one is said
 WORDS = (
     ("LONG_GAMMA_CHOP", "POSITIVE_GAMMA"),
     ("SHORT_GAMMA_TREND", "NEGATIVE_GAMMA"),
     ("Dealer gamma is", "Net GEX is"),
+    ("The gamma flip is placed", "Gamma Flip is placed"),
 )
 
 #: a number may differ from what it was only in the last digits of a double: Python's math and
@@ -86,10 +88,10 @@ def _per_strike_keys(record: list, rename: dict[str, str], drop: set[str]) -> li
 
 
 def _as_said_now(record: list) -> list:
-    """Return a written-out terrain with its regime's and headline's old words as said now."""
+    """Return a written-out terrain with its regime's, headline's and flip note's words as now."""
     out = []
     for d, key, value in record:
-        if key in ("regime", "headline"):
+        if key in ("regime", "headline", "flip_note") and isinstance(value, str):
             for old, new in WORDS:
                 value = value.replace(old, new)
         out.append([d, key, value])

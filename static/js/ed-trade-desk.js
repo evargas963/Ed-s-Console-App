@@ -232,17 +232,17 @@
     // Raw values only -- stage() escapes every row itself (double-escaping a value here turns
     // a real "&" into the literal text "&amp;" on screen).
     var rows = [
-      ["Largest call gamma strike", orDash(d.call_wall_text)],
-      ["Largest put gamma strike", orDash(d.put_wall_text)],
-      ["Gamma flip", orDash(d.gamma_flip_text)],
+      ["Gamma Call", orDash(d.call_wall_text)],
+      ["Gamma Put", orDash(d.put_wall_text)],
+      ["Gamma Flip", orDash(d.gamma_flip_text)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       [
-        "Max pain" + (d.max_pain_dte != null ? " (" + d.max_pain_dte + "DTE)" : ""),
+        "Max Pain" + (d.max_pain_dte != null ? " (" + d.max_pain_dte + "DTE)" : ""),
         orDash(d.max_pain_text),
       ],
       ["Net GEX @ spot", orDash(d.net_gex_at_spot_text)],
     ];
-    if (d.flip_note != null) rows.push(["Gamma flip note", d.flip_note]); // served: the flip's note
+    if (d.flip_note != null) rows.push(["Gamma Flip note", d.flip_note]); // served: the flip's note
     // the hero is the regime as the terrain panel serves it in words (regime_text), the Desk's
     // Options card's own; the page draws no code. The levels verdict served with them is the
     // card's badge
@@ -373,9 +373,8 @@
     return '<span class="mig-mark ' + cls + '">' + esc(txt) + "</span>";
   }
 
-  // one served level move with its texts, the level's name served with them: 'Largest call gamma
-  // strike 755 → 760 (+5)'; a side not known is '-', and a change is said only when both days are
-  // known
+  // one served level move with its texts, the level's name served with them: 'Gamma Call 755 →
+  // 760 (+5)'; a side not known is '-', and a change is said only when both days are known
   function levelMove(v) {
     return (
       v.level_text +

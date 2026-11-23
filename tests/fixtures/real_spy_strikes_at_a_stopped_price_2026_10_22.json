@@ -6,7 +6,7 @@
    "change": null,
    "change_text": null,
    "level": "call_wall",
-   "level_text": "Largest call gamma strike",
+   "level_text": "Gamma Call",
    "prior": null,
    "prior_text": null,
    "today": 765.0,
@@ -16,7 +16,7 @@
    "change": null,
    "change_text": null,
    "level": "put_wall",
-   "level_text": "Largest put gamma strike",
+   "level_text": "Gamma Put",
    "prior": null,
    "prior_text": null,
    "today": 764.0,
@@ -26,7 +26,7 @@
    "change": null,
    "change_text": null,
    "level": "gamma_flip",
-   "level_text": "Gamma flip",
+   "level_text": "Gamma Flip",
    "prior": null,
    "prior_text": null,
    "today": null,
@@ -41,7 +41,7 @@
   "marks": [
    {
     "kind": "put",
-    "label": "Largest put gamma strike"
+    "label": "Gamma Put"
    }
   ],
   "strike": 764.0,
@@ -258,7 +258,7 @@
   ],
   "busiest_text": "762\u2013763",
   "busiest_vs_walls": "BELOW_PUT_WALL",
-  "busiest_vs_walls_text": "BELOW the largest put gamma strike",
+  "busiest_vs_walls_text": "BELOW Gamma Put",
   "compared": false,
   "grew": [],
   "grew_text": "",

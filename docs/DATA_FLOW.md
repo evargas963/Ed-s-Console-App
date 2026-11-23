@@ -453,15 +453,14 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   Enforced by: `tests/test_tape_lee_ready_v1.py`, `tests/test_options_flow_tape_v1.py`,
   `tests/test_quote_in_force_v1.py`, `tests/test_l1_trade_observation_v1.py`.
 - **Level crosses.** On each streamed equity quote (`server._on_stream_tick`) the four levels of
-  `server.CROSS_LEVELS` (the gamma flip, the largest call, put and total gamma strikes) are checked
-  for a cross between the previous and the new price (`calc.terrain_read.crossed`). Each price's
-  crosses are stored by the Recorder first (`server._log_level_crosses`,
-  `CaptureWriter.store_crosses`, `level_crosses`); a cross the Recorder did not store is logged and
-  not held. Held in `state/cross_store.py` and served by the `desk` panel
-  (`push.desk.desk_events_payload`, window `push.desk.DESK_LOOKBACK`), which counts and words the
-  chart's markers before the first bar of the span its chart asks (`markers_off_chart`, the `bars`
-  panel's `push.bars.chart_bars`). Enforced by: `tests/test_level_crosses_wire.py`,
-  `tests/test_trade_desk_served_v1.py`.
+  `server.CROSS_LEVELS` (Gamma Flip, Gamma Call, Gamma Put and Gamma Total) are checked for a cross
+  between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses are
+  stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
+  `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
+  `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
+  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of the
+  span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`). Enforced by:
+  `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
   chain expiry date within a year (`ChainSweep.fetch_markets`) → the bus (`markets.<date>`) → the
   Recorder (`stream_markets_raw`) and `time_et.record_markets`. At startup the recorded answers are
@@ -550,19 +549,19 @@ them".
   `tests/test_quote_in_force_v1.py`.
 - **10. Same-day levels, every ticker.** One producer, `calc.terrain_engine.same_day_levels`,
   defined in `docs/derived_register.md` "Same-day levels (0DTE)". Each level has one name, from
-  `calc.terrain_engine.OPTION_LEVELS`, on every screen. The key levels rail draws the gamma flip,
-  the largest call and put gamma strikes, the largest total gamma strike, the largest call and put
-  delta and charm strikes, each regular and same-day, then the price levels of the `levels:kl`
-  panel. Enforced by: `tests/test_data_path_same_day_levels_v1.py`,
-  `tests/test_level_names_one_list_v1.py`, `tests/test_data_path_charm_side_unknown_v1.py`. A move
-  of the largest total gamma strike, in either column, is announced on the Gamma page: the producer
-  compares each publication's two strikes with the last known
-  (`calc.terrain_engine.total_gamma_record`, in `server._publish_levels`, the levels' one lifecycle
-  owner), the newest move is held with the levels (`PublishedLevels.total_gamma`) and served on the
-  terrain panel in words (`push.terrain.total_gamma_text`), and the page shows it as a toast with a
-  chime (`static/js/ed-core.js` `toast`), once per move it sees arrive; a ticker's first levels on
-  the page, and the first levels after a start, announce nothing. A column not known keeps the
-  strike last known. If the producer stops, no move is served and none shown. Enforced by:
+  `calc.terrain_engine.OPTION_LEVELS`, on every screen. The key levels rail draws Gamma Flip, Gamma
+  Call, Gamma Put, Gamma Total, Delta Call, Delta Put, Charm Call and Charm Put, each regular and
+  same-day, then the price levels of the `levels:kl` panel. Enforced by:
+  `tests/test_data_path_same_day_levels_v1.py`, `tests/test_level_names_one_list_v1.py`,
+  `tests/test_data_path_charm_side_unknown_v1.py`. A move of Gamma Total (the largest total gamma
+  strike), in either column, is announced on the Gamma page: the producer compares each
+  publication's two strikes with the last known (`calc.terrain_engine.total_gamma_record`, in
+  `server._publish_levels`, the levels' one lifecycle owner), the newest move is held with the
+  levels (`PublishedLevels.total_gamma`) and served on the terrain panel in words
+  (`push.terrain.total_gamma_text`), and the page shows it as a toast with a chime
+  (`static/js/ed-core.js` `toast`), once per move it sees arrive; a ticker's first levels on the
+  page, and the first levels after a start, announce nothing. A column not known keeps the strike
+  last known. If the producer stops, no move is served and none shown. Enforced by:
   `tests/test_total_gamma_move_v1.py`, `tests/e2e/console-gamma-heatmap.spec.js`.
 - **11. One header, the same on every page, in two rows.** The page has one header, drawn by the
   shell alone (`static/js/ed-core.js`); no style or script changes it by workspace or view, and each

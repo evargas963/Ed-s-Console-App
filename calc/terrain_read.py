@@ -98,8 +98,7 @@ def crossed(level: float | None, before: float | None, after: float | None) -> s
 #: the flip's note (flip_note): the flip is placed by a modelled curve, the regime is Schwab's
 #: gamma, and at the chain's price the two disagree on the sign
 FLIP_CURVE_DISAGREES = (
-    "The gamma flip is placed by a modelled curve that disagrees with Schwab's "
-    "gamma at today's price."
+    "Gamma Flip is placed by a modelled curve that disagrees with Schwab's gamma at today's price."
 )
 
 
@@ -171,9 +170,9 @@ REGIME_TEXT = {
 #: where the price sits against the gamma flip (price_side), as the Desk's agreement strip says
 #: it; no words where it is not known
 FLIP_RELATION_TEXT: dict[str | None, str | None] = {
-    LEVEL_ABOVE: "Above gamma flip",
-    LEVEL_AT: "At gamma flip",
-    LEVEL_BELOW: "Below gamma flip",
+    LEVEL_ABOVE: "Above Gamma Flip",
+    LEVEL_AT: "At Gamma Flip",
+    LEVEL_BELOW: "Below Gamma Flip",
     None: None,
 }
 

@@ -45,24 +45,11 @@ def _confluence_expiries(books: dict[ExpiryKey, Book]) -> list[dict[str, Any]]:
     return [{"expiry": exp, "dte": dte} for exp, dte in sorted(found.items(), key=_expiry_order)]
 
 
-#: Pill text for the chain's option levels, each "Largest" level by its side and measure in the
-#: same words. Same-day copies take "0DTE " in front.
+#: Pill text for the chain's option levels: the level's own name (OPTION_LEVELS), but the two net
+#: GEX strikes, whose sign is shown as a sign. Same-day copies take "0DTE " in front.
 _OPTION_SHORT = {
-    "Largest call gamma strike": "Call gamma",
-    "Largest put gamma strike": "Put gamma",
-    "Gamma flip": "Gamma flip",
-    "Max pain": "Max pain",
-    "Largest total gamma strike": "Total gamma",
-    "Largest open interest strike near price": "Open interest",
-    "GSF": "GSF",
-    "GRC": "GRC",
-    "Largest negative net GEX strike": "−Net GEX",
-    "Largest positive net GEX strike": "+Net GEX",
-    "Largest total delta strike": "Total delta",
-    "Largest call delta strike": "Call delta",
-    "Largest put delta strike": "Put delta",
-    "Largest call charm strike": "Call charm",
-    "Largest put charm strike": "Put charm",
+    "Gamma Net Negative": "Gamma Net −",
+    "Gamma Net Positive": "Gamma Net +",
 }
 
 

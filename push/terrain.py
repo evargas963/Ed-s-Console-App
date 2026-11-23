@@ -77,7 +77,7 @@ def total_gamma_text(move: TotalGammaMove | None) -> TotalGammaMoveText | None:
     """Return a move of the largest total gamma strike as the screen announces it; None for none.
 
     The level by its name in the one list (OPTION_LEVELS), then each column's strike as it was
-    and as it is: "Largest total gamma strike · 0DTE 700.00 → 705.00".
+    and as it is: "Gamma Total · 0DTE 700.00 → 705.00".
     """
     if move is None:
         return None

@@ -72,7 +72,7 @@ def test_every_strike_row_of_both_tickers_carries_its_numbers_as_the_formats_mak
         "text": "$1.50B",
         "volume_text": "9,877",
         # SPY's largest call gamma strike, 775
-        "marks": [{"kind": "call", "label": "Largest call gamma strike"}],
+        "marks": [{"kind": "call", "label": "Gamma Call"}],
     }
     terrain = json.loads((E2E / "panels_spy_two_day.json").read_text(encoding="utf-8"))["terrain"]
     assert terrain["call_wall"] == spy["max_abs_row"]["strike"]

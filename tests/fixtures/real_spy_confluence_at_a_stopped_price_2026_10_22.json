@@ -4,84 +4,84 @@
  "expiry": "2026-10-22",
  "flip_text": null,
  "level_names": {
-  "763.00": "Largest call delta strike + 0DTE Largest call delta strike",
-  "764.00": "Largest put gamma strike + Largest negative net GEX strike + 0DTE Largest put gamma strike + 0DTE Largest negative net GEX strike",
-  "765.00": "Largest call gamma strike + Largest total gamma strike + 0DTE Largest call gamma strike + 0DTE Largest total gamma strike",
-  "771.00": "Max pain",
-  "772.00": "Largest total delta strike + Largest put delta strike + 0DTE Largest total delta strike + 0DTE Largest put delta strike",
-  "776.00": "Largest positive net GEX strike + 0DTE Largest positive net GEX strike"
+  "763.00": "Delta Call + 0DTE Delta Call",
+  "764.00": "Gamma Put + Gamma Net Negative + 0DTE Gamma Put + 0DTE Gamma Net Negative",
+  "765.00": "Gamma Call + Gamma Total + 0DTE Gamma Call + 0DTE Gamma Total",
+  "771.00": "Max Pain",
+  "772.00": "Delta Total + Delta Put + 0DTE Delta Total + 0DTE Delta Put",
+  "776.00": "Gamma Net Positive + 0DTE Gamma Net Positive"
  },
  "levels_above": [],
  "levels_below": [
   {
-   "abbrev": "Call gamma",
+   "abbrev": "Gamma Call",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
-   "title": "Largest call gamma strike"
+   "title": "Gamma Call"
   },
   {
-   "abbrev": "Put gamma",
+   "abbrev": "Gamma Put",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
-   "title": "Largest put gamma strike"
+   "title": "Gamma Put"
   },
   {
-   "abbrev": "Total gamma",
+   "abbrev": "Gamma Total",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
-   "title": "Largest total gamma strike"
+   "title": "Gamma Total"
   },
   {
-   "abbrev": "\u2212Net GEX",
+   "abbrev": "Gamma Net \u2212",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
-   "title": "Largest negative net GEX strike"
+   "title": "Gamma Net Negative"
   },
   {
-   "abbrev": "Call delta",
+   "abbrev": "Delta Call",
    "lane": "options",
    "price": 763.0,
    "price_text": "763.00",
-   "title": "Largest call delta strike"
+   "title": "Delta Call"
   },
   {
-   "abbrev": "0DTE Call gamma",
+   "abbrev": "0DTE Gamma Call",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
-   "title": "0DTE Largest call gamma strike"
+   "title": "0DTE Gamma Call"
   },
   {
-   "abbrev": "0DTE Put gamma",
+   "abbrev": "0DTE Gamma Put",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
-   "title": "0DTE Largest put gamma strike"
+   "title": "0DTE Gamma Put"
   },
   {
-   "abbrev": "0DTE Total gamma",
+   "abbrev": "0DTE Gamma Total",
    "lane": "options",
    "price": 765.0,
    "price_text": "765.00",
-   "title": "0DTE Largest total gamma strike"
+   "title": "0DTE Gamma Total"
   },
   {
-   "abbrev": "0DTE \u2212Net GEX",
+   "abbrev": "0DTE Gamma Net \u2212",
    "lane": "options",
    "price": 764.0,
    "price_text": "764.00",
-   "title": "0DTE Largest negative net GEX strike"
+   "title": "0DTE Gamma Net Negative"
   },
   {
-   "abbrev": "0DTE Call delta",
+   "abbrev": "0DTE Delta Call",
    "lane": "options",
    "price": 763.0,
    "price_text": "763.00",
-   "title": "0DTE Largest call delta strike"
+   "title": "0DTE Delta Call"
   }
  ],
  "notes": [],
@@ -104,53 +104,53 @@
  "rail_lanes": {
   "options": [
    {
-    "abbrev": "+Net GEX",
+    "abbrev": "Gamma Net +",
     "lane": "options",
     "price": 776.0,
     "price_text": "776.00",
-    "title": "Largest positive net GEX strike"
+    "title": "Gamma Net Positive"
    },
    {
-    "abbrev": "0DTE +Net GEX",
+    "abbrev": "0DTE Gamma Net +",
     "lane": "options",
     "price": 776.0,
     "price_text": "776.00",
-    "title": "0DTE Largest positive net GEX strike"
+    "title": "0DTE Gamma Net Positive"
    },
    {
-    "abbrev": "Total delta",
+    "abbrev": "Delta Total",
     "lane": "options",
     "price": 772.0,
     "price_text": "772.00",
-    "title": "Largest total delta strike"
+    "title": "Delta Total"
    },
    {
-    "abbrev": "Put delta",
+    "abbrev": "Delta Put",
     "lane": "options",
     "price": 772.0,
     "price_text": "772.00",
-    "title": "Largest put delta strike"
+    "title": "Delta Put"
    },
    {
-    "abbrev": "0DTE Total delta",
+    "abbrev": "0DTE Delta Total",
     "lane": "options",
     "price": 772.0,
     "price_text": "772.00",
-    "title": "0DTE Largest total delta strike"
+    "title": "0DTE Delta Total"
    },
    {
-    "abbrev": "0DTE Put delta",
+    "abbrev": "0DTE Delta Put",
     "lane": "options",
     "price": 772.0,
     "price_text": "772.00",
-    "title": "0DTE Largest put delta strike"
+    "title": "0DTE Delta Put"
    },
    {
-    "abbrev": "Max pain",
+    "abbrev": "Max Pain",
     "lane": "options",
     "price": 771.0,
     "price_text": "771.00",
-    "title": "Max pain"
+    "title": "Max Pain"
    }
   ],
   "session": []

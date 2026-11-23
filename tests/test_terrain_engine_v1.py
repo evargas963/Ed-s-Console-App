@@ -499,9 +499,9 @@ def test_the_prices_side_of_the_flip_is_served_in_the_strips_words() -> None:
         relations = price_relations(published, price)
         return relations.flip_relation, relations.flip_relation_text
 
-    assert said(flip + 1) == ("ABOVE", "Above gamma flip")
-    assert said(flip) == ("AT", "At gamma flip")
-    assert said(flip - 1) == ("BELOW", "Below gamma flip")
+    assert said(flip + 1) == ("ABOVE", "Above Gamma Flip")
+    assert said(flip) == ("AT", "At Gamma Flip")
+    assert said(flip - 1) == ("BELOW", "Below Gamma Flip")
     assert said(None) == (None, None)
 
 

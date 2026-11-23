@@ -127,9 +127,9 @@ def test_where_the_busiest_strikes_sit_is_served_in_the_screens_words(two_days):
         migration = positioning_migration(rows, [], call, put)
         return push_strikes._shown_migration(migration, None, "LIVE")["busiest_vs_walls_text"]
 
-    assert said(low - 1, None) == "ABOVE the largest call gamma strike"
-    assert said(None, high + 1) == "BELOW the largest put gamma strike"
-    assert said(high, low) == "between the largest put and call gamma strikes"
+    assert said(low - 1, None) == "ABOVE Gamma Call"
+    assert said(None, high + 1) == "BELOW Gamma Put"
+    assert said(high, low) == "between Gamma Put and Gamma Call"
     assert said(high, None) is None
     assert said((low + high) / 2, low - 1) is None
 
