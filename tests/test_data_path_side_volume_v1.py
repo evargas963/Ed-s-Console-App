@@ -37,7 +37,6 @@ def _published(tk: str, chain: list, spot: float, now, read_at: float, **beat) -
             level_store._levels.pop(tk, None)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
-        lmp.record_feed_down()
     return body
 
 

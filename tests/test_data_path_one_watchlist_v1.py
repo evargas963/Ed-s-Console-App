@@ -628,7 +628,6 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             level_store._levels.pop(off, None)
             level_store._levels.pop(on, None)
         level_store.chain_priced(on)
-        lmp.record_feed_down()
 
 
 def test_the_page_is_told_the_market_context_with_its_display_names():

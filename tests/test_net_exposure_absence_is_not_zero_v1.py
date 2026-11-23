@@ -15,7 +15,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from calc.math_exposure_core import (
-    book_total_oi,
     compute_exposures_by_strike,
     strike_total_oi,
 )
@@ -63,7 +62,6 @@ def test_unreported_oi_is_unknown_and_one_sided_oi_is_known():
     )  # OI not reported
     assert strike_total_oi(ex[500.0]) == 1000.0
     assert strike_total_oi(ex[510.0]) is None
-    assert book_total_oi(ex) is None  # one unknown strike -> the book total is unknown
 
 
 def test_per_strike_bars_are_dollar_gex_on_valid_gamma_only():

@@ -295,13 +295,6 @@ class RecentBooks:
             while held[0][0] < kept[0] - BOOKS_KEPT_SEC:
                 held.popleft()
 
-    def forget(self, ticker: str) -> None:
-        """Drop the ticker's books on every venue, when the console stops streaming them."""
-        sym = ticker_storage_key(ticker)
-        with self._lock:
-            for key in [k for k in self._books if k[0] == sym]:
-                del self._books[key]
-
     def window(self, ticker: str, venue: str, minutes: float) -> list[KeptBook]:
         """Return the books of the `minutes` ending at the newest one, oldest first."""
         key = (ticker_storage_key(ticker), venue)
@@ -342,10 +335,6 @@ class RecentLean:
                 held.append(point)
             while len(held) > 1 and held[1][0] <= point[0] - OF_LEAN_KEPT_SEC:
                 held.popleft()
-
-    def forget(self, ticker: str) -> None:
-        with self._lock:
-            self._points.pop(ticker_storage_key(ticker), None)
 
     def points(self, ticker: str) -> list[tuple[float, Mapping[str, Readout]]]:
         """Return the ticker's kept values, oldest first."""

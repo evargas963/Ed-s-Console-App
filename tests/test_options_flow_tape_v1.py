@@ -25,9 +25,9 @@ from __future__ import annotations
 from datetime import datetime
 
 import live_market_plane as lmp
-from app.options.order_flow import history, state
+from app.options.order_flow import state
 from app.options.order_flow.history import tape_row
-from app.options.order_flow.state import OrderFlowState, read_book
+from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
 from calc.l1_trade_observation import KeptPrint
 from option_contract import read_contract
@@ -265,7 +265,6 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
     finally:
         with level_store._lock:
             level_store._levels.pop("SPY", None)
-        lmp.record_feed_down()
         state.clear_all_live_state()
     assert unlisted[0]["available"] is False and unlisted[0]["rows"] == []
     assert unlisted[1] == [None, None]
@@ -476,7 +475,6 @@ def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_las
     finally:
         with level_store._lock:
             level_store._levels.pop("SPY", None)
-        lmp.record_feed_down()
         state.clear_all_live_state()
         forget_streamed()
     assert [(r["symbol"], r["trade_time_ms"]) for r in few] == [
@@ -506,21 +504,3 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     assert live.prints(PUT) == []
     assert live.prints("") == []
     assert len(live.prints(CALL)) == 1
-
-
-def test_a_contract_the_console_stops_streaming_leaves_no_prints_in_memory():
-    """The console's intake records a print, then clear_symbol is called for that contract.
-
-    Its prints and its books are gone from memory. The release path does not call it. The book is
-    Schwab's SPY NYSE_BOOK message of real_spy_nyse_nasdaq_books.json.
-    """
-    at, first = _sent(CALL)[0]
-    _ingest_pushed(f"optquote.{CALL}", {"symbol": CALL, "ts_recv": at, "content": first})
-    book = fixture_json("real_spy_nyse_nasdaq_books.json")["books"]["NYSE_BOOK"]
-    history.BOOKS.record("SPY", "NYSE_BOOK", read_book(book["content"], "NYSE_BOOK"))
-    kept = state.prints(CALL)
-    assert len(kept) == 1 and history.BOOKS.window("SPY", "NYSE_BOOK", 5)
-    state.clear_symbol(CALL)
-    state.clear_symbol("SPY")
-    gone = state.prints(CALL)
-    assert gone == [] and history.BOOKS.window("SPY", "NYSE_BOOK", 5) == []

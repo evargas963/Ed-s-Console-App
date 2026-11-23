@@ -410,7 +410,6 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
     try:
         live, down = asyncio.run(asyncio.wait_for(go(), 30))
     finally:
-        lmp.record_feed_down()
         with lmp._lock:
             lmp._feed["status"] = None
     assert live["feed"]["watchlist"] == ["SPY", "TSLA"] and live["feed"]["ts"] is not None
@@ -714,16 +713,15 @@ def _forget_levels() -> None:
     with level_store._lock:
         for tk in (A, B):
             level_store._levels.pop(tk, None)
-    lmp.record_feed_down()
 
 
 @pytest.fixture
 def no_levels():
     """Each test starts with neither ticker's levels published, and leaves none.
 
-    Nor the daemon's heartbeat its beats recorded. The pricing thread is held meanwhile, as
-    behind another ticker's chain: the reprice a page's selection queues (server.ticker_selected)
-    would price the captured chain at today's clock, so it waits and is dropped with the test.
+    The pricing thread is held meanwhile, as behind another ticker's chain: the reprice a page's
+    selection queues (server.ticker_selected) would price the captured chain at today's clock, so
+    it waits and is dropped with the test.
     """
     _forget_levels()
     gate = threading.Event()

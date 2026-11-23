@@ -498,7 +498,7 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
     top-of-book item beside the book and tape. Stand-in (named): a hand-built
     LEVELONE_EQUITIES tick.
     """
-    ofls.clear_symbol("O01EQ")
+    ofls.clear_all_live_state()
     bus = MessageBus()
     ofls.bind_bus(bus.current)
     try:
@@ -509,7 +509,7 @@ def test_an_equity_l1_quote_is_not_stored_a_second_time_in_order_flow_state():
         assert ofls.newest_book("O01EQ", "OPTIONS_BOOK") is None
         assert ofls.option_top("O01EQ") is NO_TOP
     finally:
-        ofls.clear_symbol("O01EQ")
+        ofls.clear_all_live_state()
 
 
 def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_level_one():
@@ -529,8 +529,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
     eq = next(m for m in mix if m["service"] == "LEVELONE_EQUITIES" and "TOTAL_VOLUME" in m["item"])
     opt = next(m for m in mix if m["service"] == "LEVELONE_OPTIONS" and "GAMMA" in m["item"])
     eq_sym, opt_sym = eq["item"]["key"], opt["item"]["key"]
-    ofls.clear_symbol(eq_sym)
-    ofls.clear_symbol(opt_sym)
+    ofls.clear_all_live_state()
     bus = MessageBus()
     ofls.bind_bus(bus.current)
     try:
@@ -540,8 +539,7 @@ def test_size_g_the_live_push_seam_threads_each_messages_receive_time_into_push_
         assert live.streamed(EQ, eq_sym).greeks.total_volume.ts_recv == eq["ts_recv"]
         assert live.streamed(OPT, opt_sym).greeks.gamma.ts_recv == opt["ts_recv"]
     finally:
-        ofls.clear_symbol(eq_sym)
-        ofls.clear_symbol(opt_sym)
+        ofls.clear_all_live_state()
 
 
 def test_book_top_never_stands_in_for_a_missing_l1_price():
@@ -589,7 +587,6 @@ def test_an_option_contracts_top_is_what_schwab_sent_on_a_live_feed():
         assert sent and payload["mark"] == sent[-1]
         assert payload["classification"]["mark"] == "NATIVE" and "mid" not in payload
     finally:
-        lmp.record_feed_down()
         ofls.clear_all_live_state()
 
 
@@ -623,4 +620,3 @@ def test_the_equity_book_reads_the_daemons_price_row_for_its_top_of_book():
     finally:
         lmp._by_ticker.pop("ZZTB", None)
         lmp._fields_by_ticker.pop("ZZTB", None)
-        lmp.record_feed_down()

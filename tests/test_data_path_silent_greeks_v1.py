@@ -7,7 +7,7 @@ import live_market_plane as lmp
 import server
 from option_contract import read_chain
 from state import level_store
-from tests.feed_live_helper import repriced
+from tests.feed_live_helper import mark_feed_down, repriced
 from tests.test_one_levels_producer_v1 import (
     _A,
     _AT,
@@ -27,7 +27,6 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
     The levels still show that volume and the cell is not live.
     """
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
     with lmp._lock:
         lmp._feed["held"] = {}
     try:
@@ -36,7 +35,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         _streamed(_A, {"TOTAL_VOLUME": 999999}, _T - 60.0)
         records = read_chain(_CONTRACTS)
         server._publish_levels(TK, records, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
-        lmp.record_feed_down()
+        mark_feed_down()
         server._publish_levels(TK, records, _T - 120.0, chain_spot=(_SPOT, _T), now=_AT)
         cached = _cached()
         strike = round(_CONTRACTS[0]["strikePrice"], 2)
@@ -54,7 +53,6 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
         assert lmp.feed_live_for(_A, "LEVELONE_OPTIONS", _T) is False
     finally:
         ofls.clear_all_live_state()
-        lmp.record_feed_down()
         with lmp._lock:
             lmp._feed["held"] = {}
         lmp._by_ticker.pop(TK, None)

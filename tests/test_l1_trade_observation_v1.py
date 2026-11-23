@@ -65,7 +65,7 @@ def _tape(sym: str, *rows, state=None) -> list:
     test signs it (Lee and Ready on a real quote: tests/test_tape_lee_ready_v1.py).
     """
     st = live_state._LIVE_STATE if state is None else state
-    st.clear_symbol(sym)
+    st.clear_all()
     bus = MessageBus()
     st.current = bus.current
     for i, (price, size, trade_ms) in enumerate(rows):
@@ -233,7 +233,7 @@ def test_missing_size_remains_unavailable():
 
 def test_reconnect_clear_resets_restatement_identity():
     sym = "RECON"
-    live_state.clear_symbol(sym)
+    live_state.clear_all_live_state()
     bus = MessageBus()
     live_state.bind_bus(bus.current)
     st = live_state._LIVE_STATE

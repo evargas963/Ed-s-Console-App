@@ -49,7 +49,7 @@ from push import chain as push_chain
 from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import daemon_status, publish_capture, pushed
+from tests.feed_live_helper import daemon_status, mark_feed_down, publish_capture, pushed
 from time_et import ET
 
 _HISTORY = Path(__file__).resolve().parent / "fixtures" / "real_options_stream_history_samples.json"
@@ -116,7 +116,7 @@ def build_flow_e2e_fixture_response() -> dict:
                 )
         return push_contract.options_microstructure(FLOW_CONTRACT, at)
     finally:
-        lmp.record_feed_down()
+        mark_feed_down()
         ofls.clear_all_live_state()
 
 
@@ -166,7 +166,7 @@ def build_side_e2e_fixture_response() -> dict:
     finally:
         with level_store._lock:
             level_store._levels.pop("SPY", None)
-        lmp.record_feed_down()
+        mark_feed_down()
         ofls.clear_all_live_state()
 
 

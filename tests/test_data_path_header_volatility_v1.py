@@ -40,7 +40,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from feed.connection import SCHWAB_CONNECTING
 from stream_spine import LOG, CaptureWriter, MessageBus, verbatim_msg
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.test_data_path_sign_in_v1 import REFUSED_2026_11_19
 from time_et import record_markets
 
@@ -91,7 +91,7 @@ def _rows_after(messages: list[dict], socket_open: bool = True) -> list[dict]:
         for kept in (lmp._by_ticker, lmp._fields_by_ticker):
             for key in MARKET_CONTEXT:
                 kept.pop(key, None)
-        lmp.record_feed_down()
+        mark_feed_down()
 
 
 def _recording(folder: Path) -> dict:

@@ -12,8 +12,6 @@ chain not saved is gone. The console reads each ticker's two newest days' captur
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Generator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -67,22 +65,6 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(TABLE_SQL)
 
 
-@contextmanager
-def capture_transaction(db_path: Path | str) -> Generator[sqlite3.Connection]:
-    """One transaction on the capture table.
-
-    What is written in it commits together or not at all, so a reader finds a capture whole or
-    finds none.
-    """
-    conn = sqlite3.connect(str(db_path), timeout=60.0)
-    try:
-        ensure_schema(conn)
-        with conn:
-            yield conn
-    finally:
-        conn.close()
-
-
 def persist_complete_chain_capture(
     conn: sqlite3.Connection,
     *,
@@ -102,8 +84,8 @@ def persist_complete_chain_capture(
     the chain's one spot and its trade time (None when the daemon held no price). A time series
     (PRIMARY KEY includes ts_utc): each capture time is its own set of rows, one per expiry. A
     stored capture is never replaced: a second write of the same (ticker, expiry, ts_utc) raises
-    sqlite3.IntegrityError and the stored row stands. `conn` is the capture_transaction the row
-    joins.
+    sqlite3.IntegrityError and the stored row stands. `conn` is the Recorder's connection, whose
+    open transaction the row joins (store_capture_message).
 
     FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
     says why — a persisted row with an empty or unverifiable completeness claim would be
@@ -194,28 +176,6 @@ def capture_message(
         "chain_spot_ts": chain_spot[1],
         "expiries": expiries,
     }
-
-
-def newest_capture_ts(db_path: Path | str, ticker: str) -> float | None:
-    """When the ticker's newest full capture was taken.
-
-    None when there is none.
-    """
-    if not Path(db_path).is_file():
-        return None
-    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='complete_chain_captures'"
-        ).fetchone():
-            return None
-        return conn.execute(
-            "SELECT MAX(ts_utc) FROM complete_chain_captures WHERE ticker=? "
-            "AND completeness_basis=?",
-            (ticker_storage_key(ticker), CAPTURE_BASIS),
-        ).fetchone()[0]
-    finally:
-        conn.close()
 
 
 @dataclass(frozen=True)

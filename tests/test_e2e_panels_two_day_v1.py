@@ -34,7 +34,6 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import server
 import time_et
-from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from db import StoredCross
@@ -53,7 +52,7 @@ from push.verdict import LevelsVerdict
 from state import bar_store, cross_store, level_store, price_level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import ROUND_SEC, daemon_status
+from tests.feed_live_helper import ROUND_SEC, daemon_status, forget_lean, mark_feed_down
 from tests.test_order_flow_book_payload_v1 import _same
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -135,9 +134,9 @@ def _clear(tk: str) -> None:
         del price_level_store._MATERIALIZED_SNAPSHOTS[key]
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_down()
+    mark_feed_down()
     ofls.clear_all_live_state()
-    history.LEAN.forget(tk)
+    forget_lean()
     with cross_store._lock:
         cross_store._crosses.pop(tk, None)
 

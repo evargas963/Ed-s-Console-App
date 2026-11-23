@@ -94,7 +94,6 @@ def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_store
     sweep.deliver(chain)
     assert published
     assert cch.last_capture_per_day(db, "MRVL", 1) == []
-    assert cch.newest_capture_ts(db, "MRVL") is None
     with closing(sqlite3.connect(db)) as read, read:
         kept = read.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall()
     assert [topic for topic, _msg in kept] == ["capture.MRVL"]

@@ -49,7 +49,6 @@ def _forget():
     ofs._chain_parts.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_down()
 
 
 def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_capture(tmp_path):

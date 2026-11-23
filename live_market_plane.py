@@ -258,8 +258,8 @@ class _Feed(TypedDict):
 
 
 #: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
-#: it holds per Schwab service. Written by record_feed_heartbeat / record_feed_down only. A down
-#: feed keeps the status and `held`: what the daemon last reported stands, not live.
+#: it holds per Schwab service. Written by record_feed_heartbeat only. A late beat leaves the
+#: status and `held`: what the daemon last reported stands, not live.
 _feed: _Feed = {"rx": None, "status": None, "held": {}}
 
 
@@ -274,15 +274,6 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
     }
     with _lock:
         _feed.update(rx=float(msg["ts"]), status=msg, held=held)
-
-
-def record_feed_down() -> None:
-    """Record that the connection to the daemon ended: nothing is live until a heartbeat arrives.
-
-    The latest beat stays (last_beat), so the last streamed values still price.
-    """
-    with _lock:
-        _feed["rx"] = None
 
 
 def last_beat() -> dict[str, Any] | None:

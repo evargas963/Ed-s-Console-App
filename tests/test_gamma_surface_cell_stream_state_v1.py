@@ -44,10 +44,8 @@ PUTS = [c.symbol for c in _CONTRACTS if c.side == "PUT"]
 @pytest.fixture(autouse=True)
 def _clean():
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
     yield
     ofls.clear_all_live_state()
-    lmp.record_feed_down()
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
     with level_store._lock:

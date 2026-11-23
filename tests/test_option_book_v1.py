@@ -39,7 +39,7 @@ from push import option_book as push_option_book
 from push import strike_rows
 from state import level_store
 from stream_spine import book_msg, verbatim_msg
-from tests.feed_live_helper import ROUND_SEC, daemon_status, pushed
+from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_down, pushed
 from tests.test_order_flow_book_payload_v1 import _same
 
 _FX = Path(__file__).resolve().parent / "fixtures" / "real_spy_option_book_2026_11_19.json.gz"
@@ -66,7 +66,7 @@ def _clear() -> None:
     server._gamma_surface_seq.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_down()
+    mark_feed_down()
     ofls.clear_all_live_state()
 
 

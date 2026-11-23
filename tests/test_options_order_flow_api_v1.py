@@ -21,7 +21,7 @@ from app.options.order_flow import streaming as ofs
 from push import contract as push_contract
 from state import level_store
 from stream_spine import book_msg
-from tests.feed_live_helper import daemon_status, publish_capture
+from tests.feed_live_helper import daemon_status, mark_feed_down, publish_capture
 from tests.real_chains import SPY_0DTE
 
 CONTRACT = "SPY   261005C00774000"
@@ -75,7 +75,6 @@ def test_the_flow_panel_shows_schwabs_newest_option_book_as_sent():
         body = _route()
     finally:
         ofls.clear_all_live_state()
-        lmp.record_feed_down()
     newest = BOOKS[-1]["item"]
     assert len(BOOKS) == 4 and body["status"] == "ok"
     assert (body["depth"]["1"]["bid_total"], body["depth"]["1"]["ask_total"]) == (
@@ -121,10 +120,9 @@ def test_the_flow_panel_says_whether_the_daemon_streams_the_contract():
         held = served()["streaming_plane"]
         holds()
         not_held = served()["streaming_plane"]
-        lmp.record_feed_down()
+        mark_feed_down()
         down = served()["streaming_plane"]
     finally:
-        lmp.record_feed_down()
         with level_store._lock:
             level_store._levels.pop("SPY", None)
     assert held["subscription_state"] == "SUBSCRIBED"
