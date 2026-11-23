@@ -363,14 +363,17 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     }
     assert "today" not in panels["strikes_missing_expiry"]
     assert panels["terrain"]["spot"] == real.quote["native"]["LAST_PRICE"]
-    # the regime as the screen says it, served beside it: in short, and its name in words (AMZN's
-    # dealer gamma at the price is positive that morning, SPY's negative)
+    # the regime as the screen says it, served beside it (AMZN's net GEX at the price is positive
+    # that morning, SPY's negative)
     terrain = panels["terrain"]
-    assert terrain["regime"] == {"AMZN": "LONG_GAMMA_CHOP", "SPY": "SHORT_GAMMA_TREND"}[real.ticker]
-    assert (terrain["regime_text"], terrain["regime_name"]) == {
-        "LONG_GAMMA_CHOP": ("Dealer Γ +", "LONG GAMMA CHOP"),
-        "SHORT_GAMMA_TREND": ("Dealer Γ −", "SHORT GAMMA TREND"),
-    }[terrain["regime"]]
+    assert terrain["regime"] == {"AMZN": "POSITIVE_GAMMA", "SPY": "NEGATIVE_GAMMA"}[real.ticker]
+    assert (
+        terrain["regime_text"]
+        == {
+            "POSITIVE_GAMMA": "Positive gamma",
+            "NEGATIVE_GAMMA": "Negative gamma",
+        }[terrain["regime"]]
+    )
     # the desk: Schwab's books at the price, zones and session levels built from its bars
     assert {book["status"] for book in panels["book"].values()} == {"ok"}
     assert panels["liquidity"]["zones"]

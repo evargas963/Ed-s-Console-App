@@ -255,7 +255,7 @@ def test_each_level_is_served_against_the_prior_days_own_with_its_texts(publishe
                 "prior": None,
                 "today": None,
                 "change": None,
-                "level_text": "Γ flip",
+                "level_text": "Gamma flip",
                 "prior_text": None,
                 "today_text": None,
                 "change_text": None,

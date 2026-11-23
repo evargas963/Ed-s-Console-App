@@ -230,7 +230,7 @@
     var rows = [
       ["Call wall", orDash(d.call_wall_text)],
       ["Put wall", orDash(d.put_wall_text)],
-      ["Γ flip", orDash(d.gamma_flip_text)],
+      ["Gamma flip", orDash(d.gamma_flip_text)],
       // max pain is per expiry: label it with the expiry the server computed it on (front)
       [
         "Max pain" + (d.max_pain_dte != null ? " (" + d.max_pain_dte + "DTE)" : ""),
@@ -238,15 +238,15 @@
       ],
       ["Net GEX @ spot", orDash(d.net_gex_at_spot_text)],
     ];
-    if (d.flip_note != null) rows.push(["Γ flip note", d.flip_note]); // served: the flip's note
-    // the hero is the regime's name as the terrain panel serves it in words (regime_name), the
-    // Desk's Options card's own; the page draws no code. The levels verdict served with them is
-    // the card's badge
+    if (d.flip_note != null) rows.push(["Gamma flip note", d.flip_note]); // served: the flip's note
+    // the hero is the regime as the terrain panel serves it in words (regime_text), the Desk's
+    // Options card's own; the page draws no code. The levels verdict served with them is the
+    // card's badge
     return stage(
       3,
       "td-accent-amber",
       "Confirm — options regime",
-      orDash(d.regime_name),
+      orDash(d.regime_text),
       "",
       null,
       rows,
@@ -261,7 +261,7 @@
   function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
-      lines.push(["Regime", orDash(terrain.regime_name)]); // served: the regime's name in words
+      lines.push(["Regime", orDash(terrain.regime_text)]); // served: the regime in words
       // the served headline, its served sources on hover
       if (terrain.headline) lines.push(["Read", terrain.headline, terrain.headline_source]);
     }
@@ -558,8 +558,8 @@
       : "";
     return (
       '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume ' +
-      '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+Γ today ' +
-      '<i class="sw" style="background:var(--ed-neg)"></i>-Γ today ' +
+      '<span class="mig-legend"><i class="sw" style="background:var(--ed-pos)"></i>+net GEX today ' +
+      '<i class="sw" style="background:var(--ed-neg)"></i>-net GEX today ' +
       '<i class="sw ghostsw"></i>yesterday (ghost)</span></h4>' +
       chips +
       '<div class="mig-top">' +

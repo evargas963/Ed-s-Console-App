@@ -230,16 +230,13 @@ class TerrainSnapshot:
     call_wall: float | None = None
     put_wall: float | None = None
     #: Max TOTAL gamma — |call GEX$| + |put GEX$| — over the full
-    #: book. A GROSS GAMMA CONCENTRATION (SpotGamma's "Absolute Gamma" measure): where the
-    #: most dealer re-hedging activity sits. It is a pin CANDIDATE input, NOT a demonstrated
-    #: magnet — magnitude sets the SIZE of the hedging flow while the unobservable dealer
-    #: SIGN decides pin vs repel. The raw value carries the metric's name; the pin is
-    #: `pin_candidate` below, read on open interest.
+    #: book: the gross size, with no sign, so it says nothing about which way hedging goes.
     absolute_gamma_strike: float | None = None
-    #: The pin strike (pin_by_open_interest): of an expiry settling at today's close, the strike
-    #: with the most open interest within one expected move of the price, with its distance in
-    #: expected moves (z = ln(price/strike) / (sigma * sqrt(T))), in strike widths, and the
-    #: minutes to the close. None when nothing expires at today's close or no strike is that near.
+    #: The highest open interest strike near the price (pin_by_open_interest): of an expiry
+    #: settling at today's close, the strike with the most open interest within one expected move
+    #: of the price, with its distance in expected moves (z = ln(price/strike) / (sigma *
+    #: sqrt(T))), in strike widths, and the minutes to the close. None when nothing expires at
+    #: today's close or no strike is that near.
     pin_candidate: float | None = None
     pin_expected_moves: float | None = None
     pin_strike_widths: float | None = None
@@ -255,8 +252,8 @@ class TerrainSnapshot:
     hvp: float | None = None  # most NEGATIVE net GEX$ strike (amplification pocket)
     lvp: float | None = None  # most POSITIVE net GEX$ strike (damping pocket)
 
-    #: Signed net dealer GEX$ per 1% move AT SPOT — the regime's own number
-    #: (regime = its sign). Disambiguates walls that share a strike.
+    #: Net GEX$ per 1% move AT SPOT — the regime's own number (regime = its sign).
+    #: Disambiguates walls that share a strike.
     net_gex_at_spot: float | None = None
 
     #: Gamma Support Floor / Gamma Resistance Ceiling — computed from the SAME
@@ -269,7 +266,6 @@ class TerrainSnapshot:
     grc: float | None = None
 
     #: The levels on a 0DTE basis (same_day_levels). Keys are SAME_DAY_LEVELS.
-    #: absolute_gamma_strike in this dict is the one 0DTE pin.
     same_day: dict[str, float | None] = field(default_factory=dict[str, float | None])
     #: the expiry the same-day levels were re-priced from to today's close (a model, said on
     #: hover); None when they are today's own expiry as held, or absent
@@ -289,7 +285,7 @@ class TerrainSnapshot:
     flip_note: str | None = None
     error: str = ""
 
-    #: (price, net dealer gamma) samples; kept OUT of to_dict() (~240 pairs).
+    #: (price, net GEX) samples; kept OUT of to_dict() (~240 pairs).
     profile: list[tuple[float, float]] = field(
         default_factory=list[tuple[float, float]], repr=False
     )
@@ -802,8 +798,8 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
 def _strike_rows(exposures: dict[float, Bucket], charm: dict[float, CharmBucket]) -> StrikeRows:
     """Return one book's GEX rows (_per_strike_rows), DEX, OI and vanna rows, and charm rows.
 
-    A charm row is each strike's net dealer charm of `charm` (compute_charm_by_strike's map, the
-    charm walls' own), ascending; a strike whose net charm is not known has no row.
+    A charm row is each strike's net charm exposure of `charm` (compute_charm_by_strike's map, the
+    largest charm strikes' own), ascending; a strike whose net charm is not known has no row.
     """
     return {
         "gex": _per_strike_rows(exposures),
@@ -1008,23 +1004,24 @@ def pin_by_open_interest(
     )
 
 
-#: The terrain's price levels and the name each is shown under, in the order they are listed.
+#: The terrain's price levels and the name each is shown under, in the order they are listed: the
+#: industry's name where it has one, else what the level is, in standard words.
 OPTION_LEVELS = (
     ("call_wall", "Call wall"),
     ("put_wall", "Put wall"),
-    ("gamma_flip", "Γ flip"),
+    ("gamma_flip", "Gamma flip"),
     ("max_pain", "Max pain"),
-    ("absolute_gamma_strike", "Abs Γ"),
-    ("pin_candidate", "Pin candidate"),
+    ("absolute_gamma_strike", "Largest total gamma strike"),
+    ("pin_candidate", "Highest open interest strike near price"),
     ("gsf", "GSF"),
     ("grc", "GRC"),
-    ("hvp", "Net put Γ peak"),
-    ("lvp", "Net call Γ peak"),
-    ("key_delta_strike", "Key Δ strike"),
-    ("call_delta_wall", "Call Δ wall"),
-    ("put_delta_wall", "Put Δ wall"),
-    ("call_charm_wall", "Call charm wall"),
-    ("put_charm_wall", "Put charm wall"),
+    ("hvp", "Largest negative net GEX strike"),
+    ("lvp", "Largest positive net GEX strike"),
+    ("key_delta_strike", "Largest total delta strike"),
+    ("call_delta_wall", "Largest call delta strike"),
+    ("put_delta_wall", "Largest put delta strike"),
+    ("call_charm_wall", "Largest call charm strike"),
+    ("put_charm_wall", "Largest put charm strike"),
 )
 #: The levels a same-day clock can move: all but the two read on the whole book alone.
 SAME_DAY_LEVELS = tuple(
@@ -1117,7 +1114,7 @@ def compute_terrain(
     """Full terrain for one ticker, the ONE terrain engine; never invents a level.
 
     Fed the whole multi-expiry chain (dealers hedge the whole delta book, not the 0DTE slice); the
-    regime is the sign of dealer gamma at the price (build_terrain_read). `now`: the valuation
+    regime is the sign of net GEX at the price (build_terrain_read). `now`: the valuation
     instant for every time-to-expiry, read once by the caller's entry point (the live reprice: its
     own; a replay of a stored chain: the snapshot's). `sessions`: Schwab's /markets answers by ET
     date, the settlement of each expiry.

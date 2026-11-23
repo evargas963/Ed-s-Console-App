@@ -1357,31 +1357,31 @@
     "options": [
      {
       "lane": "options",
-      "abbrev": "0D GSF",
+      "abbrev": "0DTE GSF",
       "price": 274.3766856566115,
       "price_text": "274.38",
       "title": "0DTE GSF"
      },
      {
       "lane": "options",
-      "abbrev": "PW",
+      "abbrev": "Put wall",
       "price": 270.0,
       "price_text": "270.00",
       "title": "Put wall"
      },
      {
       "lane": "options",
-      "abbrev": "Pain",
+      "abbrev": "Max pain",
       "price": 270.0,
       "price_text": "270.00",
       "title": "Max pain"
      },
      {
       "lane": "options",
-      "abbrev": "0D C\u0394W",
+      "abbrev": "0DTE Call \u0394",
       "price": 270.0,
       "price_text": "270.00",
-      "title": "0DTE Call \u0394 wall"
+      "title": "0DTE Largest call delta strike"
      },
      {
       "lane": "options",
@@ -1392,31 +1392,31 @@
      },
      {
       "lane": "options",
-      "abbrev": "0D Flip",
+      "abbrev": "0DTE Gamma flip",
       "price": 267.44689374750476,
       "price_text": "267.45",
-      "title": "0DTE \u0393 flip"
+      "title": "0DTE Gamma flip"
      },
      {
       "lane": "options",
-      "abbrev": "0D Net P\u0393",
+      "abbrev": "0DTE \u2212Net GEX",
       "price": 265.0,
       "price_text": "265.00",
-      "title": "0DTE Net put \u0393 peak"
+      "title": "0DTE Largest negative net GEX strike"
      },
      {
       "lane": "options",
-      "abbrev": "PCh",
+      "abbrev": "Put charm",
       "price": 260.0,
       "price_text": "260.00",
-      "title": "Put charm wall"
+      "title": "Largest put charm strike"
      },
      {
       "lane": "options",
-      "abbrev": "P\u0394W",
+      "abbrev": "Put \u0394",
       "price": 250.0,
       "price_text": "250.00",
-      "title": "Put \u0394 wall"
+      "title": "Largest put delta strike"
      }
     ]
    },
@@ -1460,17 +1460,17 @@
    "levels_above": [
     {
      "lane": "options",
-     "abbrev": "CW",
+     "abbrev": "Call wall",
      "price": 300.0,
      "price_text": "300.00",
      "title": "Call wall"
     },
     {
      "lane": "options",
-     "abbrev": "Abs \u0393",
+     "abbrev": "Total \u0393",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Abs \u0393"
+     "title": "Largest total gamma strike"
     },
     {
      "lane": "options",
@@ -1481,132 +1481,132 @@
     },
     {
      "lane": "options",
-     "abbrev": "Net C\u0393",
+     "abbrev": "+Net GEX",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Net call \u0393 peak"
+     "title": "Largest positive net GEX strike"
     },
     {
      "lane": "options",
-     "abbrev": "Key \u0394",
+     "abbrev": "Total \u0394",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Key \u0394 strike"
+     "title": "Largest total delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "C\u0394W",
+     "abbrev": "Call \u0394",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Call \u0394 wall"
+     "title": "Largest call delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "CCh",
+     "abbrev": "Call charm",
      "price": 300.0,
      "price_text": "300.00",
-     "title": "Call charm wall"
+     "title": "Largest call charm strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D CW",
+     "abbrev": "0DTE Call wall",
      "price": 282.5,
      "price_text": "282.50",
      "title": "0DTE Call wall"
     },
     {
      "lane": "options",
-     "abbrev": "0D PW",
+     "abbrev": "0DTE Put wall",
      "price": 290.0,
      "price_text": "290.00",
      "title": "0DTE Put wall"
     },
     {
      "lane": "options",
-     "abbrev": "0D Abs \u0393",
+     "abbrev": "0DTE Total \u0393",
      "price": 285.0,
      "price_text": "285.00",
-     "title": "0DTE Abs \u0393"
+     "title": "0DTE Largest total gamma strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D GRC",
+     "abbrev": "0DTE GRC",
      "price": 331.0487147181457,
      "price_text": "331.05",
      "title": "0DTE GRC"
     },
     {
      "lane": "options",
-     "abbrev": "0D Net C\u0393",
+     "abbrev": "0DTE +Net GEX",
      "price": 282.5,
      "price_text": "282.50",
-     "title": "0DTE Net call \u0393 peak"
+     "title": "0DTE Largest positive net GEX strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D Key \u0394",
+     "abbrev": "0DTE Total \u0394",
      "price": 280.0,
      "price_text": "280.00",
-     "title": "0DTE Key \u0394 strike"
+     "title": "0DTE Largest total delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D P\u0394W",
+     "abbrev": "0DTE Put \u0394",
      "price": 290.0,
      "price_text": "290.00",
-     "title": "0DTE Put \u0394 wall"
+     "title": "0DTE Largest put delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D CCh",
+     "abbrev": "0DTE Call charm",
      "price": 290.0,
      "price_text": "290.00",
-     "title": "0DTE Call charm wall"
+     "title": "0DTE Largest call charm strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D PCh",
+     "abbrev": "0DTE Put charm",
      "price": 290.0,
      "price_text": "290.00",
-     "title": "0DTE Put charm wall"
+     "title": "0DTE Largest put charm strike"
     }
    ],
    "levels_below": [
     {
      "lane": "options",
-     "abbrev": "Flip",
+     "abbrev": "Gamma flip",
      "price": 249.97153629136815,
      "price_text": "249.97",
-     "title": "\u0393 flip"
+     "title": "Gamma flip"
     },
     {
      "lane": "options",
-     "abbrev": "Net P\u0393",
+     "abbrev": "\u2212Net GEX",
      "price": 200.0,
      "price_text": "200.00",
-     "title": "Net put \u0393 peak"
+     "title": "Largest negative net GEX strike"
     }
    ],
    "level_names": {
-    "300.00": "Call wall + Abs \u0393 + Net call \u0393 peak + Key \u0394 strike + Call \u0394 wall + Call charm wall",
-    "270.00": "Put wall + Max pain + 0DTE Call \u0394 wall",
-    "249.97": "\u0393 flip",
+    "300.00": "Call wall + Largest total gamma strike + Largest positive net GEX strike + Largest total delta strike + Largest call delta strike + Largest call charm strike",
+    "270.00": "Put wall + Max pain + 0DTE Largest call delta strike",
+    "249.97": "Gamma flip",
     "267.84": "GSF",
     "464.12": "GRC",
-    "200.00": "Net put \u0393 peak",
-    "250.00": "Put \u0394 wall",
-    "260.00": "Put charm wall",
-    "282.50": "0DTE Call wall + 0DTE Net call \u0393 peak",
-    "290.00": "0DTE Put wall + 0DTE Put \u0394 wall + 0DTE Call charm wall + 0DTE Put charm wall",
-    "267.45": "0DTE \u0393 flip",
-    "285.00": "0DTE Abs \u0393",
+    "200.00": "Largest negative net GEX strike",
+    "250.00": "Largest put delta strike",
+    "260.00": "Largest put charm strike",
+    "282.50": "0DTE Call wall + 0DTE Largest positive net GEX strike",
+    "290.00": "0DTE Put wall + 0DTE Largest put delta strike + 0DTE Largest call charm strike + 0DTE Largest put charm strike",
+    "267.45": "0DTE Gamma flip",
+    "285.00": "0DTE Largest total gamma strike",
     "274.38": "0DTE GSF",
     "331.05": "0DTE GRC",
-    "265.00": "0DTE Net put \u0393 peak",
-    "280.00": "0DTE Key \u0394 strike"
+    "265.00": "0DTE Largest negative net GEX strike",
+    "280.00": "0DTE Largest total delta strike"
    },
-   "regime": "LONG_GAMMA_CHOP",
-   "regime_text": "Dealer \u0393 +",
+   "regime": "POSITIVE_GAMMA",
+   "regime_text": "Positive gamma",
    "flip_text": "249.97",
    "pin_text": null,
    "pin_note": null
@@ -2967,73 +2967,73 @@
     "options": [
      {
       "lane": "options",
-      "abbrev": "CW",
+      "abbrev": "Call wall",
       "price": 300.0,
       "price_text": "300.00",
       "title": "Call wall"
      },
      {
       "lane": "options",
-      "abbrev": "Abs \u0393",
+      "abbrev": "Total \u0393",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Abs \u0393"
+      "title": "Largest total gamma strike"
      },
      {
       "lane": "options",
-      "abbrev": "Net C\u0393",
+      "abbrev": "+Net GEX",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Net call \u0393 peak"
+      "title": "Largest positive net GEX strike"
      },
      {
       "lane": "options",
-      "abbrev": "Key \u0394",
+      "abbrev": "Total \u0394",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Key \u0394 strike"
+      "title": "Largest total delta strike"
      },
      {
       "lane": "options",
-      "abbrev": "C\u0394W",
+      "abbrev": "Call \u0394",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Call \u0394 wall"
+      "title": "Largest call delta strike"
      },
      {
       "lane": "options",
-      "abbrev": "CCh",
+      "abbrev": "Call charm",
       "price": 300.0,
       "price_text": "300.00",
-      "title": "Call charm wall"
+      "title": "Largest call charm strike"
      },
      {
       "lane": "options",
-      "abbrev": "0D PW",
+      "abbrev": "0DTE Put wall",
       "price": 290.0,
       "price_text": "290.00",
       "title": "0DTE Put wall"
      },
      {
       "lane": "options",
-      "abbrev": "0D P\u0394W",
+      "abbrev": "0DTE Put \u0394",
       "price": 290.0,
       "price_text": "290.00",
-      "title": "0DTE Put \u0394 wall"
+      "title": "0DTE Largest put delta strike"
      },
      {
       "lane": "options",
-      "abbrev": "0D CCh",
+      "abbrev": "0DTE Call charm",
       "price": 290.0,
       "price_text": "290.00",
-      "title": "0DTE Call charm wall"
+      "title": "0DTE Largest call charm strike"
      },
      {
       "lane": "options",
-      "abbrev": "0D PCh",
+      "abbrev": "0DTE Put charm",
       "price": 290.0,
       "price_text": "290.00",
-      "title": "0DTE Put charm wall"
+      "title": "0DTE Largest put charm strike"
      }
     ]
    },
@@ -3059,7 +3059,7 @@
     },
     {
      "lane": "options",
-     "abbrev": "0D GRC",
+     "abbrev": "0DTE GRC",
      "price": 331.0487147181457,
      "price_text": "331.05",
      "title": "0DTE GRC"
@@ -3068,21 +3068,21 @@
    "levels_below": [
     {
      "lane": "options",
-     "abbrev": "PW",
+     "abbrev": "Put wall",
      "price": 270.0,
      "price_text": "270.00",
      "title": "Put wall"
     },
     {
      "lane": "options",
-     "abbrev": "Flip",
+     "abbrev": "Gamma flip",
      "price": 249.97153629136815,
      "price_text": "249.97",
-     "title": "\u0393 flip"
+     "title": "Gamma flip"
     },
     {
      "lane": "options",
-     "abbrev": "Pain",
+     "abbrev": "Max pain",
      "price": 270.0,
      "price_text": "270.00",
      "title": "Max pain"
@@ -3096,102 +3096,102 @@
     },
     {
      "lane": "options",
-     "abbrev": "Net P\u0393",
+     "abbrev": "\u2212Net GEX",
      "price": 200.0,
      "price_text": "200.00",
-     "title": "Net put \u0393 peak"
+     "title": "Largest negative net GEX strike"
     },
     {
      "lane": "options",
-     "abbrev": "P\u0394W",
+     "abbrev": "Put \u0394",
      "price": 250.0,
      "price_text": "250.00",
-     "title": "Put \u0394 wall"
+     "title": "Largest put delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "PCh",
+     "abbrev": "Put charm",
      "price": 260.0,
      "price_text": "260.00",
-     "title": "Put charm wall"
+     "title": "Largest put charm strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D CW",
+     "abbrev": "0DTE Call wall",
      "price": 282.5,
      "price_text": "282.50",
      "title": "0DTE Call wall"
     },
     {
      "lane": "options",
-     "abbrev": "0D Flip",
+     "abbrev": "0DTE Gamma flip",
      "price": 267.44689374750476,
      "price_text": "267.45",
-     "title": "0DTE \u0393 flip"
+     "title": "0DTE Gamma flip"
     },
     {
      "lane": "options",
-     "abbrev": "0D Abs \u0393",
+     "abbrev": "0DTE Total \u0393",
      "price": 285.0,
      "price_text": "285.00",
-     "title": "0DTE Abs \u0393"
+     "title": "0DTE Largest total gamma strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D GSF",
+     "abbrev": "0DTE GSF",
      "price": 274.3766856566115,
      "price_text": "274.38",
      "title": "0DTE GSF"
     },
     {
      "lane": "options",
-     "abbrev": "0D Net P\u0393",
+     "abbrev": "0DTE \u2212Net GEX",
      "price": 265.0,
      "price_text": "265.00",
-     "title": "0DTE Net put \u0393 peak"
+     "title": "0DTE Largest negative net GEX strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D Net C\u0393",
+     "abbrev": "0DTE +Net GEX",
      "price": 282.5,
      "price_text": "282.50",
-     "title": "0DTE Net call \u0393 peak"
+     "title": "0DTE Largest positive net GEX strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D Key \u0394",
+     "abbrev": "0DTE Total \u0394",
      "price": 280.0,
      "price_text": "280.00",
-     "title": "0DTE Key \u0394 strike"
+     "title": "0DTE Largest total delta strike"
     },
     {
      "lane": "options",
-     "abbrev": "0D C\u0394W",
+     "abbrev": "0DTE Call \u0394",
      "price": 270.0,
      "price_text": "270.00",
-     "title": "0DTE Call \u0394 wall"
+     "title": "0DTE Largest call delta strike"
     }
    ],
    "level_names": {
-    "300.00": "Call wall + Abs \u0393 + Net call \u0393 peak + Key \u0394 strike + Call \u0394 wall + Call charm wall",
-    "270.00": "Put wall + Max pain + 0DTE Call \u0394 wall",
-    "249.97": "\u0393 flip",
+    "300.00": "Call wall + Largest total gamma strike + Largest positive net GEX strike + Largest total delta strike + Largest call delta strike + Largest call charm strike",
+    "270.00": "Put wall + Max pain + 0DTE Largest call delta strike",
+    "249.97": "Gamma flip",
     "267.84": "GSF",
     "464.12": "GRC",
-    "200.00": "Net put \u0393 peak",
-    "250.00": "Put \u0394 wall",
-    "260.00": "Put charm wall",
-    "282.50": "0DTE Call wall + 0DTE Net call \u0393 peak",
-    "290.00": "0DTE Put wall + 0DTE Put \u0394 wall + 0DTE Call charm wall + 0DTE Put charm wall",
-    "267.45": "0DTE \u0393 flip",
-    "285.00": "0DTE Abs \u0393",
+    "200.00": "Largest negative net GEX strike",
+    "250.00": "Largest put delta strike",
+    "260.00": "Largest put charm strike",
+    "282.50": "0DTE Call wall + 0DTE Largest positive net GEX strike",
+    "290.00": "0DTE Put wall + 0DTE Largest put delta strike + 0DTE Largest call charm strike + 0DTE Largest put charm strike",
+    "267.45": "0DTE Gamma flip",
+    "285.00": "0DTE Largest total gamma strike",
     "274.38": "0DTE GSF",
     "331.05": "0DTE GRC",
-    "265.00": "0DTE Net put \u0393 peak",
-    "280.00": "0DTE Key \u0394 strike"
+    "265.00": "0DTE Largest negative net GEX strike",
+    "280.00": "0DTE Largest total delta strike"
    },
-   "regime": "LONG_GAMMA_CHOP",
-   "regime_text": "Dealer \u0393 +",
+   "regime": "POSITIVE_GAMMA",
+   "regime_text": "Positive gamma",
    "flip_text": "249.97",
    "pin_text": null,
    "pin_note": null

@@ -34,7 +34,7 @@ type ProfileRow = tuple[float, float, float, float, float, int, float, float]
 
 
 class CharmBucket(TypedDict):
-    """One strike's dealer charm, delta-shares per day: each side's and the net, +call/-put.
+    """One strike's charm exposure, delta-shares per day: each side's and the net, +call/-put.
 
     None when a contract on that side cannot be priced (the net then too).
     """
@@ -47,7 +47,7 @@ class CharmBucket(TypedDict):
 #: a side of a strike's charm
 type CharmSide = Literal["call_charm", "put_charm"]
 
-# ── Gamma Exposure Profile — total dealer gamma recomputed at hypothetical spot ──
+# ── Gamma Exposure Profile — net GEX recomputed at hypothetical spot ──
 # Every contract's gamma is recomputed at each candidate price; a cumulative sum does NOT
 # reproduce the profile (against a real SPY reference chain: corr 0.086, never crosses zero);
 # recomputing reproduces the published flip (SPY 745.61, SKHY 124.44).
@@ -62,7 +62,7 @@ def compute_charm_by_strike(
     t_years: float | None = None,
     product: str = "EQO",
 ) -> dict[float, CharmBucket]:
-    """Per-strike dealer CHARM exposure, in delta-shares per day.
+    """Per-strike CHARM exposure, in delta-shares per day.
 
     Each contract's time to expiry is expiry_years' at `now` on Schwab's /markets answers
     (`sessions`), unless the caller prices every contract at one horizon (`t_years`).
@@ -272,9 +272,9 @@ FLIP_CUTS = 32
 def compute_gamma_profile(
     parsed: list[ProfileRow], spot: float | None
 ) -> list[tuple[float, float]]:
-    """Total dealer gamma exposure (per 1% move, dollars) at each candidate price.
+    """Net GEX (per 1% move, dollars) at each candidate price.
 
-    `parsed`: the contracts' priced rows (contract_inputs', or repriced_to_close's). One dealer
+    `parsed`: the contracts' priced rows (contract_inputs', or repriced_to_close's). One
     convention for every instrument: +call / -put. The candidate prices are Schwab's own: every
     strike that holds one of those contracts, and the price itself, so the curve reaches as far
     as the chain does. Between two of them where the curve changes sign it is computed again at
@@ -318,7 +318,7 @@ def _gamma_profile_totals(parsed: list[ProfileRow], grid: list[float]) -> list[f
 
 
 def gamma_flip_from_profile(profile: list[tuple[float, float]], spot: float) -> float | None:
-    """Interpolated price where net dealer gamma changes SIGN — in either direction.
+    """Interpolated price where net GEX changes SIGN — in either direction.
 
     Both directions are boundaries; the direction only changes what lies on each side,
     which the caller derives from gamma_at_price at spot.
@@ -423,21 +423,17 @@ def compute_gamma_support_levels(
 
 
 def gamma_at_price(profile: list[tuple[float, float]], price: float | None) -> float | None:
-    """Net dealer gamma at `price`, linearly interpolated from the profile.
+    """Net GEX at `price`, linearly interpolated from the profile.
 
     None outside the profile (below its lowest price or above its highest): the curve is not
     computed there, so the value is not known.
 
-    This -- not the flip -- is what determines the regime: positive means dealers are net
-    long gamma there and will dampen moves; negative means they amplify. The flip is
-    simply where this value crosses zero, and a chain need not contain such a crossing.
-
-    The claim above is SIGN-based, and that is why it is defensible — a dealer long
-    gamma sells rallies and buys dips, which dampens; short gamma does the opposite. Source:
-    Ni, Pearson and Poteshman, Journal of Financial Economics,
-    doi:10.1016/j.jfineco.2004.08.005, where expiration-date clustering turns on NET
-    positioning; and https://spotgamma.com/what-is-gex-gamma-exposure/ on the sign
-    convention and on dealer ownership being modelled rather than observed.
+    This -- not the flip -- is what determines the regime. The flip is simply where this value
+    crosses zero, and a chain need not contain such a crossing. Its sign assumes dealers long
+    calls and short puts; who holds which side is not in Schwab's data
+    (https://spotgamma.com/what-is-gex-gamma-exposure/). Hedgers long gamma sell rises and buy
+    falls, short gamma the opposite: Ni, Pearson and Poteshman, Journal of Financial Economics,
+    doi:10.1016/j.jfineco.2004.08.005, where expiration-date clustering turns on NET positioning.
     """
     if not profile or price is None:
         return None

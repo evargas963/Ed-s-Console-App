@@ -199,14 +199,16 @@ test.describe("D — Gamma Levels view", () => {
     await expect(row.locator(".lv-px").nth(1).locator(".lv-age")).toHaveText("12:32:07 CT");
   });
 
-  test("the pin row shows the served note on hover", async ({ page }) => {
+  test("the highest open interest strike's row shows the served note on hover", async ({
+    page,
+  }) => {
     // SPY's levels panel during its session: its expiry closes that day with time left, so it has
-    // a pin (after the close a pin has no time left and no value)
+    // that strike (after the close it has no time left and no value)
     const pin = SERVED.levels.find((r) => r.id === "pin_candidate");
     expect(pin.note).toContain("expected moves");
     panels.levels = SERVED;
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const row = page.locator("#levelsBody .lv-row", { hasText: "Pin candidate" });
+    const row = page.locator("#levelsBody .lv-row", { hasText: "Highest open interest strike" });
     await expect(row).toHaveAttribute("title", pin.note);
     await expect(row.locator(".lv-px").nth(0)).toContainText(pin.price.toFixed(2));
   });

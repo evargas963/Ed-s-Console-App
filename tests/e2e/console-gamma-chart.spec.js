@@ -42,10 +42,9 @@ const TERRAIN = {
   call_wall_text: K.toFixed(2),
   put_wall_text: PUT_WALL.toFixed(2),
   same_day_text: {},
-  // the regime, and as the screen says it (calc.terrain_read.REGIME_TEXT, REGIME_NAME)
-  regime: "LONG_GAMMA_CHOP",
-  regime_text: "Dealer Γ +",
-  regime_name: "LONG GAMMA CHOP",
+  // the regime, and as the screen says it (calc.terrain_read.REGIME_TEXT)
+  regime: "POSITIVE_GAMMA",
+  regime_text: "Positive gamma",
   levels_state: "LIVE",
   levels_mark: "LIVE",
 };

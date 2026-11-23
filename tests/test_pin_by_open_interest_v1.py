@@ -89,7 +89,7 @@ def test_the_pin_is_the_most_open_interest_within_one_expected_move(chain, strik
 
 
 def test_the_pin_is_not_the_largest_gamma_strike():
-    """Abs Γ and the pin are two measures: on SPY 2026-11-09 they are 605 and 750."""
+    """Total gamma and open interest are two measures: on SPY 2026-11-09 they are 605 and 750."""
     snap = compute_terrain(
         "SPY", read_chain(SPY_FULL.chain), SPY_FULL.spot, now=SPY_FULL.now, sessions=sessions()
     )

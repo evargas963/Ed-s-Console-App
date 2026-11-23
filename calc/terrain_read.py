@@ -2,14 +2,16 @@
 
 Rules, never generative: identical inputs give identical output.
 
-The regime is the sign of dealer gamma at spot. It is issued whenever that gamma is known and not
-zero and the spot is above 0; otherwise there is no regime (UNAVAILABLE).
+The regime is the sign of net GEX at spot. It is issued whenever that number is known and not zero
+and the spot is above 0; otherwise there is no regime (UNAVAILABLE).
 
 The headline says only what published evidence supports: the sign goes with the size of price
 swings, not with a trade direction; the sign is a model (it assumes dealers long calls and short
 puts), said once in the hover with the sources rather than on the headline (Ni, Pearson,
 Poteshman & White, RFS 2021; Baltussen, Da, Lammers & Martens, JFE 2021; Amaya, Garcia-Ares,
-Pearson & Vasquez 2025).
+Pearson & Vasquez 2025). The names are the industry's: positive and negative gamma (IMF Global
+Financial Stability Report, April 2026, chapter 1) and the gamma flip (the Options Industry
+Council's June 2026 FAQ).
 """
 
 from __future__ import annotations
@@ -18,8 +20,8 @@ from dataclasses import dataclass
 
 from numeric_contract import price_text
 
-REGIME_LONG_GAMMA = "LONG_GAMMA_CHOP"
-REGIME_SHORT_GAMMA = "SHORT_GAMMA_TREND"
+REGIME_POSITIVE_GAMMA = "POSITIVE_GAMMA"
+REGIME_NEGATIVE_GAMMA = "NEGATIVE_GAMMA"
 REGIME_UNAVAILABLE = "UNAVAILABLE"
 
 #: where a level sits against a price (level_side)
@@ -126,15 +128,13 @@ class TerrainRead:
 
 
 def regime_from_signed_gamma(signed_gamma: float | None) -> str | None:
-    """Return the regime: the one rule for the sign of dealer gamma.
+    """Return the regime: the one rule for the sign of net GEX.
 
-    Positive estimated dealer gamma is LONG_GAMMA_CHOP; negative is SHORT_GAMMA_TREND (the
-    codes' names are kept; what each means is the headline). None when the sign is absent or
-    exactly zero.
+    None when the number is absent or exactly zero.
     """
     if signed_gamma is None or signed_gamma == 0:
         return None
-    return REGIME_LONG_GAMMA if signed_gamma > 0 else REGIME_SHORT_GAMMA
+    return REGIME_POSITIVE_GAMMA if signed_gamma > 0 else REGIME_NEGATIVE_GAMMA
 
 
 #: the assumption every estimate rests on (the hover's first line)
@@ -145,42 +145,35 @@ _ASSUMPTION = (
 #: each regime's headline (what the evidence supports, no trade instruction) and its sources,
 #: shown on hover
 _READS = {
-    REGIME_LONG_GAMMA: (
-        "Dealer gamma is positive: research links this to smaller price swings, "
+    REGIME_POSITIVE_GAMMA: (
+        "Net GEX is positive: research links this to smaller price swings, "
         "not to a trade direction.",
         _ASSUMPTION + " Swings: Ni, Pearson, Poteshman & White, RFS 2021; Amaya, Garcia-Ares, "
         "Pearson & Vasquez 2025.",
     ),
-    REGIME_SHORT_GAMMA: (
-        "Dealer gamma is negative: research links this to larger price swings and "
+    REGIME_NEGATIVE_GAMMA: (
+        "Net GEX is negative: research links this to larger price swings and "
         "some late-day continuation, not to a trade direction.",
         _ASSUMPTION + " Swings: Ni, Pearson, Poteshman & White, RFS 2021; late-day "
         "continuation: Baltussen, Da, Lammers & Martens, JFE 2021.",
     ),
     REGIME_UNAVAILABLE: (
-        "No estimate: the dealers' position at the price is unknown or flat, or there is no price.",
+        "No estimate: net GEX at the price is unknown or zero, or there is no price.",
         "",
     ),
 }
-#: each regime as the screen says it: in short (Key Levels, the Desk's agreement strip, the
-#: Confluence rail), and its name in words (the Desk's Options Positioning card, and Right Now's
-#: Confirm stage and context summary)
+#: each regime as every screen says it
 REGIME_TEXT = {
-    REGIME_LONG_GAMMA: "Dealer Γ +",
-    REGIME_SHORT_GAMMA: "Dealer Γ −",
+    REGIME_POSITIVE_GAMMA: "Positive gamma",
+    REGIME_NEGATIVE_GAMMA: "Negative gamma",
     REGIME_UNAVAILABLE: "unavailable",
-}
-REGIME_NAME = {
-    REGIME_LONG_GAMMA: "LONG GAMMA CHOP",
-    REGIME_SHORT_GAMMA: "SHORT GAMMA TREND",
-    REGIME_UNAVAILABLE: "UNAVAILABLE",
 }
 #: where the price sits against the gamma flip (price_side), as the Desk's agreement strip says
 #: it; no words where it is not known
 FLIP_RELATION_TEXT: dict[str | None, str | None] = {
-    LEVEL_ABOVE: "Above Γ flip",
-    LEVEL_AT: "At Γ flip",
-    LEVEL_BELOW: "Below Γ flip",
+    LEVEL_ABOVE: "Above gamma flip",
+    LEVEL_AT: "At gamma flip",
+    LEVEL_BELOW: "Below gamma flip",
     None: None,
 }
 
@@ -188,9 +181,9 @@ FLIP_RELATION_TEXT: dict[str | None, str | None] = {
 def build_terrain_read(*, spot: float | None, gamma_at_spot: float | None = None) -> TerrainRead:
     """Return the regime read at `spot`.
 
-    The regime is the sign of dealer gamma at spot (`gamma_at_spot`), not the side of the flip
-    the price is on, so a chain whose profile never crosses zero still has one. It is issued
-    with a spot above 0 and that gamma known and not zero; otherwise it is UNAVAILABLE.
+    The regime is the sign of net GEX at spot (`gamma_at_spot`), not the side of the flip the
+    price is on, so a chain whose profile never crosses zero still has one. It is issued with a
+    spot above 0 and that number known and not zero; otherwise it is UNAVAILABLE.
     """
     regime = regime_from_signed_gamma(gamma_at_spot) if spot is not None and spot > 0 else None
     if regime is None:

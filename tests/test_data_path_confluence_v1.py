@@ -577,7 +577,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         level_store._levels.pop("SPY", None)
     assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
-    walls = [level for level in _rail_levels(body) if level["abbrev"] == "CW"]
+    walls = [level for level in _rail_levels(body) if level["abbrev"] == "Call wall"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
         (live.snap.call_wall, price_text(live.snap.call_wall), "options")
     ]
@@ -831,7 +831,7 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
     front = served["by_expiry"]["2026-10-09"]
     assert set(front["peaks"]) == {*SHADED, *LEANS}
     # the regime beside the rail, and as the screen says it: served, the page picks no words
-    assert (front["regime"], front["regime_text"]) == ("LONG_GAMMA_CHOP", "Dealer Γ +")
+    assert (front["regime"], front["regime_text"]) == ("POSITIVE_GAMMA", "Positive gamma")
     assert any(r["net_gex"] is not None and r["net_gex"] < 0 for r in front["rows"])
 
 

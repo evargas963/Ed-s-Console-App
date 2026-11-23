@@ -40,6 +40,13 @@ BEFORE = json.loads(_RECORD)["terrains"]
 
 #: the one field read another way since the record was written (test_every_value_is_what_it_was)
 ATM_IV = "atm_iv_pct_by_expiry"
+#: the words of the regime and the headline as the record holds them, and as they are said since
+#: every name is the industry's (operator 2026-11-22): the words alone, never which one is said
+WORDS = (
+    ("LONG_GAMMA_CHOP", "POSITIVE_GAMMA"),
+    ("SHORT_GAMMA_TREND", "NEGATIVE_GAMMA"),
+    ("Dealer gamma is", "Net GEX is"),
+)
 
 #: a number may differ from what it was only in the last digits of a double: Python's math and
 #: numpy's exp and log, on one platform and another, round their last bit their own way. On
@@ -78,6 +85,17 @@ def _per_strike_keys(record: list, rename: dict[str, str], drop: set[str]) -> li
     ]
 
 
+def _as_said_now(record: list) -> list:
+    """Return a written-out terrain with its regime's and headline's old words as said now."""
+    out = []
+    for d, key, value in record:
+        if key in ("regime", "headline"):
+            for old, new in WORDS:
+                value = value.replace(old, new)
+        out.append([d, key, value])
+    return out
+
+
 def _field(record: list, key: str) -> list:
     """Return one field of a written-out terrain: its value as written."""
     return next(value for _d, k, value in record if k == key)
@@ -100,7 +118,7 @@ def test_every_value_is_what_it_was():
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
     for tk, snap in terrains.items():
-        was = _per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"})
+        was = _as_said_now(_per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"}))
         now = _per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"})
         _same([e for e in was if e[1] != ATM_IV], [e for e in now if e[1] != ATM_IV], tk)
         assert [e[1] for e in _field(was, ATM_IV)] == [e[1] for e in _field(now, ATM_IV)], tk

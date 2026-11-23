@@ -52,10 +52,10 @@ def same_day_note(snap: TerrainSnapshot) -> str | None:
 
 
 def pin_note(snap: TerrainSnapshot) -> str | None:
-    """Return the pin's note, shown on hover: what it is and how far the price is from it.
+    """Return the highest open interest strike's note (hover): what it is and the price's distance.
 
     The distance in expected moves and in strike widths and the minutes to the close are
-    calc.terrain_engine.pin_by_open_interest's; this only writes them. None without a pin.
+    calc.terrain_engine.pin_by_open_interest's; this only writes them. None without that strike.
     """
     z, widths = snap.pin_expected_moves, snap.pin_strike_widths
     if snap.pin_candidate is None or z is None or snap.pin_minutes_to_close is None:

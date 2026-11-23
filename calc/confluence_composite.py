@@ -257,7 +257,7 @@ def magnitudes(
         "CHARMM": None if charm_net is None else abs(charm_net),
     }
     out["_net_gex"] = net_gex
-    out["_gross"] = total_gex_dollars_at_strike(bucket)  # the Abs Γ level's one producer
+    out["_gross"] = total_gex_dollars_at_strike(bucket)  # the total gamma level's one producer
     out["_pc_gex"] = (
         None if call_gex is None or put_gex is None or call_gex == 0 else put_gex / call_gex
     )

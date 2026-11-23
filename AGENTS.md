@@ -330,6 +330,16 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     required checks are the operator's, applied in GitHub. Enforced by:
     `tools/operator_law_guard.py`: `gh` by a list, `gh api` only reads
     (`tests/test_operator_law_guard_action_bans_v1.py`)
+17. **The industry's names and methods** (serves 12; the order's best practice). Every label, value
+    and method carries the name and the definition the industry uses: a regulator's, an exchange's
+    or Schwab's own first, then a published paper's, then what several vendors agree on; each source
+    is in `docs/SOURCES.md` or the value's row of `docs/derived_register.md`. A word made up here is
+    used only where no accepted name exists, and then it says in standard words what the value is;
+    one vendor's product name or trademark is never used as a generic word. A modelled sign is never
+    worded as a fact: the assumption (dealers long calls, short puts) is stated once, beside the
+    estimate. Enforced by: `tests/test_industry_names_v1.py` (no screen says a name that was
+    replaced), `tests/test_level_names_one_list_v1.py` (in force); a new name's source — the
+    builder's audit (rule 14)
 
 ## Fix what you find
 

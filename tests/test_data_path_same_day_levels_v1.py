@@ -4,8 +4,8 @@ The levels of the nearest listed expiry alone, by the whole book's own producers
 settles today is read from Schwab's gamma and delta as sent. With none today, the next listed
 expiry keeps its open interest and implied volatility; gamma and delta are rebuilt to that
 ticker's option close today. A name with no listed same-day expiry still gets them. Their
-absolute-gamma strike is "0D Abs Γ", not a pin: the pin is read on open interest
-(tests/test_pin_by_open_interest_v1.py).
+largest total gamma strike is not the highest open interest strike near the price, which is read on
+open interest (tests/test_pin_by_open_interest_v1.py).
 """
 
 from __future__ import annotations

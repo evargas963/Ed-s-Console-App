@@ -729,8 +729,8 @@ test("Desk: the chain age keeps the chain's time", async ({ page }) => {
     "Schwab option chain · " + CHAIN_TIME + " · LIVE · 4s",
   );
   await expect(page.locator("#tdmCardOpt")).toContainText("775.00"); // SPY's real call wall
-  // the served regime word (SPY's: SHORT_GAMMA_TREND), toned from the one regime table
-  await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveText("SHORT GAMMA TREND");
+  // the served regime word (SPY's: NEGATIVE_GAMMA), toned from the one regime table
+  await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveText("Negative gamma");
   await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveClass("tdm-state dn");
   await expect(page.locator("#tdmCardVol .tdm-src")).toContainText(CHAIN_TIME + " · LIVE · 4s");
   await expect(page.locator("#tdmTrust")).toContainText("GAMMA " + CHAIN_TIME + " · LIVE · 4s");
@@ -970,7 +970,7 @@ test.describe("Trade Desk renders served values", () => {
       "Crosses (" + EVENTS.window_label + ")",
     );
     await expect(page.locator("#tdmLookback")).toHaveText(EVENTS.window_label);
-    await expect(page.locator("#tdmAgree")).toContainText("Below Γ flip"); // 757.08 against the flip at 761.22
+    await expect(page.locator("#tdmAgree")).toContainText("Below gamma flip"); // 757.08 against the flip at 761.22
     // the served session volume profile, every bin drawn at the chart's left edge, with its basis
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins))
@@ -1352,7 +1352,7 @@ test.describe("Trade Desk renders served values", () => {
     await openView(page, "trade-desk", "desk");
     // the flip side is the terrain's (SPY's real one: below the flip), marked with the stopped price's words
     await expect(page.locator("#tdmAgree")).toContainText(
-      "Below Γ flip · " + STOPPED.spot_not_live_text,
+      "Below gamma flip · " + STOPPED.spot_not_live_text,
     );
     expect(errs).toEqual([]);
   });
@@ -1412,7 +1412,7 @@ test.describe("Trade Desk renders served values", () => {
     ]);
     // the walls' and the flip's own moves since the prior close, as served (no drift word)
     await expect(body).toContainText(
-      "Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Γ flip 760.77 → 761.22 (+0.45)",
+      "Call wall 760 → 775 (+15) · Put wall 760 → 760 (unchanged) · Gamma flip 760.77 → 761.22 (+0.45)",
     );
     await expect(body).toContainText("Gamma grew most at 775/770");
     // the busiest strikes 757 and 760 against the put wall at 760: one below it, one at it, so
@@ -1486,24 +1486,20 @@ test.describe("Trade Desk renders served values", () => {
     await openView(page, "trade-desk", "desk");
     const card = page.locator("#tdmCardOpt .tdm-state");
     const strip = page.locator("#tdmAgree");
-    // SPY's real levels: dealer gamma at the price is negative
-    await expect(card).toHaveText("SHORT GAMMA TREND");
-    await expect(strip).toContainText("OPTIONSDealer Γ −");
-    // INDUCED: those levels with each other regime the server serves, its name in words and its
-    // short words (calc.terrain_read.REGIME_NAME, REGIME_TEXT), then a regime the page has never
-    // held: the card and the strip draw the served words and pick none
-    for (const [regime, name, words] of [
-      ["LONG_GAMMA_CHOP", "LONG GAMMA CHOP", "Dealer Γ +"],
-      ["UNAVAILABLE", "UNAVAILABLE", "unavailable"],
-      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "THE SERVER'S OWN NAME", "as only the server says"],
+    // SPY's real levels: net GEX at the price is negative
+    await expect(card).toHaveText("Negative gamma");
+    await expect(strip).toContainText("OPTIONSNegative gamma");
+    // INDUCED: those levels with each other regime the server serves and the words it serves with
+    // it (calc.terrain_read.REGIME_TEXT), then a regime the page has never held: the card and the
+    // strip draw the served words and pick none
+    for (const [regime, words] of [
+      ["POSITIVE_GAMMA", "Positive gamma"],
+      ["UNAVAILABLE", "unavailable"],
+      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
     ]) {
-      deskPanels().terrain = Object.assign({}, TERRAIN, {
-        regime: regime,
-        regime_name: name,
-        regime_text: words,
-      });
+      deskPanels().terrain = Object.assign({}, TERRAIN, { regime: regime, regime_text: words });
       sock.changed("terrain");
-      await expect(card).toHaveText(name);
+      await expect(card).toHaveText(words);
       await expect(strip).toContainText("OPTIONS" + words);
     }
     expect(errs).toEqual([]);
@@ -1528,17 +1524,17 @@ test.describe("Trade Desk renders served values", () => {
       [
         ["unchanged", "unchanged", "unchanged"],
         ["above_value", "above value", "above value"],
-        ["ABOVE", "Above Γ flip", "Above Γ flip"],
+        ["ABOVE", "Above gamma flip", "Above gamma flip"],
       ],
       [
         ["higher", "higher", "higher"],
         ["below_value", "below value", "below value"],
-        ["AT", "At Γ flip", "At Γ flip"],
+        ["AT", "At gamma flip", "At gamma flip"],
       ],
       [
         ["inside", "inside", "inside"],
         ["inside_value", "inside value", "inside value"],
-        ["BELOW", "Below Γ flip", "Below Γ flip"],
+        ["BELOW", "Below gamma flip", "Below gamma flip"],
       ],
       [
         ["outside", "outside", "outside"],
@@ -1548,12 +1544,12 @@ test.describe("Trade Desk renders served values", () => {
       [
         ["overlapping_higher", "overlapping higher", "overlapping higher"],
         ["above_value", "above value", "above value"],
-        ["ABOVE", "Above Γ flip", "Above Γ flip"],
+        ["ABOVE", "Above gamma flip", "Above gamma flip"],
       ],
       [
         ["overlapping_lower", "overlapping lower", "overlapping lower"],
         ["below_value", "below value", "below value"],
-        ["BELOW", "Below Γ flip", "Below Γ flip"],
+        ["BELOW", "Below gamma flip", "Below gamma flip"],
       ],
       [
         [null, null, "-"],
@@ -1624,28 +1620,25 @@ test.describe("Trade Desk renders served values", () => {
       .locator("#tdBody .td-ctx-row")
       .filter({ has: page.locator(".lbl", { hasText: /^Regime$/ }) })
       .locator(".val");
-    // SPY's real levels: the regime's name as the terrain panel serves it, never its code
-    expect([TERRAIN.regime, TERRAIN.regime_name]).toEqual([
-      "SHORT_GAMMA_TREND",
-      "SHORT GAMMA TREND",
-    ]);
-    await expect(hero).toHaveText(TERRAIN.regime_name);
-    await expect(row).toHaveText(TERRAIN.regime_name);
-    // INDUCED: those levels with each other regime the server serves and its name
-    // (calc.terrain_read.REGIME_NAME), then a name the page has never held: both places draw the
-    // served name and pick none
-    for (const [regime, name] of [
-      ["LONG_GAMMA_CHOP", "LONG GAMMA CHOP"],
-      ["UNAVAILABLE", "UNAVAILABLE"],
-      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "THE SERVER'S OWN NAME"],
+    // SPY's real levels: the regime in words as the terrain panel serves it, never its code
+    expect([TERRAIN.regime, TERRAIN.regime_text]).toEqual(["NEGATIVE_GAMMA", "Negative gamma"]);
+    await expect(hero).toHaveText(TERRAIN.regime_text);
+    await expect(row).toHaveText(TERRAIN.regime_text);
+    // INDUCED: those levels with each other regime the server serves and its words
+    // (calc.terrain_read.REGIME_TEXT), then words the page has never held: both places draw the
+    // served words and pick none
+    for (const [regime, words] of [
+      ["POSITIVE_GAMMA", "Positive gamma"],
+      ["UNAVAILABLE", "unavailable"],
+      ["A_REGIME_ONLY_THE_SERVER_KNOWS", "as only the server says"],
     ]) {
-      deskPanels().terrain = Object.assign({}, TERRAIN, { regime, regime_name: name });
+      deskPanels().terrain = Object.assign({}, TERRAIN, { regime, regime_text: words });
       sock.changed("terrain");
-      await expect(hero).toHaveText(name);
-      await expect(row).toHaveText(name);
+      await expect(hero).toHaveText(words);
+      await expect(row).toHaveText(words);
     }
     // INDUCED: no regime served: the dash in both places, never a code
-    deskPanels().terrain = Object.assign({}, TERRAIN, { regime: null, regime_name: null });
+    deskPanels().terrain = Object.assign({}, TERRAIN, { regime: null, regime_text: null });
     sock.changed("terrain");
     await expect(hero).toHaveText("-");
     await expect(row).toHaveText("-");
@@ -1723,8 +1716,8 @@ test.describe("Trade Desk renders served values", () => {
     await expect(body).toContainText("Max pain 757.00");
     deskPanels().terrain = Object.assign({}, TERRAIN, { max_pain: 771, max_pain_text: "771.00" });
     sock.changed("terrain");
-    await expect(body).toContainText("Γ flip761.22Max pain (0DTE)771.00"); // CONFIRM's rows
-    await expect(body).not.toContainText("Γ flip note"); // this set's flip carries no note
+    await expect(body).toContainText("Gamma flip761.22Max pain (0DTE)771.00"); // CONFIRM's rows
+    await expect(body).not.toContainText("Gamma flip note"); // this set's flip carries no note
     // induced: the flip's note as the server words it (calc.terrain_read.FLIP_CURVE_DISAGREES)
     deskPanels().terrain = Object.assign({}, TERRAIN, {
       flip_note:
@@ -1732,7 +1725,7 @@ test.describe("Trade Desk renders served values", () => {
     });
     sock.changed("terrain");
     await expect(body).toContainText(
-      "Γ flip noteThe gamma flip is placed by a modelled curve that disagrees with Schwab's gamma at today's price.",
+      "Gamma flip noteThe gamma flip is placed by a modelled curve that disagrees with Schwab's gamma at today's price.",
     );
     deskPanels().levels = levelsAt(
       Object.assign({}, LEVELS, {
@@ -2050,7 +2043,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect(page.locator('#tdmToolbar [data-tf="3"]')).toHaveText("3m");
     await expect(page.locator("#tdmChart .tvc-edge-top")).toContainText("GRC 837.58");
     await expect(page.locator("#tdmCardOpt")).toContainText(
-      "Γ flip note the flip's note, as served",
+      "Gamma flip note the flip's note, as served",
     ); // induced
     await page.locator('#tdmToolbar [data-act="style"]').click();
     await expect(page.locator('#tdmToolbar [data-act="style"]')).toHaveClass(/on/);

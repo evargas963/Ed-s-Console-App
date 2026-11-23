@@ -120,7 +120,7 @@ def test_levels_are_real_strikes_or_absent() -> None:
 
 
 def test_the_regime_is_the_sign_of_gamma_at_the_price_whatever_strikes_the_chain_lists() -> None:
-    """The regime is issued from dealer gamma at the price, with no chain-coverage gate.
+    """The regime is issued from net GEX at the price, with no chain-coverage gate.
 
     Operator 2026-11-19: every chain is asked with every strike, and the 5% and 10%
     coverage spans had no source. Failure this catches: SPY's real 0DTE chain of 2026-10-07 lists
@@ -130,8 +130,8 @@ def test_the_regime_is_the_sign_of_gamma_at_the_price_whatever_strikes_the_chain
     chain, spot = spy_0dte_book()
     snap = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions())
     assert snap.net_gex_at_spot is not None and snap.net_gex_at_spot < 0
-    assert snap.regime == "SHORT_GAMMA_TREND"
-    assert snap.headline.startswith("Dealer gamma is negative"), snap.headline
+    assert snap.regime == "NEGATIVE_GAMMA"
+    assert snap.headline.startswith("Net GEX is negative"), snap.headline
 
 
 def test_a_wall_that_holds_the_price_carries_no_dealer_word() -> None:
@@ -499,9 +499,9 @@ def test_the_prices_side_of_the_flip_is_served_in_the_strips_words() -> None:
         relations = price_relations(published, price)
         return relations.flip_relation, relations.flip_relation_text
 
-    assert said(flip + 1) == ("ABOVE", "Above Γ flip")
-    assert said(flip) == ("AT", "At Γ flip")
-    assert said(flip - 1) == ("BELOW", "Below Γ flip")
+    assert said(flip + 1) == ("ABOVE", "Above gamma flip")
+    assert said(flip) == ("AT", "At gamma flip")
+    assert said(flip - 1) == ("BELOW", "Below gamma flip")
     assert said(None) == (None, None)
 
 
