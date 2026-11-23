@@ -17,8 +17,7 @@ from app.options.order_flow.state import OrderFlowState
 from calc.confluence_composite import family_votes
 from calc.option_window import strike_look_back
 from option_contract import read_chain
-from stream_spine import MessageBus
-from tests.feed_live_helper import apply_record, on_the_bus
+from tests.feed_live_helper import replay_options
 from tests.shared_helpers import fixture_json
 from time_et import ET
 
@@ -31,13 +30,7 @@ QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
 
 def _replayed() -> OrderFlowState:
     """Return the state the fixture's items make, put on a bus and applied as in production."""
-    bus = MessageBus()
-    state = OrderFlowState()
-    state.current = bus.current
-    for m in FX["messages"]:
-        record = on_the_bus(bus, "LEVELONE_OPTIONS", m["item"], m["ts_recv"], m["schwab_ts"])
-        apply_record(state, "LEVELONE_OPTIONS", record)
-    return state
+    return replay_options(FX["messages"])
 
 
 def _number(v):

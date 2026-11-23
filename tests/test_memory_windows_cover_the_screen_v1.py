@@ -20,9 +20,10 @@ from pathlib import Path
 from app.options.order_flow.state import MAX_TAPE_PRINTS
 from calc.liquidity_value_engine import HOLD_WINDOW_SESSIONS
 from calc.order_flow import OF_TAPE_WINDOW_5M_SEC
+from push.confluence import LOOKBACKS
 from push.desk import DESK_LOOKBACK
 from state import bar_store, cross_store
-from tests.feed_live_helper import price_history
+from tests.feed_live_helper import price_history, replay_options
 from time_et import sessions
 
 _MSGS = json.loads(
@@ -82,3 +83,32 @@ def test_the_crosses_held_cover_the_trade_desks_longest_window():
     assert max(seconds) <= cross_store.CROSSES_HELD_SEC
     assert any(lb == "session" for lb, _words in DESK_LOOKBACK.values())
     assert cross_store.CROSSES_HELD_SEC >= 86400
+
+
+def test_the_option_look_back_record_keeps_every_minute_of_the_day_it_took():
+    """The matrix's longest look-back, since the open, is read whole from the record.
+
+    SPY's recorded LEVELONE_OPTIONS items of 2026-11-23 09:59-10:10 ET
+    (tests/fixtures/real_spy_option_stream_two_strikes_2026_11_23.json), applied as the console
+    applies them: each contract's record keeps every minute it took a message in, none dropped,
+    so a window from the record's first whole minute to now is read, the longest the stream held.
+    """
+    fx = json.loads(
+        (
+            Path(__file__).parent
+            / "fixtures"
+            / "real_spy_option_stream_two_strikes_2026_11_23.json"
+        ).read_text(encoding="utf-8")
+    )
+    state = replay_options(fx["messages"])
+    minutes: dict[str, set[int]] = {}
+    for m in fx["messages"]:
+        minutes.setdefault(m["item"]["key"], set()).add(int(m["ts_recv"] // 60))
+    assert "open" in LOOKBACKS
+    for sym, took in minutes.items():
+        assert len(took) >= 11
+        # the record's first whole minute: the longest window it can read
+        looks = state.look_back([sym], "2026-11-23", min(took) + 1)
+        assert sym in looks, sym
+        start, now = looks[sym].volume
+        assert start is not None and now is not None and now >= start
