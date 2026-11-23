@@ -125,7 +125,7 @@ def test_terrain_snapshot_v2_carries_net_gex_and_new_levels():
 
 
 def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
-    """Each list that names a level calls the two by what they hold, and each has its pill."""
+    """Each list that names a level calls the two by what they hold, in the one list's order."""
     for levels in (SAME_DAY_LEVELS, OPTION_LEVELS):
         named = dict(levels)
         assert (named["hvp"], named["lvp"]) == ("Gamma Net Negative", "Gamma Net Positive")
@@ -135,16 +135,20 @@ def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
         "max_pain",
         "pin_candidate",
     }
-    # each level's pill is its own name, but the two net GEX strikes', whose sign is a sign
-    pills = {
-        label: push_confluence._option_abbrev(label, same_day=False) for _k, label in OPTION_LEVELS
-    }
-    assert pills == {label: label for _k, label in OPTION_LEVELS} | {
-        "Gamma Net Negative": "Gamma Net −",
-        "Gamma Net Positive": "Gamma Net +",
-    }
-    assert push_confluence._option_abbrev("Gamma Net Negative", same_day=False) == "Gamma Net −"
-    assert push_confluence._option_abbrev("Gamma Net Positive", same_day=True) == "0DTE Gamma Net +"
+    # the matrix marks only the key levels, under their names in the one list
+    assert (
+        tuple(
+            level
+            for level in OPTION_LEVELS
+            if level[1] in {"Gamma Flip", "Gamma Call", "Gamma Put", "Gamma Total", "OI Pin"}
+        )
+        == push_confluence.KEY_OPTION_LEVELS
+    )
+    assert (
+        tuple(level for level in SAME_DAY_LEVELS if level in push_confluence.KEY_OPTION_LEVELS)
+        == push_confluence.KEY_SAME_DAY_LEVELS
+    )
+    assert push_confluence.KEY_SESSION_LEVELS == ("VWAP", "PDC")
 
 
 def test_volatility_points_one_sided_chain_returns_none_side():

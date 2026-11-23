@@ -1754,6 +1754,15 @@
   margin-top: 2px;
 }
 
+/* a strike's distance in the expiry's implied moves, under its distance in points */
+.cm-page td small.sigma {
+  display: block;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
 .cm-page th.group {
   height: 30px;
   text-transform: uppercase;

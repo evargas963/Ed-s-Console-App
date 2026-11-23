@@ -13,15 +13,25 @@
   var bound = false;
 
   var HEADS = [
-    ["Price / session", "exact price", "Session reference levels. POC keeps its est mark.", false],
+    [
+      "Price / session",
+      "benchmarks",
+      "VWAP and the prior close: the prices institutions' execution desks are measured against.",
+      false,
+    ],
     [
       "Options levels",
-      "chain + same-day",
-      "Chain levels and the same-day levels, each at its own price.",
+      "dealer hedging",
+      "Gamma Flip, Gamma Call, Gamma Put, Gamma Total and OI Pin, each at its own price; their same-day copies on the expiry's own day.",
       false,
     ],
     ["Strike", "", "Listed strike.", false],
-    ["Δ spot", "points", "Strike minus the live price.", false],
+    [
+      "Δ spot",
+      "points · σ",
+      "Strike minus the live price, and that distance in the expiry's implied moves (σ): its at-the-money volatility times the square root of the time left.",
+      false,
+    ],
     [
       "Composite",
       "size, not direction",
@@ -179,7 +189,16 @@
           '" title="' +
           esc(lv.title + " · outside visible strike range") +
           '">' +
-          esc(prefix + lv.abbrev + " " + lv.price_text) +
+          esc(
+            prefix +
+              lv.abbrev +
+              " " +
+              lv.price_text +
+              " · " +
+              orDash(lv.distance_text) +
+              " · " +
+              orDash(lv.sigma_text),
+          ) +
           "</button>"
         );
       })
@@ -495,7 +514,12 @@
           "</td>";
       }
       bodyRows += '<td class="strike">' + esc(orDash(row.strike_text)) + "</td>";
-      bodyRows += "<td>" + esc(orDash(row.distance_text)) + "</td>";
+      bodyRows +=
+        "<td>" +
+        esc(orDash(row.distance_text)) +
+        '<small class="sigma">' +
+        esc(orDash(row.sigma_text)) +
+        "</small></td>";
       if (row.score_text == null) {
         bodyRows += '<td class="edge missing" title="' + esc(scoreReason) + '">-</td>';
       } else {

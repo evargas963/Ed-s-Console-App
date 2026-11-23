@@ -22042,6 +22042,3040 @@
       "missing_expiry": null
     }
   },
+  "confluence": {
+    "preset": "0DTE",
+    "scale_text": "0\u201372",
+    "ceiling": 72.0,
+    "notes": [],
+    "peaks": {
+      "net_gex": 805098646.2411408,
+      "oi": 20017.0,
+      "gross": 968882245.8541739,
+      "volume": 185728.0,
+      "vol_oi": 18.602564102564102,
+      "dex": 438651218.98188186,
+      "vanna": 6541851.644996091,
+      "iv": 272.91247509,
+      "charm": 410243.78196328855,
+      "pc_gex_lean": 12.113561899510355,
+      "pc_vol_lean": 3612.0
+    },
+    "rows": [
+      {
+        "strike": 762.0,
+        "strike_text": "762.00",
+        "net_gex": -47191936.37968853,
+        "oi": 10326.0,
+        "gross": 306437607.0106946,
+        "volume": 66093.0,
+        "vol_oi": 6.400639163277164,
+        "dex": -353089859.85149,
+        "vanna": -1488105.3633494736,
+        "iv": 20.93713548,
+        "charm": 86620.44263415222,
+        "pc_gex_lean": -0.36407116280725504,
+        "pc_vol_lean": 0.943188359449952,
+        "net_gex_text": "-$47.19M",
+        "net_reason": null,
+        "oi_text": "10,326",
+        "oi_reason": null,
+        "pc_gex_text": "1.36",
+        "pc_gex_reason": null,
+        "gross_text": "$306.44M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "66,093",
+        "volume_reason": null,
+        "pc_vol_text": "0.06",
+        "pc_vol_reason": null,
+        "vol_oi_text": "6.40",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$353.09M",
+        "dex_reason": null,
+        "vanna_text": "-$1.49M",
+        "vanna_reason": null,
+        "iv_text": "20.94",
+        "iv_reason": null,
+        "charm_text": "86.62K",
+        "charm_reason": null,
+        "score": 39.72680098222954,
+        "score_text": "40",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "open interest",
+            "text": "9.7",
+            "raw_text": "10,326",
+            "normalized_text": "0.97",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "charm",
+            "text": "9.2",
+            "raw_text": "86.62K",
+            "normalized_text": "0.42",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "volume",
+            "text": "6.9",
+            "raw_text": "66,093",
+            "normalized_text": "0.69",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "open interest",
+            "text": "9.7",
+            "raw_text": "10,326",
+            "normalized_text": "0.97",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "charm",
+            "text": "9.2",
+            "raw_text": "86.62K",
+            "normalized_text": "0.42",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "volume",
+            "text": "6.9",
+            "raw_text": "66,093",
+            "normalized_text": "0.69",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "net gamma",
+            "text": "6.2",
+            "raw_text": "$47.19M",
+            "normalized_text": "0.41",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$353.09M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "vanna",
+            "text": "2.7",
+            "raw_text": "$1.49M",
+            "normalized_text": "0.53",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "20.94",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+4.92",
+        "sigma": 1.1310085223318354,
+        "sigma_text": "+1.1\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 761.0,
+        "strike_text": "761.00",
+        "net_gex": 133742982.20767489,
+        "oi": 8946.0,
+        "gross": 343292951.6848819,
+        "volume": 82330.0,
+        "vol_oi": 9.202995752291526,
+        "dex": -78614338.89051071,
+        "vanna": 2984874.122855869,
+        "iv": 20.973426660000005,
+        "charm": -174333.28143678984,
+        "pc_gex_lean": 0.5607249798410278,
+        "pc_vol_lean": 0.9430101038630907,
+        "net_gex_text": "$133.74M",
+        "net_reason": null,
+        "oi_text": "8,946",
+        "oi_reason": null,
+        "pc_gex_text": "0.44",
+        "pc_gex_reason": null,
+        "gross_text": "$343.29M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "82,330",
+        "volume_reason": null,
+        "pc_vol_text": "0.06",
+        "pc_vol_reason": null,
+        "vol_oi_text": "9.20",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$78.61M",
+        "dex_reason": null,
+        "vanna_text": "$2.98M",
+        "vanna_reason": null,
+        "iv_text": "20.97",
+        "iv_reason": null,
+        "charm_text": "-174.33K",
+        "charm_reason": null,
+        "score": 60.3636331213499,
+        "score_text": "60",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "charm",
+            "text": "18.6",
+            "raw_text": "174.33K",
+            "normalized_text": "0.85",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$133.74M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "8.7",
+            "raw_text": "82,330",
+            "normalized_text": "0.87",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "charm",
+            "text": "18.6",
+            "raw_text": "174.33K",
+            "normalized_text": "0.85",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$133.74M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "8.7",
+            "raw_text": "82,330",
+            "normalized_text": "0.87",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "8.4",
+            "raw_text": "8,946",
+            "normalized_text": "0.84",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "vanna",
+            "text": "5.0",
+            "raw_text": "$2.98M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "delta",
+            "text": "4.7",
+            "raw_text": "$78.61M",
+            "normalized_text": "0.94",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "20.97",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+3.92",
+        "sigma": 0.9019547247971345,
+        "sigma_text": "+0.9\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 760.0,
+        "strike_text": "760.00",
+        "net_gex": 6328967.330907434,
+        "oi": 10153.0,
+        "gross": 464060480.8020165,
+        "volume": 148947.0,
+        "vol_oi": 14.670245247710037,
+        "dex": -173298652.51153073,
+        "vanna": 93488.89667382657,
+        "iv": 21.36783693,
+        "charm": -5568.074145890016,
+        "pc_gex_lean": 0.026909478331320846,
+        "pc_vol_lean": 0.9068029857099869,
+        "net_gex_text": "$6.33M",
+        "net_reason": null,
+        "oi_text": "10,153",
+        "oi_reason": null,
+        "pc_gex_text": "0.97",
+        "pc_gex_reason": null,
+        "gross_text": "$464.06M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "148,947",
+        "volume_reason": null,
+        "pc_vol_text": "0.09",
+        "pc_vol_reason": null,
+        "vol_oi_text": "14.67",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$173.30M",
+        "dex_reason": null,
+        "vanna_text": "$93.49K",
+        "vanna_reason": null,
+        "iv_text": "21.37",
+        "iv_reason": null,
+        "charm_text": "-5.57K",
+        "charm_reason": null,
+        "score": 26.104924255071943,
+        "score_text": "26",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "148,947",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "9.6",
+            "raw_text": "10,153",
+            "normalized_text": "0.96",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$173.30M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "factors": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "148,947",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "9.6",
+            "raw_text": "10,153",
+            "normalized_text": "0.96",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$173.30M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "net gamma",
+            "text": "0.8",
+            "raw_text": "$6.33M",
+            "normalized_text": "0.05",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "charm",
+            "text": "0.6",
+            "raw_text": "5.57K",
+            "normalized_text": "0.03",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "vanna",
+            "text": "0.2",
+            "raw_text": "$93.49K",
+            "normalized_text": "0.03",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "21.37",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+2.92",
+        "sigma": 0.6725997387502729,
+        "sigma_text": "+0.7\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 759.0,
+        "strike_text": "759.00",
+        "net_gex": 73082713.94873983,
+        "oi": 11001.0,
+        "gross": 560415101.0709224,
+        "volume": 113133.0,
+        "vol_oi": 10.283883283337879,
+        "dex": -66381224.78701809,
+        "vanna": 695289.9623621706,
+        "iv": 21.67794527,
+        "charm": -42421.04305868779,
+        "pc_gex_lean": 0.23072759594749837,
+        "pc_vol_lean": 0.8457818541681545,
+        "net_gex_text": "$73.08M",
+        "net_reason": null,
+        "oi_text": "11,001",
+        "oi_reason": null,
+        "pc_gex_text": "0.77",
+        "pc_gex_reason": null,
+        "gross_text": "$560.42M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "113,133",
+        "volume_reason": null,
+        "pc_vol_text": "0.15",
+        "pc_vol_reason": null,
+        "vol_oi_text": "10.28",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$66.38M",
+        "dex_reason": null,
+        "vanna_text": "$695.29K",
+        "vanna_reason": null,
+        "iv_text": "21.68",
+        "iv_reason": null,
+        "charm_text": "-42.42K",
+        "charm_reason": null,
+        "score": 39.24234767859633,
+        "score_text": "39",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "113,133",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "10.0",
+            "raw_text": "11,001",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "net gamma",
+            "text": "9.5",
+            "raw_text": "$73.08M",
+            "normalized_text": "0.64",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "113,133",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "10.0",
+            "raw_text": "11,001",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "net gamma",
+            "text": "9.5",
+            "raw_text": "$73.08M",
+            "normalized_text": "0.64",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "charm",
+            "text": "4.5",
+            "raw_text": "42.42K",
+            "normalized_text": "0.20",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "delta",
+            "text": "4.0",
+            "raw_text": "$66.38M",
+            "normalized_text": "0.79",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "vanna",
+            "text": "1.2",
+            "raw_text": "$695.29K",
+            "normalized_text": "0.25",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "21.68",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+1.92",
+        "sigma": 0.4429427710678069,
+        "sigma_text": "+0.4\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 758.0,
+        "strike_text": "758.00",
+        "net_gex": -38210551.21969232,
+        "oi": 8806.0,
+        "gross": 464883542.2793611,
+        "volume": 154605.0,
+        "vol_oi": 17.556779468544175,
+        "dex": -61937978.491207,
+        "vanna": -128834.04683412203,
+        "iv": 22.22022517,
+        "charm": 8346.905700764626,
+        "pc_gex_lean": -0.17910930394161606,
+        "pc_vol_lean": 0.6897992389895,
+        "net_gex_text": "-$38.21M",
+        "net_reason": null,
+        "oi_text": "8,806",
+        "oi_reason": null,
+        "pc_gex_text": "1.18",
+        "pc_gex_reason": null,
+        "gross_text": "$464.88M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "154,605",
+        "volume_reason": null,
+        "pc_vol_text": "0.31",
+        "pc_vol_reason": null,
+        "vol_oi_text": "17.56",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$61.94M",
+        "dex_reason": null,
+        "vanna_text": "-$128.83K",
+        "vanna_reason": null,
+        "iv_text": "22.22",
+        "iv_reason": null,
+        "charm_text": "8.35K",
+        "charm_reason": null,
+        "score": 28.026186255212764,
+        "score_text": "28",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "154,605",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "8.3",
+            "raw_text": "8,806",
+            "normalized_text": "0.83",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "net gamma",
+            "text": "5.0",
+            "raw_text": "$38.21M",
+            "normalized_text": "0.33",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "154,605",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "8.3",
+            "raw_text": "8,806",
+            "normalized_text": "0.83",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "net gamma",
+            "text": "5.0",
+            "raw_text": "$38.21M",
+            "normalized_text": "0.33",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "3.7",
+            "raw_text": "$61.94M",
+            "normalized_text": "0.74",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "0.9",
+            "raw_text": "8.35K",
+            "normalized_text": "0.04",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "vanna",
+            "text": "0.2",
+            "raw_text": "$128.83K",
+            "normalized_text": "0.05",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "22.22",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+0.92",
+        "sigma": 0.21298302548923287,
+        "sigma_text": "+0.2\u03c3",
+        "spot_line": true
+      },
+      {
+        "strike": 757.0,
+        "strike_text": "757.00",
+        "net_gex": -161324805.0982418,
+        "oi": 9984.0,
+        "gross": 520329262.09726524,
+        "volume": 185728.0,
+        "vol_oi": 18.602564102564102,
+        "dex": -86798040.36228633,
+        "vanna": 407781.59351657477,
+        "iv": 22.58009654,
+        "charm": -23593.884053346366,
+        "pc_gex_lean": -0.8987342744810582,
+        "pc_vol_lean": 0.1593593911044161,
+        "net_gex_text": "-$161.32M",
+        "net_reason": null,
+        "oi_text": "9,984",
+        "oi_reason": null,
+        "pc_gex_text": "1.90",
+        "pc_gex_reason": null,
+        "gross_text": "$520.33M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "185,728",
+        "volume_reason": null,
+        "pc_vol_text": "0.84",
+        "pc_vol_reason": null,
+        "vol_oi_text": "18.60",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$86.80M",
+        "dex_reason": null,
+        "vanna_text": "$407.78K",
+        "vanna_reason": null,
+        "iv_text": "22.58",
+        "iv_reason": null,
+        "charm_text": "-23.59K",
+        "charm_reason": null,
+        "score": 42.624908884935465,
+        "score_text": "43",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$161.32M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "185,728",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "9.4",
+            "raw_text": "9,984",
+            "normalized_text": "0.94",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$161.32M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "185,728",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "9.4",
+            "raw_text": "9,984",
+            "normalized_text": "0.94",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$86.80M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "2.5",
+            "raw_text": "23.59K",
+            "normalized_text": "0.11",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "vanna",
+            "text": "0.7",
+            "raw_text": "$407.78K",
+            "normalized_text": "0.15",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "22.58",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-0.08",
+        "sigma": -0.017280297399345453,
+        "sigma_text": "0.0\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 756.0,
+        "strike_text": "756.00",
+        "net_gex": -805098646.2411408,
+        "oi": 20017.0,
+        "gross": 968882245.8541739,
+        "volume": 151109.0,
+        "vol_oi": 7.549033321676575,
+        "dex": -438651218.98188186,
+        "vanna": 6541851.644996091,
+        "iv": 23.21545668,
+        "charm": -410243.78196328855,
+        "pc_gex_lean": -9.83124864935592,
+        "pc_vol_lean": -1.0079823234333944,
+        "net_gex_text": "-$805.10M",
+        "net_reason": null,
+        "oi_text": "20,017",
+        "oi_reason": null,
+        "pc_gex_text": "10.83",
+        "pc_gex_reason": null,
+        "gross_text": "$968.88M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "151,109",
+        "volume_reason": null,
+        "pc_vol_text": "2.01",
+        "pc_vol_reason": null,
+        "vol_oi_text": "7.55",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$438.65M",
+        "dex_reason": null,
+        "vanna_text": "$6.54M",
+        "vanna_reason": null,
+        "iv_text": "23.22",
+        "iv_reason": null,
+        "charm_text": "-410.24K",
+        "charm_reason": null,
+        "score": 67.0298801671534,
+        "score_text": "67",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "charm",
+            "text": "22.0",
+            "raw_text": "410.24K",
+            "normalized_text": "1.00",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$805.10M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "151,109",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "charm",
+            "text": "22.0",
+            "raw_text": "410.24K",
+            "normalized_text": "1.00",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$805.10M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "151,109",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "10.0",
+            "raw_text": "20,017",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "vanna",
+            "text": "5.0",
+            "raw_text": "$6.54M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$438.65M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "23.22",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-1.08",
+        "sigma": -0.24784800018202618,
+        "sigma_text": "-0.2\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 755.0,
+        "strike_text": "755.00",
+        "net_gex": -296099790.2831459,
+        "oi": 10796.0,
+        "gross": 464853356.28579617,
+        "volume": 148085.0,
+        "vol_oi": 13.716654316413486,
+        "dex": -95325319.69120377,
+        "vanna": 3970388.4309338112,
+        "iv": 23.88773429,
+        "charm": -258520.49472598443,
+        "pc_gex_lean": -3.509256690652637,
+        "pc_vol_lean": -2.3599293390254674,
+        "net_gex_text": "-$296.10M",
+        "net_reason": null,
+        "oi_text": "10,796",
+        "oi_reason": null,
+        "pc_gex_text": "4.51",
+        "pc_gex_reason": null,
+        "gross_text": "$464.85M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "148,085",
+        "volume_reason": null,
+        "pc_vol_text": "3.36",
+        "pc_vol_reason": null,
+        "vol_oi_text": "13.72",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$95.33M",
+        "dex_reason": null,
+        "vanna_text": "$3.97M",
+        "vanna_reason": null,
+        "iv_text": "23.89",
+        "iv_reason": null,
+        "charm_text": "-258.52K",
+        "charm_reason": null,
+        "score": 67.04724640938996,
+        "score_text": "67",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "charm",
+            "text": "22.0",
+            "raw_text": "258.52K",
+            "normalized_text": "1.00",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$296.10M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "148,085",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "charm",
+            "text": "22.0",
+            "raw_text": "258.52K",
+            "normalized_text": "1.00",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$296.10M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "148,085",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "10.0",
+            "raw_text": "10,796",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "vanna",
+            "text": "5.0",
+            "raw_text": "$3.97M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$95.33M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "23.89",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-2.08",
+        "sigma": -0.4787208886299134,
+        "sigma_text": "-0.5\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 754.0,
+        "strike_text": "754.00",
+        "net_gex": -24920144.38129665,
+        "oi": 7536.0,
+        "gross": 278418484.21397585,
+        "volume": 84808.0,
+        "vol_oi": 11.253715498938428,
+        "dex": 126107725.59841038,
+        "vanna": 457192.5047912717,
+        "iv": 24.63584365,
+        "charm": -30807.674259261636,
+        "pc_gex_lean": -0.196609921767102,
+        "pc_vol_lean": -5.491872791519435,
+        "net_gex_text": "-$24.92M",
+        "net_reason": null,
+        "oi_text": "7,536",
+        "oi_reason": null,
+        "pc_gex_text": "1.20",
+        "pc_gex_reason": null,
+        "gross_text": "$278.42M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "84,808",
+        "volume_reason": null,
+        "pc_vol_text": "6.49",
+        "pc_vol_reason": null,
+        "vol_oi_text": "11.25",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "$126.11M",
+        "dex_reason": null,
+        "vanna_text": "$457.19K",
+        "vanna_reason": null,
+        "iv_text": "24.64",
+        "iv_reason": null,
+        "charm_text": "-30.81K",
+        "charm_reason": null,
+        "score": 28.33132479062779,
+        "score_text": "28",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "volume",
+            "text": "8.9",
+            "raw_text": "84,808",
+            "normalized_text": "0.89",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "7.0",
+            "raw_text": "7,536",
+            "normalized_text": "0.70",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$126.11M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "factors": [
+          {
+            "label": "volume",
+            "text": "8.9",
+            "raw_text": "84,808",
+            "normalized_text": "0.89",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "7.0",
+            "raw_text": "7,536",
+            "normalized_text": "0.70",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$126.11M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "3.3",
+            "raw_text": "30.81K",
+            "normalized_text": "0.15",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "3.2",
+            "raw_text": "$24.92M",
+            "normalized_text": "0.22",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "vanna",
+            "text": "0.8",
+            "raw_text": "$457.19K",
+            "normalized_text": "0.16",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "24.64",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-3.08",
+        "sigma": -0.7098997717179742,
+        "sigma_text": "-0.7\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 753.0,
+        "strike_text": "753.00",
+        "net_gex": -176804415.03534964,
+        "oi": 7241.0,
+        "gross": 223232944.62745747,
+        "volume": 65612.0,
+        "vol_oi": 9.061179395111173,
+        "dex": -43521356.734894074,
+        "vanna": 4046816.108256634,
+        "iv": 25.539375720000002,
+        "charm": -283358.4803300536,
+        "pc_gex_lean": -7.616197049040457,
+        "pc_vol_lean": -10.435936315390448,
+        "net_gex_text": "-$176.80M",
+        "net_reason": null,
+        "oi_text": "7,241",
+        "oi_reason": null,
+        "pc_gex_text": "8.62",
+        "pc_gex_reason": null,
+        "gross_text": "$223.23M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "65,612",
+        "volume_reason": null,
+        "pc_vol_text": "11.44",
+        "pc_vol_reason": null,
+        "vol_oi_text": "9.06",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$43.52M",
+        "dex_reason": null,
+        "vanna_text": "$4.05M",
+        "vanna_reason": null,
+        "iv_text": "25.54",
+        "iv_reason": null,
+        "charm_text": "-283.36K",
+        "charm_reason": null,
+        "score": 58.329179983808885,
+        "score_text": "58",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "charm",
+            "text": "22.0",
+            "raw_text": "283.36K",
+            "normalized_text": "1.00",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$176.80M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "6.9",
+            "raw_text": "65,612",
+            "normalized_text": "0.69",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "charm",
+            "text": "22.0",
+            "raw_text": "283.36K",
+            "normalized_text": "1.00",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "15.0",
+            "raw_text": "$176.80M",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "6.9",
+            "raw_text": "65,612",
+            "normalized_text": "0.69",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "6.7",
+            "raw_text": "7,241",
+            "normalized_text": "0.67",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "vanna",
+            "text": "5.0",
+            "raw_text": "$4.05M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "delta",
+            "text": "2.6",
+            "raw_text": "$43.52M",
+            "normalized_text": "0.52",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "25.54",
+            "normalized_text": "0.02",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-4.08",
+        "sigma": -0.9413854616419889,
+        "sigma_text": "-0.9\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 752.0,
+        "strike_text": "752.00",
+        "net_gex": -66873486.65115616,
+        "oi": 4991.0,
+        "gross": 126003270.42237672,
+        "volume": 58052.0,
+        "vol_oi": 11.631336405529954,
+        "dex": 35525635.98260744,
+        "vanna": 1828371.8875520607,
+        "iv": 26.23172815,
+        "charm": -131661.48547306118,
+        "pc_gex_lean": -2.2619222458142856,
+        "pc_vol_lean": -13.468158806288303,
+        "net_gex_text": "-$66.87M",
+        "net_reason": null,
+        "oi_text": "4,991",
+        "oi_reason": null,
+        "pc_gex_text": "3.26",
+        "pc_gex_reason": null,
+        "gross_text": "$126.00M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "58,052",
+        "volume_reason": null,
+        "pc_vol_text": "14.47",
+        "pc_vol_reason": null,
+        "vol_oi_text": "11.63",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "$35.53M",
+        "dex_reason": null,
+        "vanna_text": "$1.83M",
+        "vanna_reason": null,
+        "iv_text": "26.23",
+        "iv_reason": null,
+        "charm_text": "-131.66K",
+        "charm_reason": null,
+        "score": 38.95040987893688,
+        "score_text": "39",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "charm",
+            "text": "14.1",
+            "raw_text": "131.66K",
+            "normalized_text": "0.64",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "8.7",
+            "raw_text": "$66.87M",
+            "normalized_text": "0.58",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "6.1",
+            "raw_text": "58,052",
+            "normalized_text": "0.61",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "charm",
+            "text": "14.1",
+            "raw_text": "131.66K",
+            "normalized_text": "0.64",
+            "weight_text": "0.22"
+          },
+          {
+            "label": "net gamma",
+            "text": "8.7",
+            "raw_text": "$66.87M",
+            "normalized_text": "0.58",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "6.1",
+            "raw_text": "58,052",
+            "normalized_text": "0.61",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "4.6",
+            "raw_text": "4,991",
+            "normalized_text": "0.46",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "vanna",
+            "text": "3.3",
+            "raw_text": "$1.83M",
+            "normalized_text": "0.66",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "delta",
+            "text": "2.1",
+            "raw_text": "$35.53M",
+            "normalized_text": "0.42",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "26.23",
+            "normalized_text": "0.02",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-5.08",
+        "sigma": -1.1731787738358066,
+        "sigma_text": "-1.2\u03c3",
+        "spot_line": false
+      }
+    ],
+    "spot": 757.075,
+    "spot_text": "757.08",
+    "ticker": "SPY",
+    "available": true,
+    "reason": null,
+    "expiry": "2026-11-12",
+    "spot_time_ct": "Thu 11/12 09:30 AM CT",
+    "spot_not_live_text": null,
+    "status_text": "LIVE \u00b7 chain as of Thu 11/12 09:30 AM CT, 0s old",
+    "rail_lanes": {
+      "session": [
+        {
+          "lane": "session",
+          "abbrev": "PDC",
+          "price": 759.81,
+          "price_text": "759.81",
+          "title": "Prior day close",
+          "distance_text": "+2.73",
+          "sigma": 0.628988176638703,
+          "sigma_text": "+0.6\u03c3"
+        },
+        {
+          "lane": "session",
+          "abbrev": "VWAP",
+          "price": 756.5850319372122,
+          "price_text": "756.59",
+          "title": "VWAP",
+          "distance_text": "-0.49",
+          "sigma": -0.11292153721714872,
+          "sigma_text": "-0.1\u03c3"
+        }
+      ],
+      "options": [
+        {
+          "lane": "options",
+          "abbrev": "Gamma Flip",
+          "price": 761.2225055632189,
+          "price_text": "761.22",
+          "title": "Gamma Flip",
+          "distance_text": "+4.15",
+          "sigma": 0.9529464934600879,
+          "sigma_text": "+1.0\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "Gamma Put",
+          "price": 760.0,
+          "price_text": "760.00",
+          "title": "Gamma Put",
+          "distance_text": "+2.92",
+          "sigma": 0.6725997387502729,
+          "sigma_text": "+0.7\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "Gamma Total",
+          "price": 760.0,
+          "price_text": "760.00",
+          "title": "Gamma Total",
+          "distance_text": "+2.92",
+          "sigma": 0.6725997387502729,
+          "sigma_text": "+0.7\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "0DTE Gamma Flip",
+          "price": 759.8723887322883,
+          "price_text": "759.87",
+          "title": "0DTE Gamma Flip",
+          "distance_text": "+2.80",
+          "sigma": 0.6433097478934302,
+          "sigma_text": "+0.6\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "0DTE Gamma Call",
+          "price": 759.0,
+          "price_text": "759.00",
+          "title": "0DTE Gamma Call",
+          "distance_text": "+1.92",
+          "sigma": 0.4429427710678069,
+          "sigma_text": "+0.4\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "OI Pin",
+          "price": 756.0,
+          "price_text": "756.00",
+          "title": "OI Pin",
+          "distance_text": "-1.08",
+          "sigma": -0.24784800018202618,
+          "sigma_text": "-0.2\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "0DTE Gamma Put",
+          "price": 756.0,
+          "price_text": "756.00",
+          "title": "0DTE Gamma Put",
+          "distance_text": "-1.08",
+          "sigma": -0.24784800018202618,
+          "sigma_text": "-0.2\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "0DTE Gamma Total",
+          "price": 756.0,
+          "price_text": "756.00",
+          "title": "0DTE Gamma Total",
+          "distance_text": "-1.08",
+          "sigma": -0.24784800018202618,
+          "sigma_text": "-0.2\u03c3"
+        }
+      ]
+    },
+    "rail_lines": [
+      {
+        "price": 759.81,
+        "price_text": "759.81",
+        "session": true
+      },
+      {
+        "price": 756.5850319372122,
+        "price_text": "756.59",
+        "session": true
+      },
+      {
+        "price": 760.0,
+        "price_text": "760.00",
+        "session": false
+      },
+      {
+        "price": 761.2225055632189,
+        "price_text": "761.22",
+        "session": false
+      },
+      {
+        "price": 756.0,
+        "price_text": "756.00",
+        "session": false
+      },
+      {
+        "price": 759.0,
+        "price_text": "759.00",
+        "session": false
+      },
+      {
+        "price": 759.8723887322883,
+        "price_text": "759.87",
+        "session": false
+      }
+    ],
+    "levels_above": [
+      {
+        "lane": "options",
+        "abbrev": "Gamma Call",
+        "price": 775.0,
+        "price_text": "775.00",
+        "title": "Gamma Call",
+        "distance_text": "+17.92",
+        "sigma": 4.081654998136121,
+        "sigma_text": "+4.1\u03c3"
+      }
+    ],
+    "levels_below": [],
+    "level_names": {
+      "759.81": "Prior day close",
+      "756.59": "VWAP",
+      "775.00": "Gamma Call",
+      "760.00": "Gamma Put + Gamma Total",
+      "761.22": "Gamma Flip",
+      "756.00": "OI Pin + 0DTE Gamma Put + 0DTE Gamma Total",
+      "759.00": "0DTE Gamma Call",
+      "759.87": "0DTE Gamma Flip"
+    },
+    "regime": "NEGATIVE_GAMMA",
+    "regime_text": "Negative gamma",
+    "flip_text": "761.22",
+    "pin_text": "756.00",
+    "pin_note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.32 expected moves (1.4 strike widths) above it; 344 minutes to the close."
+  },
+  "confluence_second_expiry": {
+    "preset": "WEEKLY",
+    "scale_text": "0\u201375",
+    "ceiling": 75.0,
+    "notes": [],
+    "peaks": {
+      "net_gex": 656248588.0282998,
+      "oi": 51784.0,
+      "gross": 1402166178.3199968,
+      "volume": 22133.0,
+      "vol_oi": 2.802084690553746,
+      "dex": 1290196071.4564922,
+      "vanna": 21394189.795526955,
+      "iv": 206.32806887,
+      "charm": 256468.5671363959,
+      "pc_gex_lean": 25969.258163265305,
+      "pc_vol_lean": 416.3333333333333
+    },
+    "rows": [
+      {
+        "strike": 762.0,
+        "strike_text": "762.00",
+        "net_gex": 119126107.81920847,
+        "oi": 13623.0,
+        "gross": 364505406.12871194,
+        "volume": 8919.0,
+        "vol_oi": 0.654701607575424,
+        "dex": -63035294.443656415,
+        "vanna": 4436215.875640113,
+        "iv": 16.25695308,
+        "charm": -40095.57776787584,
+        "pc_gex_lean": 0.49263170154803637,
+        "pc_vol_lean": 0.9346631629240325,
+        "net_gex_text": "$119.13M",
+        "net_reason": null,
+        "oi_text": "13,623",
+        "oi_reason": null,
+        "pc_gex_text": "0.51",
+        "pc_gex_reason": null,
+        "gross_text": "$364.51M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "8,919",
+        "volume_reason": null,
+        "pc_vol_text": "0.07",
+        "pc_vol_reason": null,
+        "vol_oi_text": "0.65",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$63.04M",
+        "dex_reason": null,
+        "vanna_text": "$4.44M",
+        "vanna_reason": null,
+        "iv_text": "16.26",
+        "iv_reason": null,
+        "charm_text": "-40.10K",
+        "charm_reason": null,
+        "score": 59.9149399749871,
+        "score_text": "60",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$119.13M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "open interest",
+            "text": "10.0",
+            "raw_text": "13,623",
+            "normalized_text": "0.67",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "9.7",
+            "raw_text": "8,919",
+            "normalized_text": "0.97",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$119.13M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "open interest",
+            "text": "10.0",
+            "raw_text": "13,623",
+            "normalized_text": "0.67",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "9.7",
+            "raw_text": "8,919",
+            "normalized_text": "0.97",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "charm",
+            "text": "6.4",
+            "raw_text": "40.10K",
+            "normalized_text": "0.79",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "6.1",
+            "raw_text": "$4.44M",
+            "normalized_text": "0.87",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "delta",
+            "text": "2.7",
+            "raw_text": "$63.04M",
+            "normalized_text": "0.54",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "16.26",
+            "normalized_text": "0.00",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+4.92",
+        "sigma": 0.6323693568877041,
+        "sigma_text": "+0.6\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 761.0,
+        "strike_text": "761.00",
+        "net_gex": 62963067.45762968,
+        "oi": 12580.0,
+        "gross": 356190106.9975858,
+        "volume": 10296.0,
+        "vol_oi": 0.8184419713831479,
+        "dex": -81285823.27376154,
+        "vanna": 1820007.9961048646,
+        "iv": 16.62179333,
+        "charm": -16970.929853353795,
+        "pc_gex_lean": 0.30042987287148404,
+        "pc_vol_lean": 0.8599269183922047,
+        "net_gex_text": "$62.96M",
+        "net_reason": null,
+        "oi_text": "12,580",
+        "oi_reason": null,
+        "pc_gex_text": "0.70",
+        "pc_gex_reason": null,
+        "gross_text": "$356.19M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "10,296",
+        "volume_reason": null,
+        "pc_vol_text": "0.14",
+        "pc_vol_reason": null,
+        "vol_oi_text": "0.82",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$81.29M",
+        "dex_reason": null,
+        "vanna_text": "$1.82M",
+        "vanna_reason": null,
+        "iv_text": "16.62",
+        "iv_reason": null,
+        "charm_text": "-16.97K",
+        "charm_reason": null,
+        "score": 42.06471585392854,
+        "score_text": "42",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "14.1",
+            "raw_text": "$62.96M",
+            "normalized_text": "0.57",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "10,296",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "9.2",
+            "raw_text": "12,580",
+            "normalized_text": "0.62",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "14.1",
+            "raw_text": "$62.96M",
+            "normalized_text": "0.57",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "10,296",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "9.2",
+            "raw_text": "12,580",
+            "normalized_text": "0.62",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "3.5",
+            "raw_text": "$81.29M",
+            "normalized_text": "0.69",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "2.7",
+            "raw_text": "16.97K",
+            "normalized_text": "0.34",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "2.5",
+            "raw_text": "$1.82M",
+            "normalized_text": "0.36",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "16.62",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+3.92",
+        "sigma": 0.5043008235568761,
+        "sigma_text": "+0.5\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 760.0,
+        "strike_text": "760.00",
+        "net_gex": -656248588.0282998,
+        "oi": 47702.0,
+        "gross": 1402166178.3199968,
+        "volume": 19638.0,
+        "vol_oi": 0.4116808519558928,
+        "dex": -1290196071.4564922,
+        "vanna": -12637854.862908315,
+        "iv": 16.95238448,
+        "charm": 122422.41430634882,
+        "pc_gex_lean": -1.7595739705552953,
+        "pc_vol_lean": 0.7426851911133876,
+        "net_gex_text": "-$656.25M",
+        "net_reason": null,
+        "oi_text": "47,702",
+        "oi_reason": null,
+        "pc_gex_text": "2.76",
+        "pc_gex_reason": null,
+        "gross_text": "$1.40B",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "19,638",
+        "volume_reason": null,
+        "pc_vol_text": "0.26",
+        "pc_vol_reason": null,
+        "vol_oi_text": "0.41",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$1.29B",
+        "dex_reason": null,
+        "vanna_text": "-$12.64M",
+        "vanna_reason": null,
+        "iv_text": "16.95",
+        "iv_reason": null,
+        "charm_text": "122.42K",
+        "charm_reason": null,
+        "score": 70.04348539587197,
+        "score_text": "70",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$656.25M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "open interest",
+            "text": "15.0",
+            "raw_text": "47,702",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "19,638",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$656.25M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "open interest",
+            "text": "15.0",
+            "raw_text": "47,702",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "19,638",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "charm",
+            "text": "8.0",
+            "raw_text": "122.42K",
+            "normalized_text": "1.00",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "7.0",
+            "raw_text": "$12.64M",
+            "normalized_text": "1.00",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$1.29B",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.0",
+            "raw_text": "16.95",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+2.92",
+        "sigma": 0.37606388973924687,
+        "sigma_text": "+0.4\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 759.0,
+        "strike_text": "759.00",
+        "net_gex": -3535367.5323397964,
+        "oi": 7189.0,
+        "gross": 212418104.4522913,
+        "volume": 8873.0,
+        "vol_oi": 1.2342467658923355,
+        "dex": -42150150.77084179,
+        "vanna": -30428.790170409306,
+        "iv": 17.3689902,
+        "charm": 323.3202946227575,
+        "pc_gex_lean": -0.03385026052865858,
+        "pc_vol_lean": 0.5565316414511143,
+        "net_gex_text": "-$3.54M",
+        "net_reason": null,
+        "oi_text": "7,189",
+        "oi_reason": null,
+        "pc_gex_text": "1.03",
+        "pc_gex_reason": null,
+        "gross_text": "$212.42M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "8,873",
+        "volume_reason": null,
+        "pc_vol_text": "0.44",
+        "pc_vol_reason": null,
+        "vol_oi_text": "1.23",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$42.15M",
+        "dex_reason": null,
+        "vanna_text": "-$30.43K",
+        "vanna_reason": null,
+        "iv_text": "17.37",
+        "iv_reason": null,
+        "charm_text": "323",
+        "charm_reason": null,
+        "score": 17.64086001891906,
+        "score_text": "18",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "volume",
+            "text": "9.7",
+            "raw_text": "8,873",
+            "normalized_text": "0.97",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "5.2",
+            "raw_text": "7,189",
+            "normalized_text": "0.35",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "1.8",
+            "raw_text": "$42.15M",
+            "normalized_text": "0.36",
+            "weight_text": "0.05"
+          }
+        ],
+        "factors": [
+          {
+            "label": "volume",
+            "text": "9.7",
+            "raw_text": "8,873",
+            "normalized_text": "0.97",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "5.2",
+            "raw_text": "7,189",
+            "normalized_text": "0.35",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "1.8",
+            "raw_text": "$42.15M",
+            "normalized_text": "0.36",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "net gamma",
+            "text": "0.8",
+            "raw_text": "$3.54M",
+            "normalized_text": "0.03",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "17.37",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "0.0",
+            "raw_text": "323",
+            "normalized_text": "0.01",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "0.0",
+            "raw_text": "$30.43K",
+            "normalized_text": "0.01",
+            "weight_text": "0.07"
+          }
+        ],
+        "distance_text": "+1.92",
+        "sigma": 0.24765811198372642,
+        "sigma_text": "+0.2\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 758.0,
+        "strike_text": "758.00",
+        "net_gex": -48441245.65248084,
+        "oi": 9086.0,
+        "gross": 266213718.06908745,
+        "volume": 16713.0,
+        "vol_oi": 1.839423288575831,
+        "dex": -74705902.41839737,
+        "vanna": -188008.0337566747,
+        "iv": 17.759076380000003,
+        "charm": 2343.227233733619,
+        "pc_gex_lean": -0.4448794203870816,
+        "pc_vol_lean": 0.41957446808510634,
+        "net_gex_text": "-$48.44M",
+        "net_reason": null,
+        "oi_text": "9,086",
+        "oi_reason": null,
+        "pc_gex_text": "1.44",
+        "pc_gex_reason": null,
+        "gross_text": "$266.21M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "16,713",
+        "volume_reason": null,
+        "pc_vol_text": "0.58",
+        "pc_vol_reason": null,
+        "vol_oi_text": "1.84",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$74.71M",
+        "dex_reason": null,
+        "vanna_text": "-$188.01K",
+        "vanna_reason": null,
+        "iv_text": "17.76",
+        "iv_reason": null,
+        "charm_text": "2.34K",
+        "charm_reason": null,
+        "score": 31.391178948224756,
+        "score_text": "31",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "10.9",
+            "raw_text": "$48.44M",
+            "normalized_text": "0.44",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "16,713",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "6.6",
+            "raw_text": "9,086",
+            "normalized_text": "0.44",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "10.9",
+            "raw_text": "$48.44M",
+            "normalized_text": "0.44",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "16,713",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "6.6",
+            "raw_text": "9,086",
+            "normalized_text": "0.44",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "3.2",
+            "raw_text": "$74.71M",
+            "normalized_text": "0.64",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "0.4",
+            "raw_text": "2.34K",
+            "normalized_text": "0.05",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "0.3",
+            "raw_text": "$188.01K",
+            "normalized_text": "0.04",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "17.76",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "+0.92",
+        "sigma": 0.11908304508523211,
+        "sigma_text": "+0.1\u03c3",
+        "spot_line": true
+      },
+      {
+        "strike": 757.0,
+        "strike_text": "757.00",
+        "net_gex": -116146688.22816335,
+        "oi": 7675.0,
+        "gross": 226514472.37702113,
+        "volume": 21506.0,
+        "vol_oi": 2.802084690553746,
+        "dex": -129815869.12263604,
+        "vanna": 408908.97096219484,
+        "iv": 17.58726927,
+        "charm": -2548.4132805852696,
+        "pc_gex_lean": -2.104720849908725,
+        "pc_vol_lean": 0.18835818380928315,
+        "net_gex_text": "-$116.15M",
+        "net_reason": null,
+        "oi_text": "7,675",
+        "oi_reason": null,
+        "pc_gex_text": "3.10",
+        "pc_gex_reason": null,
+        "gross_text": "$226.51M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "21,506",
+        "volume_reason": null,
+        "pc_vol_text": "0.81",
+        "pc_vol_reason": null,
+        "vol_oi_text": "2.80",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$129.82M",
+        "dex_reason": null,
+        "vanna_text": "$408.91K",
+        "vanna_reason": null,
+        "iv_text": "17.59",
+        "iv_reason": null,
+        "charm_text": "-2.55K",
+        "charm_reason": null,
+        "score": 46.61014358293554,
+        "score_text": "47",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$116.15M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "21,506",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "5.6",
+            "raw_text": "7,675",
+            "normalized_text": "0.37",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$116.15M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "21,506",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "5.6",
+            "raw_text": "7,675",
+            "normalized_text": "0.37",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$129.82M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "vanna",
+            "text": "0.6",
+            "raw_text": "$408.91K",
+            "normalized_text": "0.08",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "charm",
+            "text": "0.4",
+            "raw_text": "2.55K",
+            "normalized_text": "0.05",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "17.59",
+            "normalized_text": "0.01",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-0.08",
+        "sigma": -0.009661757924443152,
+        "sigma_text": "0.0\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 756.0,
+        "strike_text": "756.00",
+        "net_gex": 7102332.125531703,
+        "oi": 8995.0,
+        "gross": 254325802.77815485,
+        "volume": 22133.0,
+        "vol_oi": 2.4605892162312397,
+        "dex": 65808429.7276316,
+        "vanna": -81661.10656609922,
+        "iv": 18.00136711,
+        "charm": 716.79046831306,
+        "pc_gex_lean": 0.05433487201481424,
+        "pc_vol_lean": -0.649706692206393,
+        "net_gex_text": "$7.10M",
+        "net_reason": null,
+        "oi_text": "8,995",
+        "oi_reason": null,
+        "pc_gex_text": "0.95",
+        "pc_gex_reason": null,
+        "gross_text": "$254.33M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "22,133",
+        "volume_reason": null,
+        "pc_vol_text": "1.65",
+        "pc_vol_reason": null,
+        "vol_oi_text": "2.46",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "$65.81M",
+        "dex_reason": null,
+        "vanna_text": "-$81.66K",
+        "vanna_reason": null,
+        "iv_text": "18.00",
+        "iv_reason": null,
+        "charm_text": "717",
+        "charm_reason": null,
+        "score": 21.25774188807261,
+        "score_text": "21",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "22,133",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "6.6",
+            "raw_text": "8,995",
+            "normalized_text": "0.44",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "2.8",
+            "raw_text": "$65.81M",
+            "normalized_text": "0.56",
+            "weight_text": "0.05"
+          }
+        ],
+        "factors": [
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "22,133",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "6.6",
+            "raw_text": "8,995",
+            "normalized_text": "0.44",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "2.8",
+            "raw_text": "$65.81M",
+            "normalized_text": "0.56",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "net gamma",
+            "text": "1.6",
+            "raw_text": "$7.10M",
+            "normalized_text": "0.06",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "vanna",
+            "text": "0.1",
+            "raw_text": "$81.66K",
+            "normalized_text": "0.02",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "charm",
+            "text": "0.1",
+            "raw_text": "717",
+            "normalized_text": "0.01",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "18.00",
+            "normalized_text": "0.02",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-1.08",
+        "sigma": -0.13857674578602938,
+        "sigma_text": "-0.1\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 755.0,
+        "strike_text": "755.00",
+        "net_gex": -525046914.9646573,
+        "oi": 28800.0,
+        "gross": 771880513.0481074,
+        "volume": 19444.0,
+        "vol_oi": 0.6751388888888888,
+        "dex": -463038159.04759866,
+        "vanna": 9328061.984309468,
+        "iv": 18.41002012,
+        "charm": -86300.20789225107,
+        "pc_gex_lean": -4.254258083513801,
+        "pc_vol_lean": -1.4659536541889482,
+        "net_gex_text": "-$525.05M",
+        "net_reason": null,
+        "oi_text": "28,800",
+        "oi_reason": null,
+        "pc_gex_text": "5.25",
+        "pc_gex_reason": null,
+        "gross_text": "$771.88M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "19,444",
+        "volume_reason": null,
+        "pc_vol_text": "2.47",
+        "pc_vol_reason": null,
+        "vol_oi_text": "0.68",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$463.04M",
+        "dex_reason": null,
+        "vanna_text": "$9.33M",
+        "vanna_reason": null,
+        "iv_text": "18.41",
+        "iv_reason": null,
+        "charm_text": "-86.30K",
+        "charm_reason": null,
+        "score": 70.09136098049315,
+        "score_text": "70",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$525.05M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "open interest",
+            "text": "15.0",
+            "raw_text": "28,800",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "19,444",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$525.05M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "open interest",
+            "text": "15.0",
+            "raw_text": "28,800",
+            "normalized_text": "1.00",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "19,444",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "charm",
+            "text": "8.0",
+            "raw_text": "86.30K",
+            "normalized_text": "1.00",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "7.0",
+            "raw_text": "$9.33M",
+            "normalized_text": "1.00",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$463.04M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "18.41",
+            "normalized_text": "0.02",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-2.08",
+        "sigma": -0.26766236902217505,
+        "sigma_text": "-0.3\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 754.0,
+        "strike_text": "754.00",
+        "net_gex": 47011763.30032177,
+        "oi": 7122.0,
+        "gross": 178068812.52600175,
+        "volume": 9400.0,
+        "vol_oi": 1.3198539736029204,
+        "dex": 163023593.87233663,
+        "vanna": -1154070.1853349176,
+        "iv": 18.870560540000003,
+        "charm": 11175.950516100896,
+        "pc_gex_lean": 0.41773274417599626,
+        "pc_vol_lean": -3.078336034575905,
+        "net_gex_text": "$47.01M",
+        "net_reason": null,
+        "oi_text": "7,122",
+        "oi_reason": null,
+        "pc_gex_text": "0.58",
+        "pc_gex_reason": null,
+        "gross_text": "$178.07M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "9,400",
+        "volume_reason": null,
+        "pc_vol_text": "4.08",
+        "pc_vol_reason": null,
+        "vol_oi_text": "1.32",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "$163.02M",
+        "dex_reason": null,
+        "vanna_text": "-$1.15M",
+        "vanna_reason": null,
+        "iv_text": "18.87",
+        "iv_reason": null,
+        "charm_text": "11.18K",
+        "charm_reason": null,
+        "score": 34.20219133073547,
+        "score_text": "34",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "10.6",
+            "raw_text": "$47.01M",
+            "normalized_text": "0.42",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "9,400",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "5.2",
+            "raw_text": "7,122",
+            "normalized_text": "0.34",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "10.6",
+            "raw_text": "$47.01M",
+            "normalized_text": "0.42",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "10.0",
+            "raw_text": "9,400",
+            "normalized_text": "1.00",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "5.2",
+            "raw_text": "7,122",
+            "normalized_text": "0.34",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$163.02M",
+            "normalized_text": "1.00",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "charm",
+            "text": "1.8",
+            "raw_text": "11.18K",
+            "normalized_text": "0.22",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "1.6",
+            "raw_text": "$1.15M",
+            "normalized_text": "0.23",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "18.87",
+            "normalized_text": "0.02",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-3.08",
+        "sigma": -0.39691907994687203,
+        "sigma_text": "-0.4\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 753.0,
+        "strike_text": "753.00",
+        "net_gex": -169904291.29198775,
+        "oi": 10246.0,
+        "gross": 237409124.40518257,
+        "volume": 5964.0,
+        "vol_oi": 0.5820808120242046,
+        "dex": -116382020.0986356,
+        "vanna": 5225561.384944307,
+        "iv": 19.32059218,
+        "charm": -52307.95657050409,
+        "pc_gex_lean": -5.033840792024043,
+        "pc_vol_lean": -3.8758620689655174,
+        "net_gex_text": "-$169.90M",
+        "net_reason": null,
+        "oi_text": "10,246",
+        "oi_reason": null,
+        "pc_gex_text": "6.03",
+        "pc_gex_reason": null,
+        "gross_text": "$237.41M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "5,964",
+        "volume_reason": null,
+        "pc_vol_text": "4.88",
+        "pc_vol_reason": null,
+        "vol_oi_text": "0.58",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "-$116.38M",
+        "dex_reason": null,
+        "vanna_text": "$5.23M",
+        "vanna_reason": null,
+        "iv_text": "19.32",
+        "iv_reason": null,
+        "charm_text": "-52.31K",
+        "charm_reason": null,
+        "score": 59.07924021168477,
+        "score_text": "59",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$169.90M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "charm",
+            "text": "8.0",
+            "raw_text": "52.31K",
+            "normalized_text": "1.00",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "open interest",
+            "text": "7.5",
+            "raw_text": "10,246",
+            "normalized_text": "0.50",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "25.0",
+            "raw_text": "$169.90M",
+            "normalized_text": "1.00",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "charm",
+            "text": "8.0",
+            "raw_text": "52.31K",
+            "normalized_text": "1.00",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "open interest",
+            "text": "7.5",
+            "raw_text": "10,246",
+            "normalized_text": "0.50",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "vanna",
+            "text": "7.0",
+            "raw_text": "$5.23M",
+            "normalized_text": "1.00",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "volume",
+            "text": "6.5",
+            "raw_text": "5,964",
+            "normalized_text": "0.65",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "delta",
+            "text": "5.0",
+            "raw_text": "$116.38M",
+            "normalized_text": "0.99",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "19.32",
+            "normalized_text": "0.02",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-4.08",
+        "sigma": -0.526347332674933,
+        "sigma_text": "-0.5\u03c3",
+        "spot_line": false
+      },
+      {
+        "strike": 752.0,
+        "strike_text": "752.00",
+        "net_gex": -47564422.83793801,
+        "oi": 5909.0,
+        "gross": 125771273.73562393,
+        "volume": 5172.0,
+        "vol_oi": 0.8752750042308344,
+        "dex": 23984455.859489128,
+        "vanna": 1752250.3695193257,
+        "iv": 19.75277996,
+        "charm": -18050.159606427093,
+        "pc_gex_lean": -1.2163748390831937,
+        "pc_vol_lean": -8.641975308641975,
+        "net_gex_text": "-$47.56M",
+        "net_reason": null,
+        "oi_text": "5,909",
+        "oi_reason": null,
+        "pc_gex_text": "2.22",
+        "pc_gex_reason": null,
+        "gross_text": "$125.77M",
+        "gross_reason": null,
+        "dgex_text": null,
+        "dgex_reason": "no change in gamma is produced",
+        "volume_text": "5,172",
+        "volume_reason": null,
+        "pc_vol_text": "9.64",
+        "pc_vol_reason": null,
+        "vol_oi_text": "0.88",
+        "vol_oi_reason": null,
+        "flow_text": null,
+        "flow_reason": "no signed flow is produced",
+        "dex_text": "$23.98M",
+        "dex_reason": null,
+        "vanna_text": "$1.75M",
+        "vanna_reason": null,
+        "iv_text": "19.75",
+        "iv_reason": null,
+        "charm_text": "-18.05K",
+        "charm_reason": null,
+        "score": 27.035956538614876,
+        "score_text": "27",
+        "missing": [],
+        "contributions": [
+          {
+            "label": "net gamma",
+            "text": "10.7",
+            "raw_text": "$47.56M",
+            "normalized_text": "0.43",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "5.6",
+            "raw_text": "5,172",
+            "normalized_text": "0.56",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "4.3",
+            "raw_text": "5,909",
+            "normalized_text": "0.28",
+            "weight_text": "0.15"
+          }
+        ],
+        "factors": [
+          {
+            "label": "net gamma",
+            "text": "10.7",
+            "raw_text": "$47.56M",
+            "normalized_text": "0.43",
+            "weight_text": "0.25"
+          },
+          {
+            "label": "volume",
+            "text": "5.6",
+            "raw_text": "5,172",
+            "normalized_text": "0.56",
+            "weight_text": "0.10"
+          },
+          {
+            "label": "open interest",
+            "text": "4.3",
+            "raw_text": "5,909",
+            "normalized_text": "0.28",
+            "weight_text": "0.15"
+          },
+          {
+            "label": "charm",
+            "text": "2.9",
+            "raw_text": "18.05K",
+            "normalized_text": "0.36",
+            "weight_text": "0.08"
+          },
+          {
+            "label": "vanna",
+            "text": "2.4",
+            "raw_text": "$1.75M",
+            "normalized_text": "0.34",
+            "weight_text": "0.07"
+          },
+          {
+            "label": "delta",
+            "text": "1.0",
+            "raw_text": "$23.98M",
+            "normalized_text": "0.20",
+            "weight_text": "0.05"
+          },
+          {
+            "label": "volatility",
+            "text": "0.1",
+            "raw_text": "19.75",
+            "normalized_text": "0.03",
+            "weight_text": "0.05"
+          }
+        ],
+        "distance_text": "-5.08",
+        "sigma": -0.6559475831316395,
+        "sigma_text": "-0.7\u03c3",
+        "spot_line": false
+      }
+    ],
+    "spot": 757.075,
+    "spot_text": "757.08",
+    "ticker": "SPY",
+    "available": true,
+    "reason": null,
+    "expiry": "2026-11-13",
+    "spot_time_ct": "Thu 11/12 09:30 AM CT",
+    "spot_not_live_text": null,
+    "status_text": "LIVE \u00b7 chain as of Thu 11/12 09:30 AM CT, 0s old",
+    "rail_lanes": {
+      "session": [
+        {
+          "lane": "session",
+          "abbrev": "PDC",
+          "price": 759.81,
+          "price_text": "759.81",
+          "title": "Prior day close",
+          "distance_text": "+2.73",
+          "sigma": 0.3516797980716599,
+          "sigma_text": "+0.4\u03c3"
+        },
+        {
+          "lane": "session",
+          "abbrev": "VWAP",
+          "price": 756.5850319372122,
+          "price_text": "756.59",
+          "title": "VWAP",
+          "distance_text": "-0.49",
+          "sigma": -0.06313667709731749,
+          "sigma_text": "-0.1\u03c3"
+        }
+      ],
+      "options": [
+        {
+          "lane": "options",
+          "abbrev": "Gamma Flip",
+          "price": 761.2225055632189,
+          "price_text": "761.22",
+          "title": "Gamma Flip",
+          "distance_text": "+4.15",
+          "sigma": 0.5328113354754571,
+          "sigma_text": "+0.5\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "Gamma Put",
+          "price": 760.0,
+          "price_text": "760.00",
+          "title": "Gamma Put",
+          "distance_text": "+2.92",
+          "sigma": 0.37606388973924687,
+          "sigma_text": "+0.4\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "Gamma Total",
+          "price": 760.0,
+          "price_text": "760.00",
+          "title": "Gamma Total",
+          "distance_text": "+2.92",
+          "sigma": 0.37606388973924687,
+          "sigma_text": "+0.4\u03c3"
+        },
+        {
+          "lane": "options",
+          "abbrev": "OI Pin",
+          "price": 756.0,
+          "price_text": "756.00",
+          "title": "OI Pin",
+          "distance_text": "-1.08",
+          "sigma": -0.13857674578602938,
+          "sigma_text": "-0.1\u03c3"
+        }
+      ]
+    },
+    "rail_lines": [
+      {
+        "price": 759.81,
+        "price_text": "759.81",
+        "session": true
+      },
+      {
+        "price": 756.5850319372122,
+        "price_text": "756.59",
+        "session": true
+      },
+      {
+        "price": 760.0,
+        "price_text": "760.00",
+        "session": false
+      },
+      {
+        "price": 761.2225055632189,
+        "price_text": "761.22",
+        "session": false
+      },
+      {
+        "price": 756.0,
+        "price_text": "756.00",
+        "session": false
+      }
+    ],
+    "levels_above": [
+      {
+        "lane": "options",
+        "abbrev": "Gamma Call",
+        "price": 775.0,
+        "price_text": "775.00",
+        "title": "Gamma Call",
+        "distance_text": "+17.92",
+        "sigma": 2.2821344801958348,
+        "sigma_text": "+2.3\u03c3"
+      }
+    ],
+    "levels_below": [],
+    "level_names": {
+      "759.81": "Prior day close",
+      "756.59": "VWAP",
+      "775.00": "Gamma Call",
+      "760.00": "Gamma Put + Gamma Total",
+      "761.22": "Gamma Flip",
+      "756.00": "OI Pin"
+    },
+    "regime": "NEGATIVE_GAMMA",
+    "regime_text": "Negative gamma",
+    "flip_text": "761.22",
+    "pin_text": "756.00",
+    "pin_note": "Most open interest within one expected move, of the expiry settling at today's close. Price 0.32 expected moves (1.4 strike widths) above it; 344 minutes to the close."
+  },
   "chain": {
     "ticker": "SPY",
     "spot_text": "757.08",

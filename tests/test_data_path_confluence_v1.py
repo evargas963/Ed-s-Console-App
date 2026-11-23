@@ -535,7 +535,9 @@ def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
     assert all(lv["price"] > top for lv in body["levels_above"])
     assert all(lv["price"] < bottom for lv in body["levels_below"])
     inside = [*body["rail_lanes"]["session"], *body["rail_lanes"]["options"]]
-    assert inside and (body["levels_above"] or body["levels_below"])
+    # this close's key levels all sit inside its strikes; one past them is
+    # tests/test_matrix_key_levels_v1.py's (SPY's and AMZN's 2026-11-12)
+    assert inside
     assert sorted(line["price_text"] for line in body["rail_lines"]) == sorted(
         {lv["price_text"] for lv in inside}
     )
@@ -723,7 +725,7 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
         "0.00" if r["strike"] == on else f"{r['strike'] - on:+.2f}" for r in body["rows"]
     ]
     above = on + 0.004  # INDUCED: a LAST_PRICE a rounding above the strike (four decimals sent)
-    nudged = at_price(body["rows"], listed, above)["rows"]
+    nudged = at_price(body["rows"], listed, above, None)["rows"]
     assert [r["distance_text"] for r in nudged] == [
         "0.00" if r["strike"] == on else f"{r['strike'] - above:+.2f}" for r in nudged
     ]
@@ -746,7 +748,7 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     rows = window_rows(matrix, _around(sorted(matrix.ranked), price))
     assert price > max(matrix.strikes)
     assert under_strike(price, matrix.strikes) is None
-    shown = at_price(rows, matrix.strikes, price)
+    shown = at_price(rows, matrix.strikes, price, None)
     assert (shown["spot"], shown["spot_text"]) == (price, price_text(price))
     assert shown["rows"] and not any(r["spot_line"] for r in shown["rows"])
     assert all("spot_line" not in r for r in rows), "the rows given are not changed"
