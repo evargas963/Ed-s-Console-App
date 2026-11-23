@@ -9,17 +9,29 @@ start, and each rise of TOTAL_VOLUME read by its last trade against the quote in
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 
 import pytest
 
 from app.options.order_flow.state import OrderFlowState
-from calc.confluence_composite import family_votes
+from calc.confluence_composite import (
+    LOOK_REASON,
+    NO_MULTIPLIER,
+    NOT_HELD,
+    StrikeLookBack,
+    build_matrix,
+    family_votes,
+    iv_by_strike,
+    window_rows,
+)
+from calc.math_exposure_core import compute_exposures_by_strike
 from calc.option_window import strike_look_back
+from numeric_contract import dollars_text
 from option_contract import read_chain
 from tests.feed_live_helper import replay_options
 from tests.shared_helpers import fixture_json
-from time_et import ET
+from time_et import ET, sessions
 
 FX = fixture_json("real_spy_option_stream_two_strikes_2026_11_23.json")
 DAY = "2026-11-23"
@@ -44,8 +56,8 @@ def _worked_out(start_ts: float) -> dict:
     TOTAL_VOLUME received from the start on: its last trade (LAST_PRICE, TRADE_TIME_MILLIS as
     held then) against the newest of the quote held then and the one it replaced (a quote is
     replaced when a quote field already held changes value) that Schwab timed at or before the
-    trade (same ET day); above their middle bought, below sold, else unknown; its flow the signed
-    step x DELTA x 100 x UNDERLYING_PRICE as held then.
+    trade (same ET day); above their middle bought, below sold, else unknown; its flow per share
+    the contract is on the signed step x DELTA x UNDERLYING_PRICE as held then.
     """
     held: dict[str, dict] = {}
     replaced: dict[str, dict] = {}
@@ -90,7 +102,7 @@ def _worked_out(start_ts: float) -> dict:
         if side is None or delta is None or under is None:
             s[4] += step
         else:
-            s[3] += side * step * delta * 100 * under
+            s[3] += side * step * delta * under
     return {
         sym: {
             "start": at_start[sym],
@@ -138,10 +150,11 @@ def test_a_record_of_another_day_is_not_read():
 def test_a_strike_is_its_calls_and_its_puts_or_nothing():
     """Each strike's readings are its call's and its put's look-backs, summed.
 
-    The volume calls and puts apart; bought, sold, unknown and flow summed; the volatility change
-    iv_by_strike's blend on each contract's volume and volatility at each end, with the chain's
-    open interest (the contracts' rows of SPY's newest stored capture of the expiry). A strike
-    with a contract not held over the window is nothing.
+    The volume calls and puts apart; bought, sold and unknown summed; the flow each contract's per
+    share times the chain's multiplier; the volatility change iv_by_strike's blend on each
+    contract's volume and volatility at each end, with the chain's open interest (the contracts'
+    rows of SPY's newest stored capture of the expiry). A strike with a contract not held over
+    the window is nothing; one whose multiplier Schwab did not send has no flow (INDUCED).
     """
     state = _replayed()
     looks = state.look_back(FX["symbols"], DAY, START)
@@ -156,9 +169,13 @@ def test_a_strike_is_its_calls_and_its_puts_or_nothing():
             expected[call]["now"][0] - expected[call]["start"][0],
             expected[put]["now"][0] - expected[put]["start"][0],
         )
-        for k, name in enumerate(("bought", "sold", "unknown", "flow", "unpriced")):
+        for k, name in ((0, "bought"), (1, "sold"), (2, "unknown"), (4, "unpriced")):
             want = expected[call]["totals"][k] + expected[put]["totals"][k]
             assert getattr(got, name) == pytest.approx(want, rel=1e-12, abs=1e-9), name
+        flow = sum(c.multiplier * expected[c.symbol]["totals"][3] for c in legs)
+        assert got.flow == pytest.approx(flow, rel=1e-12, abs=1e-9)
+        unsent = strike_look_back([replace(legs[0], multiplier=None), *legs[1:]], looks)
+        assert unsent.flow is None and unsent.bought == got.bought
 
         def blend(end: str, call=call, put=put, legs=legs) -> float:
             oi = {c.symbol: c.open_interest for c in legs}
@@ -168,6 +185,32 @@ def test_a_strike_is_its_calls_and_its_puts_or_nothing():
         assert got.iv_change == pytest.approx(blend("now") - blend("start"), rel=1e-12)
         missing = strike_look_back(legs, {call: looks[call]})
         assert missing.volume is None and missing.flow is None and missing.iv_change is None
+
+
+def test_the_flow_cell_says_why_it_is_not_known():
+    """The 721 strike's flow cell over the window from 10:04 ET: its value, or why it is "-".
+
+    Held over the window: the strike's flow; a contract whose multiplier the chain did not send
+    (INDUCED): that reason; a contract not held over the window: the look-back's.
+    """
+    looks = _replayed().look_back(FX["symbols"], DAY, START)
+    legs = [c for c in read_chain(FX["chain_rows"]) if c.strike == 721.0]
+    now = datetime(2026, 11, 23, 10, 10, tzinfo=ET)
+    book, _diagnostics = compute_exposures_by_strike(legs, now=now, sessions=sessions())
+
+    def flow_cell(look: StrikeLookBack) -> tuple[str, str | None]:
+        matrix = build_matrix(
+            book, {}, iv_by_strike(legs), _underlying(None), {}, None, {}, {721.0: look}
+        )
+        row = window_rows(matrix, [721.0])[0]
+        return row["flow_text"], row["flow_reason"]
+
+    held = strike_look_back(legs, looks)
+    unsent = strike_look_back([replace(legs[0], multiplier=None), *legs[1:]], looks)
+    assert held.flow is not None
+    assert flow_cell(held) == (dollars_text(held.flow), None)
+    assert flow_cell(unsent) == (dollars_text(None), NO_MULTIPLIER)
+    assert flow_cell(NOT_HELD) == (dollars_text(None), LOOK_REASON)
 
 
 def _underlying(before_ts: float | None) -> float:
@@ -191,7 +234,8 @@ def test_each_family_votes_on_the_kind_of_move_by_its_definition():
     producers are tested on captured chains), as is a zero flow.
     """
     expected = _worked_out(START * 60.0)
-    flow = sum(e["totals"][3] for e in expected.values())
+    chain = read_chain(FX["chain_rows"])
+    flow = sum(c.multiplier * expected[c.symbol]["totals"][3] for c in chain)
     start, end = _underlying(START * 60.0), _underlying(None)
     votes = family_votes(-1.0e9, flow, (start, end), 0.5)
     move_sign = 1 if end > start else -1

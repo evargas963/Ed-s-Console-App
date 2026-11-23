@@ -11,7 +11,7 @@
   var lookback = (function () {
     try {
       return localStorage.getItem("ed_cm_lookback");
-    } catch (e) {
+    } catch {
       return null;
     }
   })();
@@ -443,7 +443,7 @@
         lookback = pickLb.getAttribute("data-lookback");
         try {
           localStorage.setItem("ed_cm_lookback", lookback);
-        } catch (err) {
+        } catch {
           // a browser that keeps nothing still shows the choice for this page
         }
         load();
