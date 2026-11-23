@@ -54,7 +54,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
 )
-from tests.shared_helpers import fixture_json
+from tests.shared_helpers import fixture_json, rail_levels
 from tests.test_order_flow_book_payload_v1 import _same
 from tests.test_served_numbers_v1 import screen_text
 from time_et import (
@@ -507,12 +507,6 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     assert checked > 5 and grossed > 5
 
 
-def _rail_levels(body: dict) -> list[dict]:
-    """Every level the Confluence answer serves: each lane's inside the rows, then those past."""
-    lanes = body["rail_lanes"]
-    return [*lanes["session"], *lanes["options"], *body["levels_above"], *body["levels_below"]]
-
-
 def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
     """SPY's 2026-10-22 close capture: the server, not the page, places each level.
 
@@ -544,7 +538,7 @@ def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
     for line in body["rail_lines"]:
         at = [lv for lv in inside if lv["price_text"] == line["price_text"]]
         assert line["session"] == any(lv["lane"] == "session" for lv in at)
-    for lv in _rail_levels(body):
+    for lv in rail_levels(body):
         assert lv["title"] in body["level_names"][lv["price_text"]].split(" + ")
     _forget("ZZNOCHAIN")
     none = push_confluence.confluence_payload("ZZNOCHAIN", None, SPY_CLOSE.now)
@@ -579,7 +573,7 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         level_store._levels.pop("SPY", None)
     assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
     assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
-    walls = [level for level in _rail_levels(body) if level["abbrev"] == "Gamma Call"]
+    walls = [level for level in rail_levels(body) if level["abbrev"] == "Gamma Call"]
     assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
         (live.snap.call_wall, price_text(live.snap.call_wall), "options")
     ]
