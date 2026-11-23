@@ -18,14 +18,13 @@ from option_contract import OptionContract
 
 #: the running totals each step adds to, in this order: contracts bought (the last trade above the
 #: middle of the quote in force), sold (below it), unknown (on it, or no quote in force), the
-#: hedging flow in dollars of stock, and the contracts whose flow is not known (no delta or no
-#: price of the stock on the message, or no side)
+#: hedging flow in dollars of stock per share the contract is on (strike_look_back multiplies it
+#: by the chain's multiplier), and the contracts whose flow is not known (no delta or no price of
+#: the stock on the message, or no side)
 TOTALS = ("bought", "sold", "unknown", "flow", "unpriced")
 #: the total a step's side adds it to: above the middle bought, below sold, no side unknown
 SIDE_TOTAL = {1: 0, -1: 1, None: 2}
 FLOW, UNPRICED = 3, 4
-#: contracts a listed option is on (Schwab's multiplier for every contract the matrix reads)
-CONTRACT_SHARES = 100.0
 
 
 def step_totals(
@@ -41,10 +40,10 @@ def step_totals(
     The whole step is read by its last trade `price` against the middle of the quote in force
     when it traded (`bid`, `ask`: calc.l1_trade_observation.quote_in_force): above, bought; below,
     sold; on it or with no quote, unknown, never the tick test (decision 64, O-4). Its hedging
-    flow is the signed step x Schwab's streamed `delta` x 100 x the stock price the message
-    carried (`underlying`): the stock the dealers on the other side would trade, on the
-    convention (dealers long calls, short puts); a step with no side, no delta or no price is
-    counted apart (`unpriced`), never guessed.
+    flow per share the contract is on is the signed step x Schwab's streamed `delta` x the stock
+    price the message carried (`underlying`): the stock the dealers on the other side would
+    trade, on the convention (dealers long calls, short puts); a step with no side, no delta or no
+    price is counted apart (`unpriced`), never guessed.
     """
     side = trade_sign(price, bid, ask, None)
     adds = [0.0] * len(TOTALS)
@@ -52,7 +51,7 @@ def step_totals(
     if side is None or delta is None or underlying is None:
         adds[UNPRICED] += step
     else:
-        adds[FLOW] += side * step * delta * CONTRACT_SHARES * underlying
+        adds[FLOW] += side * step * delta * underlying
     return adds[0], adds[1], adds[2], adds[3], adds[4]
 
 
@@ -92,14 +91,19 @@ def strike_look_back(
 
     A reading is known only when every contract at the strike was held over the whole window
     (the stream kept it from before the window began): a strike missing one is "-", never a part.
-    The volatility blend is iv_by_strike's on Schwab's volatility and volume at each end.
+    The volatility blend is iv_by_strike's on Schwab's volatility and volume at each end. The
+    hedging flow is each contract's per share times the shares it is on, the chain's multiplier
+    (a term Schwab sends with the contract); one not sent leaves the strike's flow unknown.
     """
     looks = [(c, held[c.symbol]) for c in contracts if c.symbol is not None and c.symbol in held]
     if not looks or len(looks) != len(contracts):
         return NOT_HELD
     calls = puts = 0.0
     traded: float | None = 0.0
+    flow: float | None = 0.0
     for c, look in looks:
+        m = c.multiplier
+        flow = None if flow is None or m is None else flow + m * look.totals[FLOW]
         start, now = look.volume
         if start is None or now is None:
             traded = None
@@ -116,6 +120,6 @@ def strike_look_back(
         bought=sums[0],
         sold=sums[1],
         unknown=sums[2],
-        flow=sums[3],
-        unpriced=sums[4],
+        flow=flow,
+        unpriced=sums[UNPRICED],
     )

@@ -1673,9 +1673,6 @@
   min-height: 29px;
   color: #fff;
   font-weight: 600;
-}
-
-.cm-page .status {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1700,6 +1697,15 @@
   background: #172231;
   border: 1px solid #2b394d;
   border-radius: 5px;
+}
+
+/* a column head's unit, under its name */
+.cm-page th small {
+  display: block;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 3px;
 }
 
 /* the look-back picker: every look-back column follows the one on */
@@ -1819,14 +1825,6 @@
   padding: 4px;
 }
 
-.cm-page th small {
-  display: block;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  margin-top: 3px;
-}
-
 .cm-page .stat small {
   display: block;
   color: #fff;
@@ -1922,6 +1920,10 @@
     inset 0 -2px #347cff;
 }
 
+.cm-page tr.data-row td {
+  cursor: pointer;
+}
+
 .cm-page tr.data-row:hover td {
   filter: brightness(1.18);
 }
@@ -1929,10 +1931,6 @@
 .cm-page tr.data-row:focus {
   outline: 2px solid #7fb3ff;
   outline-offset: -2px;
-}
-
-.cm-page tr.data-row td {
-  cursor: pointer;
 }
 
 .cm-page .missing {

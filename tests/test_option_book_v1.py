@@ -154,9 +154,9 @@ def build_option_book_panels() -> dict:
 
 
 def write_option_book_panels() -> None:
-    """Regeneration utility (never called by a test)."""
+    """Regeneration utility (never called by a test), then Prettier, which sets a JSON's layout."""
     _E2E.write_text(
-        json.dumps(build_option_book_panels(), indent=2) + "\n",  # as Prettier
+        json.dumps(build_option_book_panels(), indent=2) + "\n",
         encoding="utf-8",
     )
 
