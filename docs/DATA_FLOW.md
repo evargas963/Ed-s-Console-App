@@ -69,9 +69,10 @@ The rules for the data itself, at every hop from Schwab to the screen.
   and `tests/test_stream_greeks_capture_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record.** One writer, `stream_spine.CaptureWriter`,
   records every bus message but option quotes and option books, which it records for the kept
-  contracts only (`capture.Daemon.saves`): each ticker's soonest unexpired expiration at the strike
-  nearest its price and `capture.STRIKES_SAVED` strikes each side (`capture.saved_window`), and the
-  Flow panel's contract. Quotes, option quotes, bars and news are kept whole; order books before the
+  contracts only (`capture.Daemon.saves`): every contract of each ticker's soonest expiration whose
+  time to expiry has not run out (`capture.saved_window`), and the Flow panel's contract. Those come
+  first in the option rule's order, so each ticker's front expiry is streamed in full before the
+  rest (`capture.Daemon.pick_options`). Quotes, option quotes, bars and news are kept whole; order books before the
   regular open plus 30 minutes and in the session's last 30 minutes (`stream_spine._book_kept`).
   After five sessions (`capture.SESSIONS_KEPT`, `capture.keep_sessions`) those rows move into
   `stream_archive` as compressed blocks (`stream_spine.ARCHIVED`, read back by

@@ -370,12 +370,7 @@ def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
         return running
 
     assert asyncio.run(go())
-    held = [
-        s
-        for _exp, _ends, _strikes, by in daemon._ladders["SPY"]
-        for syms in by.values()
-        for s in syms
-    ]
+    held = [s for _exp, _ends, by in daemon._ladders["SPY"] for syms in by.values() for s in syms]
     assert None not in held
     assert len(held) == len(contracts) - 1
 
