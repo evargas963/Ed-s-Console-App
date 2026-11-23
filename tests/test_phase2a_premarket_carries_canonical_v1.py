@@ -1,8 +1,8 @@
 """RC-322 — before the open the zones CARRY the canonical snapshot, never recompute it.
 
 The zones' one builder (`build_zone_snapshot`) runs no level helper of its own: before the
-session's regular open it clusters the prior-day and overnight levels the snapshot holds, so
-those levels and the ones /api/levels serves are one value.
+session's regular open it clusters every level of ZONE_LEVELS the snapshot holds (the prior-day
+and overnight levels among them), so those levels and the ones /api/levels serves are one value.
 
 These drive the REAL builder on ONE canonical snapshot and require identical values.
 """
@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from calc.liquidity_value_engine import (
+    ZONE_LEVELS,
     PlaybookConfig,
     bars_from_candles,
     build_price_level_snapshot,
@@ -23,18 +24,6 @@ from tests.conftest import most_recent_trading_day_et
 from time_et import ET, sessions
 
 REPO = Path(__file__).resolve().parent.parent
-
-#: the canonical level ids the premarket zones carry
-_PHASE2A_IDS = (
-    "PDH",
-    "PDL",
-    "PDC",
-    "PD_POC",
-    "PD_VAH",
-    "PD_VAL",
-    "OVERNIGHT_HIGH",
-    "OVERNIGHT_LOW",
-)
 
 
 def _published(out) -> dict:
@@ -105,7 +94,7 @@ def test_premarket_carries_every_phase2a_level_unchanged():
         sessions=sessions(),
     )
     got = _published(carried)
-    for level_id in _PHASE2A_IDS:
+    for level_id in ZONE_LEVELS:
         want = canon.price(level_id)
         if want is None:
             assert level_id not in got, (
@@ -137,7 +126,7 @@ def test_the_live_builder_before_the_open_carries_the_snapshot():
     )
     assert out.snapshot_type.value == "premarket"
     got = _published(out)
-    for level_id in _PHASE2A_IDS:
+    for level_id in ZONE_LEVELS:
         want = canon.price(level_id)
         if want is not None:
             assert got.get(level_id) == want, (
