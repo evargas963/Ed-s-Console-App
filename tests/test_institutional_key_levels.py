@@ -143,6 +143,7 @@ def test_the_net_gamma_peaks_are_served_under_names_that_say_what_they_are():
         "Gamma Net Negative": "Gamma Net −",
         "Gamma Net Positive": "Gamma Net +",
     }
+    assert push_confluence._option_abbrev("Gamma Net Negative", same_day=False) == "Gamma Net −"
     assert push_confluence._option_abbrev("Gamma Net Positive", same_day=True) == "0DTE Gamma Net +"
 
 
