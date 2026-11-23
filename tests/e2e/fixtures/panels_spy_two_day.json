@@ -23343,7 +23343,7 @@
     "headline": {
       "text": "Wider, continuing moves",
       "tone": "neg",
-      "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day. The price is below the Gamma Flip (761.22), where the sign changes.",
+      "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day. The price is below the Gamma Flip (761.22).",
       "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
       "families": [
         {
@@ -24334,7 +24334,7 @@
     "headline": {
       "text": "Wider, continuing moves",
       "tone": "neg",
-      "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day. The price is below the Gamma Flip (761.22), where the sign changes.",
+      "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day. The price is below the Gamma Flip (761.22).",
       "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
       "families": [
         {

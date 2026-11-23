@@ -70834,7 +70834,7 @@
     "headline": {
       "text": "Calmer, reverting moves",
       "tone": "pos",
-      "note": "The options' gamma at the price is positive gamma (the convention: dealers long calls, short puts), so the hedging absorbs moves: smaller ranges and more reversals. The price is above the Gamma Flip (243.91), where the sign changes.",
+      "note": "The options' gamma at the price is positive gamma (the convention: dealers long calls, short puts), so the hedging absorbs moves: smaller ranges and more reversals. The price is above the Gamma Flip (243.91).",
       "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
       "families": [
         {
@@ -71811,7 +71811,7 @@
     "headline": {
       "text": "Calmer, reverting moves",
       "tone": "pos",
-      "note": "The options' gamma at the price is positive gamma (the convention: dealers long calls, short puts), so the hedging absorbs moves: smaller ranges and more reversals. The price is above the Gamma Flip (243.91), where the sign changes.",
+      "note": "The options' gamma at the price is positive gamma (the convention: dealers long calls, short puts), so the hedging absorbs moves: smaller ranges and more reversals. The price is above the Gamma Flip (243.91).",
       "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
       "families": [
         {
