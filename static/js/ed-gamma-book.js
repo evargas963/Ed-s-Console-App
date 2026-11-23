@@ -1,5 +1,5 @@
 /* Ed Console — Options "Level II" subview and the options lean's gauge. PRESENTATION ONLY.
-   Options Book  <- the page's socket  (the `option_book:book` panel, push.option_book)
+   Options Level II  <- the page's socket  (the `option_book:book` panel, push.option_book)
    Each strike's call and put: resting bid and ask (Schwab's newest OPTIONS_BOOK, every level
    summed) and volume today, then the summary and the options lean -- every number, word, share,
    scale and angle served; the page places the bars and the needle. Sent while the tab is on, at

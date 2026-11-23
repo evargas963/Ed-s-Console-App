@@ -2775,7 +2775,7 @@
         background: var(--ed-proxy-bg);
         border: 1px solid var(--ed-warn);
       }
-      /* Options Book (the option_book panel): calls | strike | puts, each cell its served number
+      /* Options Level II (the option_book panel): calls | strike | puts, each cell its served number
      on a bar against the served scale (resting bid green, resting ask red, volume grey); then the
      summary's split bars and the options lean's gauge. Every number and word is served. */
       #opbBody {
@@ -2999,7 +2999,7 @@
         padding-left: 20px;
       }
       /* the options lean's gauge: five zone arcs, the needle at the served angle, the served value
-     and zone word, and the three served readings beneath (Options Book and the Trade Desk card) */
+     and zone word, and the three served readings beneath (Options Level II and the Trade Desk card) */
       .olg {
         display: flex;
         flex-direction: column;
@@ -3909,14 +3909,14 @@
               </div>
             </div>
 
-            <!-- OPTIONS / BOOK subview — each strike's call and put: Schwab's resting book (every
+            <!-- OPTIONS / LEVEL II subview — each strike's call and put: Schwab's resting book (every
              OPTIONS_BOOK level summed) and volume today, the summary and the options lean; all
              served by the option_book panel (push.option_book). -->
             <div class="sub-pane" data-sub-pane="book">
               <div class="panel">
                 <div class="panel-h">
-                  <span class="hticker" id="opbTicker">-</span><span class="t">Options Book</span
-                  ><span class="sub" id="opbCtx"></span>
+                  <span class="hticker" id="opbTicker">-</span
+                  ><span class="t">Options Level II</span><span class="sub" id="opbCtx"></span>
                   <div class="r">
                     <span id="opbSrc"></span><span class="prov native">OPTIONS_BOOK</span
                     ><span class="prov derived">DERIVED</span>

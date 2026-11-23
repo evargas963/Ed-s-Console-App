@@ -34,7 +34,7 @@ const MICRO = REAL.book[VENUE];
 const LIQ = REAL.liquidity;
 const STRIKES = REAL.strikes;
 const BARS = REAL.bars[TF];
-// the Options Book the card's gauge draws: the option_book panel's answer for SPY's front expiry
+// Options Level II the card's gauge draws: the option_book panel's answer for SPY's front expiry
 // at 2026-11-19 10:01:50 ET, Auto window (option_book_spy.json, held to the producer by
 // tests/test_option_book_v1.py; another day than the panels above: Schwab's option books are kept
 // from 2026-11-13)

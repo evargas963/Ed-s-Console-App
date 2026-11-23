@@ -1,6 +1,6 @@
 "use strict";
 /**
- * The Options Book tab and the Trade Desk's Options Positioning card draw the option_book panel
+ * The Options Level II tab and the Trade Desk's Options Positioning card draw the option_book panel
  * the program sends on the page's socket (push.option_book): every row's served numbers on bars
  * against the served scales, the summary's split bars at the served shares, and the options lean's
  * gauge with its needle at the served angle and its served words. The panels are the producer's
@@ -84,7 +84,7 @@ function expected(panel) {
   }));
 }
 
-test.describe("Options Book: the panel on the page's socket", () => {
+test.describe("Options Level II: the panel on the page's socket", () => {
   test("the Book tab asks its panel and draws every served row, bar, summary and the gauge", async ({
     page,
   }, testInfo) => {
@@ -294,7 +294,7 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
     expect(errs).toEqual([]);
   });
 
-  test("with no Options Book answered the card's gauge says why, the rest of the card stands", async ({
+  test("with no Options Level II answered the card's gauge says why, the rest of the card stands", async ({
     page,
   }) => {
     await intercept(page);
@@ -307,7 +307,7 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const card = page.locator("#tdmCardOpt");
     await expect(card.locator(".tdm-lean")).toHaveText(
-      "Options lean: the program could not produce the options book",
+      "Options lean: the program could not produce the options level II",
     );
     await expect(card.locator(".olg")).toHaveCount(0);
     await expect(card).toContainText("Call wall");
