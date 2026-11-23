@@ -1751,6 +1751,34 @@
   font-weight: 600;
 }
 
+/* each family's card: what it read and its vote, red for wider and continuing */
+.cm-page .cm-families {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cm-page .cm-family {
+  padding: 8px 10px;
+  border: 1px dashed #2d3d55;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+}
+
+.cm-page .cm-family.neg {
+  color: #fff;
+  border: 1px solid #ef4444;
+  background: #3a1418;
+}
+
+.cm-page .cm-family.pos {
+  color: #fff;
+  border: 1px solid #22c55e;
+  background: #0f2a1a;
+}
+
 /* a served tone: red where the gamma accelerates moves, green where it dampens them */
 .cm-page .neg {
   color: #ff6b6b;

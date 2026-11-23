@@ -13,11 +13,15 @@ from typing import Any
 from app.options.order_flow.state import look_back
 from calc.confluence_composite import (
     ASSUMPTION,
+    FamilyVote,
     Matrix,
     StrikeLookBack,
     at_price,
+    atm_iv_change,
     build_matrix,
     distance,
+    expiry_flow,
+    family_votes,
     implied_move,
     window_rows,
 )
@@ -33,7 +37,7 @@ from calc.terrain_engine import (
     nearest_strike,
 )
 from calc.terrain_read import REGIME_NEGATIVE_GAMMA, REGIME_POSITIVE_GAMMA, REGIME_TEXT
-from numeric_contract import iv_text, price_text
+from numeric_contract import dollars_text, iv_text, price_text
 from option_contract import OptionContract
 from push.answers import unavailable
 from push.levels import pin_note
@@ -75,6 +79,14 @@ def _window_start(choice: str, now: datetime) -> int | None:
     if held is None or not held.regular or now < held.regular[0][0]:
         return None
     return int(held.regular[0][0].timestamp() // 60)
+
+
+def _window_open(tk: str, start: int | None) -> float | None:
+    """The open of Schwab's 1-minute bar of the look-back's first minute; None: not held."""
+    if start is None:
+        return None
+    bars = bar_store.bars_1m(tk, bar_store.BARS_KEPT)
+    return next((c.open for c in bars if c.ts == start * 60.0), None)
 
 
 def _looks(
@@ -313,11 +325,64 @@ KIND_OF_MOVE = {
 UNTESTED = "untested · direction words wait for 20 ordinary sessions and the test (decision 56)"
 
 
-def _headline(live: TerrainSnapshot) -> dict[str, Any]:
-    """The Composite's headline: the kind of move the gamma at the price makes, est."""
+#: each family's card: its title, and what it says it read
+FAMILY_TITLES = {
+    "positioning": "POSITIONING (OPEN INTEREST, GREEKS)",
+    "option trades": "OPTION TRADES · HEDGING FLOW",
+    "volatility": "VOLATILITY · AT THE MONEY",
+    "stock book": "STOCK BOOK AND TAPE",
+}
+#: a vote in words: +1 wider and continuing, -1 calmer and reverting
+VOTE_WORDS = {1: "votes wider, continuing", -1: "votes calmer, reverting"}
+VOTE_TONE = {1: "neg", -1: "pos"}
+NOT_VOTED = {
+    "positioning": "the gamma at the price is not known",
+    "option trades": "the look-back's hedging flow or price move is not known, or is zero",
+    "volatility": "the look-back's at-the-money volatility change is not known, or is zero",
+    "stock book": "not measured on the matrix yet",
+}
+
+
+def _family_text(vote: FamilyVote) -> str:
+    """What one family read, in words: its reading and its vote."""
+    if vote.vote is None:
+        return NOT_VOTED[vote.family]
+    words = VOTE_WORDS[vote.vote]
+    if vote.family == "positioning":
+        sign = "Negative" if vote.vote == 1 else "Positive"
+        return f"{sign} gamma at the price: {words}"
+    if vote.family == "option trades":
+        side = "with" if vote.vote == 1 else "against"
+        return f"Hedging flow {dollars_text(vote.reading)} {side} the look-back's move: {words}"
+    return f"At-the-money IV {_signed_text(vote.reading)} in the look-back: {words}"
+
+
+def _signed_text(n: float | None) -> str | None:
+    return None if n is None else f"{n:+.2f}"
+
+
+def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str, Any]:
+    """The Composite's headline: the kind of move the gamma at the price makes, est.
+
+    With each family's card and how many of those measured agree with it, every one untested.
+    """
+    families = [
+        {
+            "title": FAMILY_TITLES[v.family],
+            "text": _family_text(v),
+            "tone": None if v.vote is None else VOTE_TONE[v.vote],
+        }
+        for v in votes
+    ]
     kind = KIND_OF_MOVE.get(live.regime)
     if kind is None:
-        return {"text": None, "tone": None, "note": "the gamma at the price is not known"}
+        return {
+            "text": None,
+            "tone": None,
+            "note": "the gamma at the price is not known",
+            "families": families,
+            "grade_text": None,
+        }
     text, tone, effect = kind
     flip = price_text(live.gamma_flip)
     side = "below" if live.regime == REGIME_NEGATIVE_GAMMA else "above"
@@ -327,7 +392,16 @@ def _headline(live: TerrainSnapshot) -> dict[str, Any]:
     )
     if flip is not None:
         note += f" The price is {side} the Gamma Flip ({flip}), where the sign changes."
-    return {"text": text, "tone": tone, "note": note, "record": UNTESTED}
+    measured = [v for v in votes if v.vote is not None]
+    agree = sum(v.vote == votes[0].vote for v in measured)
+    return {
+        "text": text,
+        "tone": tone,
+        "note": note,
+        "record": UNTESTED,
+        "families": families,
+        "grade_text": f"{agree} of {len(measured)} families measured agree, one equal vote each",
+    }
 
 
 def _cards(
@@ -486,7 +560,15 @@ def confluence_payload(
                 terrain_staleness(fetched, tk, now=now.timestamp()), fetched, now.timestamp()
             ),
             **_tags(levels, body["rows"]),
-            "headline": _headline(live),
+            "headline": _headline(
+                live,
+                family_votes(
+                    live.net_gex_at_spot,
+                    expiry_flow(stored),
+                    (_window_open(tk, start), live_spot),
+                    atm_iv_change(stored, live_spot),
+                ),
+            ),
             "lookback": _lookback(lookback, start),
         }
     )

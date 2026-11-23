@@ -851,7 +851,30 @@
     "text": "Calmer, reverting moves",
     "tone": "pos",
     "note": "The options' gamma at the price is positive gamma (the convention: dealers long calls, short puts), so the hedging absorbs moves: smaller ranges and more reversals. The price is above the Gamma Flip (249.97), where the sign changes.",
-    "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)"
+    "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
+    "families": [
+     {
+      "title": "POSITIONING (OPEN INTEREST, GREEKS)",
+      "text": "Positive gamma at the price: votes calmer, reverting",
+      "tone": "pos"
+     },
+     {
+      "title": "OPTION TRADES \u00b7 HEDGING FLOW",
+      "text": "the look-back's hedging flow or price move is not known, or is zero",
+      "tone": null
+     },
+     {
+      "title": "VOLATILITY \u00b7 AT THE MONEY",
+      "text": "the look-back's at-the-money volatility change is not known, or is zero",
+      "tone": null
+     },
+     {
+      "title": "STOCK BOOK AND TAPE",
+      "text": "not measured on the matrix yet",
+      "tone": null
+     }
+    ],
+    "grade_text": "1 of 1 families measured agree, one equal vote each"
    },
    "lookback": {
     "chosen": "5",
@@ -1782,7 +1805,30 @@
     "text": "Calmer, reverting moves",
     "tone": "pos",
     "note": "The options' gamma at the price is positive gamma (the convention: dealers long calls, short puts), so the hedging absorbs moves: smaller ranges and more reversals. The price is above the Gamma Flip (249.97), where the sign changes.",
-    "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)"
+    "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
+    "families": [
+     {
+      "title": "POSITIONING (OPEN INTEREST, GREEKS)",
+      "text": "Positive gamma at the price: votes calmer, reverting",
+      "tone": "pos"
+     },
+     {
+      "title": "OPTION TRADES \u00b7 HEDGING FLOW",
+      "text": "the look-back's hedging flow or price move is not known, or is zero",
+      "tone": null
+     },
+     {
+      "title": "VOLATILITY \u00b7 AT THE MONEY",
+      "text": "the look-back's at-the-money volatility change is not known, or is zero",
+      "tone": null
+     },
+     {
+      "title": "STOCK BOOK AND TAPE",
+      "text": "not measured on the matrix yet",
+      "tone": null
+     }
+    ],
+    "grade_text": "1 of 1 families measured agree, one equal vote each"
    },
    "lookback": {
     "chosen": "5",

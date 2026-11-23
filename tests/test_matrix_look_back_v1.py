@@ -14,6 +14,7 @@ from datetime import datetime
 import pytest
 
 from app.options.order_flow.state import OrderFlowState
+from calc.confluence_composite import family_votes
 from calc.option_window import strike_look_back
 from option_contract import read_chain
 from stream_spine import MessageBus
@@ -176,3 +177,37 @@ def test_a_strike_is_its_calls_and_its_puts_or_nothing():
         assert got.iv_change == pytest.approx(blend("now") - blend("start"), rel=1e-12)
         missing = strike_look_back(legs, {call: looks[call]})
         assert missing.volume is None and missing.flow is None and missing.iv_change is None
+
+
+def _underlying(before_ts: float | None) -> float:
+    """The stock price the last item received before `before_ts` (None: of all) carried."""
+    held = [
+        m["item"]["UNDERLYING_PRICE"]
+        for m in FX["messages"]
+        if "UNDERLYING_PRICE" in m["item"] and (before_ts is None or m["ts_recv"] < before_ts)
+    ]
+    return held[-1]
+
+
+def test_each_family_votes_on_the_kind_of_move_by_its_definition():
+    """The headline's votes over the window from 10:04 ET, from the record's own readings.
+
+    Option trades: the two strikes' hedging flow (worked out from the raw items) with the
+    stock's move over the window (the price the items carried at its start and at its end)
+    votes continuing, against it reverting; volatility: rising wider, falling calmer;
+    positioning: negative gamma wider. The stock's book casts no vote; a zero casts none. The
+    gamma at the price and the volatility change are INDUCED, each sign in turn (their own
+    producers are tested on captured chains), as is a zero flow.
+    """
+    expected = _worked_out(START * 60.0)
+    flow = sum(e["totals"][3] for e in expected.values())
+    start, end = _underlying(START * 60.0), _underlying(None)
+    votes = family_votes(-1.0e9, flow, (start, end), 0.5)
+    move_sign = 1 if end > start else -1
+    assert flow != 0 and end != start
+    assert [v.vote for v in votes] == [1, (1 if flow > 0 else -1) * move_sign, 1, None]
+    assert [v.family for v in votes] == ["positioning", "option trades", "volatility", "stock book"]
+    calm = family_votes(2.0e9, 0.0, (start, end), -0.5)
+    assert [v.vote for v in calm] == [-1, None, -1, None]
+    unknown = family_votes(None, flow, (None, end), None)
+    assert [v.vote for v in unknown] == [None, None, None, None]

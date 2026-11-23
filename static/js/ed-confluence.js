@@ -484,7 +484,22 @@
       esc(orDash(h.note)) +
       "</p>" +
       (h.record ? '<p class="cm-record">Record: ' + esc(h.record) + "</p>" : "") +
-      "</section>"
+      (h.grade_text ? '<p class="cm-grade">' + esc(h.grade_text) + "</p>" : "") +
+      '<div class="cm-families">' +
+      (Array.isArray(h.families) ? h.families : [])
+        .map(function (f) {
+          return (
+            '<div class="cm-family ' +
+            esc(f.tone || "") +
+            '"><div class="eyebrow">' +
+            esc(f.title) +
+            "</div><div>" +
+            esc(f.text) +
+            "</div></div>"
+          );
+        })
+        .join("") +
+      "</div></section>"
     );
   }
 

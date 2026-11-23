@@ -23344,7 +23344,30 @@
       "text": "Wider, continuing moves",
       "tone": "neg",
       "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day. The price is below the Gamma Flip (761.22), where the sign changes.",
-      "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)"
+      "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
+      "families": [
+        {
+          "title": "POSITIONING (OPEN INTEREST, GREEKS)",
+          "text": "Negative gamma at the price: votes wider, continuing",
+          "tone": "neg"
+        },
+        {
+          "title": "OPTION TRADES \u00b7 HEDGING FLOW",
+          "text": "the look-back's hedging flow or price move is not known, or is zero",
+          "tone": null
+        },
+        {
+          "title": "VOLATILITY \u00b7 AT THE MONEY",
+          "text": "the look-back's at-the-money volatility change is not known, or is zero",
+          "tone": null
+        },
+        {
+          "title": "STOCK BOOK AND TAPE",
+          "text": "not measured on the matrix yet",
+          "tone": null
+        }
+      ],
+      "grade_text": "1 of 1 families measured agree, one equal vote each"
     },
     "lookback": {
       "chosen": "5",
@@ -24312,7 +24335,30 @@
       "text": "Wider, continuing moves",
       "tone": "neg",
       "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day. The price is below the Gamma Flip (761.22), where the sign changes.",
-      "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)"
+      "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
+      "families": [
+        {
+          "title": "POSITIONING (OPEN INTEREST, GREEKS)",
+          "text": "Negative gamma at the price: votes wider, continuing",
+          "tone": "neg"
+        },
+        {
+          "title": "OPTION TRADES \u00b7 HEDGING FLOW",
+          "text": "the look-back's hedging flow or price move is not known, or is zero",
+          "tone": null
+        },
+        {
+          "title": "VOLATILITY \u00b7 AT THE MONEY",
+          "text": "the look-back's at-the-money volatility change is not known, or is zero",
+          "tone": null
+        },
+        {
+          "title": "STOCK BOOK AND TAPE",
+          "text": "not measured on the matrix yet",
+          "tone": null
+        }
+      ],
+      "grade_text": "1 of 1 families measured agree, one equal vote each"
     },
     "lookback": {
       "chosen": "5",

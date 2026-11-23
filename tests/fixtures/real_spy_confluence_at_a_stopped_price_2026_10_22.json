@@ -39,6 +39,29 @@
  ],
  "expiry": "2026-10-22",
  "headline": {
+  "families": [
+   {
+    "text": "Negative gamma at the price: votes wider, continuing",
+    "title": "POSITIONING (OPEN INTEREST, GREEKS)",
+    "tone": "neg"
+   },
+   {
+    "text": "the look-back's hedging flow or price move is not known, or is zero",
+    "title": "OPTION TRADES \u00b7 HEDGING FLOW",
+    "tone": null
+   },
+   {
+    "text": "the look-back's at-the-money volatility change is not known, or is zero",
+    "title": "VOLATILITY \u00b7 AT THE MONEY",
+    "tone": null
+   },
+   {
+    "text": "not measured on the matrix yet",
+    "title": "STOCK BOOK AND TAPE",
+    "tone": null
+   }
+  ],
+  "grade_text": "1 of 1 families measured agree, one equal vote each",
   "note": "The options' gamma at the price is negative gamma (the convention: dealers long calls, short puts), so the hedging chases moves instead of absorbing them: larger ranges, follow-through, and continuation late in the day.",
   "record": "untested \u00b7 direction words wait for 20 ordinary sessions and the test (decision 56)",
   "text": "Wider, continuing moves",

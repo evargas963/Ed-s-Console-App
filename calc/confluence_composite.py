@@ -231,6 +231,78 @@ def composite(gamma: float | None, strengths: Mapping[str, float | None]) -> Com
     return Composite(gamma, 100.0 * total / len(measured), measured)
 
 
+@dataclass(frozen=True)
+class FamilyVote:
+    """One family's vote on the kind of move (family_votes).
+
+    `vote`: +1 wider and continuing, -1 calmer and reverting, None not measured; `reading`: the
+    number it votes on.
+    """
+
+    family: str
+    vote: int | None
+    reading: float | None
+
+
+def family_votes(
+    gamma_at_price: float | None,
+    flow: float | None,
+    prices: tuple[float | None, float | None],
+    atm_iv_change: float | None,
+) -> tuple[FamilyVote, ...]:
+    """Return each family's vote on the kind of move, one equal vote each (decision 64, O-1).
+
+    Positioning: the whole book's net gamma at the price, negative wider and continuing (the
+    research's read). Option trades: the expiry's hedging flow in the look-back with the
+    look-back's price move (`prices`: at its start and now; continuing) or against it
+    (reverting). Volatility: the expiry's at-the-money volatility rising (wider) or falling
+    (calmer) in the look-back. The stock's book and tape are not measured on the matrix: no
+    vote. A zero or unknown reading casts none.
+    """
+
+    def sign(x: float | None) -> int | None:
+        return None if x is None or x == 0 else (1 if x > 0 else -1)
+
+    start, now = prices
+    move = None if start is None or now is None else now - start
+    flow_sign, move_sign = sign(flow), sign(move)
+    trades = None if flow_sign is None or move_sign is None else flow_sign * move_sign
+    positioning = sign(gamma_at_price)
+    return (
+        FamilyVote("positioning", None if positioning is None else -positioning, gamma_at_price),
+        FamilyVote("option trades", trades, flow),
+        FamilyVote("volatility", sign(atm_iv_change), atm_iv_change),
+        FamilyVote("stock book", None, None),
+    )
+
+
+def expiry_flow(matrix: Matrix) -> float | None:
+    """The expiry's hedging flow over the look-back: every strike's, None when one is not known."""
+    flows = [r.look.flow for r in matrix.readings.values()]
+    if not flows or any(f is None for f in flows):
+        return None
+    return sum(f for f in flows if f is not None)
+
+
+def atm_iv_change(matrix: Matrix, spot: float | None) -> float | None:
+    """The expiry's at-the-money volatility change over the look-back.
+
+    The mean of the two listed strikes the price lies between (the at-the-money rule as built,
+    calc.terrain_engine.atm_sigma_by_expiry), each its blend's change; one strike when the
+    price is on it; None without a price, outside the strikes, or a change not known.
+    """
+    if spot is None:
+        return None
+    below = max((s for s in matrix.strikes if s <= spot), default=None)
+    above = min((s for s in matrix.strikes if s >= spot), default=None)
+    if below is None or above is None:
+        return None
+    changes = [matrix.readings[s].look.iv_change for s in {below, above}]
+    if any(c is None for c in changes):
+        return None
+    return sum(c for c in changes if c is not None) / len(changes)
+
+
 def _share(value: float | None, peak: float | None) -> float | None:
     """`value`'s size against its column's peak, 0 to 1; None when either is not known."""
     if value is None or not peak:
