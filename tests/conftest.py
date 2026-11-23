@@ -26,6 +26,7 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane
 import time_et
+from app.market_data.schwab.streaming import capture
 from db_authority import canonical_db_path
 from state import bar_store, capture_store, cross_store, level_store, price_level_store
 from stream_spine import MessageBus
@@ -56,6 +57,10 @@ os.environ["ED_CONSOLE_PORT"] = "0"
 os.environ["SCHWAB_API_KEY"] = "ci-placeholder-api-key"
 os.environ["SCHWAB_APP_SECRET"] = "ci-placeholder-app-secret"
 os.environ["SCHWAB_CALLBACK_URL"] = "https://127.0.0.1:8182"
+# Python's collector as the program's start sets it (capture.main): no full collection runs by
+# itself, which would stop every thread while it visits all a process holds, as none does in the
+# program's session
+capture.set_collector()
 
 #: fixtures several test files share, loaded by pytest after this module has set the environment
 pytest_plugins = ["tests.liquidity_friday"]
