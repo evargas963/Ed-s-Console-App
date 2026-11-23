@@ -15,7 +15,7 @@ const REAL = require(path.join(__dirname, "panels_spy_two_day.json"));
 const VENUE = "NASDAQ_BOOK";
 const TF = "5";
 const TERRAIN = REAL.terrain;
-const SPOT = TERRAIN.spot; // 757.075, Schwab's last trade
+const SPOT = REAL.price_row.spot; // 757.075, Schwab's last trade, the price row's (one producer)
 const LEVELS = REAL.levels[TF];
 const EVENTS = REAL.desk[TF];
 // the route's answers for SPY's real books (tests/test_liquidity_readout_v1.py): live, the daemon's

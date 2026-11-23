@@ -1900,13 +1900,14 @@
 }
 
 /* the live price: one line across the rows at its place between the two strikes, moved with
-   each price row; the rows never move for it */
+   each price row; the rows never move for it. Amber, a colour of its own: the selected row's
+   outline is blue */
 .cm-page .cm-spot {
   position: absolute;
   left: 0;
   right: 0;
   height: 0;
-  border-top: 2px solid #2f8cff;
+  border-top: 2px solid #ffb020;
   pointer-events: none;
   z-index: 3;
 }
@@ -1917,8 +1918,8 @@
   top: -10px;
   padding: 1px 6px;
   border-radius: 3px;
-  background: #2f8cff;
-  color: #fff;
+  background: #ffb020;
+  color: #111;
   font-weight: 700;
   font-size: 12px;
   line-height: 16px;

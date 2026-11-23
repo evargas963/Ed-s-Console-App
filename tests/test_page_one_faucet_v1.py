@@ -114,14 +114,13 @@ ASKED["venue"] = "NYSE_BOOK"
 def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held):
     """Every page panel, found from the app (no GET route answers a ticker).
 
-    One producer of the price on every screen: the header's price row (live_price_rows), which
-    the page draws wherever the price is shown, with its trade time and whether it is live. No
-    page panel serves the price as its page prints it (`spot_text`), its time (`spot_time_ct`)
-    or its mark (`spot_not_live_text`). The live price's number is carried by the terrain alone,
-    the price its relations are computed at, where the desk's Right Now takes it with its instant
-    (push.desk); it is the live price, not the price the payload was computed at (operator
-    2026-11-12: "Yes, remove it"), and no page draws it. The strikes panel, the heatmap, the chain
-    and the vanna and charm bars mark the price's row by the served mark.
+    One producer of the price on every screen, period: the header's price row
+    (live_price_rows), which the page draws wherever the price is shown, with its trade time and
+    whether it is live. No page panel carries the price in any form: not as a number (`spot`),
+    as the text its page prints (`spot_text`), its time (`spot_time_ct`, `spot_as_of_ts_utc`),
+    its source or its mark (`spot_not_live_text`, `levels_mark`), nor the price the payload was
+    computed at (operator 2026-11-12: "Yes, remove it"). The strikes panel, the heatmap, the
+    chain and the vanna and charm bars mark the price's row by the served mark.
     """
     now = time_et.now()
     served, printed, instant, drawn = {}, {}, set(), {}
@@ -129,15 +128,14 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
         contract = next(iter(held.contracts))
         body = drawn[kind] = panel(Asked(TK, now, {**ASKED, "contract": contract}))
         if {"spot", "priced_at_spot"} & set(body):
-            served[kind] = (body.get("spot"), "priced_at_spot" in body)
-        if {"spot_text", "spot_time_ct", "spot_not_live_text"} & set(body):
-            printed[kind] = {"spot_text", "spot_time_ct", "spot_not_live_text"} & set(body)
-        if "spot_as_of_ts_utc" in body:
+            served[kind] = {"spot", "priced_at_spot"} & set(body)
+        marks = {"spot_text", "spot_time_ct", "spot_not_live_text", "levels_mark"}
+        if marks & set(body):
+            printed[kind] = marks & set(body)
+        if {"spot_as_of_ts_utc", "spot_source"} & set(body):
             instant.add(kind)
-    assert "terrain" in served
-    assert not {"levels", "strikes", "surface", "chain", "vanna", "charm", "confluence"} & set(
-        served
-    )
+    assert "terrain" in drawn and "levels" in drawn and "confluence" in drawn
+    assert served == {}
     # no panel prints the price, its time or its mark: the page draws them from the price row
     assert printed == {}
     # the heatmap, the chain and the bars are drawn, the price's row marked on their rows: no
@@ -146,10 +144,15 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
     assert drawn["vanna"]["available"] and drawn["charm"]["available"]
     for kind in ("surface", "chain", "vanna", "charm"):
         assert not {"spot_source", "spot_strike"} & set(drawn[kind]), kind
-    assert instant == {"terrain"}
+    assert instant == set()
     routes = [r for r in server.app.routes if isinstance(r, APIRoute) and "GET" in r.methods]
     assert [r.path for r in routes if "ticker" in inspect.signature(r.endpoint).parameters] == []
-    assert {p: s for p, s in served.items() if s != (LIVE, False)} == {}
+    # the price the terrain's relations are at is the live price: the side of the flip, worked
+    # out here from the live price and the served flip
+    flip = drawn["terrain"]["gamma_flip"]
+    assert flip is not None
+    side = "ABOVE" if flip < LIVE else "BELOW" if flip > LIVE else "AT"
+    assert drawn["terrain"]["flip_relation"] == side
 
 
 def test_the_page_reads_no_route_only_its_socket():

@@ -304,7 +304,7 @@ def test_relations_from_a_stopped_price_stand_marked_not_live_with_its_time_and_
         )
     finally:
         _forget()
-    assert (live["levels_mark"], down["levels_mark"]) == (down["levels_state"], "CLOSE")
+    assert live["levels_state"] == down["levels_state"] == "CLOSE"  # the levels' own verdict
     # the price's mark is the price row's: live while the feed delivers it, then not live with
     # the print's trade time and its age at that moment
     assert live_row["feed_live"] is True and down_row["feed_live"] is False
@@ -451,11 +451,11 @@ def test_the_stopped_price_answers_the_browser_renders_are_the_routes_own():
             },
         )
     for route in PRICE_MARKED:
-        copies = {"spot_text", "spot_time_ct", "spot_not_live_text"} & served[route].keys()
-        assert not copies, (route, copies)
-    assert (served["terrain"]["levels_state"], served["terrain"]["levels_mark"]) == (
+        copies = {"spot", "spot_text", "spot_time_ct", "spot_not_live_text", "spot_source"}
+        assert not copies & served[route].keys(), (route, copies & served[route].keys())
+    assert (served["terrain"]["levels_state"], "levels_mark" in served["terrain"]) == (
         "CLOSE",
-        "CLOSE",
+        False,
     )
     for route in ("levels", "strikes", "surface"):
         assert served[route]["levels_state"] == "CLOSE", route

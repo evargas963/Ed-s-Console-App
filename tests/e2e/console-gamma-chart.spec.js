@@ -46,7 +46,6 @@ const TERRAIN = {
   regime: "POSITIVE_GAMMA",
   regime_text: "Positive gamma",
   levels_state: "LIVE",
-  levels_mark: "LIVE",
 };
 const BARS = {
   bars: [

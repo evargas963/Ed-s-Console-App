@@ -128,12 +128,12 @@ def test_each_strike_and_level_is_its_distance_in_points_and_in_implied_moves(
 ) -> None:
     """ln(price / spot) over the expiry's at-the-money volatility × √(time left), signed.
 
-    `spot` is the live price at that instant, the price row's (Schwab's last trade), which the
-    terrain panel carries as the price its relations are from; the matrix serves no copy of it.
+    `spot` is the live price at that instant, the price row's (Schwab's last trade, the one
+    producer the page's socket carries); the matrix serves no copy of it.
     """
     panels = _panels(name)
     body = panels[key]
-    spot, expiry = panels["terrain"]["spot"], body["expiry"]
+    spot, expiry = panels["price_row"]["spot"], body["expiry"]
     assert "spot" not in body
     iv = panels["terrain"]["atm_iv_pct_by_expiry"][expiry] / 100.0
     years = (_settles(name, expiry) - _captured_at(name)).total_seconds() / (365 * 86400)

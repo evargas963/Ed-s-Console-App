@@ -180,16 +180,20 @@
       return words;
     }
     if (src) {
-      // the served mark (levels_mark: the levels' state, or the price's while the levels are LIVE)
-      // with the levels' age; the reason is disclosed in the tooltip, not as a paragraph
+      // the levels' own verdict (levels_state) with their age, why on hover; then, as the walls'
+      // relations are from the live price, that price's mark: the header's own row's, painted
+      // by the shell (one producer of the price's verdict). #5: terrain levels are AGGREGATE
+      // across expiries; with one expiry chosen the line says they are still all-exp.
       src.textContent = chainMarked(
-        d.levels_mark + (d.levels_age_text ? " · " + d.levels_age_text : ""),
+        d.levels_state + (d.levels_age_text ? " · " + d.levels_age_text : ""),
       );
-      src.title = d.levels_mark_reason == null ? "" : d.levels_mark_reason;
-      src.style.color = d.levels_mark === "LIVE" ? "" : "var(--ed-stale)";
-      // #5: terrain levels are AGGREGATE across expiries; if the workspace filters to one expiry,
-      // disclose that these levels are still all-exp (never silently relabel them as selected-expiry).
-      if (window.EdShell.getExpiry()) src.textContent += " · all-exp";
+      var mark = document.createElement("span");
+      mark.setAttribute("data-live-price-mark", "");
+      src.appendChild(mark);
+      if (window.EdShell.getExpiry()) src.appendChild(document.createTextNode(" · all-exp"));
+      src.title = d.levels_stale_reason == null ? "" : d.levels_stale_reason;
+      src.style.color = d.levels_state === "LIVE" ? "" : "var(--ed-stale)";
+      window.EdShell.paintLivePrice(src);
     }
     announceTotalGamma(d);
   }

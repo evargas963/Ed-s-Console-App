@@ -160,7 +160,8 @@ def test_payload_is_json_serialisable() -> None:
     payload = compute_terrain("SPY", chain, spot, now=NOW, sessions=sessions()).to_dict()
     round_tripped = json.loads(json.dumps(payload))
     assert round_tripped["ticker"] == "SPY"
-    assert "spot" in round_tripped and "confidence" not in round_tripped
+    # the price is the price row's alone (one producer): the payload carries none
+    assert "spot" not in round_tripped and "confidence" not in round_tripped
     assert "flip_note" in round_tripped
 
 

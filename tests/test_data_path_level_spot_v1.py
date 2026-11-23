@@ -16,9 +16,9 @@ from time_et import sessions
 def test_a_down_price_marks_the_levels_and_the_wall_stays():
     """The chain is current, so the levels are not stale.
 
-    The equity feed is down, so the rail is told the price they were built from has stopped:
-    the levels' own mark, and the price row's verdict (one producer, which the page draws beside
-    them; the terrain panel serves no copy of it). The wall is the last one published (CRWD's
+    The equity feed is down, so the rail is told the price they were built from has stopped: the
+    price row's verdict (one producer), which the page draws beside the levels' own; the terrain
+    panel carries no copy of the price or its verdict. The wall is the last one published (CRWD's
     real chain, published by the one producer as fetched then, valued at its capture). Served in
     regular hours (RTH_INSTANT).
     """
@@ -41,9 +41,11 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
             level_store._levels.pop(tk, None)
     assert down["call_wall"] == live["call_wall"] == published["call_wall"] is not None
     assert down["levels_state"] == "LIVE"
-    assert (down_row["feed_live"], down["levels_mark"]) == (False, "OFFLINE")
-    assert down["levels_mark_reason"].startswith("Schwab LEVELONE_EQUITIES feed down during ")
-    assert (live_row["feed_live"], live["levels_mark"]) == (True, "LIVE")
-    assert live["levels_mark_reason"] is None
+    # the price's verdict is the price row's alone (the page draws it beside the levels' own)
+    assert (down_row["feed_live"], down_row["feed_label"]) == (False, "OFFLINE")
+    assert down_row["outage"].startswith("Schwab LEVELONE_EQUITIES feed down during ")
+    assert (live_row["feed_live"], live_row["feed_label"]) == (True, "LIVE")
+    assert live_row["outage"] is None
     assert live["levels_state"] == "LIVE"
-    assert not {"spot_text", "spot_time_ct", "spot_not_live_text"} & (down.keys() | live.keys())
+    copies = {"spot", "spot_text", "spot_time_ct", "spot_not_live_text", "levels_mark"}
+    assert not copies & (down.keys() | live.keys())

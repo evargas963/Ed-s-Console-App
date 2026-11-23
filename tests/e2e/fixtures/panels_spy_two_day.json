@@ -9569,7 +9569,6 @@
   },
   "terrain": {
     "ticker": "SPY",
-    "spot": 757.075,
     "schema_version": 7,
     "regime": "NEGATIVE_GAMMA",
     "headline": "Net GEX is negative: research links this to larger price swings and some late-day continuation, not to a trade direction.",
@@ -9829,8 +9828,6 @@
     },
     "levels_ts_utc": 1794497441.9345267,
     "chain_basis": "every_expiry_strike_range_ALL",
-    "spot_source": "streaming_plane",
-    "spot_as_of_ts_utc": 1794497439.851,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
     "levels_age_text": "0s",
@@ -9848,9 +9845,41 @@
     "atr_weekly_text": "19.86",
     "atr_monthly_text": "37.93",
     "regime_text": "Negative gamma",
-    "total_gamma_change": null,
-    "levels_mark": "LIVE",
-    "levels_mark_reason": null
+    "total_gamma_change": null
+  },
+  "price_row": {
+    "ticker": "SPY",
+    "spot": 757.075,
+    "spot_disp": "757.08",
+    "spot_source": "streaming_plane",
+    "feed_live": true,
+    "feed_label": "LIVE",
+    "outage": null,
+    "bid": 757.05,
+    "ask": 757.07,
+    "bid_text": "757.05",
+    "ask_text": "757.07",
+    "bid_size": null,
+    "ask_size": 560.0,
+    "mark": 757.07,
+    "quote_ts": 1794497440.02,
+    "quote_time_ct": "Thu 11/12 09:30 AM CT",
+    "last_size": 80.0,
+    "total_volume": 9513405.0,
+    "last_size_text": "80",
+    "total_volume_text": "9,513,405",
+    "chg_pct": -0.359958,
+    "chg_pct_regular": -0.359958,
+    "chg_pct_text": "-0.36%",
+    "chg_pct_regular_text": "-0.36%",
+    "net_change": -2.735,
+    "open_price": null,
+    "high_price": null,
+    "low_price": null,
+    "trade_ts": 1794497439.851,
+    "trade_time_ct": "Thu 11/12 09:30 AM CT",
+    "trade_age_text": "2s",
+    "ts_recv": 1794497440.7219167
   },
   "surface": {
     "ticker": "SPY",
@@ -49008,9 +49037,7 @@
     "terrain": {
       "levels_state": "STALE",
       "levels_stale_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)",
-      "levels_age_text": "10m",
-      "levels_mark": "STALE",
-      "levels_mark_reason": "levels are 600s old; the daemon's chain sweep has not delivered this ticker in two of its rounds (245s each)"
+      "levels_age_text": "10m"
     },
     "liquidity": {
       "levels_state": "STALE",

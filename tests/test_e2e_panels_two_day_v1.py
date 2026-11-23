@@ -32,6 +32,7 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
+import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
@@ -252,6 +253,9 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                         tk, at, {**AUTO, "expiry": MISSING_EXPIRY}
                     ),
                     "terrain": terrain,
+                    # the price row the page's socket carries at that instant: the one producer of
+                    # the price on every screen, which the browser tests push
+                    "price_row": live_price_rows.price_row(tk, at),
                     "surface": push_surface.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
                     ),
@@ -281,9 +285,11 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     ),
                     # the Confluence matrix at the front expiry (that day's own) and at the chain's
                     # second
-                    "confluence": push_confluence.confluence(tk, now, {"expiry": None}),
+                    "confluence": push_confluence.confluence(
+                        tk, now, {"expiry": None, "centre": None}
+                    ),
                     "confluence_second_expiry": push_confluence.confluence(
-                        tk, now, {"expiry": real.captures[1]["rows"][1]["expiry"]}
+                        tk, now, {"expiry": real.captures[1]["rows"][1]["expiry"], "centre": None}
                     ),
                     "chain": push_chain.chain(tk, at, {"expiry": None}),
                     # the Chain tests' expiry switch: the chain's second expiry
@@ -370,7 +376,10 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
         "reason": f"the chain lists no contracts for {MISSING_EXPIRY}",
     }
     assert "today" not in panels["strikes_missing_expiry"]
-    assert panels["terrain"]["spot"] == real.quote["native"]["LAST_PRICE"]
+    # the price the page draws is the price row's (one producer): Schwab's last trade the panels
+    # were made with; no panel carries a copy
+    assert panels["price_row"]["spot"] == real.quote["native"]["LAST_PRICE"]
+    assert "spot" not in panels["terrain"]
     # the regime as the screen says it, served beside it (AMZN's net GEX at the price is positive
     # that morning, SPY's negative)
     terrain = panels["terrain"]
@@ -424,13 +433,12 @@ def test_the_browser_tests_two_day_panels_are_the_producers_own(real, tmp_path):
     }
     assert later["liquidity"]["snapshot_age_text"] != liquidity["snapshot_age_text"]
     copies = {"spot", "spot_text", "spot_time_ct", "spot_not_live_text", "spot_source"}
-    assert not copies & levels.keys(), copies & levels.keys()
+    copies |= {"spot_as_of_ts_utc", "levels_mark", "levels_mark_reason"}
+    for name in ("levels", "terrain", "confluence", "chain"):
+        body = levels if name == "levels" else panels[name]
+        assert not copies & body.keys(), (name, copies & body.keys())
     assert later["levels"] == later["liquidity"]
-    assert later["terrain"] == {
-        **stale,
-        "levels_mark": "STALE",
-        "levels_mark_reason": stale["levels_stale_reason"],
-    }
+    assert later["terrain"] == stale
     # the queue's crosses are the day's recorded ones, inside the timeframe's window
     recorded = {f"x{row['cross_id']}" for row in real.desk["crosses"]}
     for queue in panels["desk"].values():

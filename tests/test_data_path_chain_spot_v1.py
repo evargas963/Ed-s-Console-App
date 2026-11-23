@@ -85,15 +85,16 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
             for done in ofs.assemble_chain_part(msg):
                 server._on_chain(*done)
         _drain()
-        held = level_store.published_levels(TK).served()
+        held = level_store.published_levels(TK)
     finally:
         _forget()
-    assert (held["spot"], held["spot_as_of_ts_utc"], held["spot_source"]) == (
+    # the price the levels were computed at, kept with the publication (no panel carries it)
+    assert (held.snap.spot, held.spot_as_of_ts_utc, held.spot_source) == (
         LAST,
         TRADED,
         server.SPOT_SOURCE_PLANE,
     )
-    assert held["spot"] != CRWD.spot
+    assert held.snap.spot != CRWD.spot
 
 
 def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
@@ -125,13 +126,13 @@ def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
     published = []
     try:
         server._publish_levels(TK, captures=[read], now=CRWD.now)
-        published.append(level_store.published_levels(TK).served())
+        published.append(level_store.published_levels(TK))
         server._publish_levels(TK, now=CRWD.now)  # a reprice of the kept capture
-        published.append(level_store.published_levels(TK).served())
+        published.append(level_store.published_levels(TK))
     finally:
         _forget()
     for held in published:
-        assert (held["spot"], held["spot_source"], held["spot_as_of_ts_utc"]) == (
+        assert (held.snap.spot, held.spot_source, held.spot_as_of_ts_utc) == (
             None,
             server.SPOT_SOURCE_NONE,
             None,

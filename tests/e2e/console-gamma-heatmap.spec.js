@@ -162,7 +162,7 @@ const BARS = {
   ticker: "AMZN",
   n: 8,
   bars: [-0.8, -0.5, -0.3, -0.6, -0.1, 0.1, -0.2, 0].map(function (d, i) {
-    const c = TERRAIN.spot + d;
+    const c = REAL.price_row.spot + d;
     return { t: 1757000000 + i * 60, o: c - 0.1, h: c + 0.2, l: c - 0.2, c: c, v: 1000 + i };
   }),
 };
@@ -186,6 +186,17 @@ const { watchRequests, holdClock } = require("./fixtures/settled");
 // the program's side of that socket: `sock.changed(kind)` sends the kind's panels again, as the
 // program does when they change; `sock.subscribes` is every subscribe the page sent.
 let panels, sock;
+// a price row the daemon serves once the feed is down (INDUCED), and the words the header's row
+// puts beside every value computed from that price (one producer of the price's verdict)
+const STOPPED_ROW = priceRow("SPY", 601.23, {
+  feed_live: false,
+  feed_label: "OFFLINE",
+  outage: "Schwab LEVELONE_EQUITIES feed down during RTH",
+  trade_time_ct: "14:00:01 CT",
+  trade_age_text: "4s",
+});
+const STOPPED_MARK =
+  " · OFFLINE: Schwab LEVELONE_EQUITIES feed down during RTH · last trade 14:00:01 CT · 4s";
 // the page's socket with these panels and the pushed price `rows`
 async function socketWith(page, rows) {
   sock = await mockPriceSocket(page, rows, [], undefined, panels);
@@ -503,9 +514,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     const words = "the program could not produce this panel: RuntimeError: chain lock timed out";
     panels.terrain = Object.assign({}, TERRAIN, {
       levels_state: "STALE",
-      levels_mark: "STALE",
       levels_stale_reason: "chain 12m old",
-      levels_mark_reason: "chain 12m old",
     });
     await socketWith(page, [priceRow("SPY", 601.23)]); // the pushed price
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -1078,19 +1087,16 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   test("a level built from a price that has stopped stays, and the rail says OFFLINE", async ({
     page,
   }) => {
-    panels.terrain = Object.assign({}, TERRAIN, {
-      levels_mark: "OFFLINE",
-      levels_mark_reason: "Schwab LEVELONE_EQUITIES feed down during RTH",
-    });
+    // the levels LIVE; the price they are from stopped: the price row's own verdict (one
+    // producer) beside the levels' own
+    await socketWith(page, [STOPPED_ROW]);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#klCall")).toHaveText("270.00");
     await expect(page.locator("#klSrc")).toHaveText(
-      TERRAIN.levels_time_ct + " · OFFLINE · " + TERRAIN.levels_age_text,
+      TERRAIN.levels_time_ct + " · LIVE · " + TERRAIN.levels_age_text + STOPPED_MARK,
     );
-    await expect(page.locator("#klSrc")).toHaveAttribute(
-      "title",
-      "Schwab LEVELONE_EQUITIES feed down during RTH",
-    );
+    await expect(page.locator("#klSrc")).toHaveAttribute("title", "");
+    await expect(page.locator("#hFeed")).toHaveText("OFFLINE");
     await expect(page.locator("#klBody")).not.toHaveClass(/recede/);
   });
 
@@ -1099,16 +1105,12 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     panels.terrain = Object.assign({}, TERRAIN, {
       levels_age_text: "4s",
       levels_time_ct: CHAIN_TIME,
-      levels_mark: "OFFLINE",
-      levels_mark_reason: "Schwab LEVELONE_EQUITIES feed down during RTH",
     });
+    await socketWith(page, [STOPPED_ROW]);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#klCall")).toHaveText("270.00");
-    await expect(page.locator("#klSrc")).toHaveText(CHAIN_TIME + " · OFFLINE · 4s");
-    await expect(page.locator("#klSrc")).toHaveAttribute(
-      "title",
-      "Schwab LEVELONE_EQUITIES feed down during RTH",
-    );
+    await expect(page.locator("#klSrc")).toHaveText(CHAIN_TIME + " · LIVE · 4s" + STOPPED_MARK);
+    await expect(page.locator("#klSrc")).toHaveAttribute("title", "");
   });
 
   test("key levels rail after its own option close reads CLOSE with the close values' time and age (the route's own answer)", async ({
@@ -1119,6 +1121,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
       path.join(__dirname, "..", "fixtures", "real_spy_terrain_at_a_stopped_price_2026_10_22.json"),
     );
     panels.terrain = CLOSED;
+    await socketWith(page, [priceRow("SPY", 773.13)]); // the price row live: no mark beside them
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#klSrc")).toHaveText(
       CLOSED.levels_time_ct + " · CLOSE · " + CLOSED.levels_age_text,

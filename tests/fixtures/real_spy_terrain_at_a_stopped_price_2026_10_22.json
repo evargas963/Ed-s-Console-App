@@ -43,8 +43,6 @@
  "key_delta_strike": 772.0,
  "key_delta_strike_text": "772.00",
  "levels_age_text": "2h",
- "levels_mark": "CLOSE",
- "levels_mark_reason": "",
  "levels_stale_reason": "",
  "levels_state": "CLOSE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
@@ -111,9 +109,6 @@
   "put_wall": "764.00"
  },
  "schema_version": 7,
- "spot": 773.1269,
- "spot_as_of_ts_utc": 1792701541.652,
- "spot_source": "streaming_plane",
  "strikes_used": 146,
  "ticker": "SPY",
  "total_gamma_change": null

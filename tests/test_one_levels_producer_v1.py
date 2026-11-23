@@ -524,9 +524,11 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
         assert out[k] == published[k], k
     for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
         assert out[k] is None, k
-    assert _cached().snap.spot == published["spot"] and _cached().spot_as_of_ts_utc == _T
+    # the price the levels were computed at stays with the publication; no panel carries it
+    assert _cached().snap.spot is not None and _cached().spot_as_of_ts_utc == _T
     assert _cached().spot_source == server.SPOT_SOURCE_PLANE
-    assert out["spot"] is None and "spot_state" not in out
+    assert not {"spot", "spot_source", "spot_as_of_ts_utc"} & (published.keys() | out.keys())
+    assert "spot_state" not in out
     _publish(_RECORDS, _T, chain_spot=(None, None))  # the next chain: no spot
     out = push_terrain.terrain(TK, time_et.now())
     assert (
@@ -670,11 +672,13 @@ def test_startup_prices_the_newest_capture_with_its_own_price_and_time():
     try:
         assert server._load_stored_levels([tk]) == 1
         _drain()
-        loaded = level_store.published_levels(tk).served()
+        published = level_store.published_levels(tk)
+        loaded = published.served()
     finally:
         _forget(tk)
     assert loaded["computed_ts_utc"] == _T
-    assert loaded["spot"] == _SPOT and loaded["spot_source"] == server.SPOT_SOURCE_PLANE
+    # priced at the capture's own price, which stays with the publication (no panel carries it)
+    assert published.snap.spot == _SPOT and published.spot_source == server.SPOT_SOURCE_PLANE
     expected = compute_terrain(tk, _RECORDS, _SPOT, now=_AT, sessions=time_et.sessions())
     assert expected.gamma_flip is not None, "the capture must price (valued at its own time)"
     for k in ("gamma_flip", "call_wall", "put_wall", "max_pain"):

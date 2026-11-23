@@ -152,7 +152,6 @@ class TerrainFields(TypedDict):
     """
 
     ticker: str
-    spot: float | None
     schema_version: int
     regime: str
     headline: str
@@ -357,11 +356,11 @@ class TerrainSnapshot:
         iv_by_expiry), which the server reads off the snapshot, nor the fields no reader of the
         payload takes: the pin's distances and the expiry the same-day levels were re-priced from
         (the notes say them), each expiry's days, and the volume ratios as numbers (their text
-        is served).
+        is served). Nor the price they were computed at (`spot`): the price on every screen is
+        the price row's alone (one producer).
         """
         return {
             "ticker": self.ticker,
-            "spot": self.spot,
             "schema_version": self.schema_version,
             "regime": self.regime,
             "headline": self.headline,

@@ -218,11 +218,23 @@ def window_asked(params: dict[str, Any]) -> tuple[str, float | None, int] | str:
     scope, shift = params.get("scope"), params.get("shift")
     if scope not in SCOPES:
         return f"scope {scope!r} is not one of {', '.join(SCOPES)}"
+    centre = centre_asked(params)
+    if isinstance(centre, str):
+        return centre
+    if isinstance(shift, bool) or not isinstance(shift, int):
+        return f"shift {shift!r} is not a whole number of rows"
+    return scope, centre, shift
+
+
+def centre_asked(params: dict[str, Any]) -> float | None | str:
+    """Return the strike a page's panel parameters centre its rows on: a strike, or None.
+
+    None: around the price. The words saying why when they name none: a centre not sent is not
+    a centre of None. Every panel that takes a centre reads it by this one rule.
+    """
     if "centre" not in params:
         return "the window names no centre"
     centre = params["centre"]
     if centre is not None and (isinstance(centre, bool) or not isinstance(centre, int | float)):
         return f"centre {centre!r} is not a strike"
-    if isinstance(shift, bool) or not isinstance(shift, int):
-        return f"shift {shift!r} is not a whole number of rows"
-    return scope, centre, shift
+    return None if centre is None else float(centre)
