@@ -40,8 +40,15 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            "refs/pull/$PR/merge:refs/heads/judged"
+          # GitHub builds the test merge commit in a background job after the event: until it
+          # has, refs/pull/N/merge is missing or still the last head's. Its REST docs say to give
+          # that job time and ask again (`mergeable` null); asked every 5 s for up to 2 minutes
+          for _ in $(seq 24); do
+            git -C judge fetch -q "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+              "+refs/pull/$PR/merge:refs/heads/judged" \
+              && [ "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA" ] && break
+            sleep 5
+          done
           test "$(git -C judge rev-parse refs/heads/judged^2)" = "$HEAD_SHA"
           test "$(git -C judge rev-parse refs/heads/judged^1)" = "$(git -C judge rev-parse HEAD)"
           git -C judge worktree add -q --detach "$PWD/head" refs/heads/judged
