@@ -329,14 +329,16 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
 
 
 def write_e2e_panels() -> None:
-    """Regeneration utility (never called by a test).
+    """Regeneration utility (never called by a test), then Prettier, which sets a JSON's layout.
 
     python -c "import tests.conftest, tests.test_e2e_panels_two_day_v1 as t; t.write_e2e_panels()"
+    npx prettier --write tests/e2e/fixtures/panels_amzn_two_day.json
+    tests/e2e/fixtures/panels_spy_two_day.json
     """
     for real in (AMZN, SPY):
         with tempfile.TemporaryDirectory() as folder:
             real.panels.write_text(
-                json.dumps(build_e2e_panels(real, Path(folder)), indent=2) + "\n",  # as Prettier
+                json.dumps(build_e2e_panels(real, Path(folder)), indent=2) + "\n",
                 encoding="utf-8",
             )
 

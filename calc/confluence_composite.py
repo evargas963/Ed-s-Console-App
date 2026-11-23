@@ -654,6 +654,8 @@ def _row(strike: float, r: StrikeReadings, c: Composite | None) -> dict[str, Any
 
 #: why a look-back reading is "-": a contract at the strike was not held over the whole window
 LOOK_REASON = "the stream did not hold every contract at this strike over the whole look-back"
+#: why the flow alone is "-": the chain sent no multiplier (the shares a contract is on) for one
+NO_MULTIPLIER = "Schwab's chain sent no multiplier for a contract at this strike"
 #: why pace is "-": its baseline, the same time of day over 20 sessions (decision 63), is not held
 PACE_REASON = "needs the same time of day over 20 sessions of the record; not held yet"
 
@@ -687,12 +689,13 @@ def _look_cells(r: StrikeReadings) -> dict[str, Any]:
             "trade against the middle of the quote in force; on the middle, unknown."
         ),
         "flow_text": dollars_text(look.flow),
-        "flow_reason": _absent(look.flow, LOOK_REASON),
+        "flow_reason": _absent(look.flow, LOOK_REASON if look.bought is None else NO_MULTIPLIER),
         "flow_hover": None
         if look.flow is None
         else (
             "est.: the stock the look-back's option trades would have the dealers trade, bought "
-            f"less sold x Schwab's delta x 100 x the stock's price ({ASSUMPTION}); "
+            "less sold x Schwab's delta x the contract's multiplier x the stock's price "
+            f"({ASSUMPTION}); "
             f"{count_text(look.unpriced)} contracts with no side, delta or price left out."
         ),
         "pace_text": None,

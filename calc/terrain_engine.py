@@ -1239,7 +1239,6 @@ def compute_terrain(
         same_day=same_day,
         same_day_repriced_from=same_day_repriced_from,
         **_front_max_pain(books),
-        # ExposureDiagnostics is a frozen dataclass; contracts_used is ALWAYS an int.
         contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
         dollarized=exposures_have_dollar_gex(exposures),

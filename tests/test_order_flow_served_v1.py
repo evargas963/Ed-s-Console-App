@@ -129,10 +129,10 @@ def write_heatmap_e2e_fixture() -> None:
     """Regeneration utility (never called by a test): the producer's answer, as the socket sends.
 
     python -c "import tests.conftest, tests.test_order_flow_served_v1 as t
-    t.write_heatmap_e2e_fixture()"
+    t.write_heatmap_e2e_fixture()", then Prettier, which sets a JSON's layout.
     """
     d = book_heatmap_for_ticker("TSLA", "NASDAQ_BOOK", minutes=240, books=_books(_FX["rows"]))
-    _DRAWN.write_bytes((json.dumps(d, indent=2) + "\n").encode("utf-8"))  # as Prettier writes
+    _DRAWN.write_bytes((json.dumps(d, indent=2) + "\n").encode("utf-8"))
 
 
 def test_the_heatmap_the_browser_draws_is_the_producers_own(heat):
