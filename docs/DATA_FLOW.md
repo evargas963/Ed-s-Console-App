@@ -464,8 +464,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   rise of TOTAL_VOLUME one step, read by its last trade against the quote in force,
   `calc.option_window.step_totals`). Its lifecycle owner is the order-flow state: a record begins at
   a contract's first message of the ET day, takes every message after it, and is begun again on the
-  next day and after the stream reconnects (`clear_all_live_state`), so a window reaching before
-  that is "-", never a part. When the stream stops, the newest values stand and the header says
+  next day and when the program starts, so a window reaching before that is "-", never a part. A
+  reconnect of Schwab's stream keeps it: Schwab's counts run on, so the window's volume stays exact,
+  and the gap's trades arrive as one rise of volume, read by its last trade as any rise Schwab
+  merges is (on the day it was measured, 2026-11-23, 63% of the first hour's volume came in rises
+  larger than their last trade). When the stream stops, the newest values stand and the header says
   OFFLINE. Read by the matrix (`push.confluence._looks`) over the look-back the page picks. Enforced
   by: `tests/test_matrix_look_back_v1.py`.
 - **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept

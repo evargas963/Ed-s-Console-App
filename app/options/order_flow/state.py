@@ -146,7 +146,7 @@ class OrderFlowState:
         self._book: defaultdict[str, dict[str, Book]] = defaultdict(dict)
         self._tape: dict[str, deque[KeptPrint]] = {}
         #: each option contract's look-back record of the market day (_Record), from its first
-        #: LEVELONE_OPTIONS message since the start or the stream's last reconnect
+        #: LEVELONE_OPTIONS message of the day since the program started
         self._records: dict[str, _Record] = {}
         #: the bus's current records (stream_spine.MessageBus.current, bind): each symbol's top of
         #: book, Greeks and volume are read from them, never kept here
@@ -313,11 +313,7 @@ class OrderFlowState:
             self._clear_all_session_state_unlocked()
 
     def _clear_all_session_state_unlocked(self) -> None:
-        """Drop session state. Caller holds ``self._lock``.
-
-        With it each contract's look-back record: a step across a reconnect's gap would be read
-        by a trade made after it, so the records begin again from the next message.
-        """
+        """Drop session state, each contract's look-back record with it. Caller holds the lock."""
         for values in self._tape.values():
             values.clear()
         for values in self._book.values():
@@ -418,10 +414,12 @@ def newest_book(symbol: str, venue: str) -> Book | None:
 
 
 def clear_all_live_state() -> None:
-    """Drop every symbol's tape and books.
+    """Drop every symbol's tape, books and look-back records, when the console stops streaming.
 
-    Required on stream disconnect/reconnect. Leaving the last window resident
-    mixes pre-disconnect restatements with the new session.
+    Its one caller is the console's stop (streaming.stop_order_flow_stream). A reconnect of
+    Schwab's stream keeps them: Schwab's counts run on, so a look-back's volume across the gap
+    stays exact, and the gap's trades arrive as one rise of volume, read by its last trade as
+    any rise Schwab merges is.
     """
     _LIVE_STATE.clear_all()
 
