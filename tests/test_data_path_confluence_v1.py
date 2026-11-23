@@ -1,9 +1,8 @@
-"""Schwab -> the confluence matrix. The score is the chain already priced, ranked once."""
+"""Schwab -> the confluence matrix: the chain already priced, read per strike once."""
 
 from __future__ import annotations
 
 import json
-import statistics
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -16,21 +15,16 @@ import live_price_rows
 import server
 from app.options.order_flow import streaming as ofs
 from calc.confluence_composite import (
-    LEANS,
     SHADED,
     at_price,
     build_matrix,
-    in_score_weights,
     iv_by_strike,
-    magnitudes,
-    preset_name,
-    score_magnitudes,
+    readings,
     under_strike,
     window_rows,
 )
 from calc.math_exposure_core import bucket_metric, compute_exposures_by_strike
-from calc.math_levels import compute_charm_by_strike
-from calc.terrain_engine import TerrainSnapshot
+from calc.math_levels import compute_charm_by_strike, contract_inputs, gamma_at_strikes
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from numeric_contract import price_text
 from option_contract import read_chain
@@ -50,9 +44,9 @@ from tests.real_chains import (
     SPY_0DTE,
     SPY_AFTER_HOURS_PRINT,
     SPY_CLOSE,
-    SPY_FULL,
     SPY_PRINT_A_STRIKE_AWAY,
     TSLA,
+    gamma_here_worked_out,
 )
 from tests.shared_helpers import fixture_json, rail_levels
 from tests.test_order_flow_book_payload_v1 import _same
@@ -169,152 +163,152 @@ def _published_0dte() -> level_store.PublishedLevels:
 def _hold_with(levels: level_store.PublishedLevels, **snap_fields) -> None:
     """`levels` held with its snapshot's `snap_fields` in their place.
 
-    The request ranks the expiry it shows on them (_ranked_matrix).
+    The request reads the expiry it shows on them (push.confluence._matrix).
     """
     level_store.publish("SPY", replace(levels, snap=replace(levels.snap, **snap_fields)))
 
 
-def _book_magnitudes(live: TerrainSnapshot, expiry: str, spot: float) -> dict:
-    """Each strike's factor magnitudes of one published expiry, as the matrix builds them."""
-    book = next(b for (e, _d), (b, _x) in live.books.items() if e == expiry)
-    charm = live.charm_by_expiry[expiry]
-    iv = live.iv_by_expiry[expiry]
-    mags = {s: magnitudes(b, charm.get(s), iv.get(s), spot) for s, b in book.items()}
-    return {s: {k: v for k, v in m.items() if not k.startswith("_")} for s, m in mags.items()}
+def _published_matrix(tk: str, fx_chain: list, ts_utc: float, spot: float, expiry: str):
+    """One expiry of `tk`'s captured chain, published by the levels producer, as its matrix.
 
-
-def _nflx_far_book() -> tuple[dict, dict]:
-    """NFLX's 2027-12-17 expiry as the levels producer priced it.
-
-    From tests/real_chains.py NFLX, captured 2026-10-07: its book, and each strike's factor
-    magnitudes as the matrix builds them.
+    Every strike's readings and Composite, read on the published snapshot (no prior day, no
+    session's visits held).
     """
+    at = datetime.fromtimestamp(ts_utc, ET)
     try:
-        publish_capture(
-            "NFLX",
-            NFLX.chain,
-            NFLX.now.timestamp(),
-            NFLX.spot,
-            NFLX.now.date().isoformat(),
-            NFLX.now,
-        )
-        live = level_store.published_levels("NFLX").snap
-    finally:
-        _forget("NFLX")
-    book = next(b for (e, _d), (b, _x) in live.books.items() if e == "2027-12-17")
-    return book, _book_magnitudes(live, "2027-12-17", NFLX.spot)
-
-
-def _traded(m: dict) -> bool:
-    return (m["OI"] is not None and m["OI"] > 0) or (m["VOL"] is not None and m["VOL"] > 0)
-
-
-def _scores_by_definition(mags: dict, weights: dict) -> dict:
-    """Return the score as defined, stated apart from the code.
-
-    Over the strikes with open interest or
-    volume, each weighted factor's 5th and 95th percentiles (Hyndman-Fan type 7, Python's
-    statistics.quantiles with method="inclusive"), each value placed between them and clipped to
-    [0, 1], weighted, summed and times 100; a strike missing a weighted factor has none.
-    """
-    universe = [s for s, m in mags.items() if _traded(m)]
-    required = [k for k, w in weights.items() if w > 0]
-    cuts = {}
-    for k in required:
-        q = statistics.quantiles(
-            [mags[s][k] for s in universe if mags[s][k] is not None], n=20, method="inclusive"
-        )
-        cuts[k] = (q[0], q[18])
-    out = {}
-    for s in universe:
-        if any(mags[s][k] is None for k in required):
-            continue
-        out[s] = 100.0 * sum(
-            weights[k] * min(1.0, max(0.0, (mags[s][k] - cuts[k][0]) / (cuts[k][1] - cuts[k][0])))
-            for k in required
-        )
-    return out
-
-
-def test_a_missing_gamma_blanks_the_score_and_the_top_is_not_100():
-    """NFLX's 2027-12-17 book: strikes where Schwab sent no gamma (-999) have no net gamma.
-
-    So their score is absent with that reason. Every other strike's score is the definition's, and
-    the top one is not rescaled to 100.
-    """
-    _book, mags = _nflx_far_book()
-    weights = in_score_weights("MONTHLY")
-    scored, _flat, spans = score_magnitudes(mags, weights)
-    blank = [s for s, m in mags.items() if m["GEXM"] is None and _traded(m)]
-    expected = _scores_by_definition(mags, weights)
-    assert blank and len(expected) > 10
-    assert all(spans[k] is not None for k, w in weights.items() if w > 0)
-    assert all(scored[s]["score"] is None and "net gamma" in scored[s]["missing"] for s in blank)
-    assert {s: scored[s]["score"] for s in expected} == pytest.approx(
-        expected, rel=1e-12, abs=1e-12
-    )
-    top = max(r["score"] for r in scored.values() if r["score"] is not None)
-    assert top == pytest.approx(max(expected.values()), rel=1e-12) and top < 100
-
-
-def test_an_am_settled_expiry_past_the_year_is_scored():
-    """$SPX's AM-settled 2027-12-17 expiry, captured 2026-10-07: each strike has a score.
-
-    The expiry is past the year Schwab's /markets answers: each strike with open interest has
-    its charm and vanna, so it has a score, and the score is the definition's.
-    """
-    fx = fixture_json("real_spx_chain_2026_10_07_2027_12_17.json")
-    tk, at = server.ticker_storage_key(fx["ticker"]), datetime.fromtimestamp(fx["ts_utc"], ET)
-    try:
-        publish_capture(tk, fx["chain"], fx["ts_utc"], fx["spot"], at.date().isoformat(), at)
+        publish_capture(tk, fx_chain, ts_utc, spot, at.date().isoformat(), at)
         live = level_store.published_levels(tk).snap
     finally:
         _forget(tk)
-    mags = _book_magnitudes(live, "2027-12-17", fx["spot"])
-    weights = in_score_weights("MONTHLY")
-    scored, _flat, _spans = score_magnitudes(mags, weights)
-    expected = _scores_by_definition(mags, weights)
-    assert len(expected) > 10
-    assert {s: scored[s]["score"] for s in expected} == pytest.approx(
-        expected, rel=1e-12, abs=1e-12
+    book = next(b for (e, _d), (b, _x) in live.books.items() if e == expiry)
+    return build_matrix(
+        book,
+        live.charm_by_expiry[expiry],
+        live.iv_by_expiry[expiry],
+        spot,
+        live.gamma_by_expiry[expiry],
+        None,
+        {},
     )
 
 
-def test_a_missing_factor_is_not_called_flat():
-    """NFLX's 2027-12-17 strikes 2.5 to 4, priced by the levels producer.
+def test_a_gamma_schwab_did_not_send_leaves_the_strike_with_no_composite():
+    """NFLX's 2027-12-17 expiry (tests/real_chains.py NFLX, captured 2026-10-07).
 
-    Schwab sent -999 for the
-    volatility of the calls at 2.5, 3 and 3.5, with no puts open there, so those have no charm, and
-    4 has it. Charm does not vary where present, but the note does not call it flat, because it is
-    missing elsewhere; each strike missing it has no score and says charm.
+    Strikes where Schwab sent no gamma (-999) on a contract with open interest have no net gamma,
+    so no family is measured there and the strike has no Composite, with why; every strike with
+    a net gamma and a gamma there has one, its strength the definition's.
     """
-    _book, book_mags = _nflx_far_book()
-    mags = {s: book_mags[s] for s in (2.5, 3.0, 3.5, 4.0)}
-    scored, flat, spans = score_magnitudes(mags, in_score_weights("MONTHLY"))
-    traded = [s for s, m in mags.items() if _traded(m)]
-    present = [s for s in traded if mags[s]["CHARMM"] is not None]
-    assert spans["CHARMM"] is None and present and len(present) < len(traded)
-    assert len({mags[s]["CHARMM"] for s in present}) == 1
-    assert "CHARMM" not in flat
-    assert all(
-        scored[s]["score"] is None and "charm" in scored[s]["missing"]
-        for s in traded
-        if s not in present
-    )
+    m = _published_matrix("NFLX", NFLX.chain, NFLX.now.timestamp(), NFLX.spot, "2027-12-17")
+    blank = [s for s, r in m.readings.items() if r.net_gex is None]
+    known = [s for s, r in m.readings.items() if r.net_gex is not None and r.gamma_here is not None]
+    assert blank and len(known) > 10
+    assert all(m.composites[s] is None for s in blank)
+    rows = {r["strike"]: r for r in window_rows(m, blank)}
+    assert all(r["composite_text"] is None and r["composite_reason"] for r in rows.values())
+    peak = max(abs(m.readings[s].net_gex) for s in known)
+    for s in known:
+        c = m.composites[s]
+        assert c is not None and c.measured == ("positioning",)
+        assert c.strength == pytest.approx(100.0 * abs(m.readings[s].net_gex) / peak, rel=1e-12)
 
 
-def _matrix_of(tk: str, contracts: list, spot: float, at: datetime, dte: float):
+def test_an_am_settled_expiry_past_the_year_has_its_readings():
+    """$SPX's AM-settled 2027-12-17 expiry, captured 2026-10-07.
+
+    The expiry is past the year Schwab's /markets answers: each strike with open interest has
+    its charm, its vanna, its gamma if the price were there, and so its Composite.
+    """
+    fx = fixture_json("real_spx_chain_2026_10_07_2027_12_17.json")
+    tk = server.ticker_storage_key(fx["ticker"])
+    m = _published_matrix(tk, fx["chain"], fx["ts_utc"], fx["spot"], "2027-12-17")
+    held = [s for s, r in m.readings.items() if r.oi]
+    assert len(held) > 10
+    for s in held:
+        r = m.readings[s]
+        assert r.charm is not None and r.vanna is not None and r.gamma_here is not None
+        assert m.composites[s] is not None
+
+
+#: the sign of a gamma in the industry's words, and short in the Composite cell
+_GAMMA_WORDS = {-1: "Negative gamma", 1: "Positive gamma"}
+_GAMMA_SHORT = {-1: "Neg. gamma", 1: "Pos. gamma"}
+
+
+def _sign(x: float) -> int:
+    return (x > 0) - (x < 0)
+
+
+def test_each_strike_is_the_expirys_gamma_if_the_price_were_there():
+    """SPY's captured 0DTE chain (SPY_0DTE), one expiry, published by the levels producer.
+
+    Each strike's gamma reading is the expiry's net GEX if the price were at that strike, worked
+    out from the raw chain outside the program (tests/real_chains.gamma_here_worked_out): the
+    producer's map and every shown row, its words the sign's, a model with the convention said
+    on hover.
+    """
+    held = SPY_0DTE
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    assert {str(c["expirationDate"])[:10] for c in held.chain} == {expiry}
+    try:
+        live = _published_0dte()
+        body = push_confluence.confluence_payload("SPY", expiry, held.now)
+    finally:
+        _forget("SPY")
+    expected = gamma_here_worked_out(held)
+    assert live.snap.gamma_by_expiry[expiry] == pytest.approx(expected, rel=1e-9)
+    assert len(body["rows"]) == 11
+    for row in body["rows"]:
+        g = expected[row["strike"]]
+        assert row["gamma_here"] == pytest.approx(g, rel=1e-9)
+        assert row["gamma_here_text"] == _GAMMA_WORDS[_sign(g)]
+        assert "dealers long calls, short puts" in row["gamma_here_hover"]
+        assert row["gamma_here_reason"] is None
+
+
+def test_the_composite_is_the_sign_there_and_the_families_equal_vote():
+    """SPY's captured 0DTE chain: each strike's Composite, worked out from the definition.
+
+    Its condition is the sign of the expiry's gamma if the price were at the strike (worked out
+    from the raw chain); its strength 100 times the mean of the families measured there, each its
+    size against the expiry's largest: positioning, |net GEX| over the largest |net GEX| of the
+    expiry's book (decision 56: one equal vote a family). With no look-back held, positioning is
+    the one family measured, which the hover says.
+    """
+    held = SPY_0DTE
+    expiry = str(held.chain[0]["expirationDate"])[:10]
+    try:
+        live = _published_0dte()
+        body = push_confluence.confluence_payload("SPY", expiry, held.now)
+    finally:
+        _forget("SPY")
+    book = next(b for (e, _d), (b, _x) in live.snap.books.items() if e == expiry)
+    nets = {s: bucket_metric(b, "net_gex_1pct") for s, b in book.items()}
+    peak = max(abs(v) for v in nets.values() if v is not None)
+    gamma = gamma_here_worked_out(held)
+    for row in body["rows"]:
+        strength = 100.0 * abs(nets[row["strike"]]) / peak
+        sign = _sign(gamma[row["strike"]])
+        assert row["composite"] == pytest.approx(sign * strength / 100.0, rel=1e-9)
+        assert row["composite_text"] == f"{_GAMMA_SHORT[sign]} {strength:.0f}"
+        assert "1 of 4 families measured here (positioning)" in row["composite_hover"]
+        assert row["composite_reason"] is None
+
+
+def _matrix_of(tk: str, contracts: list, spot: float, at: datetime):
     """Return the matrix of one expiry's contracts as the levels producer prices them.
 
-    Its book, charm map and volatility blend at Schwab's `spot`, valued at `at` for `tk`'s
-    option close.
+    Its book, charm map, volatility blend and gamma profile at Schwab's `spot`, valued at `at`
+    for `tk`'s option close; no prior day and no session's visits held.
     """
     chain, product = read_chain(contracts), option_close_product(tk)
     book, _diag = compute_exposures_by_strike(
         chain, spot=spot, now=at, sessions=sessions(), product=product
     )
     charm = compute_charm_by_strike(chain, spot, now=at, sessions=sessions(), product=product)
-    return build_matrix(book, charm, iv_by_strike(chain), spot, dte)
+    priced, _unpriced = contract_inputs(chain, at, sessions=sessions(), product=product)
+    gamma = gamma_at_strikes(priced, book)
+    return build_matrix(book, charm, iv_by_strike(chain), spot, gamma, None, {})
 
 
 def _expiry(held, expiry: str) -> list:
@@ -325,8 +319,6 @@ def _expiry(held, expiry: str) -> list:
 _REASONS = {
     "net_gex_text": ("net_reason", "net gamma is missing"),
     "oi_text": ("oi_reason", "open interest is missing"),
-    "pc_gex_text": ("pc_gex_reason", "put/call gamma is missing"),
-    "gross_text": ("gross_reason", "gross gamma is missing"),
     "volume_text": ("volume_reason", "volume is missing"),
     "pc_vol_text": ("pc_vol_reason", "put/call volume is missing"),
     "vol_oi_text": ("vol_oi_reason", "volume/open interest is missing"),
@@ -343,9 +335,8 @@ def test_each_missing_column_says_why_and_an_unreported_count_is_not_called_zero
     NFLX's 2027-12-17 expiry (tests/real_chains.py NFLX), where Schwab sent -999 for some
     contracts' Greeks; and SPY's 2026-10-22 close capture (SPY_CLOSE) with, INDUCED until a
     capture holds it, the totalVolume of the call at the lowest strike with no open interest and
-    no volume left out, and the openInterest of the call at the next such strike. Those two are
-    unscored because a count was not reported; the other untraded strikes because they have no
-    open interest and no volume.
+    no volume left out, and the openInterest of the call at the next such strike. Those two show
+    "-" for the count not reported, never 0; the other untraded strikes show the 0 Schwab sent.
     """
     untraded = sorted(
         {
@@ -367,19 +358,21 @@ def test_each_missing_column_says_why_and_an_unreported_count_is_not_called_zero
         if row["putCall"] == "CALL" and row["strikePrice"] == no_oi:
             row.pop("openInterest")
         spy.append(row)
-    nflx = _matrix_of("NFLX", _expiry(NFLX, "2027-12-17"), NFLX.spot, NFLX.now, 436.0)
-    close = _matrix_of("SPY", spy, SPY_CLOSE.spot, SPY_CLOSE.now, 0.0)
-    rows = [*window_rows(nflx, list(nflx.ranked)), *window_rows(close, list(close.ranked))]
+    nflx = _matrix_of("NFLX", _expiry(NFLX, "2027-12-17"), NFLX.spot, NFLX.now)
+    close = _matrix_of("SPY", spy, SPY_CLOSE.spot, SPY_CLOSE.now)
+    rows = [*window_rows(nflx, nflx.strikes), *window_rows(close, close.strikes)]
     for row in rows:
         for text, (reason, words) in _REASONS.items():
             assert row[reason] == (words if row[text] is None else None), (row["strike"], text)
     for text in _REASONS:
         assert any(r[text] is None for r in rows) and any(r[text] is not None for r in rows), text
-    unscored = {s: r.result["missing"] for s, r in close.ranked.items() if s in untraded}
-    assert unscored == {
-        s: ["open interest or volume was not reported"]
-        if s in (no_volume, no_oi)
-        else ["no open interest and no volume"]
+    counts = {
+        r["strike"]: (r["oi_text"], r["volume_text"])
+        for r in window_rows(close, close.strikes)
+        if r["strike"] in untraded
+    }
+    assert counts == {
+        s: (None, "0") if s == no_oi else ("0", None) if s == no_volume else ("0", "0")
         for s in untraded
     }
 
@@ -389,8 +382,8 @@ def test_a_negative_gamma_is_taken_as_sent_in_both_legs():
 
     Its gamma made negative (no capture holds a negative gamma; Schwab's -999 stays not sent
     in the reader). AGENTS rule 2: a gamma is taken as sent whatever its size, so that strike's
-    net gamma, its size in the score and its put/call gamma come from both legs as sent: each
-    leg gamma x open interest x multiplier x price^2 x 1%, worked out here from the raw chain.
+    net gamma, and its size in the Composite, come from both legs as sent: each leg gamma x open
+    interest x multiplier x price^2 x 1%, worked out here from the raw chain.
     """
     held = SPY_0DTE
     strike = min({c["strikePrice"] for c in held.chain}, key=lambda k: abs(k - held.spot))
@@ -410,57 +403,17 @@ def test_a_negative_gamma_is_taken_as_sent_in_both_legs():
     }
     call, put = legs["CALL"], legs["PUT"]
     assert call < 0 < put
-    matrix = _matrix_of("SPY", chain, held.spot, held.now, 0.0)
-    ranked = matrix.ranked[strike]
-    assert ranked.factors["GEXM"] == pytest.approx(abs(call - put), rel=1e-12)
-    assert "net gamma" not in ranked.result["missing"] and ranked.result["score"] is not None
+    matrix = _matrix_of("SPY", chain, held.spot, held.now)
+    readings = matrix.readings[strike]
+    assert readings.net_gex == pytest.approx(call - put, rel=1e-12)
+    peak = max(abs(r.net_gex) for r in matrix.readings.values() if r.net_gex is not None)
+    composite = matrix.composites[strike]
+    assert composite is not None
+    assert composite.strength == pytest.approx(100.0 * abs(call - put) / peak, rel=1e-12)
     row = window_rows(matrix, [strike])[0]
     assert row["net_gex"] == pytest.approx(call - put, rel=1e-12)
     assert row["net_gex_text"] == screen_text(call - put, "dollars")
-    assert row["pc_gex_text"] == f"{put / call:.2f}"
-    assert row["gross"] == pytest.approx(abs(call) + abs(put), rel=1e-12)
-    assert row["net_reason"] is None and row["pc_gex_reason"] is None
-
-
-def test_a_thin_or_flat_book_says_so():
-    """SPY's 2026-11-23 expiry in its 2026-11-09 11:06 ET whole-chain capture (SPY_FULL).
-
-    Listed with open interest 0 at every strike, so net gamma, open interest, vanna, delta and
-    charm do not vary across its traded strikes, which the note says. Cut to the strikes up to
-    its tenth traded one it is not thin; up to its ninth it is, fewer than ten.
-    """
-    contracts = _expiry(SPY_FULL, "2026-11-23")
-    full = _matrix_of("SPY", contracts, SPY_FULL.spot, SPY_FULL.now, 14.0)
-    traded = sorted(s for s, r in full.ranked.items() if _traded(r.factors))
-    constant = sorted(
-        k
-        for k, w in in_score_weights("MONTHLY").items()
-        if w > 0 and len({full.ranked[s].factors[k] for s in traded}) == 1
-    )
-    assert len(traded) > 10
-    assert constant == sorted(["GEXM", "OI", "VANNAM", "DEXM", "CHARMM"])
-    flat = "net gamma, open interest, vanna, delta, charm does not vary, so it adds nothing."
-    assert full.notes == [flat]
-
-    def cut(n: int) -> list[str]:
-        kept = [c for c in contracts if c["strikePrice"] <= traded[n - 1]]
-        return _matrix_of("SPY", kept, SPY_FULL.spot, SPY_FULL.now, 14.0).notes
-
-    assert cut(10) == [flat]
-    assert cut(9) == ["Thin book: fewer than 10 strikes.", flat]
-
-
-def test_the_weight_row_is_the_expirys_days_to_expiration():
-    """SPY's whole chain of 2026-11-09 (SPY_FULL), 35 expiries, with Schwab's daysToExpiration.
-
-    docs/derived_register.md "Preset and ceiling": 0 days is the same-day row, 1 to 7 the weekly
-    one (2026-11-16, 7 days, among them), 8 and beyond the monthly one.
-    """
-    days = sorted({c["daysToExpiration"] for c in SPY_FULL.chain})
-    assert {0, 7, 8} <= set(days)
-    for d in days:
-        expected = "0DTE" if d == 0 else "WEEKLY" if 1 <= d <= 7 else "MONTHLY"
-        assert preset_name(float(d)) == expected, d
+    assert row["net_reason"] is None and row["composite_reason"] is None
 
 
 def _publish_close(tk: str = "SPY") -> level_store.PublishedLevels:
@@ -472,12 +425,12 @@ def _publish_close(tk: str = "SPY") -> level_store.PublishedLevels:
     return level_store.published_levels(tk)
 
 
-def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
+def test_the_matrix_reads_the_priced_book_and_the_open_interest_as_sent():
     """SPY's 2026-10-22 close capture, its same-day expiry.
 
-    The matrix ranks the book the publication priced, each row's net and gross gamma that book's
-    own numbers (millions, two decimals, net signed), flow and the change in gamma empty, and a
-    same-day expiry's score cannot pass 72.
+    The matrix reads the book the publication priced, each row's net gamma that book's own
+    number (millions, two decimals, signed), and its open interest the calls' and the puts'
+    as Schwab sent them, the two on hover.
     """
     try:
         live = _publish_close()
@@ -486,74 +439,72 @@ def test_the_matrix_reads_the_priced_book_and_leaves_flow_out():
     finally:
         level_store._levels.pop("SPY", None)
     assert body["available"] is True
-    assert (body["preset"], body["ceiling"]) == ("0DTE", 72)
-    weights = in_score_weights(body["preset"])
-    assert weights["FLOWM"] == 0 and weights["DGEXM"] == 0 and "weights_in_score" not in body
     assert body["expiry"] == "2026-10-22"
-    checked = grossed = 0
+    sent = {
+        (c["strikePrice"], c["putCall"]): c["openInterest"]
+        for c in SPY_CLOSE.chain
+        if str(c["expirationDate"])[:10] == "2026-10-22"
+    }
+    checked = held = 0
     for row in body["rows"]:
         bucket = book[row["strike"]]
         assert row["strike_text"] == price_text(row["strike"])
-        assert row["flow_text"] is None and row["dgex_text"] is None
         net = bucket_metric(bucket, "net_gex_1pct")
-        call, put = bucket_metric(bucket, "call_gex_1pct"), bucket_metric(bucket, "put_gex_1pct")
         if net is not None and abs(net) >= 5_000:
             assert row["net_gex_text"] == screen_text(net, "dollars")
             assert row["net_gex"] == net and abs(net) <= body["peaks"]["net_gex"]
             checked += 1
-        if call is not None and put is not None and call >= 0 and put >= 0:
-            assert row["gross_text"] == screen_text(call + put, "dollars")
-            grossed += 1
-    assert checked > 5 and grossed > 5
+        calls, puts = sent[(row["strike"], "CALL")], sent[(row["strike"], "PUT")]
+        assert row["oi"] == calls + puts
+        assert row["oi_hover"] == f"Open interest: calls {calls:,} · puts {puts:,}"
+        held += calls + puts > 0
+    assert checked > 5 and held > 5
 
 
-def test_the_rail_sorts_and_places_each_level_against_the_shown_strikes():
+def test_each_key_level_is_a_tag_on_the_row_of_its_nearest_strike():
     """SPY's 2026-10-22 close capture: the server, not the page, places each level.
 
-    Inside the shown strikes each lane's levels come highest price first; a level above the
-    highest strike or below the lowest is listed past them; one price line per price inside,
-    marked when a session level sits there; each price names every level at it. An answer
-    with no chain has an empty rail.
+    Each key level inside the shown strikes is a tag on the row of the strike nearest its price
+    (the lower on a tie, decision 64 O-5), saying its own price, the option levels with "no record
+    yet" for a hold rate; a level above the highest strike or below the lowest is listed past
+    them. An answer with no chain has no rows and no levels.
     """
     try:
-        _publish_close()
+        live = _publish_close()
         body = push_confluence.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         level_store._levels.pop("SPY", None)
     top, bottom = body["rows"][0]["strike"], body["rows"][-1]["strike"]
     assert top > bottom, "the rows run highest strike first"
-    for lane, levels in body["rail_lanes"].items():
-        assert all(lv["lane"] == lane and bottom <= lv["price"] <= top for lv in levels)
-        prices = [lv["price"] for lv in levels]
-        assert prices == sorted(prices, reverse=True)
     assert all(lv["price"] > top for lv in body["levels_above"])
     assert all(lv["price"] < bottom for lv in body["levels_below"])
-    inside = [*body["rail_lanes"]["session"], *body["rail_lanes"]["options"]]
+    strikes = [r["strike"] for r in body["rows"]]
+    tagged = {r["strike"]: [t["text"] for t in r["tags"]] for r in body["rows"]}
     # this close's key levels all sit inside its strikes; one past them is
     # tests/test_matrix_key_levels_v1.py's (SPY's and AMZN's 2026-11-12)
-    assert inside
-    assert sorted(line["price_text"] for line in body["rail_lines"]) == sorted(
-        {lv["price_text"] for lv in inside}
-    )
-    for line in body["rail_lines"]:
-        at = [lv for lv in inside if lv["price_text"] == line["price_text"]]
-        assert line["session"] == any(lv["lane"] == "session" for lv in at)
-    for lv in rail_levels(body):
-        assert lv["title"] in body["level_names"][lv["price_text"]].split(" + ")
+    call = live.snap.call_wall
+    assert bottom <= call <= top
+    nearest = min(strikes, key=lambda s: (abs(s - call), s))
+    assert f"Gamma Call {price_text(call)}" in tagged[nearest]
+    for row in body["rows"]:
+        for tag in row["tags"]:
+            price = float(tag["text"].rsplit(" ", 1)[1])
+            assert row["strike"] == min(strikes, key=lambda s: (abs(s - price), s))
+            if tag["lane"] == "options":
+                assert tag["hover"].endswith("hold rate: no record yet")
     _forget("ZZNOCHAIN")
     none = push_confluence.confluence_payload("ZZNOCHAIN", None, SPY_CLOSE.now)
-    assert none["available"] is False
-    assert none["rail_lanes"] == {"session": [], "options": []}
-    assert none["levels_above"] == none["levels_below"] == none["rail_lines"] == []
+    assert none["available"] is False and "rows" not in none
+    assert none["levels_above"] == none["levels_below"] == []
 
 
 def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
     """SPY's 2026-10-22 close capture: a strike with open interest 0 everywhere has charm 0.
 
     A strike whose every contract Schwab sent with open interest 0 is 0 on the charm map (its
-    one producer), and its book's charm magnitude is that 0; with no charm entry the magnitude
-    is not known. The publication's largest call gamma strike is a level at its own price, in
-    the options lane, its text two decimals.
+    one producer), and its charm reading is that 0; with no charm entry it is not known. The
+    publication's largest call gamma strike is a level at its own price, in the options lane,
+    its text two decimals.
     """
     zero_oi = sorted(
         k
@@ -571,21 +522,26 @@ def test_a_zero_book_is_zero_charm_and_the_wall_is_drawn_at_its_own_price():
         body = push_confluence.confluence_payload("SPY", "2026-10-22", SPY_CLOSE.now)
     finally:
         level_store._levels.pop("SPY", None)
-    assert magnitudes(bucket, charm[strike], None, SPY_CLOSE.spot)["CHARMM"] == 0.0
-    assert magnitudes(bucket, None, None, SPY_CLOSE.spot)["CHARMM"] is None
-    walls = [level for level in rail_levels(body) if level["abbrev"] == "Gamma Call"]
-    assert [(w["price"], w["price_text"], w["lane"]) for w in walls] == [
-        (live.snap.call_wall, price_text(live.snap.call_wall), "options")
+
+    def charm_of(c):
+        return readings(bucket, c, None, SPY_CLOSE.spot, None, None, False, None).charm
+
+    assert charm_of(charm[strike]) == 0.0
+    assert charm_of(None) is None
+    walls = [tag for tag in rail_levels(body) if tag["text"].startswith("Gamma Call ")]
+    assert [(w["text"], w["lane"]) for w in walls] == [
+        (f"Gamma Call {price_text(live.snap.call_wall)}", "options")
     ]
 
 
-def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_is_unscored():
+def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_zero_counts():
     """SPY's 2026-10-14 expiry as the console served it 2026-10-01 08:59:47 ET.
 
     From tests/fixtures/real_spy_2026_10_14_chain_oi_zero.json: strikes 761 to 764, inside the
     window, have open interest 0 on both legs and no volume. Each one's charm on the matrix is
-    0.00, not missing; with no open interest and no volume the strike is not scored, and says
-    why.
+    0.00, not missing, and its open interest, volume and net gamma the 0 Schwab sent, values,
+    never "-". The served chain carries no interest rate or dividend yield, so the gamma if the
+    price were there is not known, and no strike has a Composite: "-" with why.
     """
     fx = json.loads(
         (
@@ -613,9 +569,11 @@ def test_a_served_strike_with_no_open_interest_shows_zero_charm_and_says_why_it_
     shown = [r for r in body["rows"] if r["strike"] in zero]
     assert len(shown) >= 4
     assert all(r["charm_text"] == "0" and r["charm_reason"] is None for r in shown)
-    assert all(
-        r["score"] is None and r["missing"] == ["no open interest and no volume"] for r in shown
-    )
+    assert all(r["oi_text"] == "0" and r["volume_text"] == "0" for r in shown)
+    assert all(r["net_gex"] == 0 and r["net_gex_text"] is not None for r in shown)
+    assert all(c.get("interestRate") is None for c in fx["contracts"])
+    assert all(r["gamma_here"] is None and r["gamma_here_reason"] for r in body["rows"])
+    assert all(r["composite_text"] is None and r["composite_reason"] for r in body["rows"])
 
 
 def _around(listed: list[float], price: float) -> list[float]:
@@ -738,8 +696,8 @@ def test_a_price_above_every_listed_strike_has_no_spot_line():
     book, _diag = compute_exposures_by_strike(
         chain, spot=held.spot, now=held.now, sessions=sessions(), product=INDEX_OPTIONS
     )
-    matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, 0.0)
-    rows = window_rows(matrix, _around(sorted(matrix.ranked), price))
+    matrix = build_matrix(book, {}, iv_by_strike(chain), held.spot, {}, None, {})
+    rows = window_rows(matrix, _around(matrix.strikes, price))
     assert price > max(matrix.strikes)
     assert under_strike(price, matrix.strikes) is None
     shown = at_price(rows, matrix.strikes, price, None)
@@ -825,9 +783,10 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
         "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
     )
     front = served["by_expiry"]["2026-10-09"]
-    assert set(front["peaks"]) == {*SHADED, *LEANS}
-    # the regime beside the rail, and as the screen says it: served, the page picks no words
-    assert (front["regime"], front["regime_text"]) == ("POSITIVE_GAMMA", "Positive gamma")
+    assert set(front["peaks"]) == {*SHADED, "pc_vol_lean"}
+    # the regime on its card, as the screen says it: served, the page picks no words
+    regime = next(c for c in front["cards"] if c["label"] == "GAMMA REGIME")
+    assert (regime["value"], regime["tone"]) == ("Positive gamma", "pos")
     assert any(r["net_gex"] is not None and r["net_gex"] < 0 for r in front["rows"])
 
 
@@ -924,11 +883,12 @@ def _window_has(rows: list, key: str) -> bool:
 
 
 def test_the_close_keeps_the_vanna_a_settled_clock_drops():
-    """SPY's captured 0DTE chain settles at the index close: no time left, no vanna, charm or score.
+    """SPY's captured 0DTE chain settles at the index close: no time left, no vanna or charm.
 
     Operator 2026-11-15: no floor of ours on the time left ("yes the formula needs to account for
     time"), and a settled value is "-" like every value not known ("no settled just a dash"). At
-    the close and after it alike, those three are missing.
+    the close and after it alike, vanna, charm and the gamma if the price were there (a model
+    that needs time left), so the Composite, are missing.
     """
     held = SPY_0DTE
     at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
@@ -951,16 +911,23 @@ def test_the_close_keeps_the_vanna_a_settled_clock_drops():
     charm_late = compute_charm_by_strike(
         chain, held.spot, now=at, sessions=on_file, product=INDEX_OPTIONS
     )
-    close = build_matrix(at_close, charm_close, iv, held.spot, 0.0)
-    late = build_matrix(after, charm_late, iv, held.spot, 0.0)
-    close_rows = window_rows(close, _around(sorted(close.ranked), held.spot))
-    late_rows = window_rows(late, _around(sorted(late.ranked), held.spot))
+    gamma_close = gamma_at_strikes(
+        contract_inputs(chain, valued, sessions=on_file, product=INDEX_OPTIONS)[0], at_close
+    )
+    gamma_late = gamma_at_strikes(
+        contract_inputs(chain, at, sessions=on_file, product=INDEX_OPTIONS)[0], after
+    )
+    assert gamma_close == gamma_late == {}
+    close = build_matrix(at_close, charm_close, iv, held.spot, gamma_close, None, {})
+    late = build_matrix(after, charm_late, iv, held.spot, gamma_late, None, {})
+    close_rows = window_rows(close, _around(close.strikes, held.spot))
+    late_rows = window_rows(late, _around(late.strikes, held.spot))
     assert not _window_has(close_rows, "vanna_text")
     assert not _window_has(close_rows, "charm_text")
-    assert not _window_has(close_rows, "score")
+    assert not _window_has(close_rows, "composite")
     assert not _window_has(late_rows, "vanna_text")
     assert not _window_has(late_rows, "charm_text")
-    assert not _window_has(late_rows, "score")
+    assert not _window_has(late_rows, "composite")
 
 
 def test_spy_keeps_vanna_until_the_index_close():
@@ -987,7 +954,7 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
 
     SPY's captured 0DTE chain, delivered after the index close, is valued at that close: Schwab's
     own fields fill the matrix (its implied volatility below), and the contracts, settled with no
-    time left, have no vanna, charm or score: "-" (operator 2026-11-15).
+    time left, have no vanna, charm or Composite: "-" (operator 2026-11-15).
     """
     held = SPY_0DTE
     tk = "SPY"
@@ -1005,7 +972,7 @@ def test_a_chain_delivered_after_the_close_still_fills_the_matrix():
     assert body["available"] is True
     assert not _window_has(body["rows"], "vanna_text")
     assert not _window_has(body["rows"], "charm_text")
-    assert not _window_has(body["rows"], "score")
+    assert not _window_has(body["rows"], "composite")
     blend = iv_by_strike(
         read_chain([ct for ct in held.chain if str(ct.get("expirationDate"))[:10] == expiry])
     )
@@ -1019,9 +986,9 @@ def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_t
     SPY's captured 0DTE chain published at 16:12 ET, while it had time left, then delivered again
     after the index close: the 15:59 publication stands, the last values computed while the market
     was open (operator 2026-11-15: "we keep the last known data on the screen until we get new
-    data"), its vanna, charm and score with them, and the matrix says CLOSE (current at the 16:15
-    close, within two of the daemon's rounds) with the chain's time, 16:12, and its age. Nothing is
-    priced after the close, so never a value of a made-up time left.
+    data"), its vanna, charm and Composite with them, and the matrix says CLOSE (current at the
+    16:15 close, within two of the daemon's rounds) with the chain's time, 16:12, and its age.
+    Nothing is priced after the close, so never a value of a made-up time left.
     """
     held = SPY_0DTE
     tk = "SPY"
@@ -1043,10 +1010,12 @@ def test_an_expiry_settled_at_the_close_keeps_its_last_known_values_with_their_t
     assert _window_has(live_rows, "vanna_text") and _window_has(body["rows"], "vanna_text")
     assert settled is alive
     assert settled.same_day == alive.same_day
-    by_strike = {r["strike"]: (r["vanna_text"], r["charm_text"], r["score"]) for r in live_rows}
+    by_strike = {r["strike"]: (r["vanna_text"], r["charm_text"], r["composite"]) for r in live_rows}
+    assert _window_has(live_rows, "composite")
     for row in body["rows"]:
         if row["strike"] in by_strike:
-            assert (row["vanna_text"], row["charm_text"], row["score"]) == by_strike[row["strike"]]
+            kept = (row["vanna_text"], row["charm_text"], row["composite"])
+            assert kept == by_strike[row["strike"]]
     assert body["status_text"] == (
         f"CLOSE · chain as of {ct_label(before.timestamp())}, "
         f"{age_text(after.timestamp() - before.timestamp())} old"
@@ -1083,7 +1052,7 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     """TSLA's captured Friday chain, delivered after that Friday's equity close, is valued then.
 
     It is valued at that close, when its contracts (all Friday's) settle: no time is left, so no
-    vanna, charm or score, "-" (operator 2026-11-15). Asked again, the request reads the same
+    vanna, charm or Composite, "-" (operator 2026-11-15). Asked again, the request reads the same
     publication.
     """
     held = TSLA
@@ -1104,7 +1073,7 @@ def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     assert body["available"] is True
     assert not _window_has(body["rows"], "vanna_text")
     assert not _window_has(body["rows"], "charm_text")
-    assert not _window_has(body["rows"], "score")
+    assert not _window_has(body["rows"], "composite")
     assert again["rows"] == body["rows"]
 
 
@@ -1125,20 +1094,20 @@ def test_a_no_value_quote_after_the_close_keeps_the_last_reported_greek():
 
     A later quote that sends Schwab's no-value code does not erase that quote's gamma (net GEX,
     Schwab's gamma as sent). Its contracts, settled at that close with no time left, have no
-    vanna, charm or score: "-" both times (operator 2026-11-15).
+    vanna, charm or Composite: "-" both times (operator 2026-11-15).
     """
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_no_value_quote(held.chain), after, after, after)
     near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
-    kept = (near["net_gex_text"], near["vanna_text"], near["charm_text"], near["score_text"])
+    kept = (near["net_gex_text"], near["vanna_text"], near["charm_text"], near["composite_text"])
     assert kept[0] is not None and kept[1:] == (None, None, None)
     again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
     assert (
         again["net_gex_text"],
         again["vanna_text"],
         again["charm_text"],
-        again["score_text"],
+        again["composite_text"],
     ) == kept
 
 
@@ -1149,7 +1118,8 @@ def test_during_the_session_a_no_value_quote_does_not_keep_the_old_greek():
     later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
     _first, body = _spy_0dte_twice(_no_value_quote(held.chain), session, later, later)
     near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
-    assert near["vanna_text"] is None and near["charm_text"] is None and near["score"] is None
+    assert near["vanna_text"] is None and near["charm_text"] is None
+    assert near["composite"] is None and near["gamma_here_text"] is None
 
 
 def _zero_counts(chain):
@@ -1168,19 +1138,19 @@ def test_a_zero_count_after_the_close_keeps_the_last_reported_count():
 
     They are the balance until the next open: a later chain that reports zero open interest and
     zero volume does not replace those counts. Its contracts, settled at that close with no time
-    left, have no score or vanna: "-" both times (operator 2026-11-15).
+    left, have no Composite or vanna: "-" both times (operator 2026-11-15).
     """
     held = SPY_0DTE
     after = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
     first, second = _spy_0dte_twice(_zero_counts(held.chain), after, after, after)
     near = min(first["rows"], key=lambda row: abs(row["strike"] - held.spot))
-    kept = (near["oi_text"], near["volume_text"], near["score_text"], near["vanna_text"])
+    kept = (near["oi_text"], near["volume_text"], near["composite_text"], near["vanna_text"])
     assert None not in kept[:2] and kept[2:] == (None, None)
     again = min(second["rows"], key=lambda row: abs(row["strike"] - held.spot))
     assert (
         again["oi_text"],
         again["volume_text"],
-        again["score_text"],
+        again["composite_text"],
         again["vanna_text"],
     ) == kept
 
@@ -1545,8 +1515,8 @@ def test_during_the_session_a_zero_count_replaces_the_old_count():
     later = datetime(2026, 10, 7, 12, 40, tzinfo=ET)
     _first, body = _spy_0dte_twice(_zero_counts(held.chain), session, later, later)
     near = min(body["rows"], key=lambda row: abs(row["strike"] - held.spot))
-    assert near["score"] is None
-    assert "no open interest and no volume" in near["missing"]
+    assert (near["oi_text"], near["volume_text"]) == ("0", "0")
+    assert near["oi"] == near["volume"] == 0
 
 
 def test_an_after_hours_print_keeps_the_close_book():

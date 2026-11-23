@@ -43,6 +43,7 @@ from calc.math_levels import (
     compute_max_pain,
     contract_inputs,
     gamma_at_price,
+    gamma_at_strikes,
     gamma_flip_from_profile,
     merge_charm_maps,
     pick_charm_wall_strikes,
@@ -322,6 +323,11 @@ class TerrainSnapshot:
     #: The confluence matrix reads the expiry it shows and does not call the blend again.
     iv_by_expiry: dict[str | None, dict[float, float | None]] = field(
         default_factory=dict[str | None, dict[float, float | None]], repr=False
+    )
+    #: {expiry: {strike: net GEX if the price were at the strike}} from gamma_at_strikes, one
+    #: call per expiry: the confluence matrix's gamma profile of the expiry it shows.
+    gamma_by_expiry: dict[str | None, dict[float, float]] = field(
+        default_factory=dict[str | None, dict[float, float]], repr=False
     )
     #: {expiry: put OI / call OI} for each listed expiry: put/call OI (positions held)
     pcr_by_expiry: dict[str, float | None] = field(default_factory=dict[str, float | None])
@@ -1255,13 +1261,14 @@ def compute_terrain(
 
 
 class _ByExpiry(TypedDict):
-    """Each expiry's charm and implied vol by strike, and the charm walls of their merge."""
+    """Each expiry's charm, implied vol and gamma profile by strike; their merge's charm walls."""
 
     charm_by_expiry: dict[str | None, dict[float, CharmBucket]]
     charm_by_strike: dict[float, CharmBucket]
     call_charm_wall: float | None
     put_charm_wall: float | None
     iv_by_expiry: dict[str | None, dict[float, float | None]]
+    gamma_by_expiry: dict[str | None, dict[float, float]]
 
 
 def _by_expiry(
@@ -1271,7 +1278,10 @@ def _by_expiry(
     sessions: Mapping[str, Session],
     product: str,
 ) -> _ByExpiry:
-    """Return each expiry's charm (one call per expiry) and IV by strike, and the charm walls."""
+    """Return each expiry's charm, IV and gamma profile by strike, and the charm walls.
+
+    One call of each producer per expiry.
+    """
     charm_by_expiry = {
         exp: compute_charm_by_strike(rows, float(spot), now=now, sessions=sessions, product=product)
         for exp, rows in expiry_rows.items()
@@ -1284,6 +1294,13 @@ def _by_expiry(
         "call_charm_wall": call_charm_wall,
         "put_charm_wall": put_charm_wall,
         "iv_by_expiry": {exp: iv_by_strike(rows) for exp, rows in expiry_rows.items()},
+        "gamma_by_expiry": {
+            exp: gamma_at_strikes(
+                contract_inputs(rows, now, sessions=sessions, product=product)[0],
+                (c.strike for c in rows if c.strike is not None),
+            )
+            for exp, rows in expiry_rows.items()
+        },
     }
 
 

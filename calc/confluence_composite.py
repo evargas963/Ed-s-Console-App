@@ -1,23 +1,24 @@
-"""Per-strike composite for one expiry.
+"""The Confluence matrix of one expiry: each strike's readings, its Composite and the heat scales.
 
-The exposure book, the charm map, and the volatility blend are already computed
-for that expiry. This module ranks them. It does not recompute a greek or the blend.
+Every reading is its producer's, already computed for that expiry: the exposure book
+(calc.math_exposure_core), the charm map (calc.math_levels), the volatility blend (iv_by_strike),
+the expiry's gamma profile (calc.math_levels.compute_gamma_profile), the prior day's book of the
+same expiry and the look-back's readings (calc.option_window). This module reads them per strike,
+once, and computes only the Composite (docs/derived_register.md "Composite").
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from calc.math_exposure_core import (
     Bucket,
     bucket_metric,
-    strike_total_oi,
-    strike_total_volume,
+    strike_oi_legs,
     strike_volume_legs,
-    total_gex_dollars_at_strike,
 )
 from calc.math_levels import CharmBucket
 from numeric_contract import (
@@ -30,246 +31,101 @@ from numeric_contract import (
 )
 from option_contract import OptionContract
 
-ABSENT = ("DGEXM", "FLOWM")
-THIN_BOOK = 10
-
-
-class FactorPart(TypedDict):
-    """One scored factor's share of a strike's score (score_magnitudes)."""
-
-    factor: str
-    label: str
-    raw: float | None
-    normalized: float
-    weight: float
-    contribution: float
-
-
-class Scored(TypedDict):
-    """One strike's score with what it is missing (score_magnitudes)."""
-
-    score: float | None
-    missing: list[str]
-    contributions: list[FactorPart]
-    factors: list[FactorPart]
+#: the families of input that vote in the Composite, one equal vote each (decision 56)
+FAMILIES = ("positioning", "option trades", "volatility", "stock book")
+#: the one assumption every gamma reading rests on, said once beside it
+ASSUMPTION = "the convention: dealers long calls, short puts"
 
 
 @dataclass(frozen=True)
-class RankedStrike:
-    """One strike of an expiry's ranking.
+class StrikeReadings:
+    """One strike's readings of one expiry, each as its producer computed it; None: not known.
 
-    Its factor magnitudes (magnitudes) and its score with what it is missing (score_magnitudes).
+    The open interest and volume with their (call, put) legs; the change in open interest since
+    the prior day's capture (`oi_new`: the prior day listed no contract at this strike); the
+    expiry's gamma profile at this strike's price (`gamma_here`); the regular session's touches
+    and holds at the strike so far (calc.liquidity_value_engine.visits; None before it opens).
     """
 
-    factors: dict[str, float | None]
-    result: Scored
+    net_gex: float | None
+    oi: float | None
+    oi_legs: tuple[float, float] | None
+    oi_change: float | None
+    oi_change_legs: tuple[float, float] | None
+    oi_new: bool
+    dex: float | None
+    charm: float | None
+    vanna: float | None
+    iv: float | None
+    volume: float | None
+    volume_legs: tuple[float, float] | None
+    vol_oi: float | None
+    pc_vol: float | None
+    gamma_here: float | None
+    touches: int | None
+    holds: int | None
 
 
-WRITTEN = {
-    "0DTE": {
-        "CHARMM": 0.22,
-        "DGEXM": 0.18,
-        "GEXM": 0.15,
-        "VOL": 0.10,
-        "OI": 0.10,
-        "FLOWM": 0.10,
-        "VANNAM": 0.05,
-        "DEXM": 0.05,
-        "IV": 0.05,
-    },
-    "WEEKLY": {
-        "GEXM": 0.25,
-        "OI": 0.15,
-        "DGEXM": 0.15,
-        "VOL": 0.10,
-        "FLOWM": 0.10,
-        "CHARMM": 0.08,
-        "VANNAM": 0.07,
-        "DEXM": 0.05,
-        "IV": 0.05,
-    },
-    "MONTHLY": {
-        "GEXM": 0.30,
-        "OI": 0.20,
-        "VANNAM": 0.10,
-        "DEXM": 0.10,
-        "DGEXM": 0.08,
-        "VOL": 0.07,
-        "FLOWM": 0.05,
-        "CHARMM": 0.05,
-        "IV": 0.05,
-    },
-}
-
-_LABEL = {
-    "GEXM": "net gamma",
-    "OI": "open interest",
-    "VOL": "volume",
-    "DEXM": "delta",
-    "VANNAM": "vanna",
-    "IV": "volatility",
-    "CHARMM": "charm",
-    "DGEXM": "change in gamma",
-    "FLOWM": "flow",
-}
+def _sum(legs: tuple[float, float] | None) -> float | None:
+    return None if legs is None else legs[0] + legs[1]
 
 
-def preset_name(dte: float) -> str:
-    if dte <= 0:
-        return "0DTE"
-    if dte <= 7:
-        return "WEEKLY"
-    return "MONTHLY"
+def _oi_change(
+    legs: tuple[float, float] | None, prior: Bucket | None
+) -> tuple[float, float] | None:
+    """Return today's (call, put) open interest less the prior day's at one strike.
 
-
-def in_score_weights(name: str) -> dict[str, float]:
-    written = WRITTEN[name]
-    return {k: (0.0 if k in ABSENT else v) for k, v in written.items()}
-
-
-def ceiling(weights: dict[str, float]) -> float:
-    return 100.0 * sum(weights.values())
-
-
-def percentile(values: list[float], p: float) -> float:
-    """Hyndman-Fan type 7. `values` is non-empty and 0 <= p <= 1, so 1 <= h <= n."""
-    xs = sorted(values)
-    n = len(xs)
-    if n == 1:
-        return xs[0]
-    h = 1.0 + (n - 1) * p
-    lo = int(math.floor(h))
-    hi = int(math.ceil(h))
-    if lo == hi:
-        return xs[lo - 1]
-    frac = h - lo
-    return xs[lo - 1] + frac * (xs[hi - 1] - xs[lo - 1])
-
-
-def _normalize(present: list[tuple[float, float]]) -> tuple[dict[float, float], float | None]:
-    """Map strike -> f'. The second value is p95 − p5, or None when the factor does not vary."""
-    vals = [v for _s, v in present]
-    if len(vals) == 0:
-        return {}, None
-    lo = percentile(vals, 0.05)
-    hi = percentile(vals, 0.95)
-    if hi == lo:
-        return {s: 0.0 for s, _v in present}, None
-    span = hi - lo
-    out: dict[float, float] = {}
-    for s, v in present:
-        x = (v - lo) / span
-        if x < 0.0:
-            x = 0.0
-        elif x > 1.0:
-            x = 1.0
-        out[s] = x
-    return out, span
-
-
-def score_magnitudes(
-    by_strike: dict[float, dict[str, float | None]], weights: dict[str, float]
-) -> tuple[dict[float, Scored], list[str], dict[str, float | None]]:
-    """One score per strike. A missing factor whose weight is above zero blanks that strike.
-
-    The third value is p95 − p5 for each scored factor, None when that factor does not vary.
+    None when either day's open interest there is not known (a count not reported), or the prior
+    day holds no contract at the strike (`prior` None).
     """
-    required = [k for k, w in weights.items() if w > 0]
-    universe = [s for s, f in by_strike.items() if _in_universe(f)]
-    norm: dict[str, dict[float, float]] = {}
-    spans: dict[str, float | None] = {}
-    flat: list[str] = []
-    for name in required:
-        present = [(s, v) for s in universe if (v := by_strike[s].get(name)) is not None]
-        mapped, span = _normalize(present)
-        norm[name] = mapped
-        spans[name] = span
-        if span is None and present and len(present) == len(universe):
-            flat.append(name)
-    scored: dict[float, Scored] = {}
-    for strike, factors in by_strike.items():
-        if strike not in universe:
-            unreported = factors.get("OI") is None or factors.get("VOL") is None
-            why = (
-                "open interest or volume was not reported"
-                if unreported
-                else "no open interest and no volume"
-            )
-            scored[strike] = {"score": None, "missing": [why], "contributions": [], "factors": []}
-            continue
-        missing = [_LABEL[k] for k in required if factors.get(k) is None]
-        if missing:
-            scored[strike] = {"score": None, "missing": missing, "contributions": [], "factors": []}
-            continue
-        parts: list[FactorPart] = []
-        total = 0.0
-        for name in required:
-            share = weights[name] * norm[name][strike]
-            total += share
-            parts.append(
-                {
-                    "factor": name,
-                    "label": _LABEL[name],
-                    "raw": factors[name],
-                    "normalized": norm[name][strike],
-                    "weight": weights[name],
-                    "contribution": share,
-                }
-            )
-        parts.sort(key=lambda p: p["contribution"], reverse=True)
-        scored[strike] = {
-            "score": 100.0 * total,
-            "missing": [],
-            "contributions": parts[:3],
-            "factors": parts,
-        }
-    return scored, flat, spans
+    before = None if prior is None else strike_oi_legs(prior)
+    if legs is None or before is None:
+        return None
+    return legs[0] - before[0], legs[1] - before[1]
 
 
-def _in_universe(factors: dict[str, float | None]) -> bool:
-    oi = factors.get("OI")
-    vol = factors.get("VOL")
-    return (oi is not None and oi > 0) or (vol is not None and vol > 0)
+def readings(
+    bucket: Bucket,
+    charm: CharmBucket | None,
+    iv: float | None,
+    spot: float,
+    gamma_here: float | None,
+    prior: Bucket | None,
+    prior_held: bool,
+    visit: tuple[int, int] | None,
+) -> StrikeReadings:
+    """Return one strike's readings from its producers' values.
 
-
-def magnitudes(
-    bucket: Bucket, charm: CharmBucket | None, iv: float | None, spot: float
-) -> dict[str, float | None]:
-    """Return the scored magnitudes, plus the signed numbers the columns show.
-
-    Each leg's gamma is Schwab's as sent, whatever its sign (AGENTS rule 2).
+    Each leg's gamma is Schwab's as sent, whatever its sign (AGENTS rule 2). `prior` is the
+    prior day's bucket of this strike (None: that day listed no contract here, or no prior day is
+    held, `prior_held` False); `visit` its (touches, holds) today (None: the session not open).
     """
-    call_gex = bucket_metric(bucket, "call_gex_1pct")
-    put_gex = bucket_metric(bucket, "put_gex_1pct")
-    net_gex = bucket_metric(bucket, "net_gex_1pct")
-    dex = bucket_metric(bucket, "net_dex_dollars")
+    oi_legs = strike_oi_legs(bucket)
+    volume_legs = strike_volume_legs(bucket)
+    oi, volume = _sum(oi_legs), _sum(volume_legs)
     vanna = bucket_metric(bucket, "net_vanna")
-    oi = strike_total_oi(bucket)
-    vol = strike_total_volume(bucket)
-    charm_net = None if charm is None else schwab_number(charm["net_charm"])
-    out = {
-        "GEXM": None if net_gex is None else abs(net_gex),
-        "OI": oi,
-        "VOL": vol,
-        "DEXM": None if dex is None else abs(dex),
-        "VANNAM": None if vanna is None else abs(vanna * spot),
-        "IV": iv,
-        "CHARMM": None if charm_net is None else abs(charm_net),
-    }
-    out["_net_gex"] = net_gex
-    out["_gross"] = total_gex_dollars_at_strike(bucket)  # the total gamma level's one producer
-    out["_pc_gex"] = (
-        None if call_gex is None or put_gex is None or call_gex == 0 else put_gex / call_gex
+    change = _oi_change(oi_legs, prior)
+    return StrikeReadings(
+        net_gex=bucket_metric(bucket, "net_gex_1pct"),
+        oi=oi,
+        oi_legs=oi_legs,
+        oi_change=_sum(change),
+        oi_change_legs=change,
+        oi_new=prior_held and prior is None,
+        dex=bucket_metric(bucket, "net_dex_dollars"),
+        charm=None if charm is None else schwab_number(charm["net_charm"]),
+        vanna=None if vanna is None else vanna * spot,
+        iv=iv,
+        volume=volume,
+        volume_legs=volume_legs,
+        vol_oi=None if oi is None or oi == 0 or volume is None else volume / oi,
+        pc_vol=(
+            None if volume_legs is None or volume_legs[0] == 0 else volume_legs[1] / volume_legs[0]
+        ),
+        gamma_here=gamma_here,
+        touches=None if visit is None else visit[0],
+        holds=None if visit is None else visit[1],
     )
-    out["_dex"] = dex
-    out["_vanna"] = None if vanna is None else vanna * spot
-    out["_pc_vol"] = None
-    vol_legs = strike_volume_legs(bucket)
-    if vol_legs is not None and vol_legs[0] > 0:
-        out["_pc_vol"] = vol_legs[1] / vol_legs[0]
-    out["_vol_oi"] = None if oi is None or oi == 0 or vol is None else vol / oi
-    out["_charm"] = charm_net
-    return out
 
 
 def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
@@ -304,28 +160,145 @@ def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
 
 
 @dataclass(frozen=True)
-class Matrix:
-    """The ranking of one expiry's book (build_matrix).
+class Composite:
+    """A strike's Composite: its condition and strength (composite).
 
-    Its preset and score scale, its notes, every strike's ranking, each shaded column's peak, and
-    the listed strikes, ascending.
+    `gamma`: the expiry's gamma profile at the strike, whose sign is the condition; `strength`:
+    0 to 100, the mean of the families measured there; `measured`: those families' names.
     """
 
-    preset: str
-    scale_text: str
-    ceiling: float
-    notes: list[str]
-    ranked: dict[float, RankedStrike]
+    gamma: float
+    strength: float
+    measured: tuple[str, ...]
+
+
+def composite(gamma: float | None, strengths: Mapping[str, float | None]) -> Composite | None:
+    """Return a strike's Composite: the condition and the families' equal vote on its strength.
+
+    The condition is the sign of the expiry's gamma profile at the strike (negative: the hedging
+    accelerates moves; positive: it dampens them; on the convention, ASSUMPTION). The strength is
+    100 times the mean of each family's strength measured at the strike (its value against its
+    column's peak on the expiry, 0 to 1); a family not measured there is left out, never counted
+    as a vote (decision 56: one equal vote a family, no fitted weights; Dawes 1979). None when
+    the gamma there or every family is not known.
+    """
+    measured = tuple(f for f in FAMILIES if strengths.get(f) is not None)
+    if gamma is None or not measured:
+        return None
+    total = 0.0
+    for family in measured:
+        value = strengths[family]
+        total += 0.0 if value is None else value
+    return Composite(gamma, 100.0 * total / len(measured), measured)
+
+
+def _share(value: float | None, peak: float | None) -> float | None:
+    """`value`'s size against its column's peak, 0 to 1; None when either is not known."""
+    if value is None or not peak:
+        return None
+    return min(1.0, abs(value) / peak)
+
+
+@dataclass(frozen=True)
+class Matrix:
+    """The readings of one expiry's book (build_matrix).
+
+    Every strike's readings and Composite, each shaded column's peak, and the listed strikes,
+    ascending.
+    """
+
+    readings: dict[float, StrikeReadings]
+    composites: dict[float, Composite | None]
     peaks: dict[str, float | None]
     strikes: list[float]
 
 
+def _peak(values: Iterable[float | None]) -> float | None:
+    """Largest absolute value on this expiry: the column's scale."""
+    peak = None
+    for value in values:
+        if not isinstance(value, (int, float)):
+            continue
+        size = abs(float(value))
+        if peak is None or size > peak:
+            peak = size
+    return peak
+
+
+#: each shaded column: the row's key for its number and the reading it carries
+SHADED = {
+    "gamma_here": "gamma_here",
+    "net_gex": "net_gex",
+    "oi": "oi",
+    "oi_change": "oi_change",
+    "dex": "dex",
+    "charm": "charm",
+    "vanna": "vanna",
+    "iv": "iv",
+    "volume": "volume",
+    "vol_oi": "vol_oi",
+    "visits": "touches",
+}
+
+
+def _shades(r: StrikeReadings) -> dict[str, float | None]:
+    """Return the numbers the page shades each column's cell by, against the column's peak.
+
+    The put/call volume shades by 1 - put/call: positive call-heavy, negative put-heavy.
+    """
+    out: dict[str, float | None] = {key: getattr(r, name) for key, name in SHADED.items()}
+    out["pc_vol_lean"] = None if r.pc_vol is None else 1 - r.pc_vol
+    return out
+
+
+def build_matrix(
+    exposures: dict[float, Bucket],
+    charm_by_strike: dict[float, CharmBucket],
+    ivs: dict[float, float | None],
+    spot: float,
+    gamma_profile: Mapping[float, float],
+    prior: dict[float, Bucket] | None,
+    visits: Mapping[float, tuple[int, int]],
+) -> Matrix:
+    """Build the readings of one expiry's book and each strike's Composite.
+
+    `gamma_profile`: the expiry's gamma profile by price (its value at each listed strike);
+    `prior`: the prior day's book of the same expiry (None: no prior day held); `visits`: each
+    strike's (touches, holds) in today's regular session (empty before it opens). The rows the
+    page shows are drawn from it (window_rows).
+    """
+    strikes = sorted(float(s) for s in exposures)
+    by_strike = {
+        s: readings(
+            exposures[s],
+            charm_by_strike.get(s),
+            ivs.get(s),
+            spot,
+            gamma_profile.get(s),
+            None if prior is None else prior.get(s),
+            prior is not None,
+            visits.get(s),
+        )
+        for s in strikes
+    }
+    shades = [_shades(r) for r in by_strike.values()]
+    peaks = {key: _peak(s[key] for s in shades) for key in (*SHADED, "pc_vol_lean")}
+    composites = {
+        s: composite(r.gamma_here, {"positioning": _share(r.net_gex, peaks["net_gex"])})
+        for s, r in by_strike.items()
+    }
+    return Matrix(readings=by_strike, composites=composites, peaks=peaks, strikes=strikes)
+
+
 def window_rows(matrix: Matrix, shown: list[float]) -> list[dict[str, Any]]:
-    """Return the rows of the ranked strikes `shown`, highest strike first.
+    """Return the rows of the strikes `shown`, highest strike first.
 
     Each cell shades against its whole expiry's peak (the matrix's `peaks`).
     """
-    return [_row(strike, matrix.ranked[strike]) for strike in sorted(shown, reverse=True)]
+    return [
+        _row(strike, matrix.readings[strike], matrix.composites[strike])
+        for strike in sorted(shown, reverse=True)
+    ]
 
 
 def under_strike(price: float, strikes: list[float]) -> float | None:
@@ -386,12 +359,20 @@ def at_price(
 ) -> dict[str, Any]:
     """Return the shown rows, each with its distance from the live price and its spot line.
 
-    The spot line marks the strike the price sits under; the price and its text come with them.
-    The matrix is ranked at the book's price, the price on screen is the live one; each row's
-    distance is `distance`'s, in dollars and in the expiry's implied moves (`sigma_root_t`).
-    Pure: the rows given are not changed.
+    The spot line marks the strike the price sits under; the price row is drawn below it, and
+    `price_between_text` names the two listed strikes the price falls between (one, when it is
+    on a strike). The matrix is read at the book's price, the price on screen is the live one;
+    each row's distance is `distance`'s, in dollars and in the expiry's implied moves
+    (`sigma_root_t`). Pure: the rows given are not changed.
     """
     under = None if spot is None else under_strike(spot, strikes)
+    below = None if spot is None else max((s for s in strikes if s <= spot), default=None)
+    if under is None or below is None:
+        between = None
+    elif under == below:
+        between = f"at {price_text(under)}"
+    else:
+        between = f"between {price_text(under)} and {price_text(below)}"
     return {
         "rows": [
             {
@@ -403,6 +384,7 @@ def at_price(
         ],
         "spot": spot,
         "spot_text": price_text(spot),
+        "price_between_text": between,
     }
 
 
@@ -420,40 +402,12 @@ def _signed(n: float | None, digits: int) -> str | None:
     return "+" + shown
 
 
-def _peak(values: Iterable[float | None]) -> float | None:
-    """Largest absolute value on this expiry: the column's scale, not a score."""
-    peak = None
-    for value in values:
-        if not isinstance(value, (int, float)):
-            continue
-        size = abs(float(value))
-        if peak is None or size > peak:
-            peak = size
-    return peak
-
-
-#: each shaded column: the row's key for its number and the factor it carries
-SHADED = {
-    "net_gex": "_net_gex",
-    "oi": "OI",
-    "gross": "_gross",
-    "volume": "VOL",
-    "vol_oi": "_vol_oi",
-    "dex": "_dex",
-    "vanna": "_vanna",
-    "iv": "IV",
-    "charm": "_charm",
-}
-#: the put/call columns shade by 1 - put/call: positive call-heavy, negative put-heavy
-LEANS = {"pc_gex_lean": "_pc_gex", "pc_vol_lean": "_pc_vol"}
-
-
-def _shades(factors: dict[str, float | None]) -> dict[str, float | None]:
-    """Return the numbers the page shades each column's cell by, against the column's peak."""
-    out = {key: factors[name] for key, name in SHADED.items()}
-    for key, name in LEANS.items():
-        out[key] = None if (ratio := factors[name]) is None else 1 - ratio
-    return out
+def _signed_count(n: float | None) -> str | None:
+    """A change in a count as the screen shows it: whole, signed, a rise with its plus."""
+    text = count_text(n)
+    if n is None or text is None:
+        return None
+    return "+" + text if n > 0 else text
 
 
 def _absent(value: float | None, words: str) -> str | None:
@@ -462,115 +416,125 @@ def _absent(value: float | None, words: str) -> str | None:
     return words
 
 
-FLOW_REASON = "no signed flow is produced"
-DGEX_REASON = "no change in gamma is produced"
+def _legs_text(legs: tuple[float, float] | None, read: str) -> str | None:
+    """A sum's parts on hover: the calls' and the puts' count."""
+    if legs is None:
+        return None
+    return f"{read}: calls {count_text(legs[0])} · puts {count_text(legs[1])}"
 
 
-def _raw_text(name: str, raw: float | None) -> str | None:
-    """Return a factor's magnitude as the screen shows it.
+#: the gamma profile's sign in the industry's words (decisions 29 and 53, AGENTS rule 17)
+GAMMA_WORDS = {-1: "Negative gamma", 0: "Zero gamma", 1: "Positive gamma"}
+#: the same, short, in the Composite cell
+GAMMA_SHORT = {-1: "Neg. gamma", 0: "Zero gamma", 1: "Pos. gamma"}
+#: what the hedging does to a move at that sign, on hover
+GAMMA_EFFECT = {
+    -1: "the hedging accelerates moves",
+    0: "the hedging neither accelerates nor dampens moves",
+    1: "the hedging dampens moves",
+}
+OI_CHANGE_REASON = "no prior day's chain is held"
+NEW_TEXT = "new"
 
-    Gamma, delta and vanna in dollars; volatility a percent; charm (delta-shares) compact; open
-    interest and volume whole.
-    """
-    if name in ("GEXM", "DEXM", "VANNAM"):
-        return dollars_text(raw)
-    if name == "IV":
-        return iv_text(raw)
-    if name == "CHARMM":
-        return compact_text(raw)
-    return count_text(raw)
+
+def _sign(value: float) -> int:
+    return (value > 0) - (value < 0)
 
 
-def _factor_row(part: FactorPart) -> dict[str, str | None]:
+def _composite_cells(c: Composite | None) -> dict[str, Any]:
+    if c is None:
+        return {
+            "composite": None,
+            "composite_text": None,
+            "composite_reason": "the gamma at this strike or every family is not known",
+            "composite_hover": None,
+        }
+    sign = _sign(c.gamma)
     return {
-        "label": part["label"],
-        "text": f"{100.0 * part['contribution']:.1f}",
-        "raw_text": _raw_text(part["factor"], part["raw"]),
-        "normalized_text": _text(part["normalized"], 2),
-        "weight_text": _text(part["weight"], 2),
+        # shaded by the strength, red where the gamma is negative, against a peak of 1
+        "composite": sign * c.strength / 100.0,
+        "composite_text": f"{GAMMA_SHORT[sign]} {c.strength:.0f}",
+        "composite_reason": None,
+        "composite_hover": (
+            f"{GAMMA_WORDS[sign]} here ({ASSUMPTION}): {GAMMA_EFFECT[sign]}. Strength "
+            f"{c.strength:.0f} of 100: the equal vote of {len(c.measured)} of {len(FAMILIES)} "
+            f"families measured here ({', '.join(c.measured)}), each its size against the "
+            "expiry's largest. A size and a kind of move, not a direction; untested."
+        ),
     }
 
 
-def build_matrix(
-    exposures: dict[float, Bucket],
-    charm_by_strike: dict[float, CharmBucket],
-    ivs: dict[float, float | None],
-    spot: float,
-    dte: float,
-) -> Matrix:
-    """Build the ranking of one expiry's book.
-
-    Every strike's factors and score and the expiry's colour scales. The rows the page shows are
-    drawn from it (window_rows).
-    """
-    name = preset_name(dte)
-    weights = in_score_weights(name)
-    strikes = sorted(float(s) for s in exposures)
-    mags = {s: magnitudes(exposures[s], charm_by_strike.get(s), ivs.get(s), spot) for s in strikes}
-    scored, flat, _spans = score_magnitudes(mags, weights)
-    cap = ceiling(weights)
-    shades = [_shades(f) for f in mags.values()]
-    peaks = {key: _peak(s[key] for s in shades) for key in (*SHADED, *LEANS)}
-    universe_n = sum(1 for f in mags.values() if _in_universe(f))
-    flat_labels = [_LABEL[k] for k in flat]
-    notes: list[str] = []
-    if universe_n < THIN_BOOK:
-        notes.append("Thin book: fewer than " + str(THIN_BOOK) + " strikes.")
-    if flat_labels:
-        notes.append(", ".join(flat_labels) + " does not vary, so it adds nothing.")
-    return Matrix(
-        preset=name,
-        scale_text="0–" + f"{cap:g}",
-        ceiling=cap,
-        notes=notes,
-        ranked={strike: RankedStrike(mags[strike], scored[strike]) for strike in mags},
-        peaks=peaks,
-        strikes=strikes,
-    )
+def _gamma_cells(gamma: float | None) -> dict[str, Any]:
+    if gamma is None:
+        return {
+            "gamma_here_text": None,
+            "gamma_here_reason": "no priced contract gives the gamma at this price",
+            "gamma_here_hover": None,
+        }
+    sign = _sign(gamma)
+    return {
+        "gamma_here_text": GAMMA_WORDS[sign],
+        "gamma_here_reason": None,
+        "gamma_here_hover": (
+            f"Model: the expiry's net gamma if the price were at this strike, "
+            f"{dollars_text(gamma)} per 1% move; {GAMMA_EFFECT[sign]} ({ASSUMPTION})."
+        ),
+    }
 
 
-def _row(strike: float, ranked: RankedStrike) -> dict[str, Any]:
+def _row(strike: float, r: StrikeReadings, c: Composite | None) -> dict[str, Any]:
     """One strike's row of the matrix.
 
-    Each column's text and the number its cell shades by (_shades), against the expiry's peaks.
+    Each column's text and the number its cell shades by (_shades), against the expiry's peaks;
+    where a cell sums parts, its parts on hover.
     """
-    factors, result = ranked.factors, ranked.result
-    score = result["score"]
-    pc_gex = factors["_pc_gex"]
-    pc_vol = factors["_pc_vol"]
     return {
         "strike": strike,
         "strike_text": price_text(strike),
-        **_shades(factors),
-        "net_gex_text": dollars_text(factors["_net_gex"]),
-        "net_reason": _absent(factors["_net_gex"], "net gamma is missing"),
-        "oi_text": count_text(factors["OI"]),
-        "oi_reason": _absent(factors["OI"], "open interest is missing"),
-        "pc_gex_text": _text(pc_gex, 2),
-        "pc_gex_reason": _absent(pc_gex, "put/call gamma is missing"),
-        "gross_text": dollars_text(factors["_gross"]),
-        "gross_reason": _absent(factors["_gross"], "gross gamma is missing"),
-        "dgex_text": None,
-        "dgex_reason": DGEX_REASON,
-        "volume_text": count_text(factors["VOL"]),
-        "volume_reason": _absent(factors["VOL"], "volume is missing"),
-        "pc_vol_text": _text(pc_vol, 2),
-        "pc_vol_reason": _absent(pc_vol, "put/call volume is missing"),
-        "vol_oi_text": _text(factors["_vol_oi"], 2),
-        "vol_oi_reason": _absent(factors["_vol_oi"], "volume/open interest is missing"),
-        "flow_text": None,
-        "flow_reason": FLOW_REASON,
-        "dex_text": dollars_text(factors["_dex"]),
-        "dex_reason": _absent(factors["_dex"], "delta exposure is missing"),
-        "vanna_text": dollars_text(factors["_vanna"]),
-        "vanna_reason": _absent(factors["_vanna"], "vanna is missing"),
-        "iv_text": iv_text(factors["IV"]),
-        "iv_reason": _absent(factors["IV"], "implied volatility is missing"),
-        "charm_text": compact_text(factors["_charm"]),
-        "charm_reason": _absent(factors["_charm"], "charm is missing"),
-        "score": score,
-        "score_text": None if score is None else str(int(round(score))),
-        "missing": result["missing"],
-        "contributions": [_factor_row(p) for p in result["contributions"]],
-        "factors": [_factor_row(p) for p in result["factors"]],
+        **_shades(r),
+        **_composite_cells(c),
+        **_gamma_cells(r.gamma_here),
+        "net_gex_text": dollars_text(r.net_gex),
+        "net_reason": _absent(r.net_gex, "net gamma is missing"),
+        "oi_text": count_text(r.oi),
+        "oi_reason": _absent(r.oi, "open interest is missing"),
+        "oi_hover": _legs_text(r.oi_legs, "Open interest"),
+        "oi_change_text": NEW_TEXT if r.oi_new else _signed_count(r.oi_change),
+        "oi_change_reason": None if r.oi_new else _absent(r.oi_change, OI_CHANGE_REASON),
+        "oi_change_hover": _legs_text(r.oi_change_legs, "Change since the prior day"),
+        "dex_text": dollars_text(r.dex),
+        "dex_reason": _absent(r.dex, "delta exposure is missing"),
+        "charm_text": compact_text(r.charm),
+        "charm_reason": _absent(r.charm, "charm is missing"),
+        "vanna_text": dollars_text(r.vanna),
+        "vanna_reason": _absent(r.vanna, "vanna is missing"),
+        "iv_text": iv_text(r.iv),
+        "iv_reason": _absent(r.iv, "implied volatility is missing"),
+        "volume_text": count_text(r.volume),
+        "volume_reason": _absent(r.volume, "volume is missing"),
+        "volume_hover": _legs_text(r.volume_legs, "Today's volume"),
+        "pc_vol_text": _text(r.pc_vol, 2),
+        "pc_vol_reason": _absent(r.pc_vol, "put/call volume is missing"),
+        "vol_oi_text": _text(r.vol_oi, 2),
+        "vol_oi_reason": _absent(r.vol_oi, "volume/open interest is missing"),
+        **_visits_cells(r.touches, r.holds),
+    }
+
+
+VISITS_REASON = "the regular session has not opened"
+
+
+def _visits_cells(touches: int | None, holds: int | None) -> dict[str, Any]:
+    """Today's hits and bounces at the strike: "b of h", "none yet" with no hit."""
+    if touches is None or holds is None:
+        return {"visits_text": None, "visits_reason": VISITS_REASON, "visits_hover": None}
+    return {
+        "visits_text": "none yet" if touches == 0 else f"{holds} of {touches}",
+        "visits_reason": None,
+        "visits_hover": (
+            f"Today: {touches} hits, {holds} bounced. A hit is a 1-minute bar reaching the "
+            "strike from one side, once per approach; it bounced when the close 15 minutes "
+            "later is still on that side, so a hit counts once its 15 minutes have passed. A "
+            "count, not a forecast."
+        ),
     }
