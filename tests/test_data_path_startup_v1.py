@@ -683,6 +683,7 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         _end(daemon)
 
 
+@pytest.mark.alone
 def test_the_stop_reads_no_process_parent(tmp_path):
     """A stop in a checkout where nothing runs answers at once.
 

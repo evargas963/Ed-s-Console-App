@@ -15,7 +15,7 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-import stream_spine as ss
+import db_authority
 from stream_spine import (
     LATEST,
     LOG,
@@ -430,15 +430,14 @@ def test_writer_init_closes_conn_if_schema_setup_fails(tmp_path):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# One stream-database path (resolve_stream_db_path): the runtime root's
-# data/stream_capture.db. No setting but the runtime root (ED_RUNTIME_ROOT, runtime_layout)
-# moves it, and STREAM_CAPTURE_DB_PATH does not; explicit paths exist only on direct test and
-# recovery APIs.
+# One database path (db_authority.resolve_stream_db_path): the runtime root's data/ed.db.
+# No setting but the runtime root (ED_RUNTIME_ROOT, runtime_layout) moves it, and
+# STREAM_CAPTURE_DB_PATH does not; explicit paths exist only on direct test and recovery APIs.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def test_db_path_a_resolves_the_canonical_default():
-    assert ss.resolve_stream_db_path() == ss.canonical_db_path()
+    assert db_authority.resolve_stream_db_path() == db_authority.canonical_db_path()
 
 
 def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
@@ -460,9 +459,9 @@ def _in_own_python(code: str, **env: str) -> subprocess.CompletedProcess:
 def test_db_path_b_ambient_override_cannot_move_production(tmp_path):
     """A process started with STREAM_CAPTURE_DB_PATH set still resolves the canonical path."""
     done = _in_own_python(
-        "import stream_spine as ss\n"
-        "print(ss.resolve_stream_db_path() == ss.canonical_db_path(),"
-        " ss.resolve_stream_db_path())\n",
+        "import db_authority as da\n"
+        "print(da.resolve_stream_db_path() == da.canonical_db_path(),"
+        " da.resolve_stream_db_path())\n",
         STREAM_CAPTURE_DB_PATH=str(tmp_path / "override.db"),
     )
     assert done.returncode == 0, done.stderr
@@ -472,7 +471,7 @@ def test_db_path_b_ambient_override_cannot_move_production(tmp_path):
 
 def test_db_path_c_reader_test_default_is_explicit(tmp_path):
     target = tmp_path / "reader-test.db"
-    assert ss.resolve_stream_db_path(target) == target.resolve()
+    assert db_authority.resolve_stream_db_path(target) == target.resolve()
 
 
 def test_db_path_d_capture_writer_default_is_its_runtime_roots_stream_database(tmp_path):
