@@ -25,7 +25,7 @@ from pathlib import Path
 
 import psutil
 
-from stream_spine import resolve_stream_db_path
+from db_authority import resolve_stream_db_path
 
 log = logging.getLogger(__name__)
 

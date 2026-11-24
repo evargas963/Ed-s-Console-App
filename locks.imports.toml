@@ -62,3 +62,23 @@ forbidden_modules = [
   "http",
   "urllib",
 ]
+
+# The clean stop (`python launch.py stop`) is an interpreter of its own that loads the launcher
+# and the program's lock before it asks, and each module it loads is read from disk, a read that
+# waits under load: neither loads the program it stops. Read on their own import statements (the
+# header above).
+[[tool.importlinter.contracts]]
+name = "The launcher and the program's lock load none of the program they stop"
+type = "forbidden"
+source_modules = ["head.launch", "head.app.market_data.schwab.streaming.program_lock"]
+forbidden_modules = [
+  "stream_spine",
+  "calc",
+  "state",
+  "push",
+  "feed",
+  "server",
+  "db",
+  "numpy",
+  "sqlite3",
+]
