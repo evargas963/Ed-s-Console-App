@@ -152,7 +152,7 @@ class Asked:
 
 def left_out_line(
     apply_failures: int, tick_failures: int, page_refused: int
-) -> dict[str, str] | None:
+) -> lmp.LeftOutLine | None:
     """Return the header's count of what the program left out since it started, None when nothing.
 
     Its `line` and `why` name each count above 0: the records the console failed to apply
@@ -200,9 +200,9 @@ class LiveUiServer:
 
     def __init__(
         self,
-        heartbeat_fn: Callable[[float], dict[str, Any]],
+        heartbeat_fn: Callable[[float], lmp.DaemonStatus],
         stats: dict[str, int],
-        record_heartbeat: Callable[[dict[str, Any]], object] = lmp.record_feed_heartbeat,
+        record_heartbeat: Callable[[lmp.Beat], object] = lmp.record_feed_heartbeat,
         clock: Callable[[], float] = time_et.now,
         *,
         panels: dict[str, Callable[[Asked], Mapping[str, Any]]],
@@ -253,7 +253,7 @@ class LiveUiServer:
         """Mark the header's news line changed: every browser's next beat carries it."""
         self.news_at += 1
 
-    def beat(self) -> dict[str, Any]:
+    def beat(self) -> lmp.Beat:
         """Return the daemon's whole status, recorded here and sent with every beat.
 
         The status covers the Schwab socket, symbols held and refused per service, the watchlist
@@ -263,7 +263,7 @@ class LiveUiServer:
         left out (left_out_line).
         """
         status = self.heartbeat_fn(self.clock())
-        hb = {
+        hb: lmp.Beat = {
             **status,
             "page_socket": dict(self.stats),
             "left_out": left_out_line(
@@ -526,12 +526,12 @@ async def serve_live_ui(
     stop: asyncio.Event,
     *,
     state: State,
-    heartbeat_fn: Callable[[float], dict[str, Any]],
+    heartbeat_fn: Callable[[float], lmp.DaemonStatus],
     panels: dict[str, Callable[[Asked], Mapping[str, Any]]],
     priced: tuple[str, ...] = (),
     on_select: Callable[[str], object],
     stats: dict[str, int] | None = None,
-    record_heartbeat: Callable[[dict[str, Any]], object] = lmp.record_feed_heartbeat,
+    record_heartbeat: Callable[[lmp.Beat], object] = lmp.record_feed_heartbeat,
     clock: Callable[[], float] = time_et.now,
 ) -> None:
     """Serve the pages' price socket (page_socket) until `stop` is set.

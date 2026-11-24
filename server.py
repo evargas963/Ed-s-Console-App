@@ -1301,7 +1301,7 @@ FEED_CALLBACKS: dict[str, Callable[..., None]] = {
 STATUS_EVERY_SEC = 60.0
 
 
-def _record_state(st: dict[str, Any] | None) -> str:
+def _record_state(st: lmp.Beat | None) -> str:
     """Return the Recorder's own line, as the daemon's heartbeat carries it (WriterStatus.line).
 
     Its rows are counted once committed, and what it holds unwritten is its backlog; no live

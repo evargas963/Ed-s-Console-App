@@ -337,7 +337,7 @@ def saved_window(ladders: list[Ladder], now: float) -> frozenset[str]:
     return frozenset()
 
 
-def sign_in_line(waiting: str | None) -> dict[str, str]:
+def sign_in_line(waiting: str | None) -> lmp.SignInLine:
     """Return the header's Schwab sign-in from the chain sweep's `waiting` (ChainSweep.waits).
 
     Its `word` (the header's cell), `line` (what to do, the header's alert while refused), `why`
@@ -723,7 +723,7 @@ class Daemon:
         greeks = [received[f.upper()][1] for f in GREEK_FIELDS if f.upper() in received]
         return record if all(t >= since for t in greeks) else None
 
-    def status(self, now: float) -> dict[str, Any]:
+    def status(self, now: float) -> lmp.DaemonStatus:
         """Return what the console and browsers are told every second (live_ui's beat).
 
         It is taken at `now`, which the header shows as `clock_ct` (to the second) and `day_ct`.
