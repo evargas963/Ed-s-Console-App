@@ -70,7 +70,7 @@ from tests.feed_live_helper import (
     price_history,
     stream_daemon_bars,
 )
-from tests.schwab_rest_standin import SPY_QUOTES, TOKEN, LocalSchwab
+from tests.schwab_rest_standin import SERVER_ERROR_BODY, SPY_QUOTES, TOKEN, LocalSchwab
 from tests.shared_helpers import et_ts
 from time_et import ET, ct_label
 
@@ -1572,8 +1572,83 @@ def test_a_get_whose_connection_ends_before_any_answer_is_sent_once_more(tmp_pat
         schwab.close()
 
 
+def test_after_a_server_error_an_endpoint_waits_and_its_first_good_answer_ends_the_wait(
+    tmp_path, caplog
+):
+    """After Schwab answers 500, that endpoint's next request waits (operator 11-24, REST-500).
+
+    The wait is 1 s, doubled for each server error in a row up to 30 s, each between half of it
+    and all of it (Google Cloud's retry strategy; Amazon's Builders' Library), counted from
+    Schwab's answer, for that endpoint alone: the expiration chain asked meanwhile goes at once;
+    the first good answer ends it. INDUCED: the stand-in answers /quotes 500 with Schwab's body
+    of 2026-11-23 (SERVER_ERROR_BODY); the client is the daemon's own.
+    """
+    schwab = LocalSchwab()
+    try:
+        client = schwab.client(tmp_path)
+        symbols = sorted(SPY_QUOTES)[:5]
+        schwab.quotes_status, schwab.quotes_error = 500, SERVER_ERROR_BODY
+        with caplog.at_level("INFO", logger="feed.schwab_client"):
+            assert [client.get_quotes(symbols).status_code for _ in range(2)] == [500, 500]
+            assert client.get_option_expiration_chain("SPY").status_code == 200
+            schwab.quotes_status = 200
+            assert [client.get_quotes(symbols).status_code for _ in range(2)] == [200, 200]
+    finally:
+        schwab.close()
+    asked = _gets(schwab)
+    quotes = [r for r in asked if r[0].endswith("/quotes")]
+    waited = [later[2] - earlier[3] for earlier, later in zip(quotes, quotes[1:], strict=False)]
+    assert 0.5 <= waited[0] < 1.3, "after the first server error: between 0.5 and 1 s"
+    assert 1.0 <= waited[1] < 2.3, "after the second: between 1 and 2 s, from its answer"
+    assert waited[2] < 0.3, "after a good answer: at once"
+    expiries = next(r for r in asked if r[0].endswith("/expirationchain"))
+    assert expiries[2] - quotes[1][3] < 0.3, "another endpoint: at once"
+    told = [r.getMessage() for r in caplog.records if r.name == "feed.schwab_client"]
+    waits = [m for m in told if "a server error" in m]
+    assert [m.split(";")[0] for m in waits] == [
+        "REQUEST GET /marketdata/v1/quotes: a server error (500), 1 in a row",
+        "REQUEST GET /marketdata/v1/quotes: a server error (500), 2 in a row",
+    ]
+    assert (
+        "REQUEST GET /marketdata/v1/quotes: answered 200 after 2 server errors in a row; back to "
+        "its pace"
+    ) in told
+
+
+def test_the_daemons_stop_ends_a_wait_after_a_server_error(tmp_path):
+    """The stop never waits on Schwab's server errors (launch.py waits STOP_WAIT_SEC).
+
+    The daemon's stop ends its one client's waits (capture.OneSchwabClient.end_waits): a
+    request waiting on two server errors in a row (at least 1 s) goes at once and is answered.
+    INDUCED: the stand-in answers /quotes 500 with Schwab's body of 2026-11-23; the stop comes
+    0.1 s into the wait.
+    """
+    schwab = LocalSchwab()
+    schwab.quotes_status, schwab.quotes_error = 500, SERVER_ERROR_BODY
+    schwab_client = capture.OneSchwabClient(
+        lambda: sc.SchwabClientState(ok=True, message="", client=schwab.client(tmp_path))
+    )
+    symbols = sorted(SPY_QUOTES)[:5]
+    answered: list[int] = []
+    waiting = threading.Thread(
+        target=lambda: answered.append(schwab_client().get_quotes(symbols).status_code),
+        daemon=True,
+    )
+    try:
+        assert [schwab_client().get_quotes(symbols).status_code for _ in range(2)] == [500, 500]
+        waiting.start()
+        threading.Event().wait(0.1)
+        schwab_client.end_waits()
+        waiting.join(0.6)
+        assert not waiting.is_alive() and answered == [500], "the wait outlived the stop"
+    finally:
+        schwab.close()
+    quotes = [r for r in _gets(schwab) if r[0].endswith("/quotes")]
+    assert len(quotes) == 3 and quotes[2][2] - quotes[1][3] < 0.6
+
+
 def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it(tmp_path):
-    """The stream and the chain sweep ask one holder (capture.one_schwab_client).
+    """The stream and the chain sweep ask one holder (capture.OneSchwabClient).
 
     Schwab's edge answers the token refresh with its 403 page (as at 19:53:55 on 2026-10-03; no
     refusal of the sign-in: each request asks again): every chain fails with it, and the client
@@ -1587,7 +1662,7 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
         built.append(1)
         return sc.SchwabClientState(ok=True, message="", client=schwab.client(tmp_path, 100))
 
-    schwab_client = capture.one_schwab_client(build)
+    schwab_client = capture.OneSchwabClient(build)
     assert schwab_client() is schwab_client(), "the stream and the chains are handed one client"
     failed = []
     sweep = ChainSweep(

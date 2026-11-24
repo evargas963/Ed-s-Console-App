@@ -468,7 +468,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
     from the daemon's price socket as the console takes it, gives /api/health the same words with
     since when.
     """
-    schwab_client = capture.one_schwab_client(
+    schwab_client = capture.OneSchwabClient(
         lambda: build_client_from_token(
             str(tmp_path / "missing_token.json"), "LiveLookingKey", "LiveLookingSecret"
         )

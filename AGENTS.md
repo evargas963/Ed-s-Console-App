@@ -226,15 +226,20 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    stored capture. The requests Schwab takes are spent on what moves: the next is sent as each
    answer is taken, and a refused request is sent again, holding its place, before its ticker fails.
    A GET whose connection ends before any answer is sent once more, never twice (RFC 9110 §9.2.2).
-   Enforced by: `tests/test_data_path_rest_one_connection_v1.py`: a contract Schwab streams is not
-   asked for on /quotes and takes the stream's Greeks as one set, an option record ends with its
-   connection, and a quotes request answered 429 is sent again (in force);
-   `tests/test_chain_history_v1.py`, `tests/test_data_path_rules_v1.py`: `/chains` asked once in an
-   option window, the next quotes request sent as an answer is taken, and a GET with no answer sent
-   once more (in force); a streamed contract's open interest, volume and quote fields, which
-   `/chains` still sends — STREAM-ONE; every other REST request for a field the stream sends — no
-   machine check, ENF-12; `tools/check_one_reader.py` in `hardening` refuses a pull request that
-   adds a second reader (in force); the fields already read by more than one module
+   An endpoint Schwab answers with a server error (5xx) waits before its next request: 1 s, doubled
+   for each in a row up to 30 s, each wait between half of it and all of it, counted from that
+   answer; its first other answer ends the wait, and the program's stop ends every wait (operator
+   2026-11-24; Google Cloud's retry strategy, Amazon's Builders' Library). Enforced by:
+   `tests/test_data_path_rest_one_connection_v1.py`: a contract Schwab streams is not asked for on
+   /quotes and takes the stream's Greeks as one set, an option record ends with its connection, and
+   a quotes request answered 429 is sent again (in force); `tests/test_chain_history_v1.py`,
+   `tests/test_data_path_rules_v1.py`: `/chains` asked once in an option window, the next quotes
+   request sent as an answer is taken, a GET with no answer sent once more, and an endpoint's wait
+   after a server error, ended by its first good answer and by the stop (in force); a streamed
+   contract's open interest, volume and quote fields, which `/chains` still sends — STREAM-ONE;
+   every other REST request for a field the stream sends — no machine check, ENF-12;
+   `tools/check_one_reader.py` in `hardening` refuses a pull request that adds a second reader (in
+   force); the fields already read by more than one module
    (`python -m tools.check_one_reader --list`) — ENF-23; no page panel carries the live price, its
    time or its verdict — `tests/test_page_one_faucet_v1.py` (in force)
 4. **The page draws; it computes nothing** (serves 8). Every number, total, choice, comparison and

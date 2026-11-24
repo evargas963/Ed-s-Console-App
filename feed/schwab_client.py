@@ -8,6 +8,7 @@ Token path is always absolute.
 import json
 import logging
 import os
+import random
 import re
 import socket
 import tempfile
@@ -166,6 +167,22 @@ ERROR_BODY_LOGGED = 2000
 #: what httpx raises when a request's connection closed before Schwab's answer came: the request
 #: has no answer, and a GET (idempotent) may be sent once more (RFC 9110 §9.2.2)
 NO_ANSWER = (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)
+#: the wait before an endpoint's next request once Schwab answers it with a server error (5xx):
+#: the first, doubled for each server error in a row up to the most, counted from that answer,
+#: each wait between half of it and all of it at random (jitter); any other answer ends it (the
+#: operator's decision of 2026-11-24, REST-500; docs/SOURCES.md google-retry-strategy and
+#: aws-backoff-jitter)
+SERVER_ERROR_FIRST_WAIT_SEC, SERVER_ERROR_MOST_WAIT_SEC = 1.0, 30.0
+
+
+@dataclass
+class _ServerErrors:
+    """An endpoint's server errors in a row: how many, the last wait's full length, and when its
+    next request may leave (epoch seconds, as request_sent stamps a request)."""
+
+    count: int
+    full: float
+    leaves: float
 
 
 def shown_path(url: httpx.URL) -> str:
@@ -179,7 +196,7 @@ def request_sent(request: httpx.Request) -> None:
 
 
 def log_request(response: httpx.Response) -> None:
-    """Log every request to Schwab, once, when its answer is in.
+    """Log every request to Schwab, once, when its answer is in, and stamp when it was answered.
 
     The line holds the endpoint, the symbol (or how many symbols, and the expiration or market
     date asked for), the status, and when it was sent and answered. An answer that is not a
@@ -192,7 +209,7 @@ def log_request(response: httpx.Response) -> None:
     """
     response.read()
     response.stream = httpx.ByteStream(response.content)
-    answered = time_et.now()
+    answered = response.extensions["answered"] = time_et.now()
     req = response.request
     path = shown_path(req.url)
     params = req.url.params
@@ -245,6 +262,9 @@ class OneRefreshSession(OAuth2Client):
     and none is written over. Once Schwab refuses a refresh (authlib raises on Schwab's answer; a
     network failure or Schwab's edge page is not one), every request raises SignInRefused and
     nothing is sent, until a new sign-in is saved.
+
+    An endpoint Schwab answers with a server error (5xx) waits before its next request
+    (SERVER_ERROR_FIRST_WAIT_SEC, _paced); its first other answer ends the wait.
     """
 
     def __init__(
@@ -257,6 +277,67 @@ class OneRefreshSession(OAuth2Client):
         self._unread: str | None = None  # the token file's read failure last logged
         # the token file as last looked at (id, time, size)
         self._seen: tuple[int, int, int] | None = None
+        self._pace_lock = threading.Lock()
+        self._server_errors: dict[str, _ServerErrors] = {}  # by endpoint path
+        self._ending = threading.Event()  # set at the program's stop: no wait for a server error
+        self.event_hooks["request"].append(self._paced)  # after request_sent's stamp
+
+    def end_waits(self) -> None:
+        """End every wait for a server error at once, and hold no request after (the stop)."""
+        self._ending.set()
+
+    def _paced(self, request: httpx.Request) -> None:
+        """Hold a request whose endpoint Schwab last answered with a server error, for its wait.
+
+        The wait counts from that answer, so a request asked for later waits only what is left,
+        and is stamped sent as it leaves; the program's stop ends it (end_waits).
+        """
+        path = request.url.path
+        with self._pace_lock:
+            if path not in self._server_errors:
+                return
+            leaves = self._server_errors[path].leaves
+        left = leaves - request.extensions["sent"]
+        if left > 0:
+            self._ending.wait(left)
+            request_sent(request)  # stamped again as it leaves
+
+    def _took(self, method: str, response: httpx.Response) -> None:
+        """Count a server error (5xx) for its endpoint and set when its next request may leave.
+
+        The wait is the last one's full length doubled, from SERVER_ERROR_FIRST_WAIT_SEC up to
+        SERVER_ERROR_MOST_WAIT_SEC, at random between half of it and all of it, counted from this
+        answer. Any other answer ends the count: the endpoint goes back to its pace.
+        """
+        req = response.request
+        path = req.url.path
+        with self._pace_lock:
+            if path in self._server_errors:
+                held = self._server_errors.pop(path)
+                count, full = held.count + 1, min(SERVER_ERROR_MOST_WAIT_SEC, held.full * 2)
+            else:
+                held, count, full = None, 1, SERVER_ERROR_FIRST_WAIT_SEC
+            if response.status_code >= 500:
+                wait = random.uniform(full / 2, full)
+                self._server_errors[path] = _ServerErrors(
+                    count, full, response.extensions["answered"] + wait
+                )
+                log.warning(
+                    "REQUEST %s %s: a server error (%d), %d in a row; its next one waits %.1f s",
+                    method,
+                    shown_path(req.url),
+                    response.status_code,
+                    count,
+                    wait,
+                )
+            elif held is not None:
+                log.info(
+                    "REQUEST %s %s: answered %d after %d server errors in a row; back to its pace",
+                    method,
+                    shown_path(req.url),
+                    response.status_code,
+                    held.count,
+                )
 
     @override
     def ensure_active_token(self, token: Any = None) -> bool | None:
@@ -315,7 +396,7 @@ class OneRefreshSession(OAuth2Client):
         A GET asks for the same thing however often it is sent (RFC 9110 §9.2.2: an idempotent
         request may be repeated when the connection fails before its answer is read). The first
         failure is logged; a second is raised, as is any other method's (the token request is a
-        POST).
+        POST). Its answer is counted for its endpoint's wait after a server error (_took).
         """
         try:
             response = super().request(method, url, withhold_token, auth, **kwargs)
@@ -330,6 +411,7 @@ class OneRefreshSession(OAuth2Client):
                 e,
             )
             response = super().request(method, url, withhold_token, auth, **kwargs)
+        self._took(method, response)
         return response
 
     def refusal(self) -> "str | None":
@@ -423,6 +505,16 @@ def client_from_token_file_atomic(
         event_hooks={"request": [request_sent], "response": [log_request]},
     )
     return Client(api_key, session, token_metadata=metadata, enforce_enums=enforce_enums)
+
+
+def end_waits(client: Client) -> None:
+    """End every wait for a server error on `client`'s session (OneRefreshSession.end_waits).
+
+    The program's stop calls it, so the stop never waits on Schwab's server errors (launch.py
+    waits STOP_WAIT_SEC).
+    """
+    if isinstance(client.session, OneRefreshSession):
+        client.session.end_waits()
 
 
 def inspect_token_file(token_path: str) -> TokenInspectionResult:

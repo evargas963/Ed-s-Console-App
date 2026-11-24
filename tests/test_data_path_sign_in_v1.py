@@ -549,13 +549,13 @@ def test_a_build_that_fails_is_logged_once_by_the_sweep_with_its_cause(tmp_path,
     """A usable sign-in whose file another process holds locked past the builder's wait.
 
     The wait is schwab_client.TOKEN_LOCK_WAIT_SEC. The real builder, through the daemon's real
-    client holder (capture.one_schwab_client), fails inside the build. The sweep's one warning
+    client holder (capture.OneSchwabClient), fails inside the build. The sweep's one warning
     carries the traceback with the lock's own TimeoutError as its cause, and a second ask adds
     no warning.
     """
     token = tmp_path / "schwab_token.json"
     _new_sign_in(token, "a")
-    schwab_client = capture.one_schwab_client(
+    schwab_client = capture.OneSchwabClient(
         lambda: sc.build_client_from_token(str(token), "LiveLookingKey", "LiveLookingSecret")
     )
     with subprocess.Popen(  # leaving it waits for the holder and closes its pipe
@@ -581,7 +581,7 @@ def test_a_build_that_fails_is_logged_once_by_the_sweep_with_its_cause(tmp_path,
 def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_built(
     tmp_path, caplog
 ):
-    """The daemon's client holder (capture.one_schwab_client, the real one), client unbuildable.
+    """The daemon's client holder (capture.OneSchwabClient, the real one), client unbuildable.
 
     While its client cannot be built: the real builder's answer for a token file that is not there
     (schwab_client.build_client_from_token), which the holder raises as ConnectionError and
@@ -602,7 +602,7 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
             client=schwab.delivering_here(sc.client_from_token_file_atomic(str(token), "k", "s")),
         )
 
-    schwab_client = capture.one_schwab_client(build)
+    schwab_client = capture.OneSchwabClient(build)
     try:
         sweep = _sweep(tmp_path)
         with caplog.at_level(logging.WARNING):

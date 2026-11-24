@@ -688,13 +688,13 @@ def test_a_repeated_add_an_unlisted_removal_and_an_add_with_no_sign_in_change_no
 
     An add of a ticker already on the list (a request sent twice) is answered ON_LIST with no
     check; a removal of one not on it, NOT_ON_LIST; an add when the daemon's one Schwab client
-    cannot be built (no usable sign-in: the real builder through capture.one_schwab_client), is
+    cannot be built (no usable sign-in: the real builder through capture.OneSchwabClient), is
     answered NOT_CHECKED with the reason, not added.
     """
     bus = MessageBus()
     daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
     missing = tmp_path / "schwab_token.json"
-    daemon.schwab_client = capture.one_schwab_client(
+    daemon.schwab_client = capture.OneSchwabClient(
         lambda: build_client_from_token(str(missing), "LiveLookingKey", "LiveLookingSecret")
     )
 
