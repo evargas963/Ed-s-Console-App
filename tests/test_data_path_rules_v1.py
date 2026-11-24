@@ -1542,6 +1542,36 @@ def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_tok
     assert {r[5] for r in _gets(schwab)} == {"Bearer new-access"}
 
 
+@pytest.mark.parametrize("how", ["close", "reset"])
+def test_a_get_whose_connection_ends_before_any_answer_is_sent_once_more(tmp_path, caplog, how):
+    """A quotes request whose connection ends with no answer is sent once more (operator 11-24).
+
+    A GET may be repeated when its connection fails before the answer is read (RFC 9110
+    §9.2.2): the second answers it, and the first is logged. Two ended in a row raise: one more,
+    never a loop. INDUCED: the stand-in ends the connection (closed, or reset, as Schwab's end
+    reset two on 2026-11-18 and 2026-11-20); the client is the daemon's own.
+    """
+    schwab = LocalSchwab()
+    try:
+        client = schwab.client(tmp_path)
+        symbols = sorted(SPY_QUOTES)[:5]
+        schwab.drop_next = [how]
+        with caplog.at_level("WARNING", logger="feed.schwab_client"):
+            answered = client.get_quotes(symbols)
+        assert answered.status_code == 200 and set(answered.json()) >= set(symbols)
+        quotes = [r for r in _gets(schwab) if r[0].endswith("/quotes")]
+        assert [r[3] is None for r in quotes] == [True, False]
+        tried = [m for m in (r.getMessage() for r in caplog.records) if "no answer" in m]
+        assert len(tried) == 1 and tried[0].startswith("REQUEST GET /marketdata/v1/quotes: ")
+        assert tried[0].endswith("; sent once more")
+        schwab.drop_next = [how, how]
+        with pytest.raises(sc.NO_ANSWER):
+            client.get_quotes(symbols)
+        assert len([r for r in _gets(schwab) if r[0].endswith("/quotes")]) == 4
+    finally:
+        schwab.close()
+
+
 def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds_it(tmp_path):
     """The stream and the chain sweep ask one holder (capture.one_schwab_client).
 
