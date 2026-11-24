@@ -85,7 +85,7 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
         )
         c = _cross()
         msg = {"ticker": c.ticker, "ts_utc": c.ts_utc, "crosses": [asdict(c)]}
-        stored.append(writer.store_crosses(msg, 10.0)[0])
+        stored.append(writer.store_crosses(msg).outcome(10.0))
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()

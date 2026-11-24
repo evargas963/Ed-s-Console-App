@@ -32,6 +32,7 @@ from stream_spine import (
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    cross_ids,
     current_key,
     held_key,
 )
@@ -57,9 +58,11 @@ def stored_crosses(writer: CaptureWriter, events: list[LevelCrossEvent]) -> list
     Returns the rows as stored, each with its cross_id.
     """
     msg = {"ticker": events[0].ticker, "ts_utc": events[0].ts_utc}
-    outcome, ids = writer.store_crosses({**msg, "crosses": [asdict(e) for e in events]}, 10.0)
-    assert outcome == CAPTURE_STORED, outcome
-    return [StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, ids, strict=True)]
+    stored = writer.store_crosses({**msg, "crosses": [asdict(e) for e in events]})
+    assert stored.outcome(10.0) == CAPTURE_STORED, stored.outcome()
+    return [
+        StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, cross_ids(stored), strict=True)
+    ]
 
 
 def daemon_status(now: float, **staged) -> dict:
