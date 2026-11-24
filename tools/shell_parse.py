@@ -240,6 +240,11 @@ class _Lexer:
     def __init__(self, s: str, ps: bool):
         self.s, self.ps = s, ps
         self.escape = "`" if ps else "\\"
+        #: what `tokens` has read: the tokens, the heredocs whose body comes at the line's end,
+        #: whether a statement starts here, and PowerShell's call operator just read (`& `, `. `)
+        self.out: list[list] = []
+        self.pending: list[list] = []
+        self.fresh, self.called = True, ""
 
     def close(self, i: int, opener: str = "(", closer: str = ")") -> int:
         """Return the index of the `closer` matching an `opener` just before `i`.
@@ -454,79 +459,25 @@ class _Lexer:
         """Return the tokens of the text.
 
         Each is ["w", _Word], ["op", separator], ["redir", operator, _Word, heredoc body],
-        ["group", text] or ["arith", the commands substituted in it].
+        ["group", text] or ["arith", the commands substituted in it]. A lexer reads its text once.
         """
-        s, tokens, pending, fresh, called, i = self.s, [], [], True, "", 0
+        s, i = self.s, 0
         while i < len(s):
             c = s[i]
-            if c in _SPACE:
-                i += 1
-            elif c == self.escape and s[i + 1 : i + 2] == "\n":  # a line continuation
-                i += 2
-            elif c == "#":  # a comment, to the end of the line
-                j = s.find("\n", i)
-                i = len(s) if j < 0 else j
+            if (past := self.skipped(i)) is not None:
+                i = past
             elif c == "\n":
-                for tok in pending:  # `<<\EOF` ends at EOF
-                    tok[3], i = _heredoc_body(s, i + 1, tok[2].value.replace("\\", ""))
-                pending = []
-                if not (tokens and tokens[-1][0] == "op" and tokens[-1][1] in ("|", "&&", "||")):
-                    tokens.append(["op", ";"])
-                fresh = True
-                i += 1
+                i = self.line_end(i)
             elif c in ")}":  # unbalanced: a case pattern's end
-                tokens.append(["op", ";"])
-                fresh = True
+                self.out.append(["op", ";"])
+                self.fresh = True
                 i += 1
-            elif (
-                not self.ps and fresh and (m := _KEYWORD_ARITH.match(s, i))
-            ):  # `for((`, `if((`: no space
-                tokens.append(["w", _Word(m.group(0), m.group(0), [])])
-                i = m.end()
-            elif (
-                not self.ps
-                and s.startswith("((", i)
-                and (fresh or (tokens[-1][0] == "w" and tokens[-1][1].value == "for"))
-                and (k := self.arith_end(i)) is not None
-            ):  # `(( ))`, `for (( ))`: arithmetic
-                tokens.append(["arith", self.substituted(s[i + 2 : k])])
-                fresh = False
-                i = k + 2
+            elif (past := self.arith(i)) is not None:
+                i = past
             elif c in "({":
-                j = self.close(i + 1, c, ")" if c == "(" else "}")
-                inner, after = s[i + 1 : j], s[j + 1 : j + 2]
-                if (
-                    fresh and not called and (not after or after in _WORD_END)
-                ):  # a group: ( ) subshell, { } block
-                    tokens.append(["group", inner])
-                    i = j + 1
-                    continue
-                rest = self.word(j + 1)  # a ( ) or { } inside a statement
-                tokens.append(
-                    [
-                        "w",
-                        _Word(
-                            s[i : j + 1] + rest.value,
-                            called + s[i : j + 1] + rest.raw,
-                            [inner, *rest.nested],
-                        ),
-                    ]
-                )
-                fresh, called = False, ""
-                i = j + 1 + len(rest.raw)
-            elif (
-                self.ps
-                and (
-                    c == "&" and s[i + 1 : i + 2] != "&" or c == "." and s[i + 1 : i + 2] in _SPACE
-                )
-                and (
-                    fresh
-                    or [t[0] for t in tokens[-2:]] == ["w", "w"]
-                    and tokens[-1][1].value == "="
-                    and tokens[-2][1].value.startswith("$")
-                )
-            ):  # `& "C:\x y\gh" pr`, `$r = & $gh`, `. $f`
-                called = c + " "
+                i = self.bracketed(i, c)
+            elif self.calls(i, c):
+                self.called = c + " "
                 i += 1
             elif sep := next(
                 (
@@ -536,36 +487,143 @@ class _Lexer:
                 ),
                 None,
             ):
-                tokens.append(["op", sep[1]])
-                fresh, called = True, ""
+                self.out.append(["op", sep[1]])
+                self.fresh, self.called = True, ""
                 i += len(sep[0])
             elif m := _REDIRECT.match(s, i):
-                op, j = m.group(0), m.end()
-                if op in ("<", ">") and s[j : j + 1] == "(":  # process substitution <( )
-                    k = self.close(j + 1)
-                    tokens.append(["w", _Word(s[i : k + 1], s[i : k + 1], [s[j + 1 : k]])])
-                    fresh = False
-                    i = k + 1
-                    continue
-                while j < len(s) and s[j] in _SPACE:
-                    j += 1
-                target = self.word(j)
-                tok = ["redir", op, target, None]
-                tokens.append(tok)
-                if op in ("<<", "<<-"):
-                    pending.append(tok)
-                fresh = False
-                i = j + len(target.raw)
+                i = self.redirected(i, m)
             else:
-                w = self.word(i)
-                i += len(w.raw) or 1
-                if called:  # written `& word` / `. word`: a program, not a printed string
-                    w, called = _Word(w.value, called + w.raw, w.nested), ""
-                tokens.append(["w", w])
-                fresh = (
-                    fresh and w.raw in _GROUP_PREFIX
-                )  # `until { ...; }`, `time ( ... )`: still a group
-        return tokens
+                i = self.plain_word(i)
+        return self.out
+
+    def skipped(self, i: int) -> int | None:
+        """Return the index past the space, line continuation or comment at `i`; None if none."""
+        s, c = self.s, self.s[i]
+        if c in _SPACE:
+            return i + 1
+        if c == self.escape and s[i + 1 : i + 2] == "\n":  # a line continuation
+            return i + 2
+        if c == "#":  # a comment, to the end of the line
+            j = s.find("\n", i)
+            return len(s) if j < 0 else j
+        return None
+
+    def line_end(self, i: int) -> int:
+        """Take the line break at `i`, each heredoc begun on its line reading its body after it.
+
+        Returns the index past the last body read, or past the line break.
+        """
+        for tok in self.pending:  # `<<\EOF` ends at EOF
+            tok[3], i = _heredoc_body(self.s, i + 1, tok[2].value.replace("\\", ""))
+        self.pending = []
+        out = self.out
+        if not (out and out[-1][0] == "op" and out[-1][1] in ("|", "&&", "||")):
+            out.append(["op", ";"])
+        self.fresh = True
+        return i + 1
+
+    def arith(self, i: int) -> int | None:
+        """Return the index past bash arithmetic at `i`; None if none.
+
+        `for((` and `if((` written with no space are a keyword's word; `(( ))` at a statement's
+        start or after `for` is arithmetic, the commands substituted in it read.
+        """
+        if self.ps:
+            return None
+        s, out = self.s, self.out
+        if self.fresh and (m := _KEYWORD_ARITH.match(s, i)):
+            out.append(["w", _Word(m.group(0), m.group(0), [])])
+            return m.end()
+        if (
+            s.startswith("((", i)
+            and (self.fresh or (out[-1][0] == "w" and out[-1][1].value == "for"))
+            and (k := self.arith_end(i)) is not None
+        ):
+            out.append(["arith", self.substituted(s[i + 2 : k])])
+            self.fresh = False
+            return k + 2
+        return None
+
+    def bracketed(self, i: int, c: str) -> int:
+        """Take the ( ) or { } opened by `c` at `i`; return the index past it.
+
+        At a statement's start it is a group (a ( ) subshell, a { } block); inside a statement
+        it is part of a word (`a=(x y)`, `.Kill()`).
+        """
+        s = self.s
+        j = self.close(i + 1, c, ")" if c == "(" else "}")
+        inner, after = s[i + 1 : j], s[j + 1 : j + 2]
+        if self.fresh and not self.called and (not after or after in _WORD_END):
+            self.out.append(["group", inner])
+            return j + 1
+        rest = self.word(j + 1)
+        self.out.append(
+            [
+                "w",
+                _Word(
+                    s[i : j + 1] + rest.value,
+                    self.called + s[i : j + 1] + rest.raw,
+                    [inner, *rest.nested],
+                ),
+            ]
+        )
+        self.fresh, self.called = False, ""
+        return j + 1 + len(rest.raw)
+
+    def calls(self, i: int, c: str) -> bool:
+        r"""Whether `c` at `i` is PowerShell's call or dot-source operator.
+
+        As in `& "C:\x y\gh" pr`, `$r = & $gh` and `. $f`: at a statement's start, or after an
+        assignment to a variable.
+        """
+        s, out = self.s, self.out
+        return (
+            self.ps
+            and (c == "&" and s[i + 1 : i + 2] != "&" or c == "." and s[i + 1 : i + 2] in _SPACE)
+            and (
+                self.fresh
+                or [t[0] for t in out[-2:]] == ["w", "w"]
+                and out[-1][1].value == "="
+                and out[-2][1].value.startswith("$")
+            )
+        )
+
+    def redirected(self, i: int, m: re.Match[str]) -> int:
+        """Take the redirection `m` at `i` with its target word; return the index past it.
+
+        A heredoc's body is read at its line's end (line_end); `<( )` or `>( )` is a process
+        substitution, a word.
+        """
+        s = self.s
+        op, j = m.group(0), m.end()
+        if op in ("<", ">") and s[j : j + 1] == "(":
+            k = self.close(j + 1)
+            self.out.append(["w", _Word(s[i : k + 1], s[i : k + 1], [s[j + 1 : k]])])
+            self.fresh = False
+            return k + 1
+        while j < len(s) and s[j] in _SPACE:
+            j += 1
+        target = self.word(j)
+        tok = ["redir", op, target, None]
+        self.out.append(tok)
+        if op in ("<<", "<<-"):
+            self.pending.append(tok)
+        self.fresh = False
+        return j + len(target.raw)
+
+    def plain_word(self, i: int) -> int:
+        """Take the word at `i`, at least one character; return the index past it.
+
+        One written `& word` or `. word` is a program, not a printed string. After `until`,
+        `time` and the like a ( ) or { } still opens a group (`until { ...; }`, `time ( ... )`).
+        """
+        w = self.word(i)
+        past = i + max(len(w.raw), 1)
+        if self.called:
+            w, self.called = _Word(w.value, self.called + w.raw, w.nested), ""
+        self.out.append(["w", w])
+        self.fresh = self.fresh and w.raw in _GROUP_PREFIX
+        return past
 
 
 # ── statements ───────────────────────────────────────────────────────────────────────────────
