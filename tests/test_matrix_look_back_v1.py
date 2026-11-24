@@ -29,7 +29,8 @@ from calc.math_exposure_core import compute_exposures_by_strike
 from calc.option_window import strike_look_back
 from numeric_contract import dollars_text
 from option_contract import read_chain
-from tests.feed_live_helper import replay_options
+from stream_spine import LATEST, MessageBus
+from tests.feed_live_helper import apply_record, on_the_bus, replay_options
 from tests.shared_helpers import fixture_json
 from time_et import ET, sessions
 
@@ -134,6 +135,31 @@ def test_each_contract_over_the_window_is_schwabs_values_and_its_steps():
     assert traded > 0
     assert sum(e["totals"][0] for e in expected.values()) > 0
     assert sum(e["totals"][1] for e in expected.values()) > 0
+
+
+def test_a_console_behind_reads_each_step_by_its_own_trade():
+    """INDUCED: a console that takes the bus only after every 50 messages (stream_spine LATEST).
+
+    The record it takes holds only the newest of a contract's messages, but each message that
+    brought a trade is its own item (stream_spine.MessageBus), and each rise of TOTAL_VOLUME in
+    these messages came with a trade: the console takes every step, read by its own trade
+    against its own quotes, and its look-back from 10:04 is the one a console taking every
+    version holds, though it took fewer records than the messages.
+    """
+    messages = FX["messages"]
+    bus, late = MessageBus(), OrderFlowState()
+    late.current = bus.current
+    reader = bus.subscribe("", policy=LATEST)
+    taken = 0
+    for n, m in enumerate(messages, 1):
+        on_the_bus(bus, "LEVELONE_OPTIONS", m["item"], m["ts_recv"], m["schwab_ts"])
+        if n % 50 == 0 or n == len(messages):
+            for record in reader.taken(len(messages)):
+                apply_record(late, "LEVELONE_OPTIONS", record)
+                taken += 1
+    assert taken < len(messages)
+    every = _replayed().look_back(FX["symbols"], DAY, START)
+    assert late.look_back(FX["symbols"], DAY, START) == every and len(every) == 4
 
 
 def test_a_window_begun_before_the_record_is_not_held():

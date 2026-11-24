@@ -415,6 +415,26 @@ def test_a_trade_waiting_behind_a_chain_keeps_its_quote_when_a_newer_trade_comes
     assert kept[1] == (2.5, 4.0, 1795194000784, 2.46, 2.47, 77.0, 8.0, "outside_spread_high")
 
 
+def test_an_older_trade_put_on_the_bus_late_is_no_item_and_no_print():
+    """INDUCED: PCG's second message, a trade, put on the bus after its third, a newer trade.
+
+    Schwab's frame time makes the second the older, and the record holds each field it carries
+    from the third: it takes none of them, makes no version, and a live reader takes no item of
+    it. The tape keeps the third's trade alone.
+    """
+    _first, second, third, _volume = _PCG
+    assert second["schwab_ts"] < third["schwab_ts"] and set(second["item"]) <= set(third["item"])
+    bus, state = MessageBus(), OrderFlowState()
+    reader = bus.subscribe("", policy=LATEST)
+    for m in (third, second):
+        on_the_bus(bus, EQ, m["item"], m["ts_recv"], m["schwab_ts"])
+    taken = reader.taken(10)
+    for record in taken:
+        apply_record(state, EQ, record)
+    assert len(taken) == 1
+    assert [p.time_millis for p in state.prints("PCG")] == [third["item"]["TRADE_TIME_MILLIS"]]
+
+
 # ── the quote in force: the newest Schwab timed at or before the trade, on its ET date ───────
 
 

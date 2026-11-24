@@ -64,8 +64,9 @@ The rules for the data itself, at every hop from Schwab to the screen.
   record it made (`brought_trade`), in its place among the record's versions, so no trade replaces
   another before a reader takes it; the rest of the record (its quote, Greeks and volume) is still
   the newest alone. A reader that subscribes later starts with each record's newest trade, then the
-  record. What a live reader holds stays bounded by the items it has not yet taken: in 2.7 seconds
-  of Schwab's stream at 2026-10-05 14:00 CT
+  record: the bus keeps that trade's version for it, one per symbol, until the next trade
+  (`stream_spine.MessageBus._trades`). What a live reader holds stays bounded by the items it has
+  not yet taken, about 1.8 KB each: in 2.7 seconds of Schwab's stream at 2026-10-05 14:00 CT
   (`tests/fixtures/real_stream_mix_2026_10_05_1400ct.json`), 112 of the 7,572 LEVELONE messages
   brought a trade, 42 a second and at most 32 in any 100 ms. A quote's record keeps one thing more,
   the quote its newest quote replaced (`quote_before`, whole as the record held it): Schwab sends a
