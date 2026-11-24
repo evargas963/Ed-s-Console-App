@@ -66,7 +66,7 @@ def _chain(started: float = _BEGUN) -> cs._Chain:
 
 
 def _sweep(tmp_path, publish, writer: CaptureWriter) -> cs.ChainSweep:
-    """The daemon's sweep of MRVL after its close, on `writer`, the daemon's one database."""
+    """Return the daemon's sweep of MRVL after its close, on `writer`, the daemon's one database."""
     sqlite3.connect(tmp_path / "ed_console.db").close()  # the daemon's database exists
     return cs.ChainSweep(
         tmp_path / "ed_console.db",

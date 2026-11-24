@@ -350,12 +350,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   capture: the Recorder commits it (`CaptureWriter.store_capture`) before the console hears of the
   chain, and it is never replaced. One the Recorder holds past `chain_sweep.CAPTURE_WAIT_SEC` goes
   to the console as no capture; the sweep keeps it (its owner: `ChainSweep.publish_held`, on each
-  pass of its loop and before each ticker of a rotation), and once the Recorder commits it
-  publishes the same chain again as the capture, which the console keeps (`server._on_chain`), or
-  gives its window back to the window's next chain once the Recorder refuses it. A sweep that ends
-  ends the daemon, and the next start reads the stored capture. A non-200 answer fails that
-  ticker's chain with its reason and
-  the next request goes at once. Enforced by: `tests/test_chain_history_v1.py`,
+  pass of its loop and before each ticker of a rotation), and once the Recorder commits it publishes
+  the same chain again as the capture, which the console keeps (`server._on_chain`), or gives its
+  window back to the window's next chain once the Recorder refuses it. A sweep that ends ends the
+  daemon, and the next start reads the stored capture. A non-200 answer fails that ticker's chain
+  with its reason and the next request goes at once. Enforced by: `tests/test_chain_history_v1.py`,
   `tests/test_data_path_rest_one_connection_v1.py`, `tests/test_data_path_capture_whole_v1.py`,
   `tests/test_data_path_records_stand_v1.py`, `tests/test_canonical_gex_input_validity_v1.py`,
   `tests/test_capture_store_v1.py`, `tests/test_data_path_rules_v1.py`
