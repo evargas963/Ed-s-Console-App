@@ -6,8 +6,12 @@ description: Use when a test both passes and fails on the same commit. Finds eve
 # Flaky test fix
 
 1. Find them all. Run the full suite repeatedly under load on one commit and list every test that
-   both passed and failed: `npx playwright test` and
-   `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -n logical --dist loadfile --junitxml=<run>.xml`,
+   both passed and failed: `npx playwright test`, and pytest as CI runs it
+   (`.github/workflows/pytest.yml`), the workers, then each test marked `alone` (a limit on the wall
+   clock) with none beside it:
+   `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -n logical --dist loadfile -m "not alone" --junitxml=<run>.xml`
+   and
+   `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -m alone --junitxml=<run>-alone.xml`;
    10 runs, with 4 CPU-bound processes beside each
    (`.venv/Scripts/python.exe -m tools.cpu_load 4 <seconds>`). Show the per-test pass/fail counts,
    and beside each test the operator's ruling on it in `ACTIVE_PROGRAM.md`, if one is recorded.
