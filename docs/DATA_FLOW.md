@@ -415,9 +415,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`put_call_text`: `push.contract.SIDE_TEXT`), the option stream's badge for a contract
   (`subscription_text`, with `subscription_active` for its tone:
   `app.options.order_flow.streaming`), a tilt as running text says it (`tilt_text`, beside the
-  headline's `side_word`: `calc.order_flow.TILT_WORDS`), and a zone list that lists none
-  (`no_zones_text`: `push.liquidity.NO_ZONES_TEXT`). A choice of what a screen draws is served the
-  same way: each level says whether the zones chart draws it as a reference line (`reference_line`:
+  headline's `side_word`: `calc.order_flow.TILT_WORDS`; with no tilt, the book's state that is why,
+  ONE-SIDED, NO BOOK or NO LEVELS: `calc.order_flow.STATE_WORDS`, so the Desk's strip says what the
+  Liquidity card says), and a zone list that lists none (`no_zones_text`:
+  `push.liquidity.NO_ZONES_TEXT`). A choice of what a screen draws is served the same way: each
+  level says whether the zones chart draws it as a reference line (`reference_line`:
   `push.levels.REFERENCE_LINE_FAMILIES`). The page draws them and holds no table from a served state
   to words; a table from a state to a colour, a tone or an arrow is drawing and stays on the page.
   Enforced by: `tests/test_positioning_migration_v1.py`, `tests/test_options_flow_tape_v1.py`,

@@ -1405,7 +1405,10 @@ test.describe("Trade Desk renders served values", () => {
     expect(nq5.tilt_text).toBe(
       { BID_HEAVY: "buy-heavy", BALANCED: "neutral", OFFER_HEAVY: "sell-heavy" }[nq5.tilt],
     );
-    await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (NASDAQ_BOOK, top 5)");
+    // beside the venue's served name, never its service code
+    const nq = MICRO.readout.venues.NASDAQ_BOOK.name;
+    expect(nq).toBe("Nasdaq");
+    await expect(body).toContainText(nq5.pct_text + nq5.tilt_text + " (" + nq + ", top 5)");
     // SPY's real levels (Right Now asks them at 1 minute): max pain is the nearest, 0.08 below
     // the price; the price is through the largest put gamma strike, so both are above it
     const level = (id) => REAL.levels["1"].levels.find((r) => r.id === id);
@@ -1676,7 +1679,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect(body).toContainText(BOOK_TIME + " · 1s");
     await expect(body).toContainText("757.05 × 757.07"); // Schwab's best bid and ask
     await expect(body).toContainText(
-      MICRO.readout.venues.NASDAQ_BOOK.views["5"].tilt_text + " (NASDAQ_BOOK, top 5)",
+      MICRO.readout.venues.NASDAQ_BOOK.views["5"].tilt_text + " (Nasdaq, top 5)",
     );
     expect(errs).toEqual([]);
   });
@@ -1694,7 +1697,7 @@ test.describe("Trade Desk renders served values", () => {
     await openView(page, "trade-desk", "right-now");
     await expect(page.locator("#tdBody")).toContainText(
       book.readout.venues.NASDAQ_BOOK.views["5"].pct_text +
-        "Words ONLY the server knows (NASDAQ_BOOK, top 5)",
+        "Words ONLY the server knows (Nasdaq, top 5)",
     );
     expect(errs).toEqual([]);
   });
@@ -1833,13 +1836,13 @@ test.describe("Trade Desk renders served values", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const body = page.locator("#tdBody");
-    await expect(body).toContainText("(NYSE_BOOK, top 5)");
+    await expect(body).toContainText("(NYSE, top 5)");
     await page.evaluate(() => {
       // the venue each draw from here on shows
       window.__draws = [];
       new MutationObserver(() =>
         window.__draws.push(
-          (document.getElementById("tdBody").textContent.match(/\((NYSE|NASDAQ)_BOOK/) || [""])[0],
+          (document.getElementById("tdBody").textContent.match(/\((NYSE|Nasdaq),/) || [""])[0],
         ),
       ).observe(document.getElementById("tdBody"), { childList: true });
     });
@@ -1857,8 +1860,8 @@ test.describe("Trade Desk renders served values", () => {
     sock.frame("book:desk", "SPY", Object.assign({}, MICRO, { venue: "NYSE_BOOK" })); // NYSE's, already on its way ...
     held = false;
     sock.changed("book"); // ... and NASDAQ's behind it
-    await expect(body).toContainText("(NASDAQ_BOOK, top 5)");
-    expect(await page.evaluate(() => window.__draws)).toEqual(["(NASDAQ_BOOK"]);
+    await expect(body).toContainText("(Nasdaq, top 5)");
+    expect(await page.evaluate(() => window.__draws)).toEqual(["(Nasdaq,"]);
   });
 
   test("Right Now: a strike of GEX not known keeps its row: no bar, no ghost, the dash, no page error", async ({

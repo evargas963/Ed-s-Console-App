@@ -197,7 +197,7 @@ def _signed_walk(prints: list[KeptPrint], cutoff_ms: float | None) -> Iterator[_
     Each print with a size and a trade time, traded at or after `cutoff_ms` (every one when
     None), as (trade time in ms, size, signed size or None). A print with no trade time is in no
     walk: it cannot be placed in a window, and the cumulative delta sums the prints its window
-    names (operator 2026-11-24). A print outside the walk still sets the price and the last
+    names. A print outside the walk still sets the price and the last
     change the tick test of the next one reads.
     """
     prev_price: float | None = None

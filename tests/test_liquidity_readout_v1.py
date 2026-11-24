@@ -638,9 +638,39 @@ def test_the_tilts_on_the_books_nearest_the_line(case, line, pct, tilt):
 
 
 def test_no_value_has_no_tilt():
+    """With no book there is no value and no tilt; the lean's words are why: no book.
+
+    As the card's heading says it (NO BOOK), and as running text says it for the Desk's strip
+    (the operator's decision of 2026-11-24: the strip says what the card says).
+    """
     w = _steady(_NO_BOOK, "NYSE_BOOK", "5")
     assert (w["pct"], w["tilt"]) == (None, None)
-    assert (w["side_word"], w["tilt_text"]) == (None, None)  # and no words for one
+    assert (w["side_word"], w["tilt_text"]) == ("NO BOOK", "no book")
+
+
+def test_a_book_with_no_tilt_serves_the_state_that_is_why_as_the_card_says_it():
+    """The Desk's strip draws `tilt_text`; with no tilt it is the book's state, as on the card.
+
+    INDUCED: Schwab's NYSE_BOOK of SPY with a side, then both sides, as Schwab sends a side it
+    has no level for (an empty list). One-sided: ONE-SIDED (the card's headline), "one-sided"
+    (the strip); no levels: NO LEVELS, as the card's heading. A view whose book has both sides
+    but no value yet (no end second) has no words: "-".
+    """
+    one = json.loads(json.dumps(_PAIR["NYSE_BOOK"]["content"]))
+    one["ASKS"] = []
+    none = json.loads(json.dumps(one))
+    none["BIDS"] = []
+    for content, words in ((one, ("ONE-SIDED", "one-sided")), (none, ("NO LEVELS", "no levels"))):
+        readout = _readout({"NYSE_BOOK": content, "NASDAQ_BOOK": None})
+        for view in e.READOUT_VIEWS:
+            w = _steady(readout, "NYSE_BOOK", view)
+            assert w["tilt"] is None and (w["side_word"], w["tilt_text"]) == words
+    pair = _pair_readout()
+    for v, venue in e.readout_card(pair, [], _NO_END)["venues"].items():
+        assert venue["status"] == "ok", v
+        assert all(
+            (w["side_word"], w["tilt_text"]) == (None, None) for w in venue["views"].values()
+        )
 
 
 def test_the_sentence_four_cases_from_the_flat_shares():

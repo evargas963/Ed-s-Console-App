@@ -408,9 +408,27 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       await expect(card(page).locator(".liq-word")).toHaveText(word);
       await expect(page.locator("#tdmAgree .tdm-ag").first()).toHaveText("LIQUIDITY" + words);
     }
-    // with no book the composite has no tilt: the strip's own words, as before
+    // with no tilt the strip draws the book's state that is why, served as the card says it
+    // (calc.order_flow.STATE_WORDS, the operator's decision of 2026-11-24): no word of its own.
+    // A one-sided book, INDUCED on SPY's real readout with words no script could hold
+    const one = JSON.parse(JSON.stringify(READOUT_LIVE));
+    one.readout.venues.COMPOSITE.status = "one_sided";
+    Object.assign(one.readout.venues.COMPOSITE.views["5"], {
+      tilt: null,
+      side_word: "A STATE ONLY THE SERVER KNOWS",
+      tilt_text: "a state only the server knows",
+    });
+    await openDesk(page, one);
+    await card(page).locator('[data-liqview="5"]').click();
+    await expect(card(page).locator(".liq-word")).toHaveText("A STATE ONLY THE SERVER KNOWS");
+    await expect(page.locator("#tdmAgree .tdm-ag").first()).toHaveText(
+      "LIQUIDITYa state only the server knows",
+    );
+    // and no book: the producer's own words for it
+    const none = READOUT_NO_BOOK.readout.venues.COMPOSITE.views["5"].tilt_text;
+    expect(none).toBe("no book");
     await openDesk(page, READOUT_NO_BOOK);
-    await expect(page.locator("#tdmAgree .tdm-ag").first()).toHaveText("LIQUIDITYNo book");
+    await expect(page.locator("#tdmAgree .tdm-ag").first()).toHaveText("LIQUIDITY" + none);
     expect(errs).toEqual([]);
   });
 

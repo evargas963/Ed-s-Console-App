@@ -140,10 +140,13 @@
     // the Liquidity readout's served headline and tilt for this book at depth 5, the tilt in the
     // words served for running text (tilt_text): the one producer of a book's lean (the Desk card
     // shows the same)
-    var r5 = d.readout && d.readout.venues[d.venue] && d.readout.venues[d.venue].views["5"];
+    var vr = d.readout && d.readout.venues[d.venue],
+      r5 = vr && vr.views["5"];
     var tilt = r5 ? r5.tilt : null;
     var heroVal = r5 && r5.pct_text != null ? r5.pct_text : "-";
-    var heroUnit = tilt == null ? "" : r5.tilt_text + " (" + esc(d.venue) + ", top 5)";
+    // its lean (the tilt, or the book's state that is why it has none) and the venue's served name
+    var heroUnit =
+      r5 && r5.tilt_text != null ? r5.tilt_text + " (" + esc(vr.name) + ", top 5)" : "";
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
     // no book age served reads AGE UNKNOWN, never live
     var bs = d.ages.book_stale;
