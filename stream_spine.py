@@ -799,8 +799,8 @@ class MessageBus:
         before: dict[str, Any] = {}
         # a message that brings a field of the last trade, among those it takes, is a trade: the
         # version it makes holds the trade with the quotes in force then (quotes_at_trade).
-        # Whether it is a new trade or the held one restated is the tape's to read
-        # (calc.l1_trade_observation.is_adjacent_restatement)
+        # Whether it is a new trade or the held one restated is the tape's to read, by
+        # calc.l1_trade_observation.is_adjacent_restatement
         if held is None:  # every field it brings is taken
             merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
             traded = not body.keys().isdisjoint(PRINT_FIELDS)
