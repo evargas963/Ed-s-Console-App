@@ -30,7 +30,7 @@ CLOCK = re.compile(r"One clock: |No clock time is typed")
 
 
 def _clock_reads(*args: str, source: str | None = None) -> list[str]:
-    """The file of each clock read ruff finds under the locks' rules, every `noqa` ignored."""
+    """Return the file of each clock read ruff finds under the locks' rules, `noqa` ignored."""
     done = subprocess.run(
         [
             *(sys.executable, "-P", "-m", "ruff", "check", "--config", check_locks.RULES),
