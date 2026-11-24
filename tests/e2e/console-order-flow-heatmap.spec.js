@@ -85,6 +85,9 @@ test("the heatmap paints the served cells, and a click pins a readout, without a
   await page.mouse.click(box.x + box.width * 0.5, box.y + y);
   await expect(plot.locator(".tvc-pin .tvc-pin-h span")).toHaveText(HEAT.bucket_ct[t]);
   await expect(plot.locator(".tvc-pin")).toContainText("Bid size" + cell.bid);
+  // the click's price, as the price scale's labels write it (two decimals, the library's format)
+  const at = (await page.evaluate(() => window.EdBookHeatmap.state())).pinned.price;
+  await expect(plot.locator(".tvc-pin")).toContainText("Price" + at.toFixed(2) + "Bid size");
   expect(errs).toEqual([]);
 });
 

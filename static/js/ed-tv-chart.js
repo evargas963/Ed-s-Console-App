@@ -23,11 +23,6 @@
 
   var esc = window.EdShell.esc,
     orDash = window.EdShell.orDash;
-  // the price under the operator's click: a place on this chart's own scale, not a served value;
-  // none where the scale has no price (the library's coordinateToPrice gives null there)
-  function cursorPrice(p) {
-    return orDash(p == null ? null : p.toFixed(2));
-  }
   function tok(name, fallback) {
     var v = getComputedStyle(document.documentElement).getPropertyValue(name);
     return (v && v.trim()) || fallback;
@@ -676,6 +671,12 @@
       priceLineVisible: false,
       lastValueVisible: false,
     });
+    // the price under the operator's click: a place on this chart's own scale, not a served value,
+    // as the scale's own labels write it (the library's formatter); none where the scale has no
+    // price (the library's coordinateToPrice gives null there)
+    function cursorPrice(p) {
+      return orDash(p == null ? null : candles.priceFormatter().format(p));
+    }
     // the live Schwab LAST_PRICE (the header's value), drawn as its own line; the candles are
     // Schwab's completed bars, and the bars forming from its trades over them (api.forming)
     var liveLine = null;
