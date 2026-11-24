@@ -97,7 +97,13 @@ The rules for the data itself, at every hop from Schwab to the screen.
   or statement's alone (`stream_spine._its_own`). While the database refuses every write, the writer
   holds messages in memory up to `stream_spine.HOLD_CAP_BYTES`, then in spill files beside the
   database (`<stem>.<ms>.<n>.spill`), and writes them back in order, recording progress in
-  `stream_spill_progress`; files a stop or crash left are written back at the next start. Its state
+  `stream_spill_progress`; files a stop or crash left are written back at the next start. A message
+  stored first (a close capture, a price's crosses) is committed with the batch that holds it, whose
+  transaction begins before its first row (`CaptureWriter._stored_all`: a savepoint outside a
+  transaction begins one and commits it at its RELEASE, https://sqlite.org/lang_savepoint.html). Its
+  waiter (`stream_spine.StoredFirst`) is told at that commit, or refused once it never will be: lost
+  (the disk refuses its spill file) or not recorded (the writer dead, or the message handed in after
+  the stop); one left in a spill file stays held for the next start to write. Its state
   (`stream_spine.WriterStatus`) rides the daemon's heartbeat to the header's Record cell: its one
   word, with the whole line as the title and, while it is not recording, on the alert line (§6,
   decision 11). Enforced by: `tests/test_data_path_stream_kept_v1.py`,
@@ -530,12 +536,13 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `level_crosses`); a cross the Recorder refused is logged and not held. One it holds past
   `server.CROSS_WAIT_SEC` is logged and kept (its owner: `server._hold_answered_crosses`, on the
   pricing thread at each of the daemon's beats), and once the Recorder answers it is held as one
-  committed in its wait, or, refused, logged and not held; a Recorder that dies answers none, and
-  the next start reads what it wrote. Held in `state/cross_store.py`, each in its place by its time,
-  and served by the `desk` panel (`push.desk.desk_events_payload`, window
-  `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of the
-  span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`). Enforced by:
-  `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
+  committed in its wait, or, refused, logged and not held; a Recorder that dies answers each one it
+  had not committed refused (D4), but one it left in a spill file, which the next start writes and
+  reads. Held in `state/cross_store.py`, each in its place by its time, and served by the `desk`
+  panel (`push.desk.desk_events_payload`, window `push.desk.DESK_LOOKBACK`), which counts and words
+  the chart's markers before the first bar of the span its chart asks (`markers_off_chart`, the
+  `bars` panel's `push.bars.chart_bars`). Enforced by: `tests/test_level_crosses_wire.py`,
+  `tests/test_trade_desk_served_v1.py`.
 - **Market session.** The chain sweep asks `GET /markets` for today, the 7 days before it and each
   chain expiry date within a year (`ChainSweep.fetch_markets`) → the bus (`markets.<date>`) → the
   Recorder (`stream_markets_raw`) and `time_et.record_markets`. At startup the recorded answers are

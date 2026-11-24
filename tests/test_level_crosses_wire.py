@@ -38,7 +38,16 @@ from push import strikes as push_strikes
 from push import surface as push_surface
 from push import terrain as push_terrain
 from state import cross_store, level_store
-from stream_spine import CAPTURE_REFUSED, CaptureWriter, HealthRegistry, MessageBus, cross_ids
+from stream_spine import (
+    CAPTURE_HELD,
+    CAPTURE_REFUSED,
+    CAPTURE_STORED,
+    CaptureWriter,
+    HealthRegistry,
+    MessageBus,
+    StoredFirst,
+    cross_ids,
+)
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import (
     clock_from,
@@ -655,6 +664,37 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
     with closing(sqlite3.connect(tmp_path / "level_crosses.db")) as conn:
         (kept,) = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
     assert kept[0] == "cross.SPY" and kept[1].startswith("IntegrityError")
+
+
+def test_a_prices_crosses_are_stored_with_the_recorders_batch_and_never_before_it(
+    tmp_path: Path,
+) -> None:
+    """While the Recorder says the crosses are held, the database holds none of them.
+
+    INDUCED CONDITION: the writer's batch is 60 s (an input; production's is 0.25 s), so the
+    16:39 print's cross, the batch's first write, waits in the open batch past the pricing
+    thread's wait. Read through the console's database then, none is stored; the stop commits
+    the batch, and the cross is stored once, the row the Recorder names.
+    """
+    db = tmp_path / "level_crosses.db"
+    writer = CaptureWriter(db, batch_sec=60.0)
+    edb = EdDB(db)
+    msg = {
+        "ticker": "SPY",
+        "ts_utc": SPY_PRINT_A_STRIKE_AWAY["ts_recv"],
+        "crosses": [asdict(_cross())],
+    }
+
+    def store(w: CaptureWriter) -> tuple[StoredFirst, str, list[StoredCross]]:
+        told = w.store_crosses(msg)
+        held = told.outcome(0.5)
+        return told, held, edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC)
+
+    told, outcome, during = asyncio.run(_running(writer, store))
+    assert (outcome, during) == (CAPTURE_HELD, [])
+    assert told.outcome() == CAPTURE_STORED
+    stored = edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC)
+    assert [c.cross_id for c in stored] == list(cross_ids(told)) and len(stored) == 1
 
 
 def test_levels_crossed_together_are_one_event_naming_every_level() -> None:

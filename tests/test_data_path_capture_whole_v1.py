@@ -4,14 +4,18 @@ A capture is found whole or not at all, and it is stored before the console hear
 by the Recorder, the database's one writer (CaptureWriter.store_capture): while the database
 refuses writes it is held and written once it takes them, the chain meanwhile going to the
 console as no capture, and again as the capture once the Recorder commits it
-(ChainSweep.publish_held); a dead writer writes none. MRVL's real chain, every expiry.
+(ChainSweep.publish_held); a dead writer writes none, and one lost or not recorded is refused,
+never left held. MRVL's real chain, every expiry.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sqlite3
+import stat
+import sys
 import threading
 from contextlib import closing
 from datetime import datetime
@@ -33,6 +37,7 @@ from stream_spine import (
     CaptureWriter,
     HealthRegistry,
     MessageBus,
+    StoredFirst,
     quote_msg,
 )
 from tests.test_data_path_writer_failures_v1 import _Defect, _until
@@ -192,11 +197,11 @@ def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):
     ], "every part once, as the capture"
 
 
-def _capture() -> dict:
+def _capture(started: float = _BEGUN) -> dict:
     """MRVL's chain as the sweep hands it to the Recorder: every expiry, at no spot."""
     return cch.capture_message(
         "MRVL",
-        _BEGUN,
+        started,
         (None, None),
         [
             {"expiry": e, "spot": None, "contracts": cts, "chains_answer": None}
@@ -233,6 +238,28 @@ def test_the_running_writer_commits_a_capture_whole_before_it_answers(tmp_path):
     outcome, stored = asyncio.run(_running(writer, store))
     assert outcome == CAPTURE_STORED
     assert stored == sorted(c["symbol"] for c in _MRVL), "every expiry, committed together"
+
+
+def test_a_capture_is_stored_with_the_recorders_batch_and_never_before_it(tmp_path):
+    """While the Recorder says the capture is held, the database holds none of it.
+
+    INDUCED CONDITION: the writer's batch is 60 s (an input; production's is 0.25 s), so MRVL's
+    capture, the batch's first write, waits in the open batch past the sweep's wait. Read from
+    another connection then, the database holds none of its rows; the stop commits the batch,
+    and the capture is stored once.
+    """
+    db = tmp_path / "ed.db"
+    writer = CaptureWriter(db, batch_sec=60.0)
+
+    def store(w: CaptureWriter) -> tuple[StoredFirst, str, list[str]]:
+        told = w.store_capture(_capture())
+        return told, told.outcome(0.5), _symbols(db)
+
+    told, outcome, during = asyncio.run(_running(writer, store))
+    assert (outcome, during) == (CAPTURE_HELD, [])
+    assert told.outcome() == CAPTURE_STORED
+    assert _symbols(db) == sorted(c["symbol"] for c in _MRVL)
+    assert writer.status()["rows_written"] == 1, "the capture, written once"
 
 
 def test_a_capture_the_database_does_not_take_in_time_is_held_and_written_after(tmp_path):
@@ -390,3 +417,118 @@ def test_a_dead_writer_refuses_the_capture_and_counts_it_not_recorded(tmp_path):
     outcome, unrecorded = asyncio.run(go())
     assert (outcome, unrecorded) == (CAPTURE_REFUSED, 1)
     assert _symbols(db) == []
+
+
+def test_a_capture_held_when_the_writer_dies_is_refused_and_counted_not_recorded(tmp_path):
+    """The sweep waiting on it hears it refused; it is never left held.
+
+    INDUCED CONDITIONS: another connection holds the database's write lock, so the Recorder holds
+    MRVL's capture and then a _Defect message; once the lock is released the writer writes the
+    capture's rows and the _Defect ends its thread before the commit, so neither is recorded.
+    """
+    db = tmp_path / "ed.db"
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.05)
+    release, holder = _hold_write_lock(db)
+
+    async def go() -> tuple[str, int]:
+        bus, stop = MessageBus(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await _until(lambda: writer.status()["state"] == "recording")
+        stored = writer.store_capture(_capture())
+        await _until(lambda: writer.status()["waiting"] == 1)
+        bus.publish("quote.TSLA", _Defect(quote_msg(symbol="TSLA", src="t", ts_recv=1.0)))
+        await _until(lambda: writer.status()["waiting"] == 2)
+        release.set()
+        await _until(lambda: writer.status()["state"] == "dead")
+        stop.set()
+        await task
+        return stored.outcome(), writer.status()["unrecorded"]
+
+    try:
+        outcome, unrecorded = asyncio.run(go())
+    finally:
+        release.set()
+        holder.join(10)
+    assert (outcome, unrecorded) == (CAPTURE_REFUSED, 2)
+    assert _symbols(db) == []
+
+
+def _spill_refused(db: Path, at: float):
+    """INDUCED CONDITION: the disk refuses the spill file the writer opens at `at`, its clock.
+
+    On Windows a folder holds that file's name (the disk answers PermissionError); elsewhere the
+    database's folder is read-only. Returns the release.
+    """
+    if sys.platform == "win32":
+        taken = db.with_name(f"{db.stem}.{int(at * 1000)}.1.spill")
+        taken.mkdir()
+        return taken.rmdir
+    os.chmod(db.parent, stat.S_IREAD | stat.S_IEXEC)
+    return lambda: os.chmod(db.parent, stat.S_IRWXU)
+
+
+def test_a_capture_the_disk_refuses_to_hold_is_refused_and_counted_lost(tmp_path):
+    """The sweep waiting on it hears it refused; it is never left held.
+
+    INDUCED CONDITIONS: another connection holds the database's write lock and a 1-byte memory
+    cap (an input, STAND-IN for about 2 GB), so the Recorder holds MRVL's capture in a spill
+    file, which the disk refuses (_spill_refused): the capture is lost, neither the database nor
+    a file holding it.
+    """
+    db = tmp_path / "ed.db"
+    writer = CaptureWriter(
+        db, timeout_sec=0.05, retry_sec=0.05, hold_cap_bytes=1, clock=lambda: _BEGUN
+    )
+    release, holder = _hold_write_lock(db)
+
+    def store(w: CaptureWriter) -> str:
+        allow = _spill_refused(db, _BEGUN)
+        try:
+            return w.store_capture(_capture()).outcome(10.0)
+        finally:
+            allow()
+
+    try:
+        outcome = asyncio.run(_running(writer, store))
+    finally:
+        release.set()
+        holder.join(10)
+    s = writer.status()
+    assert (outcome, s["lost"], s["rows_written"]) == (CAPTURE_REFUSED, 1, 0)
+    assert _symbols(db) == []
+
+
+def test_a_capture_handed_to_the_writer_after_its_stop_is_refused_and_counted_not_recorded(
+    tmp_path,
+):
+    """The sweep waiting on it hears it refused; it is never left held.
+
+    INDUCED CONDITIONS: another connection holds the database's write lock and the writer's retry
+    is 2 s (an input), so the Recorder holds MRVL's capture and waits to try again; the stop is
+    asked then, and the window's next capture comes after the stop is queued. The writer ends
+    without it: the held capture is left on disk for the next start, still held, and the next
+    is not recorded.
+    """
+    db = tmp_path / "ed.db"
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=2.0)
+    release, holder = _hold_write_lock(db)
+
+    async def go() -> tuple[str, str, int]:
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
+        await _until(lambda: writer.status()["state"] == "recording")
+        first = writer.store_capture(_capture())
+        await _until(lambda: writer.status()["waiting"] == 1)  # held; its retry waits 2 s
+        stop.set()
+        await _until(lambda: writer.status()["queue_depth"] == 1)  # the stop, queued
+        after = writer.store_capture(_capture(_BEGUN + 60))
+        await task
+        return first.outcome(), after.outcome(), writer.status()["unrecorded"]
+
+    try:
+        held, after, unrecorded = asyncio.run(go())
+    finally:
+        release.set()
+        holder.join(10)
+    assert (held, after, unrecorded) == (CAPTURE_HELD, CAPTURE_REFUSED, 1)
+    assert [k["messages"] for k in writer.status()["left_on_disk"]] == [1]

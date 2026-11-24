@@ -1004,8 +1004,9 @@ _INSERTS: dict[str, tuple[str, Callable[[Any], tuple[Any, ...]]]] = {
 #: per expiry (store_capture)
 CAPTURE, CAPTURE_TABLE = "capture", "complete_chain_captures"
 #: what became of a capture handed to the writer (store_capture): committed with at least one
-#: row; refused (kept as sent in stream_write_failures, nothing to store, or the writer dead);
-#: held, not committed in the wait (the database refuses writes) and written once it takes them
+#: row; refused (kept as sent in stream_write_failures, nothing to store, lost, or not recorded:
+#: the writer dead or stopped); held, not committed in the wait (the database refuses writes) and
+#: written once it takes them
 CAPTURE_STORED, CAPTURE_REFUSED, CAPTURE_HELD = "stored", "refused", "held"
 
 
@@ -1014,8 +1015,9 @@ class StoredFirst:
     """A message of a kind stored first (a capture, a price's crosses), handed to the writer.
 
     The writer's thread tells it once the batch that holds it is committed (CaptureWriter
-    _committed), a dead writer at once; any thread reads it (`outcome`), so one its wait did not
-    see committed is told all the same.
+    _committed), or once it never will be: lost (_spill) or not recorded (_unrecorded), a dead
+    writer at once; any thread reads it (`outcome`), so one its wait did not see committed is
+    told all the same, and one that is not held is never left held.
     """
 
     done: threading.Event = field(default_factory=threading.Event)
@@ -1031,9 +1033,9 @@ class StoredFirst:
         """Return CAPTURE_STORED or CAPTURE_REFUSED once committed; CAPTURE_HELD until then.
 
         It waits up to `wait_sec` for the commit. Stored: at least one of its rows written;
-        refused: none (kept as sent in stream_write_failures, nothing to store, or the writer
-        dead, counted unrecorded); held: the writer holds it and writes it once the database
-        takes writes.
+        refused: none (kept as sent in stream_write_failures, nothing to store, or lost or not
+        recorded, counted so); held: the writer holds it, in memory or a spill file, and writes
+        it once the database takes writes.
         """
         if not self.done.wait(wait_sec):
             return CAPTURE_HELD
@@ -1923,16 +1925,33 @@ class CaptureWriter:
             elif isinstance(out, KeptFailure):
                 self.failures += 1
                 self.last_failure, self.last_failure_ts = f"{out.topic}: {out.error}", out.ts
-            if (
-                isinstance(item, tuple)
-                and (kind := item[0].split(".", 1)[0]) in _STORED_FIRST
-                and isinstance(msg := item[1], dict)
-            ):
-                waiter = self._waiters.pop((kind, msg["ticker"], msg["ts_utc"]), None)
-                if waiter is not None:
-                    waiter.told(out)
+            self._tell(item, out)
         if self.state == WRITER_BLOCKED:
             self.state, self.error, self.error_ts = WRITER_RECORDING, None, None
+
+    def _unrecorded(self, items: list[Item]) -> None:
+        """Count `items` not recorded: neither the database nor a spill file will hold them.
+
+        The caller holds the lock.
+        """
+        self.unrecorded += len(items)
+        for item in items:
+            self._tell(item, None)
+
+    def _tell(self, item: Item, out: Outcome) -> None:
+        """Tell a message stored first (_stored_first) what became of it; the caller holds the lock.
+
+        `out` is its row record or kept failure once committed, or None once it never will be
+        (lost, or not recorded): its waiter reads it refused (StoredFirst.outcome).
+        """
+        if (
+            isinstance(item, tuple)
+            and (kind := item[0].split(".", 1)[0]) in _STORED_FIRST
+            and isinstance(msg := item[1], dict)
+        ):
+            waiter = self._waiters.pop((kind, msg["ticker"], msg["ts_utc"]), None)
+            if waiter is not None:
+                waiter.told(out)
 
     def status(self) -> WriterStatus:
         """Return the writer's WriterStatus, as the heartbeat carries it."""
@@ -2022,13 +2041,10 @@ class CaptureWriter:
                 # ended the thread first; a retry's round holds its batch and what was waiting),
                 # those _admit had not yet held, and the queue. A spill file's messages are on
                 # disk: the file stays, listed as left
-                batch = 0 if self._batch_spilled else len(self._batch)
-                self.unrecorded += (
-                    batch
-                    + len(self._round)
-                    - self._stored
-                    + len(self._admitting)
-                    - self._admitted
+                self._unrecorded(
+                    ([] if self._batch_spilled else [item for item, _out in self._batch])
+                    + self._round[self._stored :]
+                    + self._admitting[self._admitted :]
                     + self._drained(q)
                 )
                 self._leave_spills()
@@ -2038,17 +2054,19 @@ class CaptureWriter:
             raise
         with self._lock:  # anything handed in after the stop is not written
             self.state = WRITER_STOPPED
-            self.unrecorded += self._drained(q)
+            self._unrecorded(self._drained(q))
 
     @staticmethod
-    def _drained(q: queue.SimpleQueue[Item | None]) -> int:
-        """Empty the queue; how many messages it held."""
-        n = 0
+    def _drained(q: queue.SimpleQueue[Item | None]) -> list[Item]:
+        """Empty the queue; the messages it held, in order."""
+        items: list[Item] = []
         while True:
             try:
-                n += q.get_nowait() is not None
+                item = q.get_nowait()
             except queue.Empty:
-                return n
+                return items
+            if item is not None:
+                items.append(item)
 
     def _store(self, conn: sqlite3.Connection, item: Item) -> Outcome:
         if isinstance(item, KeptFailure):
@@ -2111,8 +2129,13 @@ class CaptureWriter:
         to take it back from the program's busy threads, up to the switch interval
         (sys.getswitchinterval, 5 ms) each time: one statement a table, not one a row. A table's
         rows keep their order. A capture, a kept failure and a message with no row are stored
-        one by one (_store).
+        one by one (_store). All of it in the open batch's transaction, begun here when none is
+        open: a savepoint (a capture's, a price's crosses') outside a transaction begins one and
+        commits it at its RELEASE (https://sqlite.org/lang_savepoint.html), and Python opens one
+        only before an INSERT, UPDATE, DELETE or REPLACE.
         """
+        if not conn.in_transaction:
+            conn.execute("BEGIN")
         out: list[tuple[Item, Outcome]] = []
         rows: dict[str, list[tuple[str, Payload]]] = {}
         for item in items:
@@ -2306,7 +2329,8 @@ class CaptureWriter:
 
         It is counted in one locked section with its being held (_admitted): in `held`, or,
         refused by the disk (`held` is the refusal when no spill file could be opened), lost
-        (neither the database nor a spill file holds it), with when it was received.
+        (neither the database nor a spill file holds it), with when it was received, a message
+        stored first told so (_tell).
         """
         if isinstance(held, _NewSpill):
             try:
@@ -2320,6 +2344,7 @@ class CaptureWriter:
                 held.messages += 1
             else:
                 self.lost += 1
+                self._tell(item, None)
                 if ts is not None:
                     self.lost_first_ts = (
                         ts if self.lost_first_ts is None else min(self.lost_first_ts, ts)
