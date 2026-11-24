@@ -70,7 +70,10 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "The launcher and the program's lock load none of the program they stop"
 type = "forbidden"
-source_modules = ["head.launch", "head.app.market_data.schwab.streaming.program_lock"]
+source_modules = [
+  "head.launch",
+  "head.app.market_data.schwab.streaming.program_lock",
+]
 forbidden_modules = [
   "stream_spine",
   "calc",
