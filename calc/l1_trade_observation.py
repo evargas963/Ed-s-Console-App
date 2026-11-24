@@ -57,6 +57,8 @@ _PRINT_READERS = {
     VENDOR_LAST_SIZE: schwab_count,
     VENDOR_TRADE_TIME: _schwab_int,
 }
+#: a print's three fields: a new value of any makes a new print
+PRINT_FIELDS = tuple(_PRINT_READERS)
 
 
 def last_print(item: dict[str, Any]) -> dict[str, Any]:
@@ -129,7 +131,8 @@ def is_adjacent_restatement(prev: KeptPrint | None, trade: TradePrint) -> bool:
 def quote_in_force(trade_ms: int | None, top: StreamedTop, before: StreamedTop) -> StreamedTop:
     """Return the quote in force when a trade was made: the newest Schwab timed at or before it.
 
-    `top` is the record's newest quote and `before` the one it replaced, each timed by Schwab's
+    `top` and `before` are the quotes the record held when the trade came, its newest then and the
+    one that one replaced (stream_spine.quotes_at_trade), each timed by Schwab's
     QUOTE_TIME_MILLIS; `trade_ms` is the trade's TRADE_TIME_MILLIS. Schwab's update carries a
     trade with the quote that followed it ("quotes may be recorded ahead of trades that triggered
     them", Lee and Ready 1991), so the newest quote is the trade's only when Schwab timed it no
