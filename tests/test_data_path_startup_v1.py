@@ -158,6 +158,7 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     assert not still_open, "the daemon's window stayed open after its batch ended"
 
 
+@pytest.mark.alone
 @pytest.mark.skipif(
     sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
 )
