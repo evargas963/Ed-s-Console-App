@@ -325,10 +325,9 @@ def _ingest_pushed(topic: str, msg: dict[str, Any]) -> None:
     if kind in ("bar1m", "pricehistory"):  # the bar writer's: a streamed bar, a price history
         streamed_bars.put(msg)
         return
-    received = {f: stamp[1] for f, stamp in msg["field_ts"].items()} if "field_ts" in msg else None
     apply = _APPLY_BY_KIND.get(kind)
     if apply is not None:
-        apply(msg["symbol"], float(msg["ts_recv"]), msg, received)
+        apply(topic, msg)
 
 
 def _apply_chain_part(msg: dict[str, Any]) -> None:
@@ -356,43 +355,47 @@ def _answer_watchlist_request(msg: dict[str, Any]) -> None:
         answer.set_result(msg)
 
 
-def _apply_quote(sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None) -> None:
-    """Apply a LEVELONE_EQUITIES message: the order-flow state, then the equity's tick.
+def _apply_quote(topic: str, msg: dict[str, Any]) -> None:
+    """Apply a version of a LEVELONE_EQUITIES record: the order-flow state, then the tick.
 
-    A print is kept with the bid and ask in force when it traded (state.push_level_one).
+    A version that brought a trade is a print, kept with the bid and ask in force when it traded
+    (state.push_level_one).
     """
-    push_level_one("LEVELONE_EQUITIES", sym, msg["native"], ts_recv=ts, field_received=received)
-    _flow(sym)
-    _tick(sym)
+    push_level_one("LEVELONE_EQUITIES", (topic, msg))
+    _flow(msg["symbol"])
+    _tick(msg["symbol"])
 
 
-def _apply_book(sym: str, ts: float, msg: dict[str, Any], _received: dict[str, Any] | None) -> None:
+def _apply_book(_topic: str, msg: dict[str, Any]) -> None:
     """Apply a book message: an option contract's, or an equity venue's with its readout.
 
     Either one sends the panels that show it (the flow callback).
     """
+    sym = msg["symbol"]
     book = push_book(sym, msg["content"], msg["service"])
     if msg["service"] != "OPTIONS_BOOK":
         if book is not None:
             recent.BOOKS.record(sym, msg["service"], book)
-        recent.LEAN.record(sym, ts, book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}))
+        recent.LEAN.record(
+            sym,
+            float(msg["ts_recv"]),
+            book_readout({v: newest_book(sym, v) for v in BOOK_VENUES}),
+        )
     _flow(sym)
 
 
-def _apply_option_quote(
-    sym: str, ts: float, msg: dict[str, Any], received: dict[str, Any] | None
-) -> None:
-    """Apply a LEVELONE_OPTIONS message: the contract's tape.
+def _apply_option_quote(topic: str, msg: dict[str, Any]) -> None:
+    """Apply a version of a LEVELONE_OPTIONS record: the contract's tape and look-back.
 
-    A print is kept with the bid and ask in force when it traded (state.push_level_one). Every
-    message sends the chain screens its values (the flow callback); a tick when the
-    newest message carried a value the levels use (a merged record holds the last of each field;
-    only one this message brought is new).
+    A version that brought a trade is a print, kept with the bid and ask in force when it traded
+    (state.push_level_one). Every version sends the chain screens its values (the flow callback);
+    a tick when its message brought a value the levels use (a merged record holds the last of
+    each field; only one this message brought, received at its receive time, is new).
     """
-    content: dict[str, Any] = msg["content"]
-    push_level_one("LEVELONE_OPTIONS", sym, content, ts_recv=ts, field_received=received)
+    sym, content, stamps = msg["symbol"], msg["content"], msg["field_ts"]
+    push_level_one("LEVELONE_OPTIONS", (topic, msg))
     _flow(sym)
-    if any(f in content and (received is None or received[f] == ts) for f in _REPRICE_FIELDS):
+    if any(f in content and stamps[f][1] == msg["ts_recv"] for f in _REPRICE_FIELDS):
         _tick(sym)
 
 
@@ -430,7 +433,9 @@ async def _bus_loop(bus: MessageBus) -> None:
     records are applied in one turn of the loop, and a chain ends its turn: each turn waits to
     take back Python's interpreter lock from the program's busy threads (up to the switch
     interval, 5 ms), so a turn per record left each contract a pass of thousands behind, and a
-    turn never holds the daemon's status beat and the routes past a few milliseconds.
+    turn never holds the daemon's status beat and the routes past a few milliseconds. A record is
+    applied as taken: one that waits in its turn behind a chain while newer messages come is the
+    version taken, never the bus's newer one, and each trade is its own (stream_spine LATEST).
 
     A record that fails to apply is counted (Feed.apply_failures) and logged with its traceback
     (at the 1st, 2nd, 4th, 8th... failure: one on every message would flood the log), and the

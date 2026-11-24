@@ -13,8 +13,8 @@ import live_market_plane as lmp
 import live_price_rows
 import server as srv
 import time_et
-from app.options.order_flow import streaming as ofs
-from tests.feed_live_helper import daemon_status
+from stream_spine import quote_msg
+from tests.feed_live_helper import daemon_status, pushed
 
 
 def test_a_symbol_the_daemon_does_not_hold_keeps_the_last_price_and_is_not_live() -> None:
@@ -52,7 +52,7 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     )
     try:
         # the console receives Schwab's message (its order-flow tape) and keeps no price of its own
-        ofs._ingest_pushed(f"quote.{tk}", {"symbol": tk, "ts_recv": now, "native": native})
+        pushed(f"quote.{tk}", quote_msg(symbol=tk, src="schwab_l1", ts_recv=now, native=native))
         assert lmp.get_quote(tk) is lmp.NO_QUOTE and srv.resolve_spot(tk, now=now)[0] is None
         # the daemon puts the same message in its plane; the console reads the daemon's one row
         lmp.record_from_level_one_equity(tk, native, received_ts=now)

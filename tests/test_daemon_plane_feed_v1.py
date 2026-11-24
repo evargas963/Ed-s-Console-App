@@ -6,7 +6,8 @@ This is the seam that used to be a second `schwab.streaming.StreamClient`. Since
 the daemon publishes each message on its bus, which the console in the same program reads
 (order_flow_streaming._bus_loop); these tests drive the REAL message constructors the daemon
 publishes with (stream_spine.quote_msg / book_msg) through the REAL ingest
-(order_flow_streaming._ingest_pushed). The bus end to end is tests/test_live_push_channel_v1.py.
+(order_flow_streaming._ingest_pushed), a quote by way of its record on the bus
+(feed_live_helper.pushed). The bus end to end is tests/test_live_push_channel_v1.py.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import time_et
 from app.options.order_flow.state import read_book
 from push import book as push_book
 from stream_spine import book_msg, quote_msg
-from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down
+from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down, pushed
 
 
 def _reset(tmp_path):
@@ -31,7 +32,7 @@ def _reset(tmp_path):
 
 
 def _push_l1(symbol, native, ts_recv):
-    ofs._ingest_pushed(
+    pushed(
         f"quote.{symbol}",
         quote_msg(
             symbol=symbol,

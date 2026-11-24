@@ -440,10 +440,11 @@ def test_a_message_missing_its_receive_time_is_dropped_whole(caplog):
     """A record that fails to apply is counted and logged, and the console's loop goes on.
 
     INDUCED: SPY's real quote with no receive time, on topics of their own (ZZZNOPE0, ...), which
-    the daemon's constructor (stream_spine.quote_msg) never makes. Each fails to apply: nothing
-    of it reaches a tape, each is counted (Feed.apply_failures) and the daemon's status beat
-    carries the count, the failure the count reaches a power of two at is logged with its
-    traceback, and SPY's trade published after them is applied.
+    the daemon's constructor (stream_spine.quote_msg) never makes. Each fails to apply: its trade
+    has no receive time to be stamped with (each field's is none), so nothing of it reaches a
+    tape, each is counted (Feed.apply_failures) and the daemon's status beat carries the count,
+    the failure the count reaches a power of two at is logged with its traceback, and SPY's
+    trade published after them is applied.
     """
     before = ofs.FEED.apply_failures
     failing = 1 << before.bit_length()  # the count's next power of two: that failure is logged
@@ -472,7 +473,8 @@ def test_a_message_missing_its_receive_time_is_dropped_whole(caplog):
         if r.name == ofs.log.name and f"record not applied ({failing} failures)" in r.getMessage()
     ]
     assert len(logged) == 1 and logged[0].exc_info is not None, logged
-    assert "quote.ZZZNOPE" in logged[0].getMessage() and "ts_recv" in logged[0].getMessage()
+    # the record is named, and the receive times its trade's fields hold are none
+    assert "quote.ZZZNOPE" in logged[0].getMessage() and "NoneType" in logged[0].getMessage()
 
 
 #: production's stream of 2026-10-05 14:00:00-14:00:03 CT (RTH): every LEVELONE_OPTIONS item

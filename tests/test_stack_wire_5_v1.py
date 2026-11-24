@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 
 import app.options.order_flow.state as ofls
+from stream_spine import MessageBus
+from tests.feed_live_helper import apply_record, on_the_bus
 
 _BOOK = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spy_nyse_nasdaq_books.json").read_text(
@@ -22,5 +24,6 @@ _BOOK = json.loads(
 def test_a_book_sent_before_the_open_is_kept_through_the_open():
     st = ofls.OrderFlowState()
     st.push_book("SPY", _BOOK, "NASDAQ_BOOK")
-    st.push_level_one("LEVELONE_EQUITIES", "SPY", {"key": "SPY", "LAST_PRICE": 660.0}, ts_recv=1.0)
+    eq = "LEVELONE_EQUITIES"
+    apply_record(st, eq, on_the_bus(MessageBus(), eq, {"key": "SPY", "LAST_PRICE": 660.0}, 1.0))
     assert st.newest_book("SPY", "NASDAQ_BOOK").bids

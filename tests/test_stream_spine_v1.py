@@ -56,6 +56,11 @@ def test_current_record_set_before_readers_and_a_late_reader_starts_with_it():
 
 
 def test_latest_reader_gets_one_newest_record_per_topic():
+    """Three bids of one symbol, none bringing a trade: a live reader takes the newest alone.
+
+    A message that brings a trade is its own item (tests/test_quote_in_force_v1.py).
+    """
+
     async def go():
         bus = MessageBus()
         sub = bus.subscribe("quote.", policy=LATEST)
@@ -64,15 +69,15 @@ def test_latest_reader_gets_one_newest_record_per_topic():
                 "quote.SPY",
                 quote_msg(
                     symbol="SPY",
-                    last=px,
+                    bid=px,
                     src="schwab_l1",
                     ts_recv=1.0 + n,
-                    native={"key": "SPY", "LAST_PRICE": px},
+                    native={"key": "SPY", "BID_PRICE": px},
                     schwab_ts=1000 + n,
                 ),
             )
         topic, record = await sub.get()
-        assert record["native"]["LAST_PRICE"] == 3.0, "LATEST must deliver the NEWEST quote"
+        assert record["native"]["BID_PRICE"] == 3.0, "LATEST must deliver the NEWEST quote"
         assert not sub.changed, "one topic, one record -- not three"
 
     asyncio.run(go())
