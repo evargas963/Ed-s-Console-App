@@ -96,7 +96,7 @@
       "</span>" +
       // the price, the header's own row, painted by the shell (its trade time, or why not live)
       "<span>spot <span data-live-price></span> · <span data-live-price-when></span></span></div>";
-    // a served text, or every digit Schwab sent (its Greeks)
+    // a served text
     function cell(c, k) {
       var v = c ? c[k] : null;
       return v == null ? "-" : esc(String(v));
@@ -132,9 +132,25 @@
       '<table class="chn chn-bodytbl">' +
       COLGROUP +
       "<tbody>";
-    // open interest, volume, IV, bid and ask: the served texts; delta and gamma as Schwab sent them
-    var CALL = ["oi_text", "volume_text", "iv_text", "delta", "gamma", "bid_text", "ask_text"];
-    var PUT = ["bid_text", "ask_text", "gamma", "delta", "iv_text", "volume_text", "oi_text"];
+    // open interest, volume, IV, delta, gamma, bid and ask: the served texts
+    var CALL = [
+      "oi_text",
+      "volume_text",
+      "iv_text",
+      "delta_text",
+      "gamma_text",
+      "bid_text",
+      "ask_text",
+    ];
+    var PUT = [
+      "bid_text",
+      "ask_text",
+      "gamma_text",
+      "delta_text",
+      "iv_text",
+      "volume_text",
+      "oi_text",
+    ];
     // The ladder comes again with each quote Schwab streams. While its rows are the ones drawn
     // (the same strikes, contracts, spot row, in-the-money sides and selected contract), only
     // the texts that changed are written, in place: the table, its scroll and its rows' clicks

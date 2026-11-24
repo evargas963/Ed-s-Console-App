@@ -89,6 +89,11 @@ def test_real_chain_reported_zero_oi_shows_zero_and_unreported_shows_absent():
 
 
 def test_vanna_by_strike_route_omits_unreported_oi_strikes():
+    """A chain with no open interest reported: each strike's vanna is omitted, never a 0.
+
+    Every strike stands with no value, so it has no bar and its text says so ('-'), as a GEX row
+    does (operator 2026-11-24: a strike is never left out); no strike shows the 0.0 accumulator.
+    """
     chain = copy.deepcopy(CRWD.chain)
     for c in chain:
         del c["openInterest"]
@@ -103,9 +108,10 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
     try:
         asked = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
         body = push_strike_bars.strike_bars("vanna", tk, time_et.now(), asked)
-        assert body["rows"] == [], f"a chain with no reported OI yields no rows: {body['rows']}"
-        # no rows is shown absent with its reason, the one rule for the vanna and charm panels
-        assert body["available"] is False and body["reason"]
+        rows = body["rows"]
+        assert rows and all(r["value"] is None and r["text"] is None for r in rows), rows
+        # no value anywhere: no bar to scale, and nothing drawn as a 0
+        assert body["view"]["max_abs"] is None and body["reason"] is None
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

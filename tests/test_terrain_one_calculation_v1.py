@@ -154,11 +154,10 @@ def test_every_value_is_what_it_was():
         now = [e for e in now if e[1] != VALUED_AT]
         _same([e for e in was if e[1] != ATM_IV], [e for e in now if e[1] != ATM_IV], tk)
         assert [e[1] for e in _field(was, ATM_IV)] == [e[1] for e in _field(now, ATM_IV)], tk
-        # the whole book's charm rows (new) are its charm map's nets, the map the record holds
+        # the whole book's charm rows (new) are its charm map's nets, the map the record holds:
+        # every strike, one whose net is not known with None
         nets = {k: b["net_charm"] for k, b in snap.charm_by_strike.items()}
-        assert snap.per_strike["charm"] == sorted(
-            (k, v) for k, v in nets.items() if v is not None
-        ), tk
+        assert snap.per_strike["charm"] == sorted(nets.items()), tk
 
 
 def test_each_value_is_computed_once_and_nothing_unread_is_computed():

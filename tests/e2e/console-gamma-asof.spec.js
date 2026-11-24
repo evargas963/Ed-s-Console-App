@@ -27,8 +27,8 @@ const BARS = {
   last_bar: { t: 1757000180, label: "Thu 09/04 10:36 AM CT" },
 };
 const CONTRACTS = [
-  { gamma: 0.021, delta: 0.52 },
-  { gamma: 0.019, delta: -0.48 },
+  { gamma: 0.021, delta: 0.52, gamma_text: "0.021", delta_text: "0.52" },
+  { gamma: 0.019, delta: -0.48, gamma_text: "0.019", delta_text: "-0.48" },
 ];
 const CHAIN = {
   ticker: "SPY",

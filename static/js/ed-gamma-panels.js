@@ -471,7 +471,7 @@
       call = sd ? sd.call : null,
       put = sd ? sd.put : null;
     txt("sdCtx", (sd ? sd.strike_text : "-") + (expiry ? " · " + esc(expiry.slice(5)) : ""));
-    // a served text, or every digit Schwab sent (its Greeks)
+    // a served text
     function cell(c, k) {
       var v = c ? c[k] : null;
       return v == null ? "-" : esc(String(v));
@@ -488,9 +488,9 @@
       "</td><td>" +
       cell(call, "volume_text") +
       "</td><td>" +
-      cell(call, "gamma") +
+      cell(call, "gamma_text") +
       '</td><td class="dim">-</td><td>' +
-      cell(call, "delta") +
+      cell(call, "delta_text") +
       "</td><td>" +
       cell(call, "iv_text") +
       "</td></tr>" +
@@ -499,9 +499,9 @@
       "</td><td>" +
       cell(put, "volume_text") +
       "</td><td>" +
-      cell(put, "gamma") +
+      cell(put, "gamma_text") +
       '</td><td class="dim">-</td><td>' +
-      cell(put, "delta") +
+      cell(put, "delta_text") +
       "</td><td>" +
       cell(put, "iv_text") +
       "</td></tr>" +

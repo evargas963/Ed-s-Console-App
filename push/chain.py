@@ -16,7 +16,14 @@ import live_market_plane as lmp
 from app.options.order_flow.state import rest_quotes, streamed_values
 from calc.math_exposure_core import overlay_streamed_contract_fields
 from calc.terrain_engine import LadderRow, chain_ladder
-from numeric_contract import count_text, dollars_text, iv_text, price_text, strike_text
+from numeric_contract import (
+    count_text,
+    dollars_text,
+    greek_text,
+    iv_text,
+    price_text,
+    strike_text,
+)
 from option_contract import ChainRow, OptionContract, chain_row
 from push.spot import resolve_spot
 from push.strike_rows import expiry_unreadable
@@ -43,7 +50,7 @@ class ChainLeg(ChainRow):
     """A contract as the chain screens show it (_shown).
 
     Its fields under Schwab's names (option_contract.chain_row), and its open interest, volume,
-    IV, bid and ask as the screen shows them: None where Schwab sent no value.
+    IV, bid, ask, delta and gamma as the screen shows them: None where Schwab sent no value.
     """
 
     oi_text: str | None
@@ -51,6 +58,8 @@ class ChainLeg(ChainRow):
     iv_text: str | None
     bid_text: str | None
     ask_text: str | None
+    delta_text: str | None
+    gamma_text: str | None
 
 
 class Series(TypedDict):
@@ -170,7 +179,7 @@ def _newest(contracts: list[OptionContract], since: float, now: float) -> list[O
 
 
 def _shown(contracts: list[OptionContract]) -> list[ChainLeg]:
-    """Each contract as the chain screens show it, with its counts, IV, bid and ask as text."""
+    """Each contract as the chain screens show it: its counts, IV, prices and Greeks as text."""
     return [
         {
             **chain_row(c),
@@ -179,6 +188,8 @@ def _shown(contracts: list[OptionContract]) -> list[ChainLeg]:
             "iv_text": iv_text(c.volatility),
             "bid_text": price_text(c.bid),
             "ask_text": price_text(c.ask),
+            "delta_text": greek_text(c.delta),
+            "gamma_text": greek_text(c.gamma),
         }
         for c in contracts
     ]

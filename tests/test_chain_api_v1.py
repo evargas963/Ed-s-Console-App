@@ -17,6 +17,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import app.options.order_flow.state as ofls
@@ -104,11 +105,16 @@ def _as_shown(contracts):
 
     No other /chains field is sent. The chain's own bid and ask are not used (the stream's, or
     /quotes'); these captures carry no /quotes answer, so they show none. Open interest and
-    volume are served whole with separators, the IV with two decimals (operator 2026-11-16).
+    volume are served whole with separators, the IV with two decimals (operator 2026-11-16), and
+    delta and gamma with every digit Schwab sent, never in exponent form (operator 2026-11-24),
+    worked here by numpy's own positional formatter.
     """
 
     def text(v, fmt):
         return None if v is None else format(v, fmt)
+
+    def greek(v):
+        return None if v is None else np.format_float_positional(v, trim="-")
 
     return [
         {
@@ -118,6 +124,8 @@ def _as_shown(contracts):
             "iv_text": text(c.get("volatility"), ".2f"),
             "bid_text": None,
             "ask_text": None,
+            "delta_text": greek(c.get("delta")),
+            "gamma_text": greek(c.get("gamma")),
         }
         for c in contracts
     ]
