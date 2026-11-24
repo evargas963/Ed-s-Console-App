@@ -307,9 +307,16 @@ def mark_feed_live(*tickers: str, now: float | None = None) -> None:
 
 
 def mark_feed_down() -> None:
-    """Hold no heartbeat time: the last beat's status and held set stand, not live."""
+    """Stop the daemon's beats long ago: its last status and held set stand, not live.
+
+    INDUCED: that status alone is kept, stamped at the epoch, so no time judged finds a current
+    beat.
+    """
+    last = lmp.last_beat()
     with lmp._lock:
-        lmp._feed["rx"] = None
+        lmp._beats.clear()
+    if last is not None:
+        lmp.record_feed_heartbeat({**last, "ts": 0.0})
 
 
 def repriced(levels: PublishedLevels) -> list[str]:

@@ -8,10 +8,11 @@ its market trades.
 from __future__ import annotations
 
 import threading
+from collections import deque
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any
 
 from calc.forming_bar import Built, BuiltMinute, next_built
 from calc.l1_trade_observation import (
@@ -251,29 +252,40 @@ def built_minutes(ticker: str) -> tuple[BuiltMinute, ...]:
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
 
-class _Feed(TypedDict):
-    rx: float | None
-    status: dict[str, Any] | None
+@dataclass(frozen=True)
+class _Beat:
+    """One daemon status (its heartbeat): its stamp, the status and the symbols it holds.
+
+    `held` is per Schwab service.
+    """
+
+    rx: float
+    status: dict[str, Any]
     held: dict[str, frozenset[str]]
 
 
-#: The daemon's latest status (its heartbeat), the time the daemon stamped it, and the symbols
-#: it holds per Schwab service. Written by record_feed_heartbeat only. A late beat leaves the
-#: status and `held`: what the daemon last reported stands, not live.
-_feed: _Feed = {"rx": None, "status": None, "held": {}}
+#: The daemon's statuses, oldest first, written by record_feed_heartbeat only: the newest, and
+#: every one still in force at a time within the live limit before it (feed_now).
+_beats: deque[_Beat] = deque()
 
 
 def record_feed_heartbeat(msg: dict[str, Any]) -> None:
     """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat).
 
     It is judged by the time the daemon stamped it (`ts`), never by when it arrived: a status that
-    waited is as old as it is (docs/DATA_FLOW.md §2 D5).
+    waited is as old as it is (docs/DATA_FLOW.md §2 D5). A status goes once the next one is
+    stamped at or before the live limit before the newest: every time within the live limit of
+    the newest still finds the status in force at it, and a time judged earlier is that late, not
+    live.
     """
     held = {
         svc: frozenset(ticker_storage_key(s) for s in syms) for svc, syms in msg["held"].items()
     }
+    beat = _Beat(float(msg["ts"]), msg, held)
     with _lock:
-        _feed.update(rx=float(msg["ts"]), status=msg, held=held)
+        _beats.append(beat)
+        while len(_beats) > 1 and _beats[1].rx <= beat.rx - FEED_HEARTBEAT_MAX_AGE_SEC:
+            _beats.popleft()
 
 
 def last_beat() -> dict[str, Any] | None:
@@ -283,7 +295,7 @@ def last_beat() -> dict[str, Any] | None:
     chains); whether it is live is daemon_status's.
     """
     with _lock:
-        return _feed["status"]
+        return _beats[-1].status if _beats else None
 
 
 def watchlist() -> list[str] | None:
@@ -300,8 +312,8 @@ def watchlist() -> list[str] | None:
 class FeedNow:
     """One read of the daemon's heartbeat at a time.
 
-    `status` is None when that beat is not current. `held` is the symbols on the latest beat: they
-    stand when that beat is missing or too old. A beat stamped after `now` contributes neither.
+    `status` is None when the beat in force is not current. `held` is the symbols on the beat in
+    force: they stand when it is too old. With no beat in force, neither.
     """
 
     status: dict[str, Any] | None
@@ -309,22 +321,20 @@ class FeedNow:
 
 
 def feed_now(now: float) -> FeedNow:
-    """Read the daemon's heartbeat at `now`, once.
+    """Read the daemon's heartbeat in force at `now`, once.
 
-    Current only when its stamp is not older than FEED_HEARTBEAT_MAX_AGE_SEC. A stamp after `now`
-    is a later moment, not this one. A beat that is missing or too old is not live, and the symbols
-    it last named still stand.
+    The beat in force is the latest stamped at or before `now`, as an as-of join takes a series'
+    value at a time (docs/SOURCES.md as-of-join): a beat stamped after `now` is a later moment, and
+    the one before it still answers for `now`. Current only when it is not older than
+    FEED_HEARTBEAT_MAX_AGE_SEC. A beat that is too old is not live, and the symbols it named still
+    stand.
     """
     with _lock:
-        rx, status, held = _feed["rx"], _feed["status"], dict(_feed["held"])
-    if isinstance(rx, (int, float)) and now < float(rx):
+        beat = max((b for b in reversed(_beats) if b.rx <= now), key=lambda b: b.rx, default=None)
+    if beat is None:
         return FeedNow(None, {})
-    current = (
-        isinstance(rx, (int, float))
-        and isinstance(status, dict)
-        and 0.0 <= now - float(rx) < FEED_HEARTBEAT_MAX_AGE_SEC
-    )
-    return FeedNow(status, held) if current else FeedNow(None, held)
+    current = now - beat.rx < FEED_HEARTBEAT_MAX_AGE_SEC
+    return FeedNow(beat.status if current else None, dict(beat.held))
 
 
 def feed_up(feed: FeedNow) -> bool:

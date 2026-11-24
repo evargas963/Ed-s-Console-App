@@ -91,15 +91,16 @@ The rules for the data itself, at every hop from Schwab to the screen.
   decision 11). Enforced by: `tests/test_data_path_stream_kept_v1.py`,
   `tests/test_data_path_rules_v1.py`, `tests/test_data_path_writer_failures_v1.py`.
 - **D5. The last value stands, marked** (`AGENTS.md` rule 5). A value is LIVE while its feed
-  delivers it and its market trades (`live_market_plane.live_state`): the daemon's heartbeat is no
-  older than `live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`, the Schwab socket is open, the symbol
-  is held on its service, and its market is in a window of Schwab's /markets answer (stocks:
-  `time_et.session_label`, with the pre-market starting at the day's first streamed trade,
-  `time_et.record_trade`; options: `time_et.options_open`). Otherwise the last value stands with its
-  Schwab time and age, marked OFFLINE (the feed down) or NOT LIVE, and every value computed from it
-  is marked too. The levels carry their own verdict (§3.4 Levels). A value never received, or sent
-  invalid, shows "-". Calculations keep every digit; rounding is on screen only. Enforced by:
-  `tests/test_data_path_rules_v1.py`, `tests/test_markets_sessions_v1.py`,
+  delivers it and its market trades (`live_market_plane.live_state`): the daemon's heartbeat in
+  force at the time judged (the latest stamped at or before it, `live_market_plane.feed_now`;
+  `docs/SOURCES.md` as-of-join) is no older than `live_market_plane.FEED_HEARTBEAT_MAX_AGE_SEC`, the
+  Schwab socket is open, the symbol is held on its service, and its market is in a window of
+  Schwab's /markets answer (stocks: `time_et.session_label`, with the pre-market starting at the
+  day's first streamed trade, `time_et.record_trade`; options: `time_et.options_open`). Otherwise
+  the last value stands with its Schwab time and age, marked OFFLINE (the feed down) or NOT LIVE,
+  and every value computed from it is marked too. The levels carry their own verdict (§3.4 Levels).
+  A value never received, or sent invalid, shows "-". Calculations keep every digit; rounding is on
+  screen only. Enforced by: `tests/test_data_path_rules_v1.py`, `tests/test_markets_sessions_v1.py`,
   `tests/test_data_path_live_status_v1.py`, `tests/test_data_path_strike_counts_v1.py`,
   `tests/test_data_path_side_volume_v1.py`, `tests/test_data_path_book_size_v1.py`,
   `tests/test_data_path_tape_size_v1.py`, `tests/test_data_path_silent_subscription_v1.py`,
