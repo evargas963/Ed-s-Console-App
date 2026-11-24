@@ -82,6 +82,29 @@ def test_cum_delta_proxy_skips_missing_print_size():
     assert l1.cum_delta_window(_tape(sent(_MIX, "RKLB"))) == (sized_s, sized_s)
 
 
+def test_a_print_with_no_trade_time_is_left_out_of_the_delta_as_out_of_its_window():
+    """The cumulative delta sums the prints its window names: each with a size and a trade time.
+
+    Operator 2026-11-24 ("Yes, leave it out"): a print with a size and no trade time counts in
+    neither, so the number is always the prints the window served beside it covers, and the
+    unsigned share served beside the delta is of those same prints. INDUCED:
+    every print Schwab sent in the captures carries its time; RKLB's of 2026-10-05 14:00 CT are
+    taken through the live state, and the last of them that counts in the delta (its sized one,
+    -138) is given none.
+    """
+    tape = _tape(sent(_MIX, "RKLB"))
+    full = l1.compute_cum_delta_proxy(tape)
+    # the last print the delta counts: leaving it out of the tape changes the number
+    i = max(
+        k for k in range(len(tape)) if l1.compute_cum_delta_proxy(tape[:k] + tape[k + 1 :]) != full
+    )
+    without = tape[:i] + tape[i + 1 :]
+    timeless = [*tape[:i], tape[i]._replace(time_millis=None), *tape[i + 1 :]]
+    assert l1.compute_cum_delta_proxy(timeless) == l1.compute_cum_delta_proxy(without) != full
+    assert l1.cum_delta_window(timeless) == l1.cum_delta_window(without)
+    assert l1.unsigned_share(timeless) == l1.unsigned_share(without)
+
+
 def test_cum_delta_proxy_returns_none_when_all_print_sizes_missing():
     prints = _prints("$SPX")
     assert len(prints) == 4 and all(size is None for _p, size, _t in prints)
