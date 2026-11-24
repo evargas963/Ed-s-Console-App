@@ -509,8 +509,7 @@ OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC)
 #: running text says it (`tilt_text`), each served so the page changes no case
 TILT_WORDS = {"BID_HEAVY": "BUY-HEAVY", "BALANCED": "NEUTRAL", "OFFER_HEAVY": "SELL-HEAVY"}
 #: a book's state as the card's headline says it when that state is why it has no tilt; served in
-#: the tilt's place, so the Desk's strip says what the card says (the operator's decision of
-#: 2026-11-24)
+#: the tilt's place, so the Desk's strip says what the card says
 STATE_WORDS = {"one_sided": "ONE-SIDED", "no_book": "NO BOOK", "empty": "NO LEVELS"}
 
 

@@ -169,16 +169,18 @@ ERROR_BODY_LOGGED = 2000
 NO_ANSWER = (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)
 #: the wait before an endpoint's next request once Schwab answers it with a server error (5xx):
 #: the first, doubled for each server error in a row up to the most, counted from that answer,
-#: each wait between half of it and all of it at random (jitter); any other answer ends it (the
-#: operator's decision of 2026-11-24, REST-500; docs/SOURCES.md google-retry-strategy and
-#: aws-backoff-jitter)
+#: each wait between half of it and all of it at random (jitter); any other answer ends it
+#: (docs/SOURCES.md google-retry-strategy and aws-backoff-jitter)
 SERVER_ERROR_FIRST_WAIT_SEC, SERVER_ERROR_MOST_WAIT_SEC = 1.0, 30.0
 
 
 @dataclass
 class _ServerErrors:
-    """An endpoint's server errors in a row: how many, the last wait's full length, and when its
-    next request may leave (epoch seconds, as request_sent stamps a request)."""
+    """An endpoint's server errors in a row.
+
+    How many, the last wait's full length, and when its next request may leave (epoch seconds,
+    as request_sent stamps a request).
+    """
 
     count: int
     full: float
