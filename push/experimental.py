@@ -15,7 +15,7 @@ from instrument_identity import ticker_storage_key
 from live_price_rows import price_row
 from open_gap import BAR_SECONDS, LAST_OPENS, Followed, Open, OpenGapRecord, today_open
 from state import bar_store
-from time_et import ET, Session, sessions
+from time_et import ET, Session, ct_dated, sessions
 
 
 class GapFollowed(TypedDict):
@@ -175,15 +175,16 @@ def _today_served(tk: str, now: float) -> TodayCard:
     if o is None:
         return _today_card(label, None, "waiting for Schwab's open bar to close", [])
     went = "up" if o.first_five > 0 else "down"
-    bar_start = today.regular[0][0]
-    bar_end = datetime.fromtimestamp(bar_start.timestamp() + BAR_SECONDS, ET)
+    bar_start = today.regular[0][0].timestamp()
     return _today_card(
         label,
         o.gap,
         "vs. prior close · Schwab's 5-minute bars",
         [
             {
-                "label": f"Today {bar_start:%H:%M}–{bar_end:%H:%M} ET",
+                "label": (
+                    f"Today {ct_dated(bar_start, now)}–{ct_dated(bar_start + BAR_SECONDS, now)}"
+                ),
                 "five_text": _moved_text(o.first_five),
                 "five_up": o.first_five > 0,
                 "called": o.called,
