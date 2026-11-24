@@ -10,9 +10,10 @@ receive order. Same vendor-ms + different price or size are distinct
 observations. Schwab streams LEVELONE as Change (Streamer API §1.5): only the
 fields that changed, so a new trade changes at least one of the three, and a
 second trade identical in all three changes none and is not sent (its only
-trace, TOTAL_VOLUME, also moves alone for trades that set no last price). An
-adjacent identical (time, price, size) is a restatement: a subscription's whole
-record, or the bus's merged record re-sent on a quote change
+trace, TOTAL_VOLUME, also moves alone for trades that set no last price). Each
+message that brings one of the three reaches the tape as its own item (the bus,
+docs/DATA_FLOW.md D3); an adjacent identical (time, price, size) is a
+restatement: a subscription's whole record restating the held trade
 (docs/derived_register.md, "A print on the tape").
 
 The receive time kept with a print (KeptPrint.server_received_ts) distinguishes
@@ -58,7 +59,7 @@ _PRINT_READERS = {
     VENDOR_TRADE_TIME: _schwab_int,
 }
 #: a print's three fields: a new value of any makes a new print
-PRINT_FIELDS = tuple(_PRINT_READERS)
+PRINT_FIELDS = frozenset(_PRINT_READERS)
 
 
 def last_print(item: dict[str, Any]) -> dict[str, Any]:

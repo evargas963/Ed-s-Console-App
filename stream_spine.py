@@ -457,8 +457,10 @@ def subscription_msg(
 #: everything Schwab sent (docs/DATA_FLOW.md §2 D4). LATEST, every live reader: for each topic
 #: with versions (VERSIONED) that changed since its last read, that topic's current record -- a
 #: newer value replaces an older one at once and nothing old waits -- and every message that is
-#: its own item, once, in the order published. What a reader holds is bounded by the number of
-#: topics and the items it has not yet taken, never by how fast Schwab sends a value (D3).
+#: its own item, once, in the order published: a message of a topic without versions, and a
+#: LEVELONE message that brings a field of the last trade (a trade, MessageBus.publish). What a
+#: reader holds is bounded by the number of topics and the items it has not yet taken, never by
+#: how fast Schwab sends a value (D3).
 LOG, LATEST = "log", "latest"
 #: the topics whose messages are versions of one thing, by their kind: a symbol's quote or book, a
 #: ticker's chain, a series' candles, a date's sessions. A message of any other topic is its own
@@ -471,6 +473,11 @@ LOG_END: tuple[str, Any] = ("", None)
 #: the topics whose messages carry only the fields that changed (Schwab's LEVELONE services),
 #: by the key of the Schwab item in the message: their current record merges field by field
 FIELD_DELTA = {"quote": "native", "optquote": "content"}
+#: what a message makes of its topic's current record (MessageBus._newest, _chain): nothing new
+#: (it is older, or every field it carries is); a newer version; or a newer version of a LEVELONE
+#: record that took a field of the last trade (calc.l1_trade_observation.PRINT_FIELDS), which is
+#: also the trade's own item for each LATEST reader
+KEPT, NEWER, TRADE = "kept", "newer", "trade"
 #: what the stream holds of a symbol it has sent nothing of
 NOT_STREAMED = Streamed(NO_TOP, NO_GREEKS)
 
@@ -514,20 +521,21 @@ def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
     return held
 
 
-def quotes_at_trade(
-    record: tuple[str, dict[str, Any]] | None,
-) -> tuple[StreamedTop, StreamedTop]:
-    """Return the quotes a LEVELONE record held when its last trade came, read as its top is.
+def quotes_at_trade(record: tuple[str, dict[str, Any]]) -> tuple[StreamedTop, StreamedTop]:
+    """Return the quotes a version of a LEVELONE record held when it came, read as its top is.
 
-    The record's `quotes_at_trade` (MessageBus._newest): its newest quote in the version that
-    brought the trade, and the one that quote replaced; a message after it, a quote alone, leaves
-    them. NO_TOP's values for a quote not yet sent, and both when the bus holds no record. Read
-    when a print is kept (state.OrderFlowState.push_level_one), not on every message.
+    `record` is the version a message that brought a trade made (MessageBus.publish: the trade's
+    own item): its newest quote and the one that quote replaced (`quote_before`), each its quote
+    fields (QUOTE_FIELDS) as they stood when the trade came, however many messages came after it.
+    NO_TOP's values for a quote not yet sent. Read when a print is kept
+    (state.OrderFlowState.push_level_one), not on every message.
     """
-    if record is None:
-        return NO_TOP, NO_TOP
-    top, before = record[1]["quotes_at_trade"]
-    return StreamedTop(**streamed_top(top)), StreamedTop(**streamed_top(before))
+    topic, rec = record
+    held = rec[FIELD_DELTA[topic.split(".", 1)[0]]]
+    return (
+        StreamedTop(**streamed_top({q: held[q] for q in QUOTE_FIELDS if q in held})),
+        StreamedTop(**streamed_top(rec["quote_before"])),
+    )
 
 
 def read_book(content_item: dict[str, Any], service: str) -> Book | None:
@@ -640,7 +648,8 @@ class Subscription:
     queue: asyncio.Queue[tuple[str, Any]] = field(default_factory=asyncio.Queue[tuple[str, Any]])
     #: LATEST, in the order each came: a changed topic's key (its current record is read when it
     #: is taken, so a newer version replaces one that still waits), or a message that is its own
-    #: item, under a key of its own (`items`), with the message
+    #: item, under a key of its own (`items`), with the message (a trade's: the version of its
+    #: record it made)
     changed: dict[str, tuple[str, Any] | None] = field(
         default_factory=dict[str, tuple[str, Any] | None]
     )
@@ -648,11 +657,17 @@ class Subscription:
     items: itertools.count[int] = field(default_factory=itertools.count)
 
     def deliver(self, key: str, topic: str, msg: Any, own: bool) -> None:
-        """Hand over a message: its topic's record at `key`, or `own`, the message itself."""
+        """Hand over a message: its topic's record at `key`, or `own`, the item itself.
+
+        An item stands in for its topic's record waiting at `key`: a trade's item is that record's
+        newest version (MessageBus.publish), so a reader takes each version in the order made and
+        never one older than one it took.
+        """
         if self.policy == LOG:
             self.queue.put_nowait((topic, msg))
             return
         if own:
+            self.changed.pop(key, None)
             self.changed[f"#{next(self.items)}"] = (topic, msg)
         else:
             self.changed[key] = None
@@ -706,11 +721,14 @@ class MessageBus:
     a chain whole once all its parts are in -- and each reader takes it by its policy (LOG or
     LATEST). A message that is its own item (a topic not VERSIONED) is also handed to each LATEST
     reader itself: the one after it never replaces it before it is taken, and a reader that
-    subscribes later starts with the newest alone. A LEVELONE record also keeps the quote its
-    newest quote replaced (`quote_before`), and the two as they stood when its last trade came
-    (`quotes_at_trade`): Schwab sends a trade with the quote that followed it, so a trade is read
-    against the quote in force when it was made (calc.l1_trade_observation.quote_in_force), and a
-    LATEST reader that takes the record after later quotes reads it against the same quotes.
+    subscribes later starts with the newest alone. So is a trade: a LEVELONE message that brings a
+    field of the last trade (`brought_trade`) hands each LATEST reader the version of the record
+    it made, so no trade is replaced by the next before a reader takes it; a reader that
+    subscribes later starts with each record's newest trade and record. A LEVELONE record also
+    keeps the quote its newest quote replaced (`quote_before`): Schwab sends a trade with the quote
+    that followed it, so a trade is read against the quote in force when it was made
+    (calc.l1_trade_observation.quote_in_force), of the quotes its own version holds
+    (quotes_at_trade).
     """
 
     def __init__(self) -> None:
@@ -720,14 +738,24 @@ class MessageBus:
         self.current: dict[str, tuple[str, Any]] = {}
         #: chain topic -> (fetch time, {part: message}, parts): the newest fetch, filling
         self._chains: dict[str, tuple[float, dict[int, Mapping[str, Any]], int]] = {}
+        #: key (current_key) -> the version of a LEVELONE record that brought its last trade: the
+        #: trade's item a reader that subscribes later starts with (subscribe)
+        self._trades: dict[str, dict[str, Any]] = {}
 
     def subscribe(self, prefix: str, *, policy: str = LATEST) -> Subscription:
-        """Subscribe a reader; a LATEST one starts with every current record under `prefix`."""
+        """Subscribe a reader; a LATEST one starts with every current record under `prefix`.
+
+        A LEVELONE record that a message bringing no trade made newer comes after its last trade's
+        item: the newest trade is never lost behind a later quote.
+        """
         sub = Subscription(prefix=prefix, policy=policy, current=self.current)
         if policy == LATEST:
             for key, (topic, record) in self.current.items():
-                if topic.startswith(prefix):
-                    sub.deliver(key, topic, record, _own(topic))
+                if not topic.startswith(prefix):
+                    continue
+                if key in self._trades and self._trades[key] is not record:
+                    sub.deliver(key, topic, self._trades[key], True)
+                sub.deliver(key, topic, record, _own(topic))
         self._subs.append(sub)
         return sub
 
@@ -738,21 +766,25 @@ class MessageBus:
     def publish(self, topic: str, msg: BusMessage) -> None:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
-        changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
+        made = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
         # a message that is its own item reaches every live reader itself: the next one of its
-        # topic is another answer, bar or story, never a newer version of this one
-        own = _own(topic)
+        # topic is another answer, bar or story, never a newer version of this one. So does a
+        # trade, as the version of its record it made: the next message of its symbol never
+        # replaces it before a reader takes it
+        item = msg if _own(topic) else self.current[key][1] if made == TRADE else None
         for sub in self._subs:
             if not topic.startswith(sub.prefix):
                 continue
             # a chain's record is its own history (the chain sweep writes it), never the log's
-            if (sub.policy == LOG and not chain) or (sub.policy == LATEST and (changed or own)):
-                sub.deliver(key, topic, msg, own)
+            if sub.policy == LOG and not chain:
+                sub.deliver(key, topic, msg, False)
+            elif sub.policy == LATEST and (item is not None or made != KEPT):
+                sub.deliver(key, topic, item, item is not None)
 
-    def _newest(self, key: str, topic: str, msg: BusMessage) -> bool:
+    def _newest(self, key: str, topic: str, msg: BusMessage) -> str:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's time.
 
-        Returns whether the record changed.
+        Returns what it made of the record: KEPT, NEWER, or TRADE.
         """
         held = self.current.get(key)
         t: int | None = msg.get("schwab_ts")
@@ -760,20 +792,24 @@ class MessageBus:
         body: Payload = msg.get(body_key) if body_key is not None else None
         if body_key is None or not isinstance(body, dict):  # a whole record: replaced whole
             if held is not None and _older(t, held[1].get("schwab_ts")):
-                return False
+                return KEPT
             self.current[key] = (topic, msg)
-            return True
+            return NEWER
         stamp = (t, msg.get("ts_recv"))
         before: dict[str, Any] = {}
-        if held is None:
+        # a message that brings a field of the last trade, among those it takes, is a trade: the
+        # version it makes holds the trade with the quotes in force then (quotes_at_trade).
+        # Whether it is a new trade or the held one restated is the tape's to read
+        # (calc.l1_trade_observation.is_adjacent_restatement)
+        if held is None:  # every field it brings is taken
             merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
-            at_trade = ({q: merged[q] for q in QUOTE_FIELDS if q in merged}, before)
+            traded = not body.keys().isdisjoint(PRINT_FIELDS)
         else:
             rec = held[1]
             merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
             took = [f for f in body if f not in stamps or not _older(t, stamps[f][0])]
             if not took:
-                return False
+                return KEPT
             # the quote this message replaces, whole as the record held it: a message that changes
             # a quote field the record holds. One that brings no quote field, restates the quote
             # held, or only fills in a field never sent, leaves the one kept before
@@ -782,57 +818,44 @@ class MessageBus:
                 if f in body and f in merged and body[f] != merged[f] and f in took:
                     before = {q: merged[q] for q in QUOTE_FIELDS if q in merged}
                     break
-            # the quotes when the record's last trade came: its newest then and the one that
-            # replaced. A message that changes the last trade, or brings it first, makes them
-            # anew; one that brings no new trade (a quote alone, a trade restated) leaves them, so
-            # a LATEST reader that takes the record later reads the trade against them, never
-            # against a quote Schwab sent after it
-            traded = False
-            for f in PRINT_FIELDS:
-                if f in body and body[f] != merged.get(f) and f in took:
-                    traded = True
-                    break
             for f in took:
                 merged[f], stamps[f] = body[f], stamp
-            at_trade = (
-                ({q: merged[q] for q in QUOTE_FIELDS if q in merged}, before)
-                if traded
-                else rec["quotes_at_trade"]
-            )
             top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time
+            traded = not PRINT_FIELDS.isdisjoint(took)
         # a new version of the record, whose fields are read on its first read (streamed_record)
-        self.current[key] = (
-            topic,
-            {
-                **top,
-                body_key: merged,
-                "field_ts": stamps,
-                "streamed": None,
-                "quote_before": before,
-                "quotes_at_trade": at_trade,
-            },
-        )
-        return True
+        version: dict[str, Any] = {
+            **top,
+            body_key: merged,
+            "field_ts": stamps,
+            "streamed": None,
+            "quote_before": before,
+            "brought_trade": traded,
+        }
+        self.current[key] = (topic, version)
+        if not traded:
+            return NEWER
+        self._trades[key] = version
+        return TRADE
 
-    def _chain(self, key: str, topic: str, msg: Mapping[str, Any]) -> bool:
+    def _chain(self, key: str, topic: str, msg: Mapping[str, Any]) -> str:
         """Take a chain part (a failed fetch is its one part).
 
         The newest fetch of the ticker is kept; once all its parts are in it replaces the current
-        chain whole.
+        chain whole (NEWER; else KEPT).
         """
         ts = msg["ts_recv"]
         held: tuple[float, dict[int, Mapping[str, Any]], int] | None
         held = self._chains.get(key)
         if held is not None and ts < held[0]:
-            return False  # an older fetch: never current
+            return KEPT  # an older fetch: never current
         if held is None or ts > held[0]:
             held = (ts, {}, msg["parts"])
             self._chains[key] = held
         held[1][msg["part"]] = msg
         if len(held[1]) < held[2]:
-            return False
+            return KEPT
         self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
-        return True
+        return NEWER
 
 
 class ServiceAge(TypedDict):

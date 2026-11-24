@@ -30,12 +30,14 @@ from app.options.order_flow.history import tape_row
 from app.options.order_flow.state import OrderFlowState
 from app.options.order_flow.streaming import _ingest_pushed
 from calc.l1_trade_observation import KeptPrint
+from feed import connection
 from option_contract import read_contract
 from push import contract as push_contract
 from push import tape as push_tape
 from state import level_store
-from stream_spine import MessageBus, verbatim_msg
-from tests.feed_live_helper import BUS, apply_record, forget_streamed, on_the_bus, publish_capture
+from stream_spine import HealthRegistry, MessageBus
+from tests import feed_live_helper
+from tests.feed_live_helper import apply_record, forget_streamed, on_the_bus, publish_capture
 from tests.shared_helpers import fixture_json
 from time_et import ET
 
@@ -244,10 +246,7 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
         )
         for sym, rows in sent.items():
             for ts, item in rows:
-                _ingest_pushed(
-                    f"optquote.{sym}",
-                    verbatim_msg(symbol=sym, content=item, src="schwab", ts_recv=ts),
-                )
+                _ingest_pushed(*on_the_bus(feed_live_helper.BUS, OPT, {**item, "key": sym}, ts))
         unlisted = (
             push_tape.tape("SPY", at),
             [push_contract.options_microstructure(sym, at)["put_call"] for sym in (CALL, PUT)],
@@ -293,7 +292,8 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
         (PUT, "2026-10-23", "PUT", 762.0, 8898),
     }
     by_trade = {(r["symbol"], r["trade"]): r["premium"] for r in body["rows"]}
-    assert by_trade[(CALL, 2.02)] == 2.02 * 10 * 100 and by_trade[(CALL, 2.07)] is None
+    # 2.07 came with no LAST_SIZE: on Change delivery its size is the record's, the first's 1
+    assert by_trade[(CALL, 2.02)] == 2.02 * 10 * 100 and by_trade[(CALL, 2.07)] == 2.07 * 1 * 100
     assert by_trade[(PUT, 3.04)] == 3.04 * 1 * 100
 
 
@@ -445,6 +445,7 @@ def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_las
     assert times == sorted(set(times)) and times[-1] - times[0] < 60_000
     state.clear_all_live_state()
     forget_streamed()
+    bus = feed_live_helper.BUS  # the console's state reads it (tests/conftest.py)
     try:
         publish_capture(
             "SPY",
@@ -459,9 +460,9 @@ def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_las
         )
         for r in rows:
             sent = {**r["item"], "key": fast}
-            _ingest_pushed(*on_the_bus(BUS, OPT, sent, r["ts_recv"], r["schwab_ts"]))
+            _ingest_pushed(*on_the_bus(bus, OPT, sent, r["ts_recv"], r["schwab_ts"]))
         untimed = {k: v for k, v in rows[0]["item"].items() if k != "TRADE_TIME_MILLIS"}
-        _ingest_pushed(*on_the_bus(BUS, OPT, {**untimed, "key": other}, rows[-1]["ts_recv"] + 1.0))
+        _ingest_pushed(*on_the_bus(bus, OPT, {**untimed, "key": other}, rows[-1]["ts_recv"] + 1.0))
         few = push_tape.tape("SPY", at)["rows"]
         for later in (60_000, 120_000):
             for r in rows:
@@ -470,7 +471,7 @@ def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_las
                     if clock in sent:
                         sent[clock] += later
                 received = r["ts_recv"] + later / 1000
-                _ingest_pushed(*on_the_bus(BUS, OPT, sent, received, r["schwab_ts"] + later))
+                _ingest_pushed(*on_the_bus(bus, OPT, sent, received, r["schwab_ts"] + later))
         many = push_tape.tape("SPY", at)["rows"]
     finally:
         with level_store._lock:
@@ -498,9 +499,16 @@ def test_prints_are_kept_in_receive_order_each_with_its_messages_receive_time():
 
 
 def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
+    """INDUCED: the call's second message with no symbol never reaches the bus or a tape.
+
+    The daemon's stream handler takes no item without a symbol (feed.connection._publisher).
+    """
     (at, first), (later, second) = _sent(CALL)[:2]
     live = _fed(CALL, [(at, first)])
-    live.push_level_one(OPT, "", second, ts_recv=later)
+    bus = MessageBus()
+    frame = {"timestamp": None, "content": [{**second, "key": ""}]}
+    connection._publisher(OPT, bus, HealthRegistry(), lambda: later)(frame)
+    assert bus.current == {}
     assert live.prints(PUT) == []
     assert live.prints("") == []
     assert len(live.prints(CALL)) == 1
