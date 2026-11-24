@@ -595,37 +595,32 @@ def confluence_payload(
     levels = _screen_levels(markers, live_spot, sigma_root_t)
     strikes = stored.strikes
     lo, hi, view = _held_window(strikes, live_spot, centre)
-    rows = window_rows(stored, strikes[lo : hi + 1])
-    body: dict[str, Any] = {
+    rows = at_price(window_rows(stored, strikes[lo : hi + 1]), strikes, live_spot, sigma_root_t)
+    return {
         "notes": [note for note in (view["note"],) if note is not None],
         "peaks": stored.peaks,
-        "rows": at_price(rows, strikes, live_spot, sigma_root_t),
+        "rows": rows,
         # the strike the rows are centred on: the page asks with it again, so they hold
         "view": {"centre": view["centre"]},
+        "ticker": tk,
+        "available": True,
+        "reason": None,
+        "expiry": chosen,
+        # the levels' one verdict (terrain_staleness): its word, the chain's time and age, and
+        # why when it is not LIVE or CLOSE (AGENTS rule 5)
+        "status_text": _chain_status(
+            terrain_staleness(fetched, tk, now=now.timestamp()), fetched, now.timestamp()
+        ),
+        **_tags(levels, rows),
+        "headline": _headline(
+            live,
+            family_votes(
+                live.net_gex_at_spot,
+                expiry_flow(stored),
+                (_window_open(tk, start), live_spot),
+                atm_iv_change(stored, live_spot),
+            ),
+        ),
+        "lookback": _lookback(lookback, start),
+        "cards": _cards(live_spot, live, chosen, sigma_root_t),
     }
-    body.update(
-        {
-            "ticker": tk,
-            "available": True,
-            "reason": None,
-            "expiry": chosen,
-            # the levels' one verdict (terrain_staleness): its word, the chain's time and age,
-            # and why when it is not LIVE or CLOSE (AGENTS rule 5)
-            "status_text": _chain_status(
-                terrain_staleness(fetched, tk, now=now.timestamp()), fetched, now.timestamp()
-            ),
-            **_tags(levels, body["rows"]),
-            "headline": _headline(
-                live,
-                family_votes(
-                    live.net_gex_at_spot,
-                    expiry_flow(stored),
-                    (_window_open(tk, start), live_spot),
-                    atm_iv_change(stored, live_spot),
-                ),
-            ),
-            "lookback": _lookback(lookback, start),
-        }
-    )
-    body["cards"] = _cards(live_spot, live, chosen, sigma_root_t)
-    return body

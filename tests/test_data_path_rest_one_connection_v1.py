@@ -18,6 +18,7 @@ Schwab's frame time (no captured stream of a 2026-11-20 contract carries its Gre
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import logging
 import sqlite3
@@ -343,6 +344,34 @@ def test_the_one_connection_stands_through_a_pause(tmp_path):
         schwab.close()
     assert len(schwab.requests) == 2
     assert len({r[4] for r in schwab.requests}) == 1
+
+
+def test_every_answer_read_is_freed_with_no_full_collection(tmp_path):
+    """Each /quotes answer, read and dropped as the sweep does, is freed at once.
+
+    The session runs no full collection (capture.set_collector), so an answer that only a full
+    collection frees is held until the close. Here no collection runs while three answers are
+    taken; one full collection after them, saving what it finds, finds no answer.
+    """
+    schwab = LocalSchwab()
+    client = schwab.client(tmp_path)
+    symbols = list(SPY_QUOTES)[:300]
+    was_on = gc.isenabled()
+    gc.collect()
+    gc.disable()
+    try:
+        for _ in range(3):
+            assert len(sc.safe_get_quotes(client, symbols).json()) == 300
+        gc.set_debug(gc.DEBUG_SAVEALL)
+        gc.collect()
+        found = [type(o).__qualname__ for o in gc.garbage if type(o).__module__ == "httpx"]
+    finally:
+        gc.set_debug(0)
+        gc.garbage.clear()
+        if was_on:
+            gc.enable()
+        schwab.close()
+    assert "Response" not in found, found
 
 
 def test_a_streamed_no_value_code_does_not_block_the_quote(tmp_path):
