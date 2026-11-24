@@ -8,24 +8,26 @@
    afterwards: the test server never touches the production database. Each run serves on a free port
    the config picks (`ED_E2E_PORT`, inherited by Playwright's workers), so runs from two checkouts
    at once never share a server (`tests/test_e2e_own_port_v1.py`).
-2. `node scripts/run-pytest-full.mjs [pytest args]` —
-   `python -m pytest -n <the machine's processors, as CI pins it> --dist loadfile --durations=20`;
-   extra args narrow the run (a test path, `-n 0`).
+2. `node scripts/run-pytest-full.mjs [pytest args]` — pytest as CI runs it, in two parts:
+   `python -m pytest -n <the machine's processors, as CI pins it> --dist loadfile --durations=20 -m "not alone"`,
+   then `python -m pytest --durations=1 -m alone`, each test marked `alone` (a limit on the wall
+   clock) with none beside it. Both parts run; the step fails if either does, and a part whose
+   selection holds no test neither passes nor fails. Extra args narrow both parts (a test path,
+   `-n 0`).
 
 If step 1 fails, step 2 does not run. Each step's exit code is its proof. CI
 (`.github/workflows/pytest.yml`) runs both on each system, each on a runner of its own, side by
-side, and a test marked `alone` (a limit on the wall clock) after the workers, with none beside it;
-the required jobs `pytest-full` and `pytest-windows` pass only when both suites of their system
-passed.
+side, with the `alone` tests after the workers in the same way; the required jobs `pytest-full` and
+`pytest-windows` pass only when both suites of their system passed.
 
 ## Output goes to a log file
 
 Both steps give their child processes file descriptors on a log under `logs/` (gitignored):
-`logs/test_e2e_install_last.log`, `logs/test_e2e_last.log`, `logs/test_pytest_last.log`, each
-overwritten by the next run (`runWithFileSink`). The terminal receives only a start line, a bounded
-tail of the log and the exit code, so a terminal that stops reading cannot stall a run
-(`tests/test_full_suite_output_sink_v1.py`). A bare `python -m pytest` writes to the terminal: use
-it only for narrow runs you are watching.
+`logs/test_e2e_install_last.log`, `logs/test_e2e_last.log`, `logs/test_pytest_last.log`,
+`logs/test_pytest_alone_last.log`, each overwritten by the next run (`runWithFileSink`). The
+terminal receives only a start line, a bounded tail of the log and the exit code, so a terminal that
+stops reading cannot stall a run (`tests/test_full_suite_output_sink_v1.py`). A bare
+`python -m pytest` writes to the terminal: use it only for narrow runs you are watching.
 
 ## Checks
 
