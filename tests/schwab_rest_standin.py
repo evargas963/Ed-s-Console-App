@@ -33,6 +33,8 @@ more than 7 days back; 2027-10-08: more than a year ahead).
 from __future__ import annotations
 
 import json
+import socket
+import struct
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -141,6 +143,128 @@ def chain_payload(ticker: str) -> dict:
     return out
 
 
+class _Handler(BaseHTTPRequestHandler):
+    """One request to the stand-in, answered as its server's LocalSchwab says (_Server)."""
+
+    protocol_version = "HTTP/1.1"
+    server: _Server
+
+    def do_GET(self):
+        outer = self.server.schwab
+        started = time_et.elapsed()
+        url = urlparse(self.path)
+        query = {k: v[0] for k, v in parse_qs(url.query).items()}
+        if outer.drop_next:
+            self._drop(url.path, query, started, outer.drop_next.pop(0))
+            return
+        if outer.edge:
+            self._edge(url.path, query, started)
+            return
+        if self.headers.get("Authorization") in {f"Bearer {a}" for a in outer.expired}:
+            self._send(
+                url.path,
+                query,
+                started,
+                401,
+                "application/json",
+                b"",
+                (("WWW-Authenticate", INVALID_TOKEN),),
+            )
+            return
+        status, body = outer.answer(url.path, query)
+        self._send(
+            url.path,
+            query,
+            started,
+            status,
+            "application/json",
+            body if isinstance(body, bytes) else json.dumps(body).encode(),
+        )
+
+    def do_POST(self):
+        outer = self.server.schwab
+        started = time_et.elapsed()
+        self.rfile.read(int(self.headers["Content-Length"]))
+        if outer.token == "edge":
+            self._edge(TOKEN, {}, started)
+            return
+        refused = outer.token == "refuses"
+        self._send(
+            TOKEN,
+            {},
+            started,
+            400 if refused else 200,
+            "application/json",
+            json.dumps(REFUSED if refused else REFRESHED).encode(),
+        )
+
+    def _drop(self, path: str, query: dict, started: float, how: str):
+        # no answer. "close": the connection ends once this returns (the server's
+        # shutdown_request). "reset": the socket is closed here with nothing left to linger
+        # (SO_LINGER 0), so its last reference, closed before the server's own shutdown, sends a
+        # reset and never a close
+        self.server.schwab.requests.append(
+            (path, query, started, None, self.client_address[1], None)
+        )
+        if how == "reset":
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            self.connection.close()
+        self.close_connection = True
+
+    def _edge(self, path: str, query: dict, started: float):
+        self._send(
+            path,
+            query,
+            started,
+            403,
+            "text/html",
+            EDGE_403["body"].encode(),
+            (("Server", EDGE_403["headers"]["server"]),),
+        )
+
+    def _send(
+        self,
+        path: str,
+        query: dict,
+        started: float,
+        status: int,
+        ctype: str,
+        data: bytes,
+        headers: tuple = (),
+    ):
+        # recorded before the answer leaves, so a client holding the answer finds its request
+        self.server.schwab.requests.append(
+            (
+                path,
+                query,
+                started,
+                time_et.elapsed(),
+                self.client_address[1],
+                self.headers.get("Authorization"),
+            )
+        )
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        for name, value in headers:
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, *a):
+        pass
+
+
+class _Server(ThreadingHTTPServer):
+    """The stand-in's server, on a free port: each request's handler answers for `schwab`."""
+
+    daemon_threads = True
+
+    def __init__(self, schwab: LocalSchwab):
+        super().__init__(("127.0.0.1", 0), _Handler)
+        self.schwab = schwab
+
+
 class LocalSchwab:
     """The local server, on HTTP/1.1.
 
@@ -163,8 +287,11 @@ class LocalSchwab:
     endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403);
     `expired`: access tokens a data request carrying one is answered 401 for, with Schwab's
     INVALID_TOKEN challenge; `edge`:
-    while set, every data request is answered with EDGE_403. Each request is recorded as (path,
-    query, started, answered, the client's port, its Authorization).
+    while set, every data request is answered with EDGE_403; `drop_next`: how each of the next
+    data requests' connections is ended with no answer, in order: "close" (the server closes it)
+    or "reset" (it resets it), INDUCED, as Schwab's end reset two on 2026-11-18 and 2026-11-20.
+    Each request is recorded as (path, query, started, answered, the client's port, its
+    Authorization); a dropped one as answered None.
     """
 
     #: every stand-in not yet closed; tests/conftest.py closes them after each test
@@ -177,6 +304,7 @@ class LocalSchwab:
         self.token = "refreshes"
         self.expired: set[str] = set()
         self.edge = False
+        self.drop_next: list[str] = []
         self.quotes_status = 200
         self.throttle_quotes = 0
         self.quotes_hold: tuple[str, int] | None = None
@@ -190,101 +318,7 @@ class LocalSchwab:
         self.chains_together: threading.Barrier | None = None
         self.more_expiries: list[str] = []
         self.invalid: list[dict] = []
-        outer = self
-
-        class Handler(BaseHTTPRequestHandler):
-            protocol_version = "HTTP/1.1"
-
-            def do_GET(self):
-                started = time_et.elapsed()
-                url = urlparse(self.path)
-                query = {k: v[0] for k, v in parse_qs(url.query).items()}
-                if outer.edge:
-                    self._edge(url.path, query, started)
-                    return
-                if self.headers.get("Authorization") in {f"Bearer {a}" for a in outer.expired}:
-                    self._send(
-                        url.path,
-                        query,
-                        started,
-                        401,
-                        "application/json",
-                        b"",
-                        (("WWW-Authenticate", INVALID_TOKEN),),
-                    )
-                    return
-                status, body = outer.answer(url.path, query)
-                self._send(
-                    url.path,
-                    query,
-                    started,
-                    status,
-                    "application/json",
-                    body if isinstance(body, bytes) else json.dumps(body).encode(),
-                )
-
-            def do_POST(self):
-                started = time_et.elapsed()
-                self.rfile.read(int(self.headers["Content-Length"]))
-                if outer.token == "edge":
-                    self._edge(TOKEN, {}, started)
-                    return
-                refused = outer.token == "refuses"
-                self._send(
-                    TOKEN,
-                    {},
-                    started,
-                    400 if refused else 200,
-                    "application/json",
-                    json.dumps(REFUSED if refused else REFRESHED).encode(),
-                )
-
-            def _edge(self, path: str, query: dict, started: float):
-                self._send(
-                    path,
-                    query,
-                    started,
-                    403,
-                    "text/html",
-                    EDGE_403["body"].encode(),
-                    (("Server", EDGE_403["headers"]["server"]),),
-                )
-
-            def _send(
-                self,
-                path: str,
-                query: dict,
-                started: float,
-                status: int,
-                ctype: str,
-                data: bytes,
-                headers: tuple = (),
-            ):
-                # recorded before the answer leaves, so a client holding the answer finds its
-                # request
-                outer.requests.append(
-                    (
-                        path,
-                        query,
-                        started,
-                        time_et.elapsed(),
-                        self.client_address[1],
-                        self.headers.get("Authorization"),
-                    )
-                )
-                self.send_response(status)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(data)))
-                for name, value in headers:
-                    self.send_header(name, value)
-                self.end_headers()
-                self.wfile.write(data)
-
-            def log_message(self, *a):
-                pass
-
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.server.daemon_threads = True
+        self.server = _Server(self)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         LocalSchwab.open_now.append(self)
 

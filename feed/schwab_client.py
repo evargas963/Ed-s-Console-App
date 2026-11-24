@@ -163,6 +163,14 @@ def _token_read_func(resolved: str) -> Callable[[], Any]:
 UNLOGGED_HEADERS = frozenset({"set-cookie", "cookie", "authorization", "proxy-authorization"})
 #: the longest error body logged, in characters
 ERROR_BODY_LOGGED = 2000
+#: what httpx raises when a request's connection closed before Schwab's answer came: the request
+#: has no answer, and a GET (idempotent) may be sent once more (RFC 9110 §9.2.2)
+NO_ANSWER = (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)
+
+
+def shown_path(url: httpx.URL) -> str:
+    """Return a request's path as the log shows it: an account number never written."""
+    return re.sub(r"(/accounts/)[^/]+", r"\1(account)", url.path)
 
 
 def request_sent(request: httpx.Request) -> None:
@@ -186,7 +194,7 @@ def log_request(response: httpx.Response) -> None:
     response.stream = httpx.ByteStream(response.content)
     answered = time_et.now()
     req = response.request
-    path = re.sub(r"(/accounts/)[^/]+", r"\1(account)", req.url.path)
+    path = shown_path(req.url)
     params = req.url.params
     what = " ".join(
         filter(
@@ -281,17 +289,48 @@ class OneRefreshSession(OAuth2Client):
         request carried, whatever its `expires_at` says (a refresh read late is stamped valid
         from when it was read, so Schwab can refuse a token its stamp calls valid): that token
         is taken as expired, so it is refreshed once, one request at a time
-        (ensure_active_token), and the request is sent once more with the new one.
+        (ensure_active_token), and the request is sent once more with the new one. Each send is
+        answered (_answered).
         """
         sent = self.token
-        response = super().request(method, url, withhold_token, auth, **kwargs)
+        response = self._answered(method, url, withhold_token, auth, **kwargs)
         challenge = response.headers.get("www-authenticate")
         if response.status_code != 401 or challenge is None or "invalid_token" not in challenge:
             return response
         with self._refresh_lock:
             if sent is not None and self.token is sent:
                 sent["expires_at"] = 0
-        return super().request(method, url, withhold_token, auth, **kwargs)
+        return self._answered(method, url, withhold_token, auth, **kwargs)
+
+    def _answered(
+        self,
+        method: str,
+        url: httpx.URL | str,
+        withhold_token: bool,
+        auth: AuthTypes | UseClientDefault | None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Send the request; a GET whose connection closed before any answer is sent once more.
+
+        A GET asks for the same thing however often it is sent (RFC 9110 §9.2.2: an idempotent
+        request may be repeated when the connection fails before its answer is read). The first
+        failure is logged; a second is raised, as is any other method's (the token request is a
+        POST).
+        """
+        try:
+            response = super().request(method, url, withhold_token, auth, **kwargs)
+        except NO_ANSWER as e:
+            if method.upper() != "GET":
+                raise
+            log.warning(
+                "REQUEST %s %s: no answer (%s: %s); sent once more",
+                method,
+                shown_path(httpx.URL(url)),
+                type(e).__name__,
+                e,
+            )
+            response = super().request(method, url, withhold_token, auth, **kwargs)
+        return response
 
     def refusal(self) -> "str | None":
         """Return why this session holds no sign-in Schwab accepts, with what to run, else None.
