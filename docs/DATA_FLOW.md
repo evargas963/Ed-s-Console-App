@@ -100,7 +100,7 @@ The rules for the data itself, at every hop from Schwab to the screen.
   `stream_spill_progress`; files a stop or crash left are written back at the next start. A message
   stored first (a close capture, a price's crosses) is committed with the batch that holds it, whose
   transaction begins before its first row (`CaptureWriter._stored_all`: a savepoint outside a
-  transaction begins one and commits it at its RELEASE, https://sqlite.org/lang_savepoint.html). Its
+  transaction begins one and commits it at its RELEASE, `docs/SOURCES.md` sqlite-savepoint). Its
   waiter (`stream_spine.StoredFirst`) is told at that commit, or refused once it never will be: lost
   (the disk refuses its spill file) or not recorded (the writer dead, or the message handed in after
   the stop); one left in a spill file stays held for the next start to write. Its state

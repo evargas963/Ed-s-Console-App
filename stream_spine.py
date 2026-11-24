@@ -2042,10 +2042,7 @@ class CaptureWriter:
                 # those _admit had not yet held, and the queue. A spill file's messages are on
                 # disk: the file stays, listed as left
                 self._unrecorded(
-                    ([] if self._batch_spilled else [item for item, _out in self._batch])
-                    + self._round[self._stored :]
-                    + self._admitting[self._admitted :]
-                    + self._drained(q)
+                    self._unwritten() + self._admitting[self._admitted :] + self._drained(q)
                 )
                 self._leave_spills()
                 self._batch, self._waiting, self._round, self._stored = [], [], [], 0
@@ -2055,6 +2052,15 @@ class CaptureWriter:
         with self._lock:  # anything handed in after the stop is not written
             self.state = WRITER_STOPPED
             self._unrecorded(self._drained(q))
+
+    def _unwritten(self) -> list[Item]:
+        """Return the messages a refusal or the writer's death leaves unwritten, in order.
+
+        The open batch's (none when it is spill records, which stay in their file), then the
+        round's not yet in it.
+        """
+        batch = [] if self._batch_spilled else [item for item, _out in self._batch]
+        return batch + self._round[self._stored :]
 
     @staticmethod
     def _drained(q: queue.SimpleQueue[Item | None]) -> list[Item]:
@@ -2225,13 +2231,7 @@ class CaptureWriter:
                     if conn is not None:
                         conn.close()  # its open transaction is rolled back
                     conn = None
-                    self._refused(
-                        e,
-                        ([] if self._batch_spilled else [item for item, _out in self._batch])
-                        + self._round[self._stored :],
-                        holding,
-                        stopping,
-                    )
+                    self._refused(e, self._unwritten(), holding, stopping)
                 with self._lock:  # a finished round's messages are not kept
                     self._round, self._stored = [], 0
         finally:
