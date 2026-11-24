@@ -8,9 +8,11 @@ closes, once more (the close values), and then nothing until the next one. Each 
 to the console for the levels. The first chain of each ticker begun at or after its own option
 close each day (capture_slot) holds the day's close values, the one capture the levels read; it
 is stored first: the Recorder (stream_spine.CaptureWriter.store_capture) commits it to the
-capture table (calibration/complete_chain_capture.py) before the console hears of it. Nothing
-else is stored as a capture (weekend chains blank open interest); every /chains and /quotes
-answer is recorded as received beside it (rest_chains_raw, rest_quotes_raw).
+capture table (calibration/complete_chain_capture.py) before the console hears of it as one. A
+capture the Recorder holds past CAPTURE_WAIT_SEC goes to the console as no capture, and again as
+the capture once the Recorder commits it (ChainSweep.publish_held). Nothing else is stored as a
+capture (weekend chains blank open interest); every /chains and /quotes answer is recorded as
+received beside it (rest_chains_raw, rest_quotes_raw).
 """
 
 from __future__ import annotations
@@ -52,10 +54,18 @@ from option_contract import (
     streamed_quote,
 )
 from state import capture_store
-from stream_spine import CAPTURE_REFUSED, CAPTURE_STORED, CaptureWriter, streamed_record
+from stream_spine import (
+    CAPTURE_HELD,
+    CAPTURE_REFUSED,
+    CAPTURE_STORED,
+    CaptureWriter,
+    StoredFirst,
+    streamed_record,
+)
 from time_et import (
     CLOSED,
     ET,
+    ct_label,
     option_close_product,
     option_window_began,
     options_closed_at,
@@ -68,9 +78,9 @@ from time_et import (
 log = logging.getLogger("chain_history")
 
 #: seconds a chain waits for the Recorder to commit its capture before the console hears of it
-#: (store first); a capture not committed by then is held by the Recorder and written later, and
-#: the chain goes to the console as no capture. The Recorder commits every 0.25 s
-#: (CaptureWriter.batch_sec), so only a database refusing writes reaches it.
+#: (store first); a capture not committed by then is held by the Recorder and written later, the
+#: chain going to the console as no capture until it is (ChainSweep.publish_held). The Recorder
+#: commits every 0.25 s (CaptureWriter.batch_sec), so only a database refusing writes reaches it.
 CAPTURE_WAIT_SEC = 10.0
 
 
@@ -318,6 +328,16 @@ class _Chain:
         return [ct for cts in self.by_expiry.values() for ct in cts]
 
 
+@dataclass(frozen=True, eq=False)
+class _Capture:
+    """A chain handed to the Recorder as its window's close capture (ChainSweep._write_window)."""
+
+    chain: _Chain
+    slot: float  # the close it is the capture of (capture_slot)
+    before: float | None  # the ticker's newest capture before this one claimed the window
+    stored: StoredFirst  # the Recorder's answer, told once it is committed
+
+
 #: a contract of a chain whose quote is not in, with its chain
 type _Queued = tuple[_Chain, dict[str, Any]]
 #: while a ticker's /chains answers stand: the close they are the capture of (its time), before
@@ -375,7 +395,8 @@ class ChainSweep:
     rotation goes on. The first chain of a ticker begun at or after its option close each day
     (capture_slot) is also written to the chain history, its close capture; a history
     write that fails is a write failure, never the chain's: the chain as delivered is handed to
-    `failures` (the daemon's writer) to keep.
+    `failures` (the daemon's writer) to keep. A capture the writer does not commit within
+    `capture_wait_sec` (CAPTURE_WAIT_SEC) is held here until it does (publish_held).
     """
 
     def __init__(
@@ -388,6 +409,7 @@ class ChainSweep:
         failures: CaptureWriter,
         streamed: Callable[[str], tuple[str, dict[str, Any]] | None],
         shown: Callable[[], list[str]] = list,
+        capture_wait_sec: float = CAPTURE_WAIT_SEC,
     ) -> None:
         self.db_path = db_path
         self.shown = shown  # the watchlist tickers a page has selected, read before each chain
@@ -408,6 +430,8 @@ class ChainSweep:
         self._queue: list[_Queued] = []  # contracts whose quote is not asked for
         self._delivered: set[str] = set()  # the tickers this rotation delivered
         self._written: dict[str, float | None] = {}  # ticker -> its newest history capture
+        self.capture_wait_sec = capture_wait_sec  # a capture's wait for its commit, then held
+        self._held: list[_Capture] = []  # captures not committed in their wait, oldest first
         self._asking = ThreadPoolExecutor(REQUESTS_AT_ONCE, thread_name_prefix="asking")
         self._answers: dict[str, _Answers] = {}  # ticker -> its newest /chains answers
 
@@ -421,9 +445,11 @@ class ChainSweep:
         ticker on a page before each other one; with none due, it looks again each second. With
         the watchlist empty, or no sign-in held (waits), it asks Schwab for nothing and looks
         again each second: a sign-in Schwab refused fails every request at once, and a round of
-        them would only log each failure.
+        them would only log each failure. Each pass first takes the Recorder's answers for the
+        held captures (publish_held), which need no sign-in.
         """
         while not stop.is_set():
+            self.publish_held()
             if not self.step(schwab_client, stop):
                 stop.wait(1.0)
 
@@ -576,7 +602,10 @@ class ChainSweep:
         for; the other queued quotes asked for whenever a full request's worth is waiting and
         the rest at the end; the tickers delivered. Its time is the round's (`round_sec`) only
         when it asked for every watchlist ticker: the console judges a ticker's chain overdue by
-        the round, and a round of a few tickers is shorter than the watchlist's.
+        the round, and a round of a few tickers is shorter than the watchlist's. Before each
+        ticker, the Recorder's answers for the held captures (publish_held): a round after the
+        close takes minutes, and a capture the Recorder commits during it reaches the console
+        then.
         """
         started = self.clock()
         if self.began is None:
@@ -584,6 +613,7 @@ class ChainSweep:
         self._delivered = set()
         last = None
         for ticker in tickers:
+            self.publish_held()
             shown = self.shown()
             for asked in (*shown, ticker):
                 if stop.is_set() or asked == last or asked not in self.watchlist:
@@ -961,7 +991,8 @@ class ChainSweep:
     def _write_window(self, chain: _Chain, slot: float) -> bool:
         """Store the chain as window `slot`'s capture if it is the window's first for its ticker.
 
-        Whether it was stored (_write_history).
+        Whether it was stored (_write_history): committed within `capture_wait_sec`. One not
+        committed by then is held, logged, until the Recorder answers (publish_held).
         """
         ticker = chain.ticker
         if ticker not in self._written:
@@ -984,7 +1015,60 @@ class ChainSweep:
                 for expiry, cts in chain.by_expiry.items()
             ],
         )
-        outcome = self.failures.store_capture(capture, CAPTURE_WAIT_SEC)
-        if outcome == CAPTURE_REFUSED:
-            self._written[ticker] = before  # not stored: the window's next chain, if any, tries
+        handed = _Capture(chain, slot, before, self.failures.store_capture(capture))
+        outcome = self._settled(handed, self.capture_wait_sec)
+        if outcome == CAPTURE_HELD:
+            log.warning(
+                "close capture of %s for the close at %s not committed by the Recorder in %g s: "
+                "held until it is, its chain going to the console as no capture meanwhile",
+                ticker,
+                ct_label(slot),
+                self.capture_wait_sec,
+            )
+            self._held.append(handed)
         return outcome == CAPTURE_STORED
+
+    def _settled(self, handed: _Capture, wait_sec: float) -> str:
+        """Return the Recorder's answer for a capture, waiting up to `wait_sec` (outcome).
+
+        One refused (none of its rows written) gives its window back while the window is still
+        its own, so the window's next chain, if any, tries again.
+        """
+        outcome = handed.stored.outcome(wait_sec)
+        ticker = handed.chain.ticker
+        if outcome == CAPTURE_REFUSED and self._written[ticker] == handed.slot:
+            self._written[ticker] = handed.before
+        return outcome
+
+    def publish_held(self) -> None:
+        """Take the Recorder's answer for each held capture; one still unanswered stays held.
+
+        One committed is published again, the same chain as its window's capture
+        (chain_messages, captured), so the console keeps it as it keeps one committed in its
+        wait (server._on_chain); one refused gives its window back (_settled). Each is logged.
+        """
+        for handed in list(self._held):
+            outcome = self._settled(handed, 0.0)
+            if outcome == CAPTURE_HELD:
+                continue
+            self._held.remove(handed)
+            chain = handed.chain
+            if outcome == CAPTURE_REFUSED:
+                log.warning(
+                    "close capture of %s for the close at %s refused by the Recorder after its "
+                    "wait, none of its rows written: the window's next chain, if any, tries again",
+                    chain.ticker,
+                    ct_label(handed.slot),
+                )
+                continue
+            log.warning(
+                "close capture of %s for the close at %s committed by the Recorder %.0f s after "
+                "its chain began: published to the console as the day's capture",
+                chain.ticker,
+                ct_label(handed.slot),
+                self.clock() - chain.started,
+            )
+            for topic, msg in chain_messages(
+                chain.ticker, chain.contracts(), chain.started, chain.spot, chain.spot_ts, True
+            ):
+                self.publish(topic, msg)
