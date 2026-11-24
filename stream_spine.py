@@ -957,6 +957,39 @@ CAPTURE, CAPTURE_TABLE = "capture", "complete_chain_captures"
 CAPTURE_STORED, CAPTURE_REFUSED, CAPTURE_HELD = "stored", "refused", "held"
 
 
+@dataclass(frozen=True, eq=False)
+class StoredFirst:
+    """A message of a kind stored first (a capture, a price's crosses), handed to the writer.
+
+    The writer's thread tells it once the batch that holds it is committed (CaptureWriter
+    _committed), a dead writer at once; any thread reads it (`outcome`), so one its wait did not
+    see committed is told all the same.
+    """
+
+    done: threading.Event = field(default_factory=threading.Event)
+    #: what became of it once committed: its row record, its kept failure, or None (one item)
+    out: list[Outcome] = field(default_factory=list[Outcome])
+
+    def told(self, out: Outcome) -> None:
+        """Set what became of it (the writer, holding its lock)."""
+        self.out.append(out)
+        self.done.set()
+
+    def outcome(self, wait_sec: float = 0.0) -> str:
+        """Return CAPTURE_STORED or CAPTURE_REFUSED once committed; CAPTURE_HELD until then.
+
+        It waits up to `wait_sec` for the commit. Stored: at least one of its rows written;
+        refused: none (kept as sent in stream_write_failures, nothing to store, or the writer
+        dead, counted unrecorded); held: the writer holds it and writes it once the database
+        takes writes.
+        """
+        if not self.done.wait(wait_sec):
+            return CAPTURE_HELD
+        out = self.out[0]
+        stored = isinstance(out, RowWritten) and bool(out.values[2])
+        return CAPTURE_STORED if stored else CAPTURE_REFUSED
+
+
 def _capture_written(conn: sqlite3.Connection, msg: Any) -> RowWritten:
     """Write a capture message's rows; its row record: (ticker, capture time, rows written)."""
     return RowWritten(
@@ -1649,7 +1682,7 @@ class CaptureWriter:
         self.unrecorded = 0
         #: (kind, ticker, ts_utc) -> told when that message's batch is committed, with its outcome
         #: (_stored_first: a capture or a price's crosses)
-        self._waiters: dict[tuple[str, str, float], tuple[threading.Event, list[Outcome]]] = {}
+        self._waiters: dict[tuple[str, str, float], StoredFirst] = {}
         self.error: str | None = None
         self.error_ts: float | None = None
         self.left_on_disk: list[SpillStatus] = []
@@ -1762,14 +1795,14 @@ class CaptureWriter:
         with self._lock:
             self._committed([(item, out)])
 
-    def store_capture(self, msg: dict[str, Any], wait_sec: float) -> str:
-        """Write a chain capture (capture_message) and wait up to `wait_sec` for its commit.
+    def store_capture(self, msg: dict[str, Any]) -> StoredFirst:
+        """Write a chain capture (capture_message); its StoredFirst is told once it is committed.
 
-        Another thread: the chain sweep, which tells the console of the chain only after this
-        returns (store first). Returns CAPTURE_STORED, CAPTURE_REFUSED or CAPTURE_HELD
-        (_stored_first).
+        Another thread: the chain sweep, which waits on it before it tells the console of the
+        chain (store first), and keeps one its wait did not see committed until it is told
+        (chain_sweep.ChainSweep.publish_held).
         """
-        return self._stored_first(CAPTURE, msg, wait_sec)[0]
+        return self._stored_first(CAPTURE, msg)
 
     def store_crosses(self, msg: dict[str, Any], wait_sec: float) -> tuple[str, tuple[int, ...]]:
         """Write a price's level crosses and wait up to `wait_sec` for their commit.
@@ -1777,38 +1810,33 @@ class CaptureWriter:
         `msg` is {"ticker", "ts_utc", "crosses": [a row of CROSS_COLUMNS, ...]}. Another thread:
         the console's pricing thread, which holds the crosses only once they are stored (store
         first). Returns (CAPTURE_STORED, each row's cross_id), or (CAPTURE_REFUSED or
-        CAPTURE_HELD, ()) (_stored_first).
+        CAPTURE_HELD, ()) (StoredFirst.outcome).
         """
-        outcome, out = self._stored_first(CROSS, msg, wait_sec)
-        return outcome, out.values[2] if outcome == CAPTURE_STORED else ()
+        stored = self._stored_first(CROSS, msg)
+        outcome = stored.outcome(wait_sec)
+        out = stored.out[0] if outcome == CAPTURE_STORED else None
+        return outcome, out.values[2] if isinstance(out, RowWritten) else ()
 
-    def _stored_first(self, kind: str, msg: dict[str, Any], wait_sec: float) -> tuple[str, Any]:
-        """Write `msg`, a message of a kind stored first, and wait up to `wait_sec` for its commit.
+    def _stored_first(self, kind: str, msg: dict[str, Any]) -> StoredFirst:
+        """Write `msg`, a message of a kind stored first; its StoredFirst is told at its commit.
 
-        Returns (CAPTURE_STORED, its RowWritten) once committed with at least one row,
-        (CAPTURE_REFUSED, its outcome) when none of its rows was written (refused and kept as
-        sent in stream_write_failures, nothing to store, or the writer dead, counted
-        unrecorded), or (CAPTURE_HELD, None) when not committed within `wait_sec` (the writer
-        holds it and writes it once the database takes writes). A writer whose thread is not
-        running writes it here, on a connection of its own.
+        A dead writer tells it at once, nothing written (counted unrecorded); a writer whose
+        thread is not running writes it here, on a connection of its own.
         """
         item = (f"{kind}.{msg['ticker']}", msg)
-        done, result = threading.Event(), list[Outcome]()
+        stored = StoredFirst()
         with self._lock:
             standalone = self.state in (WRITER_NOT_STARTED, WRITER_STOPPED)
             if self.state == WRITER_DEAD:
                 self.unrecorded += 1
-                return CAPTURE_REFUSED, None
-            self._waiters[(kind, msg["ticker"], msg["ts_utc"])] = (done, result)
+                stored.told(None)
+                return stored
+            self._waiters[(kind, msg["ticker"], msg["ts_utc"])] = stored
             if not standalone:
                 self._q.put(item)
         if standalone:
             self._write_alone(item)
-        if not done.wait(wait_sec):
-            return CAPTURE_HELD, None
-        out = result[0]
-        stored = isinstance(out, RowWritten) and bool(out.values[2])
-        return (CAPTURE_STORED if stored else CAPTURE_REFUSED), out
+        return stored
 
     def _keep(self, conn: sqlite3.Connection, kept: KeptFailure) -> KeptFailure:
         """One stream_write_failures row.
@@ -1844,8 +1872,7 @@ class CaptureWriter:
             ):
                 waiter = self._waiters.pop((kind, msg["ticker"], msg["ts_utc"]), None)
                 if waiter is not None:
-                    waiter[1].append(out)
-                    waiter[0].set()
+                    waiter.told(out)
         if self.state == WRITER_BLOCKED:
             self.state, self.error, self.error_ts = WRITER_RECORDING, None, None
 
