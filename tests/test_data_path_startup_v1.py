@@ -587,6 +587,7 @@ def _end(process: subprocess.Popen) -> None:
     process.wait(30)
 
 
+@pytest.mark.alone
 def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     """The real daemon as its batch runs it, in a folder of its own with launch.py beside it.
 
