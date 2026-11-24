@@ -16,7 +16,7 @@ rules for every change are `AGENTS.md`. Every requirement here names what enforc
 The five parts are `AGENTS.md` "The shape". The facts that hold for every value:
 
 - One program, one process, one port (§3.1). It holds the one Schwab streamer connection (Schwab
-  allows one per user) and the one Schwab client (`capture.one_schwab_client`), built once and kept
+  allows one per user) and the one Schwab client (`capture.OneSchwabClient`), built once and kept
   for the program's life. Enforced by: `tests/test_schwab_client_import_boundary.py`.
 - One owner of the Schwab token: the client's session (`schwab_client.OneRefreshSession`) refreshes
   it one request at a time and writes it under the token file's lock
@@ -373,7 +373,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   the same chain again as the capture, which the console keeps (`server._on_chain`), or gives its
   window back to the window's next chain once the Recorder refuses it. A sweep that ends ends the
   daemon, and the next start reads the stored capture. A non-200 answer fails that ticker's chain
-  with its reason and the next request goes at once. Enforced by: `tests/test_chain_history_v1.py`,
+  with its reason and the next request goes at once, but to an endpoint Schwab answered with a
+  server error (5xx): that one waits first, 1 s doubled for each in a row up to 30 s, with jitter,
+  counted from the answer, until its first other answer (its owner: the one session,
+  `schwab_client.OneRefreshSession._paced` and `_took`; the program's stop ends every wait,
+  `capture.OneSchwabClient.end_waits`). Enforced by: `tests/test_chain_history_v1.py`,
   `tests/test_data_path_rest_one_connection_v1.py`, `tests/test_data_path_capture_whole_v1.py`,
   `tests/test_data_path_records_stand_v1.py`, `tests/test_canonical_gex_input_validity_v1.py`,
   `tests/test_capture_store_v1.py`, `tests/test_data_path_rules_v1.py`

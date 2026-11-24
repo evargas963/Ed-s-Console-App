@@ -95,6 +95,10 @@ HISTORY = {
 TOKEN = "/v1/oauth/token"
 #: Schwab's edge 403 page, as captured
 EDGE_403 = json.loads((FX / "real_schwab_akamai_403_2026_10_03.json").read_text(encoding="utf-8"))
+#: Schwab's body to each /quotes request it answered 500 on 2026-11-23 from 08:06 to 08:46 CT, 22
+#: bytes as production's stream_capture log of that day records them (content-type
+#: application/json)
+SERVER_ERROR_BODY = b"\n            \n        "
 #: a refreshed token (stand-in)
 REFRESHED = {
     "access_token": "new-access",
@@ -268,7 +272,8 @@ class _Server(ThreadingHTTPServer):
 class LocalSchwab:
     """The local server, on HTTP/1.1.
 
-    `quotes_status`: the quotes endpoint's answer while not 200; `throttle_quotes`: how many of
+    `quotes_status`: the quotes endpoint's answer while not 200, with `quotes_error` as its body
+    (SERVER_ERROR_BODY: Schwab's to its 500s); `throttle_quotes`: how many of
     the next quotes requests are answered 429; `quotes_hold`: (a contract, n): the quotes request
     that begins with it is answered only once n quotes requests have arrived, and 503 after 5
     seconds without them; `quotes_body`: while set, the
@@ -306,6 +311,7 @@ class LocalSchwab:
         self.edge = False
         self.drop_next: list[str] = []
         self.quotes_status = 200
+        self.quotes_error: dict | bytes = {}
         self.throttle_quotes = 0
         self.quotes_hold: tuple[str, int] | None = None
         self._quotes_arrived = threading.Condition()  # with how many quotes requests have come
@@ -384,11 +390,11 @@ class LocalSchwab:
             ]
         }
 
-    def _quotes(self, query: dict) -> tuple[int, dict]:
+    def _quotes(self, query: dict) -> tuple[int, dict | bytes]:
         if query["symbols"] in CHECKS:
             return CHECKS[query["symbols"]]["status"], CHECKS[query["symbols"]]["body"]
         if self.quotes_status != 200:
-            return self.quotes_status, {}
+            return self.quotes_status, self.quotes_error
         with self._quotes_arrived:
             self._quotes_seen += 1
             self._quotes_arrived.notify_all()

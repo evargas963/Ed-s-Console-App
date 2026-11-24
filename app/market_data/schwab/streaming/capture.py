@@ -81,7 +81,13 @@ from calc.terrain_engine import nearest_position
 from config import build_config, load_dotenv_file
 from feed.chain_sweep import ChainSweep
 from feed.connection import SERVICES, SYMBOL_LIMIT, Connection, SymbolLimit, stated_limit
-from feed.schwab_client import Client, SchwabClientState, build_client_from_token, check_ticker
+from feed.schwab_client import (
+    Client,
+    SchwabClientState,
+    build_client_from_token,
+    check_ticker,
+    end_waits,
+)
 from instrument_identity import ticker_storage_key
 from option_contract import GREEK_FIELDS, OptionContract
 from state import news_store
@@ -1221,28 +1227,35 @@ async def run_chains(
         await asyncio.gather(worker, return_exceptions=True)
 
 
-def one_schwab_client(build: Callable[[], SchwabClientState]) -> Callable[[], Client]:
-    """Return the daemon's one Schwab client, for the stream and every chain request.
+class OneSchwabClient:
+    """The daemon's one Schwab client, for the stream and every chain request.
 
-    It comes as a function that returns it: built (`build()`, a SchwabClientState) when first
-    asked for, then kept for the daemon's life. Its session is the one owner of the token: it
-    refreshes it (one refresh at a time, schwab_client.OneRefreshSession) and writes it to the
-    token file. A build that fails raises, and the next ask builds again; a built client is
-    never replaced.
+    Called, it returns it: built (`build()`, a SchwabClientState) when first asked for, then
+    kept for the daemon's life. Its session is the one owner of the token: it refreshes it (one
+    refresh at a time, schwab_client.OneRefreshSession) and writes it to the token file. A build
+    that fails raises, and the next ask builds again; a built client is never replaced. The
+    daemon's stop ends its waits for Schwab's server errors (end_waits).
     """
-    built: list[Client] = []
-    building = threading.Lock()
 
-    def schwab_client() -> Client:
-        with building:
-            if not built:
-                state = build()
+    def __init__(self, build: Callable[[], SchwabClientState]) -> None:
+        self._build = build
+        self._built: list[Client] = []
+        self._building = threading.Lock()
+
+    def __call__(self) -> Client:
+        with self._building:
+            if not self._built:
+                state = self._build()
                 if not state.ok or state.client is None:
                     raise ConnectionError(f"no Schwab client ({state.message})")
-                built.append(state.client)
-            return built[0]
+                self._built.append(state.client)
+            return self._built[0]
 
-    return schwab_client
+    def end_waits(self) -> None:
+        """End the built client's waits for Schwab's server errors (schwab_client.end_waits)."""
+        with self._building:
+            for client in self._built:
+                end_waits(client)
 
 
 def open_sockets() -> socket.socket:
@@ -1270,7 +1283,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
     record_ports(lock_fd, Ports(console=pages.getsockname()[1]))
     load_dotenv_file()
     cfg = build_config()
-    schwab_client = one_schwab_client(
+    schwab_client = OneSchwabClient(
         lambda: build_client_from_token(
             api_key=cfg.api_key, app_secret=cfg.app_secret, token_path=cfg.token_path
         )
@@ -1321,6 +1334,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
         ended = None if stop.is_set() else done.pop()
     finally:
         stop.set()
+        schwab_client.end_waits()  # no request waits on Schwab's server errors past the stop
         await asyncio.gather(*tasks, return_exceptions=True)
     if ended is not None:
         raise RuntimeError(

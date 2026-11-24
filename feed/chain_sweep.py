@@ -352,7 +352,7 @@ type _Answers = tuple[
     dict[str, list[dict[str, Any]]],
     dict[str, str],
 ]
-#: the daemon's Schwab client, built on each ask (capture.one_schwab_client)
+#: the daemon's Schwab client, built on each ask (capture.OneSchwabClient)
 type _SchwabClient = Callable[[], Client]
 
 
@@ -474,7 +474,7 @@ class ChainSweep:
     def waits(self, schwab_client: _SchwabClient) -> str | None:
         """Why the daemon holds no Schwab sign-in to ask with, kept as `waiting` for its status.
 
-        Else None. Its client not built (capture.one_schwab_client: built again on each ask until
+        Else None. Its client not built (capture.OneSchwabClient: built again on each ask until
         a build succeeds), or Schwab having refused it (schwab_client.OneRefreshSession.refusal).
         A build that fails (no usable token file), or a token file locked past its wait, is
         logged once, until it passes.
