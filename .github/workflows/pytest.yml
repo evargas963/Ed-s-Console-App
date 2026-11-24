@@ -33,18 +33,23 @@ jobs:
     # install exits before any test. 24.04 is the image this job was measured on.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    # The steps every suite starts with are written once here and named by the other jobs (YAML
+    # anchors, &name, and aliases, *name: docs/SOURCES.md github-actions-yaml-anchors).
     steps:
-      - name: Check out repository
+      - &check-out
+        name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # tests diff against the base branch, which needs full history
+          # tests read origin/main and diff against it, which needs full history
           fetch-depth: 0
           filter: blob:none # every commit; a file's old versions only when one is read
 
-      - name: Set up the tools
+      - &set-up-tools
+        name: Set up the tools
         uses: ./.github/actions/set-up-tools
 
-      - name: Install Python and Node dependencies
+      - &install
+        name: Install Python and Node dependencies
         shell: bash
         run: |
           uv pip install --system -r requirements-dev.txt -r requirements.txt
@@ -120,21 +125,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          # tests diff against the base branch, which needs full history
-          fetch-depth: 0
-          filter: blob:none # every commit; a file's old versions only when one is read
-
-      - name: Set up the tools
-        uses: ./.github/actions/set-up-tools
-
-      - name: Install Python and Node dependencies
-        shell: bash
-        run: |
-          uv pip install --system -r requirements-dev.txt -r requirements.txt
-          npm ci
+      - *check-out
+      - *set-up-tools
+      - *install
 
       - name: Run the full pytest suite
         run: |
@@ -199,22 +192,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          # tests read origin/main and diff against it, which needs full history
-          fetch-depth: 0
-          filter: blob:none # every commit; a file's old versions only when one is read
+      - *check-out
+      - *set-up-tools
+      - *install
 
-      - name: Set up the tools
-        uses: ./.github/actions/set-up-tools
-
-      - name: Install Python and Node dependencies and Chromium
+      - name: Install Chromium
         shell: bash
-        run: |
-          uv pip install --system -r requirements-dev.txt -r requirements.txt
-          npm ci
-          npx playwright install chromium
+        run: npx playwright install chromium
 
       - name: Run the browser tests on Windows
         shell: bash
@@ -237,21 +221,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          # tests read origin/main and diff against it, which needs full history
-          fetch-depth: 0
-          filter: blob:none # every commit; a file's old versions only when one is read
-
-      - name: Set up the tools
-        uses: ./.github/actions/set-up-tools
-
-      - name: Install Python and Node dependencies
-        shell: bash
-        run: |
-          uv pip install --system -r requirements-dev.txt -r requirements.txt
-          npm ci
+      - *check-out
+      - *set-up-tools
+      - *install
 
       - name: Run the full pytest suite on Windows
         shell: bash
