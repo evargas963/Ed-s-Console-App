@@ -270,7 +270,8 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    Schwab's /markets answers, and before a day's first window the pre-market begins with the first
    stock trade Schwab streams that was made that day; no session table is typed by hand. Enforced
    by: `tests/test_time_et_authority.py`, `tests/test_markets_sessions_v1.py`; a clock time typed in
-   code — ruff `TID251` bans `datetime.time` in every file (`pyproject.toml`, in force)
+   code — `datetime.time`, a banned name in `locks.ruff.toml` at 0 in every file, every `noqa`
+   ignored (`tests/test_one_clock_v1.py`, locks)
 9. **Real data** (serves 11). Tests run on captured Schwab data (`tests/fixtures/`) through the real
    code; a condition Schwab has not yet sent is induced, labeled INDUCED, until a capture replaces
    it; no patch of the code under test, by a patching tool or by assigning over its names
@@ -287,14 +288,17 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     `time_et.elapsed`), and the page reads none. Its one timer is the price push's silence watch
     (`static/js/ed-core.js` `PRICE_SILENCE_MS`, 3 s against the program's 1 s beat): it reads no
     time of day and computes no shown value, and marks the push down when nothing arrives, which a
-    stalled program cannot say itself. Enforced by: the one clock: ruff `TID251` in
-    `pyproject.toml`, every file but `time_et.py` (in force); that only an entry point takes the
-    time — `time_et.now` and `time_et.elapsed` counted per product file in `locks.ruff.toml`
-    (locks): today's entry points hold them, and a module at 0 (every calculator) may never start;
-    that a Calculator imports no State, Push, Feed, database or network — import-linter's "The
-    Calculators read no State, Push, Feed, database or network" in `locks.imports.toml`, on each
-    Calculator's own import statements (`tests/test_data_path_only_feed_v1.py`, locks); a chain
-    through another root module, and a global — no machine check, ENF-09
+    stalled program cannot say itself. Enforced by: the one clock: the clock's readers (`time.time`,
+    `time.monotonic`, `datetime.datetime.now` and the rest) are banned names in `locks.ruff.toml`,
+    counted per product file with every `noqa` ignored, so `time_et.py` holds the one count above 0
+    and no other file may start (`tests/test_one_clock_v1.py`, locks); that only an entry point
+    takes the time — `time_et.now` and `time_et.elapsed` counted per product file in
+    `locks.ruff.toml` (locks): today's entry points hold them, and a module at 0 (every calculator)
+    may never start; that a Calculator imports no State, Push, Feed, database or network —
+    import-linter's "The Calculators read no State, Push, Feed, database or network" in
+    `locks.imports.toml`, on each Calculator's own import statements
+    (`tests/test_data_path_only_feed_v1.py`, locks); a chain through another root module, and a
+    global — no machine check, ENF-09
 12. **Typed records across boundaries** (serves 11). A value that crosses a module boundary is a
     dataclass whose states are named constants. Enforced by: pyright 1.1.414
     (`requirements-dev.txt`, the census's own pin), strict over the files `pyproject.toml`
