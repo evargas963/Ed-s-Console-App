@@ -1836,7 +1836,7 @@ test.describe("Trade Desk renders served values", () => {
     });
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const body = page.locator("#tdBody");
-    await expect(body).toContainText("(NYSE_BOOK, top 5)");
+    await expect(body).toContainText("(NYSE, top 5)");
     await page.evaluate(() => {
       // the venue each draw from here on shows
       window.__draws = [];
