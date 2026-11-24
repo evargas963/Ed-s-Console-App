@@ -32,12 +32,12 @@ import pytest
 
 import app.options.order_flow.state as ofls
 import live_market_plane as lmp
-import live_price_rows
 import server
 import time_et
 from app.options.order_flow import streaming as ofs
 from calibration.complete_chain_capture import last_capture_per_day
 from db import StoredCross
+from live_price_rows import price_row
 from push import bars as push_bars
 from push import book as push_book
 from push import chain as push_chain
@@ -255,7 +255,7 @@ def build_e2e_panels(real: RealSet, folder: Path) -> dict:
                     "terrain": terrain,
                     # the price row the page's socket carries at that instant: the one producer of
                     # the price on every screen, which the browser tests push
-                    "price_row": live_price_rows.price_row(tk, at),
+                    "price_row": price_row(tk, at),
                     "surface": push_surface.gamma_surface(
                         tk, at, {**AUTO, "cols": None, "expiry": None}, requested=False
                     ),

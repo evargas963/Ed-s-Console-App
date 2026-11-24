@@ -147,8 +147,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   before the program's start, a day with no session and a stop have none: a new process holds
   nothing a session left, and a stopped one gives its memory back. When it fails: an unreachable
   reference cycle that reached the oldest generation holds its memory until that collection or the
-  next start; the count in the log line is where it shows. Enforced by:
-  `tests/test_full_collection_after_close_v1.py`.
+  next start; the count in the log line is where it shows. Every Schwab REST answer is freed once
+  read: httpx holds each answer in a cycle through its stream (`docs/SOURCES.md`
+  httpx-bound-stream), which `schwab_client.log_request` replaces with the body it read. Enforced
+  by: `tests/test_full_collection_after_close_v1.py`; the answers,
+  `tests/test_data_path_rest_one_connection_v1.py`.
 - Two parts in one process: the daemon part (Schwab, the bus, the Recorder) and the console part
   (pricing and the page's panels), which reads the daemon's bus in memory
   (`order_flow.streaming._bus_loop`). A crash of either ends both, and the window restarts the

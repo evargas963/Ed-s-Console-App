@@ -177,8 +177,13 @@ def log_request(response: httpx.Response) -> None:
     date asked for), the status, and when it was sent and answered. An answer that is not a
     success also carries Schwab's body and headers as sent; the token endpoint's body (it holds
     tokens) and the request's headers (the bearer token) never are.
+
+    Once read, the answer holds its body in place of httpx's stream, which holds the answer back
+    (httpx 0.28.1 BoundSyncStream._response): a cycle only a full collection frees, and the session
+    runs none (capture.set_collector).
     """
     response.read()
+    response.stream = httpx.ByteStream(response.content)
     answered = time_et.now()
     req = response.request
     path = re.sub(r"(/accounts/)[^/]+", r"\1(account)", req.url.path)
