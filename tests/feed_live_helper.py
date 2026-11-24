@@ -29,7 +29,6 @@ from state import bar_store, news_store, price_level_store
 from state.level_store import PublishedLevels
 from stream_spine import (
     CAPTURE_STORED,
-    FIELD_DELTA,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
@@ -115,14 +114,7 @@ def apply_record(state: OrderFlowState, service: str, record: tuple[str, dict]) 
     That is app.options.order_flow.streaming._ingest_pushed, for an OrderFlowState of a test's
     own (its `current` the bus's records).
     """
-    topic, rec = record
-    state.push_level_one(
-        service,
-        rec["symbol"],
-        rec[FIELD_DELTA[topic.split(".", 1)[0]]],
-        ts_recv=rec["ts_recv"],
-        field_received={f: stamp[1] for f, stamp in rec["field_ts"].items()},
-    )
+    state.push_level_one(service, record)
 
 
 def replay_options(messages: list[dict]) -> OrderFlowState:

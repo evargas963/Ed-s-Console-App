@@ -13,7 +13,6 @@ import app.options.order_flow.state as ofls
 import live_market_plane as lmp
 import live_price_rows
 import server
-from app.options.order_flow import streaming as ofs
 from calc.confluence_composite import (
     NOT_HELD,
     SHADED,
@@ -47,6 +46,7 @@ from tests.feed_live_helper import (
     daemon_status,
     mark_feed_down,
     publish_capture,
+    pushed,
     repriced,
 )
 from tests.real_chains import (
@@ -1376,7 +1376,7 @@ def test_a_streamed_zero_before_the_next_open_does_not_replace_the_capture():
             )
         )
         for m in messages:
-            ofs._ingest_pushed(
+            pushed(
                 f"optquote.{m['symbol']}",
                 verbatim_msg(
                     symbol=m["symbol"], content=m["native"], src=m["src"], ts_recv=m["ts_recv"]

@@ -10,9 +10,10 @@ receive order. Same vendor-ms + different price or size are distinct
 observations. Schwab streams LEVELONE as Change (Streamer API §1.5): only the
 fields that changed, so a new trade changes at least one of the three, and a
 second trade identical in all three changes none and is not sent (its only
-trace, TOTAL_VOLUME, also moves alone for trades that set no last price). An
-adjacent identical (time, price, size) is a restatement: a subscription's whole
-record, or the bus's merged record re-sent on a quote change
+trace, TOTAL_VOLUME, also moves alone for trades that set no last price). Each
+message that brings one of the three reaches the tape as its own item (the bus,
+docs/DATA_FLOW.md D3); an adjacent identical (time, price, size) is a
+restatement: a subscription's whole record restating the held trade
 (docs/derived_register.md, "A print on the tape").
 
 The receive time kept with a print (KeptPrint.server_received_ts) distinguishes
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, NamedTuple, overload
+from typing import Any, NamedTuple
 
 from numeric_contract import schwab_count, schwab_number
 from option_contract import NO_TOP, StreamedTop
@@ -58,7 +59,7 @@ _PRINT_READERS = {
     VENDOR_TRADE_TIME: _schwab_int,
 }
 #: a print's three fields: a new value of any makes a new print
-PRINT_FIELDS = tuple(_PRINT_READERS)
+PRINT_FIELDS = frozenset(_PRINT_READERS)
 
 
 def last_print(item: dict[str, Any]) -> dict[str, Any]:
@@ -187,24 +188,17 @@ def trade_sign(price: float | None, bid: float | None, ask: float | None, tick: 
 
 
 #: a print of the walk: (its trade time in ms, its size, its signed size or None)
-type _Walked[T] = tuple[T, float, float | None]
+type _Walked = tuple[float, float, float | None]
 
 
-@overload
-def _signed_walk(
-    prints: list[KeptPrint], cutoff_ms: float
-) -> Iterator[_Walked[float]]: ...  # a window start: every print in it has a trade time
-@overload
-def _signed_walk(prints: list[KeptPrint], cutoff_ms: None) -> Iterator[_Walked[float | None]]: ...
-def _signed_walk(
-    prints: list[KeptPrint], cutoff_ms: float | None
-) -> Iterator[_Walked[float | None]]:
+def _signed_walk(prints: list[KeptPrint], cutoff_ms: float | None) -> Iterator[_Walked]:
     """Walk the prints by Lee and Ready (trade_sign); THE one signed-size walk.
 
-    Each print with a size, traded at or after `cutoff_ms` (every one when None; a print with
-    no trade time cannot be placed after it), as (trade time in ms or None, size, signed size or
-    None). A print before the window still sets the price and the last change the tick test of
-    the first one in it reads.
+    Each print with a size and a trade time, traded at or after `cutoff_ms` (every one when
+    None), as (trade time in ms, size, signed size or None). A print with no trade time is in no
+    walk: it cannot be placed in a window, and the cumulative delta sums the prints its window
+    names (operator 2026-11-24). A print outside the walk still sets the price and the last
+    change the tick test of the next one reads.
     """
     prev_price: float | None = None
     last: int | None = None
@@ -212,8 +206,7 @@ def _signed_walk(
         t, size = p.time_millis, p.size
         tick = tick_rule_sign(prev_price, p.price, last)
         sign = trade_sign(p.price, p.bid, p.ask, tick)
-        in_window = cutoff_ms is None or (t is not None and t >= cutoff_ms)
-        if in_window and size is not None:
+        if t is not None and size is not None and (cutoff_ms is None or t >= cutoff_ms):
             yield t, size, None if sign is None else sign * float(size)
         if tick is not None:
             last = tick
@@ -248,10 +241,10 @@ def iter_signed_cum_points(prints: list[KeptPrint], cutoff_ms: float) -> list[tu
 
 
 def compute_cum_delta_proxy(prints: list[KeptPrint]) -> float | None:
-    """Sum the signed size over every print with a size (a size of 0 adds 0).
+    """Sum the signed size over every print with a size and a trade time (a size of 0 adds 0).
 
     None when no print was signed: nothing classified is no value, never 0. The prints it sums
-    are cum_delta_window's.
+    are cum_delta_window's (_signed_walk).
     """
     walk = list(_signed_walk(prints, None))
     if all(signed is None for _x, _size, signed in walk):

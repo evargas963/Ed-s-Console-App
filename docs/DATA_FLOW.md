@@ -58,16 +58,27 @@ The rules for the data itself, at every hop from Schwab to the screen.
   ticker's chain, a series' candles, a date's sessions). A message that is its own item (a `/quotes`
   answer for its own contracts, one minute's bar, a news story, the answer to one watchlist request)
   is no newer value of the one before it: each live reader takes every one, once, in the order
-  published, and none replaces another before it is taken. A quote's record keeps more: the quote
-  its newest quote replaced (`quote_before`, whole as the record held it), and the two as they stood
-  when its last trade came (`quotes_at_trade`), which a message bringing no new trade leaves: Schwab
-  sends a trade with the quote that followed it, so the tape reads a trade against the quote in
-  force when it was made (§3.4 Tape), however many messages came before a live reader took the
-  record. Of a topic with versions only the Recorder takes every message, and while the database
-  refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`; an item never
-  replaced, `tests/test_stream_spine_v1.py`, `tests/test_rest_quotes_reach_the_levels_v1.py`,
-  `tests/test_data_path_one_watchlist_v1.py` and `tests/test_data_path_header_news_v1.py`; the
-  quotes kept, `tests/test_quote_in_force_v1.py` and `tests/test_stream_greeks_capture_v1.py`.
+  published, and none replaces another before it is taken. Every trade Schwab sends reaches the
+  tape, so a trade is its own item too: a LEVELONE message that brings a field of the last trade
+  (`calc.l1_trade_observation.PRINT_FIELDS`) hands each live reader the version of the quote's
+  record it made (`brought_trade`), in its place among the record's versions, so no trade replaces
+  another before a reader takes it; the rest of the record (its quote, Greeks and volume) is still
+  the newest alone. A reader that subscribes later starts with each record's newest trade, then the
+  record: the bus keeps that trade's version for it, one per symbol, until the next trade
+  (`stream_spine.MessageBus._trades`). What a live reader holds stays bounded by the items it has
+  not yet taken, about 1.8 KB each: in 2.7 seconds of Schwab's stream at 2026-10-05 14:00 CT
+  (`tests/fixtures/real_stream_mix_2026_10_05_1400ct.json`), 112 of the 7,572 LEVELONE messages
+  brought a trade, 42 a second and at most 32 in any 100 ms. A quote's record keeps one thing more,
+  the quote its newest quote replaced (`quote_before`, whole as the record held it): Schwab sends a
+  trade with the quote that followed it, so the tape reads a trade against the quote in force when
+  it was made of the quotes its own version holds (`stream_spine.quotes_at_trade`, §3.4 Tape),
+  however late a live reader takes it. Of a topic with versions only the Recorder takes every
+  message, and while the database refuses writes it holds them (D4). Enforced by:
+  `tests/test_data_path_rules_v1.py`; an item never replaced, `tests/test_stream_spine_v1.py`,
+  `tests/test_rest_quotes_reach_the_levels_v1.py`, `tests/test_data_path_one_watchlist_v1.py` and
+  `tests/test_data_path_header_news_v1.py`; every trade and its quotes,
+  `tests/test_quote_in_force_v1.py`, `tests/test_stream_greeks_capture_v1.py` and
+  `tests/test_live_push_channel_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record.** One writer, `stream_spine.CaptureWriter`,
   records every bus message but option quotes and option books, which it records for the kept
   contracts only (`capture.Daemon.saves`): every contract of each ticker's soonest expiration whose
@@ -168,9 +179,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   chain sweep (`feed/chain_sweep.py`); every request logged once (`schwab_client.log_request`).
 - **Daemon part → console part:** the bus in memory, a LATEST subscription
   (`order_flow.streaming._bus_loop`): each topic's current record as it changes, a chain in parts,
-  and each message that is its own item (D3). A record that fails to apply is counted
-  (`apply_failures` on the daemon's status beat, beside `tick_failures`) and logged with its
-  traceback, and the next is applied. Enforced by: `tests/test_live_push_channel_v1.py`.
+  and each message that is its own item, every trade among them (D3), each applied as taken. A
+  record that fails to apply is counted (`apply_failures` on the daemon's status beat, beside
+  `tick_failures`) and logged with its traceback, and the next is applied. Enforced by:
+  `tests/test_live_push_channel_v1.py`.
 - **Console part → daemon part:** a call (`capture.Daemon.console_frame`): the Flow panel's contract
   and each watchlist add or removal, answered by the daemon's `watchlist` record.
 - **Program → page:** `/ws` (`live_ui.page_socket`, `live_ui.LiveUiServer`): each symbol's price row
@@ -478,33 +490,39 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **The option look-back record.** LEVELONE_OPTIONS → the bus → the console's intake →
   `OrderFlowState._take_record`: for each contract, at the first message of each minute, its volume,
   volatility and running totals of bought, sold, unknown and hedging flow in force before it (each
-  rise of TOTAL_VOLUME one step, read by its last trade against the quote in force,
-  `calc.option_window.step_totals`). Its lifecycle owner is the order-flow state: a record begins at
-  a contract's first message of the ET day, takes every message after it, and is begun again on the
-  next day and when the program starts, so a window reaching before that is "-", never a part. A
-  reconnect of Schwab's stream keeps it: Schwab's counts run on, so the window's volume stays exact,
-  and the gap's trades arrive as one rise of volume, read by its last trade as any rise Schwab
-  merges is (on the day it was measured, 2026-11-23, 63% of the first hour's volume came in rises
-  larger than their last trade). When the stream stops, the newest values stand and the header says
-  OFFLINE. Read by the matrix (`push.confluence._looks`) over the look-back the page picks. Enforced
-  by: `tests/test_matrix_look_back_v1.py`.
-- **Tape.** A print is a record whose last trade (time, price, size) differs from the print kept
-  before it (derived register, "A print on the tape"). Each print is kept with the quote in force
-  when it traded (`calc.l1_trade_observation.quote_in_force`, taken once, in
+  rise of TOTAL_VOLUME one step, read by the trade its message brought, the trade's item (D3),
+  against the quote in force then, `calc.option_window.step_totals`; a rise with no trade of its own
+  is unknown). Its lifecycle owner is the order-flow state: a record begins at a contract's first
+  message of the ET day, takes every message after it, and is begun again on the next day and when
+  the program starts, so a window reaching before that is "-", never a part. A reconnect of Schwab's
+  stream keeps it: Schwab's counts run on, so the window's volume stays exact, and the gap's trades
+  arrive as one rise of volume, read by its last trade as any rise Schwab merges is (on the day it
+  was measured, 2026-11-23, 63% of the first hour's volume came in rises larger than their last
+  trade). When the stream stops, the newest values stand and the header says OFFLINE. Read by the
+  matrix (`push.confluence._looks`) over the look-back the page picks. Enforced by:
+  `tests/test_matrix_look_back_v1.py`.
+- **Tape.** Every trade Schwab sends on LEVELONE, equities and options, reaches the tape: each
+  message that brings one is its own item to the console (D3), taken in order however late, and the
+  tape's prints come from these items alone, never from a record a later message made. A print is
+  such an item whose last trade (time, price, size) differs from the print kept before it (derived
+  register, "A print on the tape"): a subscription's whole record restating the held trade is none.
+  Each print is kept with the quote in force when it traded
+  (`calc.l1_trade_observation.quote_in_force`, taken once, in
   `state.OrderFlowState.push_level_one`): the newest bid and ask Schwab timed (QUOTE_TIME_MILLIS) at
   or before the trade (TRADE_TIME_MILLIS) and on its ET date. Schwab's update carries a trade with
   the quote that followed it ("quotes may be recorded ahead of trades that triggered them", Lee and
   Ready 1991), so that quote is the update's own only when Schwab timed it no later than the trade;
-  otherwise it is the quote the update replaced. The bus keeps both with the record's last trade
-  (D3), so a print the console takes after later quotes is read against them. A quote of an earlier
-  ET date is not in force: the market closed between them (no window Schwab's /markets sends crosses
-  midnight ET). A print with no such quote has no bid and ask: where it landed is unknown and it is
-  unsigned, never read against a later quote. Each print is signed by Lee and Ready against that bid
-  and ask (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned print is no value,
-  with its share served beside each sum. The options tape (`push.tape.tape`) lists the newest trade
-  first by Schwab's trade time, each with that bid and ask and where its price landed against them.
-  Enforced by: `tests/test_tape_lee_ready_v1.py`, `tests/test_options_flow_tape_v1.py`,
-  `tests/test_quote_in_force_v1.py`, `tests/test_l1_trade_observation_v1.py`.
+  otherwise it is the quote the update replaced. The trade's item holds both as they stood when it
+  came (D3), so a print the console takes after later quotes is read against them. A quote of an
+  earlier ET date is not in force: the market closed between them (no window Schwab's /markets sends
+  crosses midnight ET). A print with no such quote has no bid and ask: where it landed is unknown
+  and it is unsigned, never read against a later quote. Each print is signed by Lee and Ready
+  against that bid and ask (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned
+  print is no value, with its share served beside each sum. The options tape (`push.tape.tape`)
+  lists the newest trade first by Schwab's trade time, each with that bid and ask and where its
+  price landed against them. Enforced by: `tests/test_tape_lee_ready_v1.py`,
+  `tests/test_options_flow_tape_v1.py`, `tests/test_quote_in_force_v1.py`,
+  `tests/test_l1_trade_observation_v1.py`.
 - **Level crosses.** On each streamed equity quote (`server._on_stream_tick`) the four levels of
   `server.CROSS_LEVELS` (Gamma Flip, Gamma Call, Gamma Put and Gamma Total) are checked for a cross
   between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses are

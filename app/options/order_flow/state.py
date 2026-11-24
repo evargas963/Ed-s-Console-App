@@ -38,7 +38,6 @@ from stream_spine import (
     held_key,
     quotes_at_trade,
     read_book,
-    read_streamed,
     streamed_record,
 )
 from time_et import ET
@@ -179,49 +178,32 @@ class OrderFlowState:
             books[service] = book
         return book
 
-    def push_level_one(
-        self,
-        service: str,
-        symbol: str,
-        content_item: dict[str, Any],
-        ts_recv: float | None = None,
-        field_received: dict[str, Any] | None = None,
-    ) -> None:
-        """Keep the print one Schwab L1 record of `service` carries, with the quote in force then.
+    def push_level_one(self, service: str, record: tuple[str, dict[str, Any]]) -> None:
+        """Take one version of a symbol's Schwab L1 record of `service`, as a live reader takes it.
 
-        That quote is the newest Schwab timed at or before the trade (quote_in_force), of the
-        quotes the record held when the trade came (stream_spine.quotes_at_trade): Schwab sends a
-        trade with the quote that followed it. A current record merged from several
-        messages (the daemon's bus) carries each field's own receive time in `field_received`;
-        the print is stamped with the newest of its fields'. An option contract's record also
-        goes to its look-back record (_take_record).
+        `record` is the version the bus handed over (stream_spine.MessageBus), read whole: never
+        the bus's newer one. An option contract's version goes to its look-back record
+        (_take_record). A version whose message brought a field of the last trade
+        (`brought_trade`: the trade's own item) is a print, unless it restates the print kept just
+        before it, kept with the quote in force when it traded: the newest Schwab timed at or
+        before the trade (quote_in_force) of the quotes the version holds
+        (stream_spine.quotes_at_trade), since Schwab sends a trade with the quote that followed
+        it; and with the version's Greeks, stamped with the newest receive time of its fields.
         """
-        if not content_item:
-            return
-        sym = ticker_storage_key(symbol)
-        if not sym:
-            return
-        if ts_recv is None:
-            # the daemon's receive time is required: stamping "now" would make a replayed or
-            # delayed message read as live
-            raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
-        trade = extract_vendor_print(content_item)
-        # the symbol's record on the bus, taken once: its Greeks, and the quotes its last trade
-        # came with, read from the same version of it
-        record = self.current.get(held_key(service, sym))
+        topic, rec = record
+        sym = ticker_storage_key(rec["symbol"])
+        content = rec[FIELD_DELTA[topic.split(".", 1)[0]]]
+        # the trade this version brought; a version that brought none carries no trade of its own
+        trade = extract_vendor_print(content) if rec["brought_trade"] else None
         if service == "LEVELONE_OPTIONS":
-            self._take_record(sym, ts_recv, content_item, field_received, trade, record)
+            self._take_record(sym, record, trade)
         if trade is None:
             return
-
-        def received(field: str) -> float:
-            return ts_recv if field_received is None else field_received[field]
-
         sent = streamed_record(record)
         with self._lock:
             tape = self._get_tape(sym)
             # an adjacent repeat of the same trade is a restatement (l1_trade_observation): a
-            # whole record, or the merged record on a quote change; never a second print. The
+            # subscription's whole record restating the held trade; never a second print. The
             # trade before it is the tape's last print
             if is_adjacent_restatement(tape[-1] if tape else None, trade):
                 return
@@ -231,48 +213,31 @@ class OrderFlowState:
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
                     # unchanged price carries a new time and size but no LAST_PRICE (Change)
-                    float(max(received(f) for f in PRINT_FIELDS if f in content_item)),
+                    float(max(rec["field_ts"][f][1] for f in PRINT_FIELDS if f in content)),
                     # the bid and ask in force when the trade was made, by Schwab's own quote and
-                    # trade times (never a quote that followed it), and the record's Greeks
+                    # trade times (never a quote that followed it), and the version's Greeks
                     quote_in_force(trade.time_millis, *quotes_at_trade(record)),
                     sent.greeks,
                 )
             )
 
     def _take_record(
-        self,
-        sym: str,
-        ts: float,
-        content: dict[str, Any],
-        field_received: dict[str, Any] | None,
-        trade: TradePrint | None,
-        record: tuple[str, Any] | None,
+        self, sym: str, record: tuple[str, dict[str, Any]], trade: TradePrint | None
     ) -> None:
-        """Take one LEVELONE_OPTIONS record into the contract's look-back record at `ts`.
+        """Take one version of a LEVELONE_OPTIONS record into the contract's look-back record.
 
-        Its fields as this version of the record carries them, read by the one reader: the bus
-        record's own reading when `content` is that record's (stream_spine.streamed_record, read
-        once per version), else stream_spine.read_streamed; a rise of its TOTAL_VOLUME is one
-        step, read by its last trade against the quote in force then
-        (calc.option_window.step_totals). A record of an earlier ET day is begun anew: Schwab's
-        volume counts from each day's start.
+        At its receive time, with its fields as the version carries them (read once per version,
+        stream_spine.streamed_record): a rise of its TOTAL_VOLUME is one step, read by the trade
+        the version brought (`trade`, None for a version that brought none) against the quote in
+        force then (calc.option_window.step_totals). A record of an earlier ET day is begun anew:
+        Schwab's volume counts from each day's start.
         """
+        rec = record[1]
+        ts, content, stamps = rec["ts_recv"], rec[FIELD_DELTA["optquote"]], rec["field_ts"]
         minute = int(ts // 60)
-        brought = any(
-            f in content and (field_received is None or field_received[f] == ts)
-            for f in _LOOK_FIELDS
-        )
         # a message bringing neither (a quote alone) only marks the minute: its values stand
-        own = (
-            None
-            if not brought
-            else streamed_record(record)
-            if record is not None and record[1][FIELD_DELTA["optquote"]] is content
-            else read_streamed(
-                content,
-                {f: (None, ts if field_received is None else field_received[f]) for f in content},
-            )
-        )
+        brought = any(f in content and stamps[f][1] == ts for f in _LOOK_FIELDS)
+        own = streamed_record(record) if brought else None
         volume = None if own is None else own.greeks.total_volume.value
         iv = None if own is None else own.greeks.volatility.value
         adds = [0.0] * len(TOTALS)
@@ -407,17 +372,9 @@ def push_book(symbol: str, content_item: dict[str, Any], service: str) -> Book |
     return _LIVE_STATE.push_book(symbol, content_item, service)
 
 
-def push_level_one(
-    service: str,
-    symbol: str,
-    content_item: dict[str, Any],
-    ts_recv: float | None = None,
-    field_received: dict[str, Any] | None = None,
-) -> None:
-    """Apply an L1 observation to the live singleton."""
-    _LIVE_STATE.push_level_one(
-        service, symbol, content_item, ts_recv=ts_recv, field_received=field_received
-    )
+def push_level_one(service: str, record: tuple[str, dict[str, Any]]) -> None:
+    """Apply one version of an L1 record, as the bus handed it over, to the live singleton."""
+    _LIVE_STATE.push_level_one(service, record)
 
 
 def prints(symbol: str) -> list[KeptPrint]:

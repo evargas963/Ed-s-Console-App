@@ -766,7 +766,7 @@ def test_an_option_quote_reaches_the_callback_only_when_it_moves_the_math(with_g
     hits: list = []
     ofs.FEED.on_tick = hits.append  # the console's callback, as start_order_flow_stream sets
     try:
-        ofs._ingest_pushed(
+        pushed(
             f"optquote.{m['item']['key']}",
             verbatim_msg(
                 symbol=m["item"]["key"],

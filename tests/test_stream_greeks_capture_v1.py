@@ -43,7 +43,7 @@ _TOP = {
 _GREEKS = ("GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
 #: the quote's fields: a message that changes one replaces the quote the record held
 _QUOTE = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE", "QUOTE_TIME_MILLIS")
-#: the last trade's fields: a message that changes one, or brings it first, brings a new trade
+#: the last trade's fields: a message that brings one brings a trade
 _TRADE = ("LAST_PRICE", "LAST_SIZE", "TRADE_TIME_MILLIS")
 
 
@@ -99,16 +99,14 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
     second read with no message between is the same reading, and the version before stands as it
     was read. The record also keeps the quote its newest quote replaced, worked out here: its quote
     fields as held before the last message that changed one of them (none before a symbol's first
-    message); and, as they stood when its last trade came, its newest quote and that one
-    (stream_spine.quotes_at_trade): made anew by a symbol's first message and by each that changes
-    a trade field or brings one first, and left by every other.
+    message). A message that brings a field of the last trade makes the trade's own version
+    (`brought_trade`), whose quotes for it are its newest quote and that one
+    (stream_spine.quotes_at_trade); every other message makes a version that brought none.
     """
     bus = MessageBus()
     over_held = greeks_over_held = quotes_replaced = trades = 0
     #: each symbol's quote before its newest, worked out here: none until a message changes one
     replaced: defaultdict[str, dict] = defaultdict(dict)
-    #: each symbol's quotes when its last trade came, worked out here
-    at_trade: dict[str, tuple[dict, dict]] = {}
     for m in _MIX:
         if m["service"] not in (OPT, EQ):
             continue
@@ -118,21 +116,24 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
         held_before = streamed_record(before)
         topic, rec = on_the_bus(bus, m["service"], m["item"], m["ts_recv"], m["schwab_ts"])
         assert rec["streamed"] is None  # nothing read on the message
-        new_trade = before is None
+        brought = any(f in m["item"] for f in _TRADE)
         if before is not None:  # the version before stands: its fields are what the record held
             held_fields, sent = _fields(*before), m["item"]
             if any(f in sent and f in held_fields and sent[f] != held_fields[f] for f in _QUOTE):
                 replaced[key] = {f: held_fields[f] for f in _QUOTE if f in held_fields}
                 quotes_replaced += 1
-            new_trade = any(f in sent and sent[f] != held_fields.get(f) for f in _TRADE)
-            trades += new_trade
-        if new_trade:
-            fields = _fields(topic, rec)
-            at_trade[key] = ({f: fields[f] for f in _QUOTE if f in fields}, replaced[key])
+            trades += brought
         first = streamed_record((topic, rec))
         assert first == _read_as_sent(topic, rec), m
         assert rec["quote_before"] == replaced[key], m
-        assert quotes_at_trade((topic, rec)) == tuple(_top_as_sent(q) for q in at_trade[key]), m
+        assert rec["brought_trade"] == brought, m
+        if brought:  # the trade's own version: the quotes it holds for the trade
+            fields = _fields(topic, rec)
+            quote = {f: fields[f] for f in _QUOTE if f in fields}
+            assert quotes_at_trade((topic, rec)) == (
+                _top_as_sent(quote),
+                _top_as_sent(replaced[key]),
+            ), m
         assert streamed_record((topic, rec)) is first  # read once per version
         if before is not None:
             assert before[1] is not rec and before[1]["streamed"] is held_before
@@ -141,7 +142,7 @@ def test_each_record_holds_its_fields_read_once_as_every_real_message_changes_it
     assert over_held == 4777  # each merged into a record it changes only in part
     assert greeks_over_held == 110  # of them, those that change a held record's Greeks or volume
     assert quotes_replaced == 4741  # and those that change a held record's quote
-    assert trades == 88  # and those that change a held record's trade, or bring its first
+    assert trades == 88  # and those that bring a field of a held record's last trade
 
 
 def _sent(bus: MessageBus, fields: dict, ts_recv: float, sym: str = SYM) -> None:
