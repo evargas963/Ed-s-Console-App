@@ -119,15 +119,21 @@
         "views": {
           "1": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           },
           "3": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           },
           "5": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           }
         }
       },
@@ -154,15 +160,21 @@
         "views": {
           "1": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           },
           "3": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           },
           "5": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           }
         }
       },
@@ -189,15 +201,21 @@
         "views": {
           "1": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           },
           "3": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           },
           "5": {
             "pct": null,
-            "tilt": null
+            "side_word": "NO BOOK",
+            "tilt": null,
+            "tilt_text": "no book"
           }
         }
       }

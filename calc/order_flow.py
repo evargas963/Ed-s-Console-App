@@ -508,6 +508,27 @@ OF_LEAN_KEPT_SEC: int = int(OF_TAPE_WINDOW_5M_SEC)
 #: a tilt as the card's headline says it (`side_word`); the same words in lower case are how
 #: running text says it (`tilt_text`), each served so the page changes no case
 TILT_WORDS = {"BID_HEAVY": "BUY-HEAVY", "BALANCED": "NEUTRAL", "OFFER_HEAVY": "SELL-HEAVY"}
+#: a book's state as the card's headline says it when that state is why it has no tilt; served in
+#: the tilt's place, so the Desk's strip says what the card says (the operator's decision of
+#: 2026-11-24)
+STATE_WORDS = {"one_sided": "ONE-SIDED", "no_book": "NO BOOK", "empty": "NO LEVELS"}
+
+
+def _lean_words(tilt: str | None, status: str) -> tuple[str | None, str | None]:
+    """Return a view's lean as the card's headline says it and as running text says it.
+
+    The tilt's words when it has one; else the book's state when that is why it has none
+    (STATE_WORDS); else none: no value, drawn "-".
+    """
+    if tilt:
+        word = TILT_WORDS[tilt]
+    elif status in STATE_WORDS:
+        word = STATE_WORDS[status]
+    else:
+        return None, None
+    return word, word.lower()
+
+
 #: a tilt's side, for flips: BALANCED is none
 _SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
 #: the detail panel's words
@@ -844,10 +865,12 @@ class CardView(TypedDict):
 
 
 class NoView(TypedDict):
-    """A venue's view with no end second: no value."""
+    """A venue's view with no end second: no value, and its book's state in words (_lean_words)."""
 
     pct: None
     tilt: None
+    side_word: str | None
+    tilt_text: str | None
 
 
 class VenueCard(TypedDict):
@@ -884,6 +907,7 @@ def _card_view(r: Readout, points: Points, v: str, view: str, last: int) -> Card
     snap = r.views[view]
     bid, ask = snap.bid_total, snap.ask_total
     held = None if since is None else last - since
+    side_word, tilt_text = _lean_words(tilt, r.status)
     return {
         "bid_total": bid,
         "ask_total": ask,
@@ -892,9 +916,9 @@ def _card_view(r: Readout, points: Points, v: str, view: str, last: int) -> Card
         "pct": sm[-1],
         "pct_text": percent_text(sm[-1]),
         "tilt": tilt,
-        "side_word": TILT_WORDS[tilt] if tilt else None,
+        "side_word": side_word,
         # the same words as running text says them (the Desk's strip, Right Now's unit)
-        "tilt_text": TILT_WORDS[tilt].lower() if tilt else None,
+        "tilt_text": tilt_text,
         "held_sec": held,
         "held_open": since is not None and since == known_from,
         "held_text": None if held is None else f"FOR {'≥' if since == known_from else ''}{held}s",
@@ -926,7 +950,8 @@ def readout_card(
 
     The headline (the percentage standing at
     the venue's end second: now while its book is live, else its last value's), its
-    tilt, its side word and the tilt as running text says it, the seconds the tilt has held
+    tilt, its side word and the tilt as running text says it (with no tilt, the book's state
+    that is why: _lean_words), the seconds the tilt has held
     (held_open: at
     least that long, the tilt standing since the first value known), the flat totals, the
     sentence (withheld while the book is crossed), the spans, the touch and its flag, the flips
@@ -938,9 +963,15 @@ def readout_card(
     for v, r in readout.items():
         end = ends[v]
         views: dict[str, CardView | NoView] = {}
+        side_word, tilt_text = _lean_words(None, r.status)
         for view in READOUT_VIEWS:
             if end is None:
-                views[view] = {"pct": None, "tilt": None}
+                views[view] = {
+                    "pct": None,
+                    "tilt": None,
+                    "side_word": side_word,
+                    "tilt_text": tilt_text,
+                }
                 continue
             views[view] = _card_view(r, points, v, view, int(end))
         touch = r.views["1"].pct

@@ -16,6 +16,7 @@ from app.options.order_flow.streaming import price_state
 from calc.order_flow import (
     BOOK_VENUES,
     COMPOSITE,
+    STATE_WORDS,
     BookAges,
     BookMicrostructure,
     BookProvenance,
@@ -222,12 +223,16 @@ def _no_number(status: str) -> tuple[str, str, str] | None:
     None when it has one.
     """
     if status == "no_book":
-        return "no book for this symbol right now", "No book for this symbol right now", "NO BOOK"
+        return (
+            "no book for this symbol right now",
+            "No book for this symbol right now",
+            STATE_WORDS[status],
+        )
     if status == "empty":
         return (
             "the book Schwab sent has no levels",
             "The book Schwab sent has no levels",
-            "NO LEVELS",
+            STATE_WORDS[status],
         )
     return None
 

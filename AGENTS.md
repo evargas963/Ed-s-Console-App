@@ -243,13 +243,14 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    (`python -m tools.check_one_reader --list`) — ENF-23; no page panel carries the live price, its
    time or its verdict — `tests/test_page_one_faucet_v1.py` (in force)
 4. **The page draws; it computes nothing** (serves 8). Every number, total, choice, comparison and
-   date it shows is served. It gets data only from the one push. Enforced by: ESLint's
-   `no-restricted-globals`: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport
-   module, `static/js/ed-core.js`, and `Date` and `Intl` in every page script, every time it shows
-   served (`time_et.ct_label`, `ct_ticks`) (`tools/census/eslint.config.mjs`, a count in the census;
-   a failing job with LINTERS); and `Math`, `.sort(` and `.reduce(` outside the drawing module
-   (`static/js/ed-draw.js`) and the chart (`static/js/ed-tv-chart.js`) (the same config, a count in
-   the census)
+   date it shows is served, and so is every word that says a state: two screens showing one state
+   draw the one served word (the Desk's strip says what the Liquidity card says, operator
+   2026-11-24). It gets data only from the one push. Enforced by: ESLint's `no-restricted-globals`:
+   `fetch`, `XMLHttpRequest` and `EventSource` only in the transport module, `static/js/ed-core.js`,
+   and `Date` and `Intl` in every page script, every time it shows served (`time_et.ct_label`,
+   `ct_ticks`) (`tools/census/eslint.config.mjs`, a count in the census; a failing job with
+   LINTERS); and `Math`, `.sort(` and `.reduce(` outside the drawing module (`static/js/ed-draw.js`)
+   and the chart (`static/js/ed-tv-chart.js`) (the same config, a count in the census)
 5. **The numbers** (serves 4, 5, 7). Every value comes from its one producer and matches what Schwab
    sent. Calculations keep every digit and use every contract; rounding happens only on screen.
    Every value is shown with its time. While it updates it is live; when it stops, for any reason,

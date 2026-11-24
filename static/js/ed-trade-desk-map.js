@@ -867,7 +867,9 @@
       (r.live ? "" : '<span class="liq-pill">BOOK ' + esc(r.feed_label) + "</span>") +
       "</div>" +
       (one
-        ? '<div class="liq-hl"><span class="liq-word">ONE-SIDED</span><span class="liq-pct">-</span></div>'
+        ? '<div class="liq-hl"><span class="liq-word">' +
+          esc(v.side_word) + // served: the book's state, ONE-SIDED
+          '</span><span class="liq-pct">-</span></div>'
         : '<div class="liq-hl" data-liqdetail title="Open the detail"><span class="liq-word ' +
           tone +
           '">' +
@@ -1042,12 +1044,14 @@
     var m = S.micro,
       t = S.terrain,
       l = S.liq;
-    // the Liquidity card's tilt for its venue and depth, in the words served for running text
-    // (tilt_text): the page changes no case
+    // the Liquidity card's lean for its venue and depth, in the words served for running text
+    // (tilt_text: its tilt, or the book's state that is why it has none, as the card says it):
+    // the page changes no case and adds no word
     var lv = m && m.readout && m.readout.venues[liqKey()],
-      lt = lv && lv.views[S.liqView] && lv.views[S.liqView].tilt;
+      lw = lv && lv.views[S.liqView],
+      lt = lw && lw.tilt;
     var cells = [
-      ["LIQUIDITY", lt ? lv.views[S.liqView].tilt_text : "No book", lt ? TILT_ARROW[lt] : ""],
+      ["LIQUIDITY", orDash(lw && lw.tilt_text), lt ? TILT_ARROW[lt] : ""],
       [
         "VALUE",
         l && l.summary ? orDash(l.summary.value_state_text) : "-", // served, in words
