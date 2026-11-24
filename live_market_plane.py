@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from calc.forming_bar import Built, BuiltMinute, next_built
 from calc.l1_trade_observation import (
@@ -24,6 +24,9 @@ from calc.l1_trade_observation import (
 from instrument_identity import ticker_storage_key
 from numeric_contract import schwab_count, schwab_number
 from time_et import CLOSED, ET, UNKNOWN, options_open, record_trade, session_label
+
+if TYPE_CHECKING:
+    from stream_spine import ServiceAge, WriterStatus
 
 #: the services the capture daemon streams the option rule's contracts on
 #: (capture.Daemon.pick_options): live until the last option market closes (time_et.options_open)
@@ -289,8 +292,8 @@ class DaemonStatus(TypedDict):
     chains_began: float | None
     chains_waiting: str | None
     held: dict[str, list[str]]
-    health: dict[str, dict[str, float]]
-    writer: dict[str, Any] | None
+    health: dict[str, ServiceAge]
+    writer: WriterStatus | None
     sign_in: SignInLine | None
     apply_failures: int
     tick_failures: int
