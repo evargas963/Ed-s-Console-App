@@ -258,11 +258,13 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    marked too; during a feed outage the header says OFFLINE. While the program's push to the page
    has stopped, the time stands with no age (the page computes none, and the last age served is not
    the age now) and the header says OFFLINE. A value never received, or sent invalid, shows "-". A
-   list by strike keeps every strike: one whose value is not known shows "-", never left out. Never
-   a fallback, default, estimate, proxy, interpolation or synthetic value. Enforced by:
+   list by strike keeps every strike: one whose value is not known shows "-", never left out. A
+   sentence that states a fact says what is true, and one whose fact is not known is left out, never
+   shown with "-" inside it (the busiest strikes across a wall, operator 2026-11-24). Never a
+   fallback, default, estimate, proxy, interpolation or synthetic value. Enforced by:
    `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
    `tests/test_gamma_exposure_honest_absence_v1.py`, `tests/test_data_path_heatmap_absent_v1.py`,
-   `tests/test_strikes_follow_the_expiry_v1.py` (in force)
+   `tests/test_strikes_follow_the_expiry_v1.py`, `tests/test_positioning_migration_v1.py` (in force)
 6. **One program, one path** (serves 2, 6). Schwab → program memory → pushed to the page. The
    databases are history, written by the Recorder, read at startup, after the close and for
    research, never for a live screen. Enforced by: `sqlite3`, a banned name counted per product file

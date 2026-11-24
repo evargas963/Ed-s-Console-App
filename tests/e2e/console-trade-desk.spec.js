@@ -1433,9 +1433,9 @@ test.describe("Trade Desk renders served values", () => {
       "Gamma Call 760 → 775 (+15) · Gamma Put 760 → 760 (unchanged) · Gamma Flip 760.77 → 761.22 (+0.45)",
     );
     await expect(body).toContainText("Gamma grew most at 775/770");
-    // the busiest strikes 757 and 760 against the put wall at 760: one below it, one at it, so
-    // where they sit is not one place and is not known ("-"), never "inside" by default
-    await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
+    // the busiest strikes 757 and 760 against the put wall at 760: one below it, one on it, so
+    // they sit across it, served in those words, never "inside" by default and never a dash
+    await expect(body).toContainText("Heaviest option trading at 757–760That is across Gamma Put.");
     expect(errs).toEqual([]);
   });
 
@@ -1603,9 +1603,21 @@ test.describe("Trade Desk renders served values", () => {
     const sock = await intercept(page);
     await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
-    // SPY's real panel: the place is not known, and no words are served for it
-    expect(STRIKES.migration.busiest_vs_walls_text).toBeNull();
-    await expect(body).toContainText("Heaviest option trading at 757–760That is -.");
+    // SPY's real panel: its busiest strikes sit across the put wall, served in those words
+    expect(STRIKES.migration.busiest_vs_walls_text).toBe("across Gamma Put");
+    await expect(body).toContainText("Heaviest option trading at 757–760That is across Gamma Put.");
+    // INDUCED: that panel with no place known (a wall not known): the sentence is left out, no
+    // dash in it
+    deskPanels().strikes = Object.assign({}, STRIKES, {
+      migration: Object.assign({}, STRIKES.migration, {
+        busiest_vs_walls: null,
+        busiest_vs_walls_text: null,
+      }),
+    });
+    sock.changed("strikes");
+    await expect(body.locator(".mig-coach").last()).toHaveText(
+      "Heaviest option trading at 757–760",
+    );
     // INDUCED: that panel with each place the server serves and the words it serves with it
     // (push.strikes.BUSIEST_VS_WALLS_TEXT), then with a place and words the page has never held:
     // the page draws the served words, whichever they are, and picks none
@@ -1613,6 +1625,8 @@ test.describe("Trade Desk renders served values", () => {
       ["ABOVE_CALL_WALL", "ABOVE Gamma Call"],
       ["BELOW_PUT_WALL", "BELOW Gamma Put"],
       ["INSIDE_WALLS", "between Gamma Put and Gamma Call"],
+      ["ACROSS_CALL_WALL", "across Gamma Call"],
+      ["ACROSS_WALLS", "across Gamma Put and Gamma Call"],
       ["A_PLACE_ONLY_THE_SERVER_KNOWS", "where only the server says"],
     ]) {
       deskPanels().strikes = Object.assign({}, STRIKES, {

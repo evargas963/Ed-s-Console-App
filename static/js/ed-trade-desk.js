@@ -430,9 +430,9 @@
         '<div class="mig-coach"><b>Heaviest option trading at ' +
         m.busiest_text +
         "</b>" +
-        "That is " +
-        esc(orDash(m.busiest_vs_walls_text)) + // served: where they sit against the walls
-        ".</div>";
+        // served: where they sit against the walls; with no place known, nothing is said
+        (m.busiest_vs_walls_text == null ? "" : "That is " + esc(m.busiest_vs_walls_text) + ".") +
+        "</div>";
     }
     return out;
   }

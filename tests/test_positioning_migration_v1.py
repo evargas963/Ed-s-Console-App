@@ -91,13 +91,16 @@ def test_busiest_strikes_and_volume_total_come_from_schwabs_volume(two_days):
 def test_where_the_busiest_strikes_sit_is_said_only_when_it_is_known(two_days):
     """The busiest strikes against the walls, on PCG's real rows; the walls are INDUCED around them.
 
-    Above the call wall, below the put wall, inside both, and, when a wall is not known or the two
-    busiest strikes are on both sides of it, not known (None): never "inside" by default.
+    Above the call wall, below the put wall, inside both, and the two busiest strikes on both
+    sides of a wall: across it (the operator's decision; on 2026-11-21 SPY's 695 and 700 against
+    the put wall at 700 read "That is -."). When a wall the place depends on is not known: not
+    known (None), never "inside" by default.
     """
     (_prior, _), (today, _snap) = two_days
     rows = today["gex"]
     low, high = positioning_migration(rows, [], None, None)["busiest"]
     assert low < high, "the two busiest strikes differ: the straddle case would be vacuous"
+    mid = (low + high) / 2
 
     def where(call: float | None, put: float | None) -> str | None:
         return positioning_migration(rows, [], call, put)["busiest_vs_walls"]
@@ -107,21 +110,23 @@ def test_where_the_busiest_strikes_sit_is_said_only_when_it_is_known(two_days):
     assert where(high, low) == "INSIDE_WALLS"
     assert where(high, None) is None, "the put wall not known"
     assert where(None, None) is None
-    assert where((low + high) / 2, low - 1) is None, (
-        "the busiest are on both sides of the call wall"
-    )
+    assert where(mid, low - 1) == "ACROSS_CALL_WALL", "one below the call wall, one above"
+    assert where(high + 1, high) == "ACROSS_PUT_WALL", "one on the put wall, one below it"
+    assert where(None, mid) == "ACROSS_PUT_WALL", "the call wall not needed to say so"
+    assert where(mid + 0.01, mid - 0.01) == "ACROSS_WALLS", "one below both walls, one above"
 
 
 def test_where_the_busiest_strikes_sit_is_served_in_the_screens_words(two_days):
     """The same INDUCED walls around PCG's real rows: each place is served as the screen says it.
 
     The page draws `busiest_vs_walls_text` and picks no words itself: above the largest call
-    gamma strike, below the largest put gamma strike, between the two, and no words (None) where
-    the place is not known.
+    gamma strike, below the largest put gamma strike, between the two, across one or both, and no
+    words (None) where the place is not known, which the page leaves out.
     """
     (_prior, _), (today, _snap) = two_days
     rows = today["gex"]
     low, high = positioning_migration(rows, [], None, None)["busiest"]
+    mid = (low + high) / 2
 
     def said(call: float | None, put: float | None) -> str | None:
         migration = positioning_migration(rows, [], call, put)
@@ -131,7 +136,9 @@ def test_where_the_busiest_strikes_sit_is_served_in_the_screens_words(two_days):
     assert said(None, high + 1) == "BELOW Gamma Put"
     assert said(high, low) == "between Gamma Put and Gamma Call"
     assert said(high, None) is None
-    assert said((low + high) / 2, low - 1) is None
+    assert said(mid, low - 1) == "across Gamma Call"
+    assert said(high + 1, high) == "across Gamma Put"
+    assert said(mid + 0.01, mid - 0.01) == "across Gamma Put and Gamma Call"
 
 
 def _prior_gex(body: dict) -> dict:
