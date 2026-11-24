@@ -1717,6 +1717,8 @@ for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
         )
 for item, status in WORK:
     add(S, f"open work rows: {status.strip()}", "work list", "ACTIVE_PROGRAM.md", item)
+# each workflow's newest finished run on main: a run still going has no result yet, and the
+# census's own run and the suites started with it on the same commit are still going
 latest = {}
 for r_ in json.loads(
     run(
@@ -1726,6 +1728,8 @@ for r_ in json.loads(
             "list",
             "--branch",
             "main",
+            "--status",
+            "completed",
             "--limit",
             "20",
             "--json",
@@ -1737,13 +1741,12 @@ for r_ in json.loads(
     latest.setdefault(r_["workflowName"], r_)
 for wf, r_ in latest.items():
     if r_["conclusion"] not in ("success", "skipped"):
-        state = r_["conclusion"] if r_["conclusion"] else "running"
         add(
             S,
             "required CI on main not green",
             "Before saying done",
             "gh run list",
-            f"{wf}: {state} at {r_['headSha'][:8]} {r_['createdAt']}",
+            f"{wf}: {r_['conclusion']} at {r_['headSha'][:8]} {r_['createdAt']}",
         )
 for f in [f for f in FILES if f.startswith("tools/") and f.endswith(".py")]:
     add(
