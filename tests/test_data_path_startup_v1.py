@@ -716,6 +716,7 @@ def test_the_stop_reads_no_process_parent(tmp_path):
     )
 
 
+@pytest.mark.alone
 def test_a_daemon_that_ends_without_being_asked_is_not_reported_stopped(tmp_path):
     """The real daemon found while it loads, its stop request not made yet, then ending on its own.
 
