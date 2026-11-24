@@ -182,6 +182,46 @@ def test_failure_exit_code_is_exact_and_the_log_is_retained(tmp_path):
     )
 
 
+def test_the_alone_tests_run_after_the_workers_with_none_beside_them_and_either_part_fails_it(
+    tmp_path,
+):
+    """The runner runs the suite as CI does (.github/workflows/pytest.yml).
+
+    Every test but those marked `alone` goes in the first part, then each `alone` test (a limit
+    on the wall clock) in a second part with none beside it, each part with its own log. A
+    failure in either part fails the run.
+    """
+    target = tmp_path / "test_rc_parts.py"
+    alone = "import pytest\n@pytest.mark.alone\ndef test_with_none_beside_it():\n    assert {}\n"
+    runs = {}
+    for name, result in (("passes", "True"), ("fails", "False")):
+        target.write_text(
+            f"def test_with_the_workers():\n    pass\n{alone.format(result)}", encoding="utf-8"
+        )
+        r = subprocess.run(
+            _runner_cmd(str(target), "-v", rootdir=tmp_path),
+            cwd=str(ROOT),
+            env=_child_env(tmp_path / name),
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        logs = [
+            (tmp_path / name / log).read_text(encoding="utf-8", errors="replace")
+            for log in ("test_pytest_last.log", "test_pytest_alone_last.log")
+        ]
+        runs[name] = (r.returncode, logs, len(r.stdout.encode("utf-8")))
+    (passed, (workers, by_itself), size) = runs["passes"]
+    assert passed == 0
+    assert "test_with_the_workers PASSED" in workers and "test_with_none_beside_it" not in workers
+    assert (
+        "test_with_none_beside_it PASSED" in by_itself and "test_with_the_workers" not in by_itself
+    )
+    assert size <= 2300, f"terminal output is not bounded: {size} bytes"
+    (failed, (_, by_itself), _) = runs["fails"]
+    assert failed == 1 and "test_with_none_beside_it FAILED" in by_itself
+
+
 def test_success_is_visible_and_exit_code_zero(tmp_path):
     r = subprocess.run(
         _runner_cmd("tests/test_time_et_authority.py", rootdir=ROOT),
