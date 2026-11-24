@@ -19,8 +19,17 @@ import json
 import re
 from pathlib import Path
 
+import numpy as np
+
 from calc.terrain_engine import OPTION_LEVELS
-from numeric_contract import compact_text, count_text, dollars_text, iv_text, strike_text
+from numeric_contract import (
+    compact_text,
+    count_text,
+    dollars_text,
+    greek_text,
+    iv_text,
+    strike_text,
+)
 
 FX = Path(__file__).parent / "fixtures"
 E2E = Path(__file__).parent / "e2e" / "fixtures"
@@ -107,6 +116,31 @@ def test_the_chains_counts_are_whole_and_its_iv_two_decimals():
         assert c["oi_text"] == screen_text(row["openInterest"], "count")
         assert re.fullmatch(r"\d{1,3}(,\d{3})*", c["volume_text"]), c["volume_text"]
         assert c["iv_text"] == f"{(row.get('quote') or row)['volatility']:.2f}"
+
+
+def test_a_greek_is_served_as_a_plain_decimal_with_every_digit_schwab_sent():
+    """Delta and gamma as the chain screens draw them (operator 2026-11-24).
+
+    Every digit Schwab sent, never rounded and never in exponent form: SPX's 2027-12-17 400
+    call's gamma, 4e-08 as sent, is 0.00000004, which the page drew as "4e-8" while it made the
+    text itself. Real data: SPX's chain captured 2026-10-07, every Greek in it; and every
+    contract of the AMZN chain the browser tests draw, made by the real producer. The expected
+    text is numpy's own positional formatter, apart from ours.
+    """
+    spx = json.loads((FX / "real_spx_chain_2026_10_07_2027_12_17.json").read_text(encoding="utf-8"))
+    greeks = [c[k] for c in spx["chain"] for k in ("delta", "gamma") if c.get(k) is not None]
+    assert sum("e" in repr(v) for v in greeks) > 100  # sent in exponent form, as Python reads it
+    for v in greeks:
+        assert greek_text(v) == np.format_float_positional(v, trim="-"), v
+    tiny = next(c for c in spx["chain"] if c["symbol"] == "SPX   271217C00400000")
+    assert (tiny["gamma"], greek_text(tiny["gamma"])) == (4e-08, "0.00000004")
+    chain = json.loads((E2E / "panels_amzn_two_day.json").read_text(encoding="utf-8"))["chain"]
+    sides = [c for r in chain["ladder"] for c in (r["call"], r["put"]) if c is not None]
+    assert sides
+    for c in sides:
+        for k in ("delta", "gamma"):
+            want = None if c[k] is None else np.format_float_positional(c[k], trim="-")
+            assert c[f"{k}_text"] == want, (c["symbol"], k)
 
 
 def test_vanna_and_charm_are_compact_with_no_dollar_sign():

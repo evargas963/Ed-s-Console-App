@@ -69,11 +69,12 @@ class Mark(TypedDict):
 class ServedValue(TypedDict):
     """A bar's row as the page draws it (served): a strike's DEX, open interest, vanna or charm.
 
-    Its fields by name, the strike and the value as the screen shows them, and its marks.
+    Its fields by name, the strike and the value as the screen shows them (None: not known), and
+    its marks.
     """
 
     strike: float
-    value: float
+    value: float | None
     strike_text: str
     text: str | None
     marks: list[Mark]

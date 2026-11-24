@@ -96,6 +96,13 @@ test.describe("D — Gamma Chain subview", () => {
       TOP.strike_text,
     );
     await expect(page.locator("#chainBody tbody tr.spot td.k")).toHaveText(AT_SPOT.strike_text);
+    // each Greek drawn as served (every digit Schwab sent, never in exponent form): the call's
+    // delta and gamma, then the put's gamma and delta, either side of the strike
+    const cells = page.locator("#chainBody tbody tr.spot td");
+    await expect(cells.nth(3)).toHaveText(AT_SPOT.call.delta_text);
+    await expect(cells.nth(4)).toHaveText(AT_SPOT.call.gamma_text);
+    await expect(cells.nth(10)).toHaveText(AT_SPOT.put.gamma_text);
+    await expect(cells.nth(11)).toHaveText(AT_SPOT.put.delta_text);
     // B: single-expiry truth — the null filter is "Default Expiry", the ladder says SINGLE EXPIRY
     await expect(page.locator("#chainBody .chn-head")).toContainText(
       "SINGLE EXPIRY · " + FRONT.expiry,

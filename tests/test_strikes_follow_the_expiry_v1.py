@@ -278,14 +278,13 @@ def test_vanna_and_charm_by_strike_are_the_chosen_expirys_alone(published):
     snap = published.snap
     for expiry in sorted({c["expirationDate"][:10] for c in FRIDAY["contracts"]}):
         own, _ = merge_exposure_books(b for (e, _d), b in snap.books.items() if e == expiry)
-        want = {k: v for k, b in own.items() if (v := bucket_metric(b, "net_vanna")) is not None}
+        # every strike of the expiry, one whose value is not known with None (drawn '-')
+        want = {k: bucket_metric(b, "net_vanna") for k, b in own.items()}
         assert _bars("vanna", expiry) == want, expiry
         charm = snap.charm_by_expiry[expiry]
-        want = {k: b["net_charm"] for k, b in charm.items() if b["net_charm"] is not None}
+        want = {k: b["net_charm"] for k, b in charm.items()}
         assert _bars("charm", expiry) == want, expiry
-    whole = {
-        k: b["net_charm"] for k, b in snap.charm_by_strike.items() if b["net_charm"] is not None
-    }
+    whole = {k: b["net_charm"] for k, b in snap.charm_by_strike.items()}
     assert _bars("charm", None) == whole
     assert _bars("charm", CHOSEN) != whole  # one expiry is not every one
     assert (
@@ -299,9 +298,9 @@ def test_vanna_and_charm_by_strike_are_the_chosen_expirys_alone(published):
 def test_an_expiry_with_no_value_known_has_no_bar_and_says_so():
     """INDUCED: Friday's chain with the 2026-10-30 expiry's open interest not sent.
 
-    No vanna or charm of that expiry is known: each bar panel has no row and says so, while the
-    expiry beside it is answered as before; the GEX rows of that expiry stand with no value,
-    never 0, and its DEX and open interest profiles have no row.
+    No vanna, charm, DEX or open interest of that expiry is known: every strike stands with no
+    value, never 0 and never left out, so it has no bar and its text says so ('-'), as the GEX
+    rows of that expiry stand; the expiry beside it is answered as before.
     """
     blank = "2026-10-30"
     chain = [
@@ -324,14 +323,15 @@ def test_an_expiry_with_no_value_known_has_no_bar_and_says_so():
         for key, method in push_strike_bars.STRIKE_BAR_METHODS.items():
             body = push_strike_bars.strike_bars(key, TK, at, {**EVERY, "expiry": blank})
             assert _verdict(body) == verdict, key
-            assert {k: v for k, v in body.items() if k not in verdict} == {
+            rows = body["rows"]
+            assert len(rows) > 10 and all(r["value"] is None and r["text"] is None for r in rows)
+            assert {k: v for k, v in body.items() if k not in verdict and k != "rows"} == {
                 "ticker": TK,
-                "available": False,
+                "available": True,
                 "expiry": blank,
-                "rows": [],
-                "view": {"centre": None, "centre_text": None, "note": None, "max_abs": None},
+                "view": {**body["view"], "max_abs": None},
                 "scope": "all",
-                "reason": "no usable strikes for this chain",
+                "reason": None,
                 "method": method,
             }, key
             beside = push_strike_bars.strike_bars(key, TK, at, {**EVERY, "expiry": CHOSEN})
@@ -344,7 +344,9 @@ def test_an_expiry_with_no_value_known_has_no_bar_and_says_so():
         assert len(gex["today"]) > 10
         assert all(r["value"] is None and r["text"] is None for r in gex["today"])
         assert gex["max_abs_row"] is None and gex["view"]["max_abs"] is None
-        assert all(w["rows"] == [] and w["max_abs_row"] is None for w in gex["measures"].values())
+        for w in gex["measures"].values():
+            assert len(w["rows"]) > 10 and all(r["value"] is None for r in w["rows"])
+            assert w["max_abs_row"] is None
     finally:
         with level_store._lock:
             level_store._levels.pop(TK, None)

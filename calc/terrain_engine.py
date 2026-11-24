@@ -83,10 +83,13 @@ type Book = tuple[dict[float, Bucket], ExposureDiagnostics]
 
 
 class StrikeValue(NamedTuple):
-    """One strike's value on a per-strike bar (net DEX $, open interest, net vanna or charm)."""
+    """One strike's value on a per-strike bar (net DEX $, open interest, net vanna or charm).
+
+    A value not known is None.
+    """
 
     strike: float
-    value: float
+    value: float | None
 
 
 class StrikeRow(NamedTuple):
@@ -836,10 +839,11 @@ def _mid(c: OptionContract) -> float | None:
 def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
     """Return each strike's net DEX $, open interest and net vanna, as StrikeValue rows.
 
-    Every strike whose value is known, by the heatmap cell's own readers (net_dex_dollars of a
-    dollarized book; strike_total_oi; net_vanna, +call/-put as compute_exposures_by_strike
-    computed it). Open interest keeps every digit; the screen rounds the count. A strike whose
-    value is unknown has no row.
+    Every strike of the book, by the heatmap cell's own readers (net_dex_dollars of a dollarized
+    book; strike_total_oi; net_vanna, +call/-put as compute_exposures_by_strike computed it).
+    Open interest keeps every digit; the screen rounds the count. A strike whose value is unknown
+    keeps its row with None, as a GEX row does, so no strike is left out without a word; a book
+    built without spot (not dollarized) has no DEX rows, as it has no GEX rows.
     """
     dex: list[StrikeValue] = []
     oi: list[StrikeValue] = []
@@ -849,15 +853,10 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
         sk = float_finite_or_none(k)
         if sk is None:
             continue
-        d = float_finite_or_none(bucket_metric(b, "net_dex_dollars")) if dollarized else None
-        if d is not None:
-            dex.append(StrikeValue(sk, d))
-        o = strike_total_oi(b)
-        if o is not None:
-            oi.append(StrikeValue(sk, o))
-        v = bucket_metric(b, "net_vanna")
-        if v is not None:
-            vanna.append(StrikeValue(sk, v))
+        if dollarized:
+            dex.append(StrikeValue(sk, float_finite_or_none(bucket_metric(b, "net_dex_dollars"))))
+        oi.append(StrikeValue(sk, strike_total_oi(b)))
+        vanna.append(StrikeValue(sk, bucket_metric(b, "net_vanna")))
     for rows in (dex, oi, vanna):
         rows.sort(key=lambda r: r.strike)
     return {"dex": dex, "oi": oi, "vanna": vanna}
@@ -867,13 +866,14 @@ def _strike_rows(exposures: dict[float, Bucket], charm: dict[float, CharmBucket]
     """Return one book's GEX rows (_per_strike_rows), DEX, OI and vanna rows, and charm rows.
 
     A charm row is each strike's net charm exposure of `charm` (compute_charm_by_strike's map, the
-    largest charm strikes' own), ascending; a strike whose net charm is not known has no row.
+    largest charm strikes' own), ascending; a strike whose net charm is not known keeps its row
+    with None.
     """
     return {
         "gex": _per_strike_rows(exposures),
         **_per_strike_measure_rows(exposures),
         "charm": sorted(
-            StrikeValue(k, net) for k, b in charm.items() if (net := b["net_charm"]) is not None
+            (StrikeValue(k, b["net_charm"]) for k, b in charm.items()), key=lambda r: r.strike
         ),
     }
 

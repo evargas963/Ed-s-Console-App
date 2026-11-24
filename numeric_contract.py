@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import numbers
+from decimal import Decimal
 from typing import (
     Any,
     overload,
@@ -97,6 +98,17 @@ def iv_text(value: float | None) -> str | None:
     None when there is none.
     """
     return price_text(value)
+
+
+def greek_text(value: float | None) -> str | None:
+    """Return a Greek as the screen shows it: every digit Schwab sent, as a plain decimal.
+
+    The shortest digits that read back as the same number, never rounded and never in exponent
+    form: 0.00000001, 0.5123, -1. None when there is none.
+    """
+    if value is None:
+        return None
+    return format(Decimal(repr(float(value))).normalize(), "f")
 
 
 def fixed_text(value: float | None, places: int) -> str | None:

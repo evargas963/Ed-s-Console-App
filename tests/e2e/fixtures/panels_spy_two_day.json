@@ -24125,7 +24125,9 @@
           "volume_text": "0",
           "iv_text": "126.91",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00075928",
+          "gamma_text": "0.00010645"
         },
         "put": {
           "pennyPilot": true,
@@ -24142,7 +24144,9 @@
           "volume_text": "0",
           "iv_text": "126.87",
           "bid_text": "81.09",
-          "ask_text": "83.79"
+          "ask_text": "83.79",
+          "delta_text": "-0.99919528",
+          "gamma_text": "0.00010634"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24178,7 +24182,9 @@
           "volume_text": "50",
           "iv_text": "120.12",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00079879",
+          "gamma_text": "0.00011783"
         },
         "put": {
           "pennyPilot": true,
@@ -24195,7 +24201,9 @@
           "volume_text": "0",
           "iv_text": "120.12",
           "bid_text": "76.11",
-          "ask_text": "78.79"
+          "ask_text": "78.79",
+          "delta_text": "-0.99915603",
+          "gamma_text": "0.00011766"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24231,7 +24239,9 @@
           "volume_text": "0",
           "iv_text": "113.30",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00084279",
+          "gamma_text": "0.00013123"
         },
         "put": {
           "pennyPilot": true,
@@ -24248,7 +24258,9 @@
           "volume_text": "0",
           "iv_text": "113.30",
           "bid_text": "71.09",
-          "ask_text": "73.79"
+          "ask_text": "73.79",
+          "delta_text": "-0.9991121",
+          "gamma_text": "0.00013106"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24284,7 +24296,9 @@
           "volume_text": "55",
           "iv_text": "106.41",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00089291",
+          "gamma_text": "0.00014734"
         },
         "put": {
           "pennyPilot": true,
@@ -24301,7 +24315,9 @@
           "volume_text": "0",
           "iv_text": "106.44",
           "bid_text": "67.30",
-          "ask_text": "67.71"
+          "ask_text": "67.71",
+          "delta_text": "-0.99906232",
+          "gamma_text": "0.00014708"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24337,7 +24353,9 @@
           "volume_text": "0",
           "iv_text": "99.47",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00095085",
+          "gamma_text": "0.00016696"
         },
         "put": {
           "pennyPilot": true,
@@ -24354,7 +24372,9 @@
           "volume_text": "0",
           "iv_text": "99.47",
           "bid_text": "62.30",
-          "ask_text": "62.88"
+          "ask_text": "62.88",
+          "delta_text": "-0.99900419",
+          "gamma_text": "0.00016679"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24390,7 +24410,9 @@
           "volume_text": "1",
           "iv_text": "92.42",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00101774",
+          "gamma_text": "0.00019127"
         },
         "put": {
           "pennyPilot": true,
@@ -24407,7 +24429,9 @@
           "volume_text": "0",
           "iv_text": "92.42",
           "bid_text": "57.30",
-          "ask_text": "57.70"
+          "ask_text": "57.70",
+          "delta_text": "-0.99893738",
+          "gamma_text": "0.00019109"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24443,7 +24467,9 @@
           "volume_text": "0",
           "iv_text": "85.27",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00109623",
+          "gamma_text": "0.00022189"
         },
         "put": {
           "pennyPilot": true,
@@ -24460,7 +24486,9 @@
           "volume_text": "0",
           "iv_text": "85.27",
           "bid_text": "52.26",
-          "ask_text": "52.66"
+          "ask_text": "52.66",
+          "delta_text": "-0.99885898",
+          "gamma_text": "0.00022171"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24496,7 +24524,9 @@
           "volume_text": "0",
           "iv_text": "78.03",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00118982",
+          "gamma_text": "0.00026135"
         },
         "put": {
           "pennyPilot": true,
@@ -24513,7 +24543,9 @@
           "volume_text": "0",
           "iv_text": "78.03",
           "bid_text": "47.30",
-          "ask_text": "47.74"
+          "ask_text": "47.74",
+          "delta_text": "-0.99876547",
+          "gamma_text": "0.00026118"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24549,7 +24581,9 @@
           "volume_text": "1",
           "iv_text": "70.69",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00130346",
+          "gamma_text": "0.00031358"
         },
         "put": {
           "pennyPilot": true,
@@ -24566,7 +24600,9 @@
           "volume_text": "1",
           "iv_text": "70.69",
           "bid_text": "42.24",
-          "ask_text": "42.75"
+          "ask_text": "42.75",
+          "delta_text": "-0.99865193",
+          "gamma_text": "0.00031341"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24602,7 +24638,9 @@
           "volume_text": "0",
           "iv_text": "69.21",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00132919",
+          "gamma_text": "0.00032605"
         },
         "put": {
           "pennyPilot": true,
@@ -24619,7 +24657,9 @@
           "volume_text": "2",
           "iv_text": "69.21",
           "bid_text": "41.26",
-          "ask_text": "41.64"
+          "ask_text": "41.64",
+          "delta_text": "-0.99862622",
+          "gamma_text": "0.0003259"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24655,7 +24695,9 @@
           "volume_text": "7",
           "iv_text": "67.73",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00135609",
+          "gamma_text": "0.00033935"
         },
         "put": {
           "pennyPilot": true,
@@ -24672,7 +24714,9 @@
           "volume_text": "4",
           "iv_text": "67.73",
           "bid_text": "40.30",
-          "ask_text": "40.75"
+          "ask_text": "40.75",
+          "delta_text": "-0.99859934",
+          "gamma_text": "0.0003392"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24708,7 +24752,9 @@
           "volume_text": "28",
           "iv_text": "66.24",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00138423",
+          "gamma_text": "0.00035356"
         },
         "put": {
           "pennyPilot": true,
@@ -24725,7 +24771,9 @@
           "volume_text": "3",
           "iv_text": "66.24",
           "bid_text": "39.26",
-          "ask_text": "39.64"
+          "ask_text": "39.64",
+          "delta_text": "-0.99857122",
+          "gamma_text": "0.00035341"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24761,7 +24809,9 @@
           "volume_text": "11",
           "iv_text": "64.74",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0014137",
+          "gamma_text": "0.00036875"
         },
         "put": {
           "pennyPilot": true,
@@ -24778,7 +24828,9 @@
           "volume_text": "7",
           "iv_text": "64.74",
           "bid_text": "38.23",
-          "ask_text": "38.64"
+          "ask_text": "38.64",
+          "delta_text": "-0.99854176",
+          "gamma_text": "0.0003686"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24814,7 +24866,9 @@
           "volume_text": "14",
           "iv_text": "63.24",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00144462",
+          "gamma_text": "0.00038502"
         },
         "put": {
           "pennyPilot": true,
@@ -24831,7 +24885,9 @@
           "volume_text": "7",
           "iv_text": "63.24",
           "bid_text": "37.30",
-          "ask_text": "37.79"
+          "ask_text": "37.79",
+          "delta_text": "-0.99851087",
+          "gamma_text": "0.00038488"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24867,7 +24923,9 @@
           "volume_text": "0",
           "iv_text": "61.74",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00147708",
+          "gamma_text": "0.00040248"
         },
         "put": {
           "pennyPilot": true,
@@ -24884,7 +24942,9 @@
           "volume_text": "0",
           "iv_text": "61.74",
           "bid_text": "36.24",
-          "ask_text": "36.67"
+          "ask_text": "36.67",
+          "delta_text": "-0.99847843",
+          "gamma_text": "0.00040234"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24920,7 +24980,9 @@
           "volume_text": "0",
           "iv_text": "60.23",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00151121",
+          "gamma_text": "0.00042125"
         },
         "put": {
           "pennyPilot": true,
@@ -24937,7 +24999,9 @@
           "volume_text": "1",
           "iv_text": "60.23",
           "bid_text": "35.30",
-          "ask_text": "35.76"
+          "ask_text": "35.76",
+          "delta_text": "-0.99844431",
+          "gamma_text": "0.00042112"
         },
         "call_itm": false,
         "put_itm": true,
@@ -24973,7 +25037,9 @@
           "volume_text": "0",
           "iv_text": "58.71",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00154715",
+          "gamma_text": "0.00044147"
         },
         "put": {
           "pennyPilot": true,
@@ -24990,7 +25056,9 @@
           "volume_text": "1",
           "iv_text": "58.71",
           "bid_text": "34.30",
-          "ask_text": "34.71"
+          "ask_text": "34.71",
+          "delta_text": "-0.99840839",
+          "gamma_text": "0.00044136"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25026,7 +25094,9 @@
           "volume_text": "0",
           "iv_text": "57.19",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00158203",
+          "gamma_text": "0.00046089"
         },
         "put": {
           "pennyPilot": true,
@@ -25043,7 +25113,9 @@
           "volume_text": "0",
           "iv_text": "57.19",
           "bid_text": "33.30",
-          "ask_text": "33.61"
+          "ask_text": "33.61",
+          "delta_text": "-0.9983705",
+          "gamma_text": "0.00046321"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25079,7 +25151,9 @@
           "volume_text": "0",
           "iv_text": "55.67",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00162505",
+          "gamma_text": "0.00048692"
         },
         "put": {
           "pennyPilot": true,
@@ -25096,7 +25170,9 @@
           "volume_text": "10",
           "iv_text": "55.67",
           "bid_text": "32.30",
-          "ask_text": "32.66"
+          "ask_text": "32.66",
+          "delta_text": "-0.99833044",
+          "gamma_text": "0.00048686"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25132,7 +25208,9 @@
           "volume_text": "0",
           "iv_text": "54.14",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00167083",
+          "gamma_text": "0.00051546"
         },
         "put": {
           "pennyPilot": true,
@@ -25149,7 +25227,9 @@
           "volume_text": "0",
           "iv_text": "54.14",
           "bid_text": "31.30",
-          "ask_text": "31.70"
+          "ask_text": "31.70",
+          "delta_text": "-0.99828814",
+          "gamma_text": "0.00051251"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25185,7 +25265,9 @@
           "volume_text": "0",
           "iv_text": "52.60",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00171229",
+          "gamma_text": "0.00054046"
         },
         "put": {
           "pennyPilot": true,
@@ -25202,7 +25284,9 @@
           "volume_text": "0",
           "iv_text": "52.60",
           "bid_text": "30.24",
-          "ask_text": "30.62"
+          "ask_text": "30.62",
+          "delta_text": "-0.99824333",
+          "gamma_text": "0.00054039"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25238,7 +25322,9 @@
           "volume_text": "1",
           "iv_text": "51.06",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00175994",
+          "gamma_text": "0.00057086"
         },
         "put": {
           "pennyPilot": true,
@@ -25255,7 +25341,9 @@
           "volume_text": "0",
           "iv_text": "51.06",
           "bid_text": "29.30",
-          "ask_text": "29.62"
+          "ask_text": "29.62",
+          "delta_text": "-0.9981957",
+          "gamma_text": "0.00057081"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25291,7 +25379,9 @@
           "volume_text": "5",
           "iv_text": "49.51",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00181063",
+          "gamma_text": "0.00060412"
         },
         "put": {
           "pennyPilot": true,
@@ -25308,7 +25398,9 @@
           "volume_text": "0",
           "iv_text": "49.47",
           "bid_text": "28.30",
-          "ask_text": "28.62"
+          "ask_text": "28.62",
+          "delta_text": "-0.99814372",
+          "gamma_text": "0.00060496"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25344,7 +25436,9 @@
           "volume_text": "51",
           "iv_text": "47.95",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00186467",
+          "gamma_text": "0.0006406"
         },
         "put": {
           "pennyPilot": true,
@@ -25361,7 +25455,9 @@
           "volume_text": "0",
           "iv_text": "47.91",
           "bid_text": "27.30",
-          "ask_text": "27.64"
+          "ask_text": "27.64",
+          "delta_text": "-0.9980896",
+          "gamma_text": "0.00064155"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25397,7 +25493,9 @@
           "volume_text": "0",
           "iv_text": "46.39",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00192243",
+          "gamma_text": "0.00068077"
         },
         "put": {
           "pennyPilot": true,
@@ -25414,7 +25512,9 @@
           "volume_text": "0",
           "iv_text": "46.35",
           "bid_text": "26.30",
-          "ask_text": "26.71"
+          "ask_text": "26.71",
+          "delta_text": "-0.99803177",
+          "gamma_text": "0.00068183"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25450,7 +25550,9 @@
           "volume_text": "0",
           "iv_text": "44.82",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0019843",
+          "gamma_text": "0.00072514"
         },
         "put": {
           "pennyPilot": true,
@@ -25467,7 +25569,9 @@
           "volume_text": "1",
           "iv_text": "44.78",
           "bid_text": "25.30",
-          "ask_text": "25.77"
+          "ask_text": "25.77",
+          "delta_text": "-0.9979698",
+          "gamma_text": "0.00072634"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25503,7 +25607,9 @@
           "volume_text": "10",
           "iv_text": "43.25",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00205076",
+          "gamma_text": "0.00077435"
         },
         "put": {
           "pennyPilot": true,
@@ -25520,7 +25626,9 @@
           "volume_text": "2",
           "iv_text": "43.21",
           "bid_text": "24.30",
-          "ask_text": "24.62"
+          "ask_text": "24.62",
+          "delta_text": "-0.99790324",
+          "gamma_text": "0.00077571"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25556,7 +25664,9 @@
           "volume_text": "0",
           "iv_text": "41.67",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00212235",
+          "gamma_text": "0.00082915"
         },
         "put": {
           "pennyPilot": true,
@@ -25573,7 +25683,9 @@
           "volume_text": "0",
           "iv_text": "41.63",
           "bid_text": "23.33",
-          "ask_text": "23.59"
+          "ask_text": "23.59",
+          "delta_text": "-0.99783152",
+          "gamma_text": "0.0008307"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25609,7 +25721,9 @@
           "volume_text": "8",
           "iv_text": "40.08",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00219971",
+          "gamma_text": "0.00089046"
         },
         "put": {
           "pennyPilot": true,
@@ -25626,7 +25740,9 @@
           "volume_text": "1",
           "iv_text": "40.04",
           "bid_text": "22.33",
-          "ask_text": "22.59"
+          "ask_text": "22.59",
+          "delta_text": "-0.99775402",
+          "gamma_text": "0.00089223"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25662,7 +25778,9 @@
           "volume_text": "154",
           "iv_text": "38.44",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00228579",
+          "gamma_text": "0.00096123"
         },
         "put": {
           "pennyPilot": true,
@@ -25679,7 +25797,9 @@
           "volume_text": "0",
           "iv_text": "38.44",
           "bid_text": "21.33",
-          "ask_text": "21.59"
+          "ask_text": "21.59",
+          "delta_text": "-0.99766997",
+          "gamma_text": "0.00096141"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25715,7 +25835,9 @@
           "volume_text": "458",
           "iv_text": "36.84",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00237728",
+          "gamma_text": "0.0010394"
         },
         "put": {
           "pennyPilot": true,
@@ -25732,7 +25854,9 @@
           "volume_text": "20",
           "iv_text": "36.84",
           "bid_text": "20.33",
-          "ask_text": "20.59"
+          "ask_text": "20.59",
+          "delta_text": "-0.99757849",
+          "gamma_text": "0.00103962"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25768,7 +25892,9 @@
           "volume_text": "41",
           "iv_text": "35.22",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00247728",
+          "gamma_text": "0.00112829"
         },
         "put": {
           "pennyPilot": true,
@@ -25785,7 +25911,9 @@
           "volume_text": "1",
           "iv_text": "35.22",
           "bid_text": "19.33",
-          "ask_text": "19.59"
+          "ask_text": "19.59",
+          "delta_text": "-0.9974785",
+          "gamma_text": "0.00112857"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25821,7 +25949,9 @@
           "volume_text": "7",
           "iv_text": "33.60",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00258706",
+          "gamma_text": "0.00123004"
         },
         "put": {
           "pennyPilot": true,
@@ -25838,7 +25968,9 @@
           "volume_text": "129",
           "iv_text": "33.60",
           "bid_text": "18.35",
-          "ask_text": "18.59"
+          "ask_text": "18.59",
+          "delta_text": "-0.99736873",
+          "gamma_text": "0.00123039"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25874,7 +26006,9 @@
           "volume_text": "2,742",
           "iv_text": "31.97",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00270818",
+          "gamma_text": "0.00134736"
         },
         "put": {
           "pennyPilot": true,
@@ -25891,7 +26025,9 @@
           "volume_text": "193",
           "iv_text": "31.97",
           "bid_text": "17.35",
-          "ask_text": "17.59"
+          "ask_text": "17.59",
+          "delta_text": "-0.99724761",
+          "gamma_text": "0.00134779"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25927,7 +26063,9 @@
           "volume_text": "2,185",
           "iv_text": "30.32",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00283569",
+          "gamma_text": "0.00148091"
         },
         "put": {
           "pennyPilot": true,
@@ -25944,7 +26082,9 @@
           "volume_text": "36",
           "iv_text": "30.32",
           "bid_text": "16.35",
-          "ask_text": "16.59"
+          "ask_text": "16.59",
+          "delta_text": "-0.99712012",
+          "gamma_text": "0.00148142"
         },
         "call_itm": false,
         "put_itm": true,
@@ -25980,7 +26120,9 @@
           "volume_text": "2,735",
           "iv_text": "28.67",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00298613",
+          "gamma_text": "0.00164088"
         },
         "put": {
           "pennyPilot": true,
@@ -25997,7 +26139,9 @@
           "volume_text": "42",
           "iv_text": "28.67",
           "bid_text": "15.35",
-          "ask_text": "15.59"
+          "ask_text": "15.59",
+          "delta_text": "-0.99696968",
+          "gamma_text": "0.00164149"
         },
         "call_itm": false,
         "put_itm": true,
@@ -26033,7 +26177,9 @@
           "volume_text": "3,846",
           "iv_text": "30.47",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00774994",
+          "gamma_text": "0.00361446"
         },
         "put": {
           "pennyPilot": true,
@@ -26050,7 +26196,9 @@
           "volume_text": "53",
           "iv_text": "30.47",
           "bid_text": "14.35",
-          "ask_text": "14.59"
+          "ask_text": "14.59",
+          "delta_text": "-0.99220428",
+          "gamma_text": "0.00361597"
         },
         "call_itm": false,
         "put_itm": true,
@@ -26086,7 +26234,9 @@
           "volume_text": "2,245",
           "iv_text": "28.89",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00813017",
+          "gamma_text": "0.00397835"
         },
         "put": {
           "pennyPilot": true,
@@ -26103,7 +26253,9 @@
           "volume_text": "95",
           "iv_text": "28.89",
           "bid_text": "13.35",
-          "ask_text": "13.60"
+          "ask_text": "13.60",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26139,7 +26291,9 @@
           "volume_text": "11,716",
           "iv_text": "27.03",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00863025",
+          "gamma_text": "0.00448134"
         },
         "put": {
           "pennyPilot": true,
@@ -26156,7 +26310,9 @@
           "volume_text": "175",
           "iv_text": "27.03",
           "bid_text": "12.35",
-          "ask_text": "12.60"
+          "ask_text": "12.60",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26192,7 +26348,9 @@
           "volume_text": "12,134",
           "iv_text": "25.15",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00920664",
+          "gamma_text": "0.00509691"
         },
         "put": {
           "pennyPilot": true,
@@ -26209,7 +26367,9 @@
           "volume_text": "481",
           "iv_text": "25.15",
           "bid_text": "11.36",
-          "ask_text": "11.60"
+          "ask_text": "11.60",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26245,7 +26405,9 @@
           "volume_text": "14,195",
           "iv_text": "24.85",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "0.01460894",
+          "gamma_text": "0.00770135"
         },
         "put": {
           "pennyPilot": true,
@@ -26262,7 +26424,9 @@
           "volume_text": "163",
           "iv_text": "24.85",
           "bid_text": "10.40",
-          "ask_text": "10.61"
+          "ask_text": "10.61",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26298,7 +26462,9 @@
           "volume_text": "20,230",
           "iv_text": "24.06",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "0.02063324",
+          "gamma_text": "0.01068474"
         },
         "put": {
           "pennyPilot": true,
@@ -26315,7 +26481,9 @@
           "volume_text": "123",
           "iv_text": "24.06",
           "bid_text": "9.38",
-          "ask_text": "9.61"
+          "ask_text": "9.61",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26351,7 +26519,9 @@
           "volume_text": "30,243",
           "iv_text": "22.80",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "0.02681887",
+          "gamma_text": "0.01405686"
         },
         "put": {
           "pennyPilot": true,
@@ -26368,7 +26538,9 @@
           "volume_text": "120",
           "iv_text": "22.80",
           "bid_text": "8.40",
-          "ask_text": "8.63"
+          "ask_text": "8.63",
+          "delta_text": "-0.95544881",
+          "gamma_text": "0.00349837"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26404,7 +26576,9 @@
           "volume_text": "58,802",
           "iv_text": "21.95",
           "bid_text": "0.06",
-          "ask_text": "0.07"
+          "ask_text": "0.07",
+          "delta_text": "0.03825981",
+          "gamma_text": "0.01957415"
         },
         "put": {
           "pennyPilot": true,
@@ -26421,7 +26595,9 @@
           "volume_text": "619",
           "iv_text": "21.95",
           "bid_text": "7.42",
-          "ask_text": "7.65"
+          "ask_text": "7.65",
+          "delta_text": "-0.95034351",
+          "gamma_text": "0.01194178"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26457,7 +26633,9 @@
           "volume_text": "48,677",
           "iv_text": "21.56",
           "bid_text": "0.10",
-          "ask_text": "0.11"
+          "ask_text": "0.11",
+          "delta_text": "0.05869299",
+          "gamma_text": "0.02807497"
         },
         "put": {
           "pennyPilot": true,
@@ -26474,7 +26652,9 @@
           "volume_text": "593",
           "iv_text": "21.56",
           "bid_text": "6.47",
-          "ask_text": "6.65"
+          "ask_text": "6.65",
+          "delta_text": "-0.93518184",
+          "gamma_text": "0.02342891"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26510,7 +26690,9 @@
           "volume_text": "50,385",
           "iv_text": "20.80",
           "bid_text": "0.17",
-          "ask_text": "0.18"
+          "ask_text": "0.18",
+          "delta_text": "0.08432647",
+          "gamma_text": "0.03844216"
         },
         "put": {
           "pennyPilot": true,
@@ -26527,7 +26709,9 @@
           "volume_text": "1,862",
           "iv_text": "20.80",
           "bid_text": "5.56",
-          "ask_text": "5.59"
+          "ask_text": "5.59",
+          "delta_text": "-0.91247175",
+          "gamma_text": "0.03561078"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26563,7 +26747,9 @@
           "volume_text": "62,540",
           "iv_text": "20.94",
           "bid_text": "0.28",
-          "ask_text": "0.29"
+          "ask_text": "0.29",
+          "delta_text": "0.13084539",
+          "gamma_text": "0.05247138"
         },
         "put": {
           "pennyPilot": true,
@@ -26580,7 +26766,9 @@
           "volume_text": "3,553",
           "iv_text": "20.94",
           "bid_text": "4.67",
-          "ask_text": "4.70"
+          "ask_text": "4.70",
+          "delta_text": "-0.86795736",
+          "gamma_text": "0.05119612"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26616,7 +26804,9 @@
           "volume_text": "77,891",
           "iv_text": "20.97",
           "bid_text": "0.45",
-          "ask_text": "0.46"
+          "ask_text": "0.46",
+          "delta_text": "0.19071336",
+          "gamma_text": "0.06704623"
         },
         "put": {
           "pennyPilot": true,
@@ -26633,7 +26823,9 @@
           "volume_text": "4,439",
           "iv_text": "20.97",
           "bid_text": "3.85",
-          "ask_text": "3.87"
+          "ask_text": "3.87",
+          "delta_text": "-0.80893352",
+          "gamma_text": "0.06653195"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26669,7 +26861,9 @@
           "volume_text": "136,249",
           "iv_text": "21.37",
           "bid_text": "0.71",
-          "ask_text": "0.72"
+          "ask_text": "0.72",
+          "delta_text": "0.26827363",
+          "gamma_text": "0.07974344"
         },
         "put": {
           "pennyPilot": true,
@@ -26686,7 +26880,9 @@
           "volume_text": "12,698",
           "iv_text": "21.37",
           "bid_text": "3.10",
-          "ask_text": "3.12"
+          "ask_text": "3.12",
+          "delta_text": "-0.7316794",
+          "gamma_text": "0.07959481"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26722,7 +26918,9 @@
           "volume_text": "98,017",
           "iv_text": "21.68",
           "bid_text": "1.06",
-          "ask_text": "1.07"
+          "ask_text": "1.07",
+          "delta_text": "0.35521282",
+          "gamma_text": "0.08880742"
         },
         "put": {
           "pennyPilot": true,
@@ -26739,7 +26937,9 @@
           "volume_text": "15,116",
           "iv_text": "21.68",
           "bid_text": "2.46",
-          "ask_text": "2.47"
+          "ask_text": "2.47",
+          "delta_text": "-0.64480746",
+          "gamma_text": "0.08878081"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26775,7 +26975,9 @@
           "volume_text": "118,001",
           "iv_text": "22.22",
           "bid_text": "1.51",
-          "ask_text": "1.52"
+          "ask_text": "1.52",
+          "delta_text": "0.44838403",
+          "gamma_text": "0.0920447"
         },
         "put": {
           "pennyPilot": true,
@@ -26792,7 +26994,9 @@
           "volume_text": "36,604",
           "iv_text": "22.22",
           "bid_text": "1.91",
-          "ask_text": "1.93"
+          "ask_text": "1.93",
+          "delta_text": "-0.5516597",
+          "gamma_text": "0.09199838"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26828,7 +27032,9 @@
           "volume_text": "100,904",
           "iv_text": "22.58",
           "bid_text": "2.06",
-          "ask_text": "2.07"
+          "ask_text": "2.07",
+          "delta_text": "0.5403651",
+          "gamma_text": "0.09087571"
         },
         "put": {
           "pennyPilot": true,
@@ -26845,7 +27051,9 @@
           "volume_text": "84,824",
           "iv_text": "22.58",
           "bid_text": "1.46",
-          "ask_text": "1.47"
+          "ask_text": "1.47",
+          "delta_text": "-0.45962875",
+          "gamma_text": "0.09082489"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26881,7 +27089,9 @@
           "volume_text": "50,236",
           "iv_text": "23.22",
           "bid_text": "2.71",
-          "ask_text": "2.72"
+          "ask_text": "2.72",
+          "delta_text": "0.62616399",
+          "gamma_text": "0.08436359"
         },
         "put": {
           "pennyPilot": true,
@@ -26898,7 +27108,9 @@
           "volume_text": "100,873",
           "iv_text": "23.22",
           "bid_text": "1.12",
-          "ask_text": "1.13"
+          "ask_text": "1.13",
+          "delta_text": "-0.37384883",
+          "gamma_text": "0.08437037"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26934,7 +27146,9 @@
           "volume_text": "33,965",
           "iv_text": "23.89",
           "bid_text": "3.43",
-          "ask_text": "3.44"
+          "ask_text": "3.44",
+          "delta_text": "0.70187776",
+          "gamma_text": "0.07503811"
         },
         "put": {
           "pennyPilot": true,
@@ -26951,7 +27165,9 @@
           "volume_text": "114,120",
           "iv_text": "23.89",
           "bid_text": "0.84",
-          "ask_text": "0.85"
+          "ask_text": "0.85",
+          "delta_text": "-0.29812322",
+          "gamma_text": "0.07505631"
         },
         "call_itm": null,
         "put_itm": null,
@@ -26987,7 +27203,9 @@
           "volume_text": "11,320",
           "iv_text": "24.64",
           "bid_text": "4.22",
-          "ask_text": "4.23"
+          "ask_text": "4.23",
+          "delta_text": "0.7656459",
+          "gamma_text": "0.06439311"
         },
         "put": {
           "pennyPilot": true,
@@ -27004,7 +27222,9 @@
           "volume_text": "73,488",
           "iv_text": "24.64",
           "bid_text": "0.63",
-          "ask_text": "0.64"
+          "ask_text": "0.64",
+          "delta_text": "-0.23434562",
+          "gamma_text": "0.06440203"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27040,7 +27260,9 @@
           "volume_text": "5,276",
           "iv_text": "25.54",
           "bid_text": "5.06",
-          "ask_text": "5.09"
+          "ask_text": "5.09",
+          "delta_text": "0.81664887",
+          "gamma_text": "0.05373719"
         },
         "put": {
           "pennyPilot": true,
@@ -27057,7 +27279,9 @@
           "volume_text": "60,336",
           "iv_text": "25.54",
           "bid_text": "0.47",
-          "ask_text": "0.48"
+          "ask_text": "0.48",
+          "delta_text": "-0.18334295",
+          "gamma_text": "0.05373716"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27093,7 +27317,9 @@
           "volume_text": "3,753",
           "iv_text": "26.23",
           "bid_text": "5.94",
-          "ask_text": "5.97"
+          "ask_text": "5.97",
+          "delta_text": "0.85935048",
+          "gamma_text": "0.04400828"
         },
         "put": {
           "pennyPilot": true,
@@ -27110,7 +27336,9 @@
           "volume_text": "54,299",
           "iv_text": "26.23",
           "bid_text": "0.35",
-          "ask_text": "0.36"
+          "ask_text": "0.36",
+          "delta_text": "-0.1406468",
+          "gamma_text": "0.04400495"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27146,7 +27374,9 @@
           "volume_text": "1,693",
           "iv_text": "27.13",
           "bid_text": "6.85",
-          "ask_text": "6.88"
+          "ask_text": "6.88",
+          "delta_text": "0.89138921",
+          "gamma_text": "0.03550754"
         },
         "put": {
           "pennyPilot": true,
@@ -27163,7 +27393,9 @@
           "volume_text": "54,545",
           "iv_text": "27.13",
           "bid_text": "0.26",
-          "ask_text": "0.27"
+          "ask_text": "0.27",
+          "delta_text": "-0.10861374",
+          "gamma_text": "0.03550537"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27199,7 +27431,9 @@
           "volume_text": "1,767",
           "iv_text": "28.26",
           "bid_text": "7.79",
-          "ask_text": "7.82"
+          "ask_text": "7.82",
+          "delta_text": "0.91457012",
+          "gamma_text": "0.02857499"
         },
         "put": {
           "pennyPilot": true,
@@ -27216,7 +27450,9 @@
           "volume_text": "100,289",
           "iv_text": "28.26",
           "bid_text": "0.20",
-          "ask_text": "0.21"
+          "ask_text": "0.21",
+          "delta_text": "-0.08543624",
+          "gamma_text": "0.02857497"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27252,7 +27488,9 @@
           "volume_text": "1,137",
           "iv_text": "29.24",
           "bid_text": "8.74",
-          "ask_text": "8.78"
+          "ask_text": "8.78",
+          "delta_text": "0.93351523",
+          "gamma_text": "0.02281551"
         },
         "put": {
           "pennyPilot": true,
@@ -27269,7 +27507,9 @@
           "volume_text": "21,560",
           "iv_text": "29.24",
           "bid_text": "0.15",
-          "ask_text": "0.16"
+          "ask_text": "0.16",
+          "delta_text": "-0.06649257",
+          "gamma_text": "0.02281729"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27305,7 +27545,9 @@
           "volume_text": "929",
           "iv_text": "30.11",
           "bid_text": "9.58",
-          "ask_text": "9.76"
+          "ask_text": "9.76",
+          "delta_text": "0.94881361",
+          "gamma_text": "0.01804864"
         },
         "put": {
           "pennyPilot": true,
@@ -27322,7 +27564,9 @@
           "volume_text": "20,476",
           "iv_text": "30.11",
           "bid_text": "0.12",
-          "ask_text": "0.13"
+          "ask_text": "0.13",
+          "delta_text": "-0.0511942",
+          "gamma_text": "0.01805123"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27358,7 +27602,9 @@
           "volume_text": "458",
           "iv_text": "31.53",
           "bid_text": "10.52",
-          "ask_text": "10.74"
+          "ask_text": "10.74",
+          "delta_text": "0.95782784",
+          "gamma_text": "0.01475101"
         },
         "put": {
           "pennyPilot": true,
@@ -27375,7 +27621,9 @@
           "volume_text": "15,250",
           "iv_text": "31.53",
           "bid_text": "0.10",
-          "ask_text": "0.11"
+          "ask_text": "0.11",
+          "delta_text": "-0.04217973",
+          "gamma_text": "0.0147535"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27411,7 +27659,9 @@
           "volume_text": "341",
           "iv_text": "32.70",
           "bid_text": "11.50",
-          "ask_text": "11.73"
+          "ask_text": "11.73",
+          "delta_text": "0.96601127",
+          "gamma_text": "0.01192937"
         },
         "put": {
           "pennyPilot": true,
@@ -27428,7 +27678,9 @@
           "volume_text": "10,663",
           "iv_text": "32.70",
           "bid_text": "0.08",
-          "ask_text": "0.09"
+          "ask_text": "0.09",
+          "delta_text": "-0.03399592",
+          "gamma_text": "0.01193136"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27464,7 +27716,9 @@
           "volume_text": "414",
           "iv_text": "34.32",
           "bid_text": "12.49",
-          "ask_text": "12.72"
+          "ask_text": "12.72",
+          "delta_text": "0.97079734",
+          "gamma_text": "0.01002755"
         },
         "put": {
           "pennyPilot": true,
@@ -27481,7 +27735,9 @@
           "volume_text": "33,402",
           "iv_text": "34.32",
           "bid_text": "0.07",
-          "ask_text": "0.08"
+          "ask_text": "0.08",
+          "delta_text": "-0.02920979",
+          "gamma_text": "0.01002901"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27517,7 +27773,9 @@
           "volume_text": "53",
           "iv_text": "35.77",
           "bid_text": "13.48",
-          "ask_text": "13.71"
+          "ask_text": "13.71",
+          "delta_text": "0.97519843",
+          "gamma_text": "0.00839519"
         },
         "put": {
           "pennyPilot": true,
@@ -27534,7 +27792,9 @@
           "volume_text": "22,465",
           "iv_text": "35.77",
           "bid_text": "0.06",
-          "ask_text": "0.07"
+          "ask_text": "0.07",
+          "delta_text": "-0.02480875",
+          "gamma_text": "0.00839608"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27570,7 +27830,9 @@
           "volume_text": "70",
           "iv_text": "37.04",
           "bid_text": "14.47",
-          "ask_text": "14.70"
+          "ask_text": "14.70",
+          "delta_text": "0.97925729",
+          "gamma_text": "0.00697441"
         },
         "put": {
           "pennyPilot": true,
@@ -27587,7 +27849,9 @@
           "volume_text": "13,790",
           "iv_text": "37.04",
           "bid_text": "0.05",
-          "ask_text": "0.06"
+          "ask_text": "0.06",
+          "delta_text": "-0.02075012",
+          "gamma_text": "0.00697471"
         },
         "call_itm": null,
         "put_itm": null,
@@ -27623,7 +27887,9 @@
           "volume_text": "91",
           "iv_text": "38.38",
           "bid_text": "15.46",
-          "ask_text": "15.69"
+          "ask_text": "15.69",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27640,7 +27906,9 @@
           "volume_text": "23,869",
           "iv_text": "38.38",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "-0.0169642",
+          "gamma_text": "0.00566739"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27676,7 +27944,9 @@
           "volume_text": "171",
           "iv_text": "40.42",
           "bid_text": "16.46",
-          "ask_text": "16.70"
+          "ask_text": "16.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27693,7 +27963,9 @@
           "volume_text": "12,793",
           "iv_text": "40.42",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "-0.01597879",
+          "gamma_text": "0.00511238"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27729,7 +28001,9 @@
           "volume_text": "153",
           "iv_text": "41.06",
           "bid_text": "17.45",
-          "ask_text": "17.58"
+          "ask_text": "17.58",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27746,7 +28020,9 @@
           "volume_text": "14,435",
           "iv_text": "41.06",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.0125333",
+          "gamma_text": "0.00408233"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27782,7 +28058,9 @@
           "volume_text": "99",
           "iv_text": "43.11",
           "bid_text": "18.45",
-          "ask_text": "18.68"
+          "ask_text": "18.68",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27799,7 +28077,9 @@
           "volume_text": "6,824",
           "iv_text": "43.16",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.01197639",
+          "gamma_text": "0.00373414"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27835,7 +28115,9 @@
           "volume_text": "416",
           "iv_text": "43.30",
           "bid_text": "19.44",
-          "ask_text": "19.69"
+          "ask_text": "19.69",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27852,7 +28134,9 @@
           "volume_text": "2,790",
           "iv_text": "43.34",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00887915",
+          "gamma_text": "0.00286436"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27888,7 +28172,9 @@
           "volume_text": "29",
           "iv_text": "45.26",
           "bid_text": "20.44",
-          "ask_text": "20.68"
+          "ask_text": "20.68",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27905,7 +28191,9 @@
           "volume_text": "4,012",
           "iv_text": "45.31",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00852869",
+          "gamma_text": "0.00264505"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27941,7 +28229,9 @@
           "volume_text": "57",
           "iv_text": "47.27",
           "bid_text": "21.44",
-          "ask_text": "21.68"
+          "ask_text": "21.68",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -27958,7 +28248,9 @@
           "volume_text": "4,283",
           "iv_text": "47.27",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00820684",
+          "gamma_text": "0.00245124"
         },
         "call_itm": true,
         "put_itm": false,
@@ -27994,7 +28286,9 @@
           "volume_text": "104",
           "iv_text": "49.22",
           "bid_text": "22.44",
-          "ask_text": "22.68"
+          "ask_text": "22.68",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28011,7 +28305,9 @@
           "volume_text": "2,389",
           "iv_text": "49.22",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00791011",
+          "gamma_text": "0.00227901"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28047,7 +28343,9 @@
           "volume_text": "24",
           "iv_text": "51.17",
           "bid_text": "23.44",
-          "ask_text": "23.68"
+          "ask_text": "23.68",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28064,7 +28362,9 @@
           "volume_text": "3,657",
           "iv_text": "51.17",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00763557",
+          "gamma_text": "0.00212518"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28100,7 +28400,9 @@
           "volume_text": "12",
           "iv_text": "53.11",
           "bid_text": "24.44",
-          "ask_text": "24.68"
+          "ask_text": "24.68",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28117,7 +28419,9 @@
           "volume_text": "1,774",
           "iv_text": "53.11",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00738074",
+          "gamma_text": "0.00198715"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28153,7 +28457,9 @@
           "volume_text": "9",
           "iv_text": "52.03",
           "bid_text": "25.40",
-          "ask_text": "25.66"
+          "ask_text": "25.66",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28170,7 +28476,9 @@
           "volume_text": "2,723",
           "iv_text": "52.03",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00478073",
+          "gamma_text": "0.00138019"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28206,7 +28514,9 @@
           "volume_text": "6",
           "iv_text": "53.88",
           "bid_text": "26.42",
-          "ask_text": "26.66"
+          "ask_text": "26.66",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28223,7 +28533,9 @@
           "volume_text": "1,865",
           "iv_text": "53.88",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.0046304",
+          "gamma_text": "0.00129542"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28259,7 +28571,9 @@
           "volume_text": "3",
           "iv_text": "55.72",
           "bid_text": "27.39",
-          "ask_text": "27.66"
+          "ask_text": "27.66",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28276,7 +28590,9 @@
           "volume_text": "1,716",
           "iv_text": "55.72",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.0044895",
+          "gamma_text": "0.00121848"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28312,7 +28628,9 @@
           "volume_text": "1",
           "iv_text": "57.56",
           "bid_text": "28.41",
-          "ask_text": "28.65"
+          "ask_text": "28.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28329,7 +28647,9 @@
           "volume_text": "3,613",
           "iv_text": "57.56",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00435714",
+          "gamma_text": "0.00114843"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28365,7 +28685,9 @@
           "volume_text": "0",
           "iv_text": "59.40",
           "bid_text": "29.29",
-          "ask_text": "29.65"
+          "ask_text": "29.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28382,7 +28704,9 @@
           "volume_text": "600",
           "iv_text": "59.40",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00423251",
+          "gamma_text": "0.00108442"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28418,7 +28742,9 @@
           "volume_text": "1",
           "iv_text": "61.23",
           "bid_text": "30.41",
-          "ask_text": "30.65"
+          "ask_text": "30.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28435,7 +28761,9 @@
           "volume_text": "1,359",
           "iv_text": "61.23",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00411726",
+          "gamma_text": "0.00102623"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28471,7 +28799,9 @@
           "volume_text": "1",
           "iv_text": "63.06",
           "bid_text": "31.35",
-          "ask_text": "31.65"
+          "ask_text": "31.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28488,7 +28818,9 @@
           "volume_text": "998",
           "iv_text": "63.06",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00400593",
+          "gamma_text": "0.0009723"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28524,7 +28856,9 @@
           "volume_text": "1",
           "iv_text": "64.89",
           "bid_text": "32.41",
-          "ask_text": "32.65"
+          "ask_text": "32.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28541,7 +28875,9 @@
           "volume_text": "1,117",
           "iv_text": "64.89",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.0039003",
+          "gamma_text": "0.00092259"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28577,7 +28913,9 @@
           "volume_text": "20",
           "iv_text": "66.71",
           "bid_text": "33.31",
-          "ask_text": "33.65"
+          "ask_text": "33.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28594,7 +28932,9 @@
           "volume_text": "1,494",
           "iv_text": "66.71",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00379994",
+          "gamma_text": "0.00087665"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28630,7 +28970,9 @@
           "volume_text": "0",
           "iv_text": "68.53",
           "bid_text": "34.36",
-          "ask_text": "34.65"
+          "ask_text": "34.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28647,7 +28989,9 @@
           "volume_text": "1,498",
           "iv_text": "68.53",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00370449",
+          "gamma_text": "0.00083412"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28683,7 +29027,9 @@
           "volume_text": "20",
           "iv_text": "63.32",
           "bid_text": "35.40",
-          "ask_text": "35.65"
+          "ask_text": "35.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28700,7 +29046,9 @@
           "volume_text": "704",
           "iv_text": "63.32",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00142914",
+          "gamma_text": "0.00038114"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28736,7 +29084,9 @@
           "volume_text": "20",
           "iv_text": "64.99",
           "bid_text": "36.39",
-          "ask_text": "36.65"
+          "ask_text": "36.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28753,7 +29103,9 @@
           "volume_text": "2,635",
           "iv_text": "64.99",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00139496",
+          "gamma_text": "0.00036324"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28789,7 +29141,9 @@
           "volume_text": "0",
           "iv_text": "66.65",
           "bid_text": "37.36",
-          "ask_text": "37.65"
+          "ask_text": "37.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28806,7 +29160,9 @@
           "volume_text": "2,982",
           "iv_text": "66.65",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00136243",
+          "gamma_text": "0.0003466"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28842,7 +29198,9 @@
           "volume_text": "24",
           "iv_text": "68.28",
           "bid_text": "38.31",
-          "ask_text": "38.65"
+          "ask_text": "38.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28859,7 +29217,9 @@
           "volume_text": "4,986",
           "iv_text": "68.28",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.0013322",
+          "gamma_text": "0.00033149"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28895,7 +29255,9 @@
           "volume_text": "4",
           "iv_text": "69.95",
           "bid_text": "39.40",
-          "ask_text": "39.65"
+          "ask_text": "39.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28912,7 +29274,9 @@
           "volume_text": "979",
           "iv_text": "69.95",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00130261",
+          "gamma_text": "0.00031702"
         },
         "call_itm": true,
         "put_itm": false,
@@ -28948,7 +29312,9 @@
           "volume_text": "6",
           "iv_text": "71.61",
           "bid_text": "40.31",
-          "ask_text": "40.65"
+          "ask_text": "40.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -28965,7 +29331,9 @@
           "volume_text": "743",
           "iv_text": "71.61",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00127435",
+          "gamma_text": "0.00030351"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29001,7 +29369,9 @@
           "volume_text": "6",
           "iv_text": "73.27",
           "bid_text": "41.33",
-          "ask_text": "41.65"
+          "ask_text": "41.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29018,7 +29388,9 @@
           "volume_text": "2,489",
           "iv_text": "73.27",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00124734",
+          "gamma_text": "0.00029086"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29054,7 +29426,9 @@
           "volume_text": "8",
           "iv_text": "74.94",
           "bid_text": "42.32",
-          "ask_text": "42.65"
+          "ask_text": "42.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29071,7 +29445,9 @@
           "volume_text": "370",
           "iv_text": "74.94",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00122156",
+          "gamma_text": "0.00027902"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29107,7 +29483,9 @@
           "volume_text": "7",
           "iv_text": "76.60",
           "bid_text": "43.30",
-          "ask_text": "43.65"
+          "ask_text": "43.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29124,7 +29502,9 @@
           "volume_text": "338",
           "iv_text": "76.60",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00119679",
+          "gamma_text": "0.00026789"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29160,7 +29540,9 @@
           "volume_text": "1",
           "iv_text": "78.26",
           "bid_text": "44.40",
-          "ask_text": "44.65"
+          "ask_text": "44.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29177,7 +29559,9 @@
           "volume_text": "494",
           "iv_text": "78.26",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00117303",
+          "gamma_text": "0.00025743"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29213,7 +29597,9 @@
           "volume_text": "2",
           "iv_text": "79.92",
           "bid_text": "45.35",
-          "ask_text": "45.65"
+          "ask_text": "45.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29230,7 +29616,9 @@
           "volume_text": "1,962",
           "iv_text": "79.92",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00115023",
+          "gamma_text": "0.00024758"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29266,7 +29654,9 @@
           "volume_text": "1",
           "iv_text": "81.59",
           "bid_text": "46.40",
-          "ask_text": "46.65"
+          "ask_text": "46.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29283,7 +29673,9 @@
           "volume_text": "2,678",
           "iv_text": "81.59",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00112833",
+          "gamma_text": "0.0002383"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29319,7 +29711,9 @@
           "volume_text": "2",
           "iv_text": "83.25",
           "bid_text": "47.40",
-          "ask_text": "47.65"
+          "ask_text": "47.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29336,7 +29730,9 @@
           "volume_text": "2",
           "iv_text": "83.25",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00110726",
+          "gamma_text": "0.00022955"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29372,7 +29768,9 @@
           "volume_text": "1",
           "iv_text": "84.91",
           "bid_text": "48.40",
-          "ask_text": "48.65"
+          "ask_text": "48.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29389,7 +29787,9 @@
           "volume_text": "0",
           "iv_text": "84.91",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.001087",
+          "gamma_text": "0.00022128"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29425,7 +29825,9 @@
           "volume_text": "1",
           "iv_text": "86.57",
           "bid_text": "49.35",
-          "ask_text": "49.65"
+          "ask_text": "49.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29442,7 +29844,9 @@
           "volume_text": "0",
           "iv_text": "86.57",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00106748",
+          "gamma_text": "0.00021345"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29478,7 +29882,9 @@
           "volume_text": "0",
           "iv_text": "88.24",
           "bid_text": "50.33",
-          "ask_text": "50.65"
+          "ask_text": "50.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29495,7 +29901,9 @@
           "volume_text": "0",
           "iv_text": "88.24",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00104867",
+          "gamma_text": "0.00020604"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29531,7 +29939,9 @@
           "volume_text": "1",
           "iv_text": "89.90",
           "bid_text": "51.34",
-          "ask_text": "51.65"
+          "ask_text": "51.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29548,7 +29958,9 @@
           "volume_text": "45",
           "iv_text": "89.90",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00103053",
+          "gamma_text": "0.00019902"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29584,7 +29996,9 @@
           "volume_text": "1",
           "iv_text": "91.56",
           "bid_text": "52.30",
-          "ask_text": "52.65"
+          "ask_text": "52.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29601,7 +30015,9 @@
           "volume_text": "0",
           "iv_text": "91.56",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00101302",
+          "gamma_text": "0.00019236"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29637,7 +30053,9 @@
           "volume_text": "1",
           "iv_text": "93.22",
           "bid_text": "53.34",
-          "ask_text": "53.65"
+          "ask_text": "53.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29654,7 +30072,9 @@
           "volume_text": "0",
           "iv_text": "93.22",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00099611",
+          "gamma_text": "0.00018603"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29690,7 +30110,9 @@
           "volume_text": "1",
           "iv_text": "94.89",
           "bid_text": "54.40",
-          "ask_text": "54.65"
+          "ask_text": "54.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29707,7 +30129,9 @@
           "volume_text": "0",
           "iv_text": "94.89",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00097976",
+          "gamma_text": "0.00018002"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29743,7 +30167,9 @@
           "volume_text": "8",
           "iv_text": "96.55",
           "bid_text": "55.40",
-          "ask_text": "55.65"
+          "ask_text": "55.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29760,7 +30186,9 @@
           "volume_text": "0",
           "iv_text": "96.55",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00096396",
+          "gamma_text": "0.0001743"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29796,7 +30224,9 @@
           "volume_text": "1",
           "iv_text": "98.21",
           "bid_text": "56.33",
-          "ask_text": "56.65"
+          "ask_text": "56.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29813,7 +30243,9 @@
           "volume_text": "0",
           "iv_text": "98.21",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00094867",
+          "gamma_text": "0.00016885"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29849,7 +30281,9 @@
           "volume_text": "95",
           "iv_text": "99.88",
           "bid_text": "57.40",
-          "ask_text": "57.65"
+          "ask_text": "57.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29866,7 +30300,9 @@
           "volume_text": "2",
           "iv_text": "99.88",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00093387",
+          "gamma_text": "0.00016365"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29902,7 +30338,9 @@
           "volume_text": "0",
           "iv_text": "108.20",
           "bid_text": "62.30",
-          "ask_text": "62.65"
+          "ask_text": "62.65",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29919,7 +30357,9 @@
           "volume_text": "2",
           "iv_text": "108.20",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00086604",
+          "gamma_text": "0.00014095"
         },
         "call_itm": true,
         "put_itm": false,
@@ -29955,7 +30395,9 @@
           "volume_text": "17",
           "iv_text": "116.55",
           "bid_text": "67.35",
-          "ask_text": "67.64"
+          "ask_text": "67.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -29972,7 +30414,9 @@
           "volume_text": "21",
           "iv_text": "116.55",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00080797",
+          "gamma_text": "0.00012276"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30008,7 +30452,9 @@
           "volume_text": "0",
           "iv_text": "124.91",
           "bid_text": "72.39",
-          "ask_text": "72.64"
+          "ask_text": "72.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30025,7 +30471,9 @@
           "volume_text": "0",
           "iv_text": "124.91",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00075721",
+          "gamma_text": "0.00010789"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30061,7 +30509,9 @@
           "volume_text": "0",
           "iv_text": "133.30",
           "bid_text": "77.39",
-          "ask_text": "77.64"
+          "ask_text": "77.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30078,7 +30528,9 @@
           "volume_text": "0",
           "iv_text": "133.30",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00071236",
+          "gamma_text": "0.00009557"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30114,7 +30566,9 @@
           "volume_text": "1",
           "iv_text": "141.71",
           "bid_text": "82.39",
-          "ask_text": "82.64"
+          "ask_text": "82.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30131,7 +30585,9 @@
           "volume_text": "0",
           "iv_text": "141.75",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00067233",
+          "gamma_text": "0.0000852"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30167,7 +30623,9 @@
           "volume_text": "0",
           "iv_text": "150.16",
           "bid_text": "87.34",
-          "ask_text": "87.64"
+          "ask_text": "87.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30184,7 +30642,9 @@
           "volume_text": "0",
           "iv_text": "150.20",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00063657",
+          "gamma_text": "0.00007646"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30220,7 +30680,9 @@
           "volume_text": "1",
           "iv_text": "158.68",
           "bid_text": "92.40",
-          "ask_text": "92.64"
+          "ask_text": "92.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30237,7 +30699,9 @@
           "volume_text": "0",
           "iv_text": "158.68",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00060463",
+          "gamma_text": "0.00006901"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30273,7 +30737,9 @@
           "volume_text": "0",
           "iv_text": "167.19",
           "bid_text": "97.20",
-          "ask_text": "97.64"
+          "ask_text": "97.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30290,7 +30756,9 @@
           "volume_text": "0",
           "iv_text": "167.19",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00057557",
+          "gamma_text": "0.00006258"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30326,7 +30794,9 @@
           "volume_text": "0",
           "iv_text": "175.71",
           "bid_text": "102.23",
-          "ask_text": "102.64"
+          "ask_text": "102.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30343,7 +30813,9 @@
           "volume_text": "0",
           "iv_text": "175.71",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00054902",
+          "gamma_text": "0.00005701"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30379,7 +30851,9 @@
           "volume_text": "0",
           "iv_text": "184.30",
           "bid_text": "107.20",
-          "ask_text": "107.64"
+          "ask_text": "107.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30396,7 +30870,9 @@
           "volume_text": "1",
           "iv_text": "184.30",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00052506",
+          "gamma_text": "0.00005215"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30432,7 +30908,9 @@
           "volume_text": "0",
           "iv_text": "192.94",
           "bid_text": "112.39",
-          "ask_text": "112.64"
+          "ask_text": "112.64",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30449,7 +30927,9 @@
           "volume_text": "0",
           "iv_text": "192.94",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00050283",
+          "gamma_text": "0.00004786"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30485,7 +30965,9 @@
           "volume_text": "0",
           "iv_text": "201.62",
           "bid_text": "117.18",
-          "ask_text": "117.70"
+          "ask_text": "117.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30502,7 +30984,9 @@
           "volume_text": "10",
           "iv_text": "201.62",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00048226",
+          "gamma_text": "0.00004406"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30538,7 +31022,9 @@
           "volume_text": "0",
           "iv_text": "210.35",
           "bid_text": "122.17",
-          "ask_text": "122.70"
+          "ask_text": "122.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30555,7 +31041,9 @@
           "volume_text": "0",
           "iv_text": "210.35",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00046341",
+          "gamma_text": "0.0000407"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30591,7 +31079,9 @@
           "volume_text": "0",
           "iv_text": "219.13",
           "bid_text": "127.18",
-          "ask_text": "127.70"
+          "ask_text": "127.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30608,7 +31098,9 @@
           "volume_text": "1",
           "iv_text": "219.13",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00044573",
+          "gamma_text": "0.00003769"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30644,7 +31136,9 @@
           "volume_text": "0",
           "iv_text": "227.99",
           "bid_text": "132.20",
-          "ask_text": "132.70"
+          "ask_text": "132.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30661,7 +31155,9 @@
           "volume_text": "0",
           "iv_text": "227.99",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.0004294",
+          "gamma_text": "0.00003499"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30697,7 +31193,9 @@
           "volume_text": "0",
           "iv_text": "236.87",
           "bid_text": "137.22",
-          "ask_text": "137.71"
+          "ask_text": "137.71",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30714,7 +31212,9 @@
           "volume_text": "0",
           "iv_text": "236.87",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00041414",
+          "gamma_text": "0.00003256"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30750,7 +31250,9 @@
           "volume_text": "0",
           "iv_text": "245.80",
           "bid_text": "142.18",
-          "ask_text": "142.70"
+          "ask_text": "142.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30767,7 +31269,9 @@
           "volume_text": "0",
           "iv_text": "245.80",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00039977",
+          "gamma_text": "0.00003037"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30803,7 +31307,9 @@
           "volume_text": "1",
           "iv_text": "254.80",
           "bid_text": "147.38",
-          "ask_text": "147.70"
+          "ask_text": "147.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30820,7 +31326,9 @@
           "volume_text": "0",
           "iv_text": "254.76",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00038653",
+          "gamma_text": "0.0000284"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30856,7 +31364,9 @@
           "volume_text": "0",
           "iv_text": "263.81",
           "bid_text": "152.23",
-          "ask_text": "152.70"
+          "ask_text": "152.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30873,7 +31383,9 @@
           "volume_text": "0",
           "iv_text": "263.81",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00037394",
+          "gamma_text": "0.00002659"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30909,7 +31421,9 @@
           "volume_text": "0",
           "iv_text": "272.91",
           "bid_text": "157.18",
-          "ask_text": "157.70"
+          "ask_text": "157.70",
+          "delta_text": "1",
+          "gamma_text": "0"
         },
         "put": {
           "pennyPilot": true,
@@ -30926,7 +31440,9 @@
           "volume_text": "0",
           "iv_text": "272.91",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00036208",
+          "gamma_text": "0.00002495"
         },
         "call_itm": true,
         "put_itm": false,
@@ -30979,7 +31495,9 @@
           "volume_text": "0",
           "iv_text": "104.48",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00042425",
+          "gamma_text": "0.00003311"
         },
         "put": {
           "pennyPilot": true,
@@ -30996,7 +31514,9 @@
           "volume_text": "0",
           "iv_text": "104.48",
           "bid_text": "171.10",
-          "ask_text": "173.92"
+          "ask_text": "173.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31032,7 +31552,9 @@
           "volume_text": "0",
           "iv_text": "101.96",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00043389",
+          "gamma_text": "0.00003465"
         },
         "put": {
           "pennyPilot": true,
@@ -31049,7 +31571,9 @@
           "volume_text": "0",
           "iv_text": "101.96",
           "bid_text": "166.21",
-          "ask_text": "168.92"
+          "ask_text": "168.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31085,7 +31609,9 @@
           "volume_text": "0",
           "iv_text": "99.40",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00044413",
+          "gamma_text": "0.00003632"
         },
         "put": {
           "pennyPilot": true,
@@ -31102,7 +31628,9 @@
           "volume_text": "0",
           "iv_text": "99.40",
           "bid_text": "161.21",
-          "ask_text": "163.80"
+          "ask_text": "163.80",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31138,7 +31666,9 @@
           "volume_text": "0",
           "iv_text": "96.82",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0004549",
+          "gamma_text": "0.00003812"
         },
         "put": {
           "pennyPilot": true,
@@ -31155,7 +31685,9 @@
           "volume_text": "0",
           "iv_text": "96.82",
           "bid_text": "156.10",
-          "ask_text": "159.33"
+          "ask_text": "159.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31191,7 +31723,9 @@
           "volume_text": "0",
           "iv_text": "94.23",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00046648",
+          "gamma_text": "0.00004009"
         },
         "put": {
           "pennyPilot": true,
@@ -31208,7 +31742,9 @@
           "volume_text": "0",
           "iv_text": "94.23",
           "bid_text": "151.21",
-          "ask_text": "154.12"
+          "ask_text": "154.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31244,7 +31780,9 @@
           "volume_text": "0",
           "iv_text": "91.61",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00047869",
+          "gamma_text": "0.00004224"
         },
         "put": {
           "pennyPilot": true,
@@ -31261,7 +31799,9 @@
           "volume_text": "0",
           "iv_text": "91.61",
           "bid_text": "146.21",
-          "ask_text": "149.12"
+          "ask_text": "149.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31297,7 +31837,9 @@
           "volume_text": "0",
           "iv_text": "88.98",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00049166",
+          "gamma_text": "0.00004458"
         },
         "put": {
           "pennyPilot": true,
@@ -31314,7 +31856,9 @@
           "volume_text": "0",
           "iv_text": "88.96",
           "bid_text": "141.10",
-          "ask_text": "144.33"
+          "ask_text": "144.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31350,7 +31894,9 @@
           "volume_text": "0",
           "iv_text": "86.32",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00050567",
+          "gamma_text": "0.00004716"
         },
         "put": {
           "pennyPilot": true,
@@ -31367,7 +31913,9 @@
           "volume_text": "0",
           "iv_text": "86.32",
           "bid_text": "136.22",
-          "ask_text": "139.33"
+          "ask_text": "139.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31403,7 +31951,9 @@
           "volume_text": "0",
           "iv_text": "83.64",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00052056",
+          "gamma_text": "0.00005"
         },
         "put": {
           "pennyPilot": true,
@@ -31420,7 +31970,9 @@
           "volume_text": "0",
           "iv_text": "83.64",
           "bid_text": "131.10",
-          "ask_text": "134.34"
+          "ask_text": "134.34",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31456,7 +32008,9 @@
           "volume_text": "0",
           "iv_text": "80.94",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00053648",
+          "gamma_text": "0.00005313"
         },
         "put": {
           "pennyPilot": true,
@@ -31473,7 +32027,9 @@
           "volume_text": "0",
           "iv_text": "80.93",
           "bid_text": "126.23",
-          "ask_text": "129.13"
+          "ask_text": "129.13",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31509,7 +32065,9 @@
           "volume_text": "0",
           "iv_text": "78.22",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0005536",
+          "gamma_text": "0.0000566"
         },
         "put": {
           "pennyPilot": true,
@@ -31526,7 +32084,9 @@
           "volume_text": "0",
           "iv_text": "78.20",
           "bid_text": "121.13",
-          "ask_text": "124.34"
+          "ask_text": "124.34",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31562,7 +32122,9 @@
           "volume_text": "0",
           "iv_text": "75.46",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00057236",
+          "gamma_text": "0.0000605"
         },
         "put": {
           "pennyPilot": true,
@@ -31579,7 +32141,9 @@
           "volume_text": "0",
           "iv_text": "75.46",
           "bid_text": "116.21",
-          "ask_text": "119.33"
+          "ask_text": "119.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31615,7 +32179,9 @@
           "volume_text": "0",
           "iv_text": "72.69",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00059244",
+          "gamma_text": "0.00006484"
         },
         "put": {
           "pennyPilot": true,
@@ -31632,7 +32198,9 @@
           "volume_text": "0",
           "iv_text": "72.69",
           "bid_text": "111.10",
-          "ask_text": "114.34"
+          "ask_text": "114.34",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31668,7 +32236,9 @@
           "volume_text": "0",
           "iv_text": "69.89",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00061427",
+          "gamma_text": "0.00006973"
         },
         "put": {
           "pennyPilot": true,
@@ -31685,7 +32255,9 @@
           "volume_text": "0",
           "iv_text": "69.91",
           "bid_text": "106.17",
-          "ask_text": "109.33"
+          "ask_text": "109.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31721,7 +32293,9 @@
           "volume_text": "0",
           "iv_text": "67.09",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0006378",
+          "gamma_text": "0.00007521"
         },
         "put": {
           "pennyPilot": true,
@@ -31738,7 +32312,9 @@
           "volume_text": "0",
           "iv_text": "67.09",
           "bid_text": "101.17",
-          "ask_text": "104.12"
+          "ask_text": "104.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31774,7 +32350,9 @@
           "volume_text": "0",
           "iv_text": "64.24",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0006636",
+          "gamma_text": "0.00008148"
         },
         "put": {
           "pennyPilot": true,
@@ -31791,7 +32369,9 @@
           "volume_text": "0",
           "iv_text": "64.24",
           "bid_text": "96.21",
-          "ask_text": "99.33"
+          "ask_text": "99.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31827,7 +32407,9 @@
           "volume_text": "0",
           "iv_text": "61.37",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00069259",
+          "gamma_text": "0.00008872"
         },
         "put": {
           "pennyPilot": true,
@@ -31844,7 +32426,9 @@
           "volume_text": "0",
           "iv_text": "61.37",
           "bid_text": "91.21",
-          "ask_text": "94.33"
+          "ask_text": "94.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31880,7 +32464,9 @@
           "volume_text": "0",
           "iv_text": "58.47",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00072426",
+          "gamma_text": "0.00009704"
         },
         "put": {
           "pennyPilot": true,
@@ -31897,7 +32483,9 @@
           "volume_text": "0",
           "iv_text": "58.47",
           "bid_text": "86.07",
-          "ask_text": "89.33"
+          "ask_text": "89.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31933,7 +32521,9 @@
           "volume_text": "0",
           "iv_text": "55.54",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00075948",
+          "gamma_text": "0.00010673"
         },
         "put": {
           "pennyPilot": true,
@@ -31950,7 +32540,9 @@
           "volume_text": "0",
           "iv_text": "55.54",
           "bid_text": "81.10",
-          "ask_text": "84.12"
+          "ask_text": "84.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -31986,7 +32578,9 @@
           "volume_text": "0",
           "iv_text": "52.56",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00079898",
+          "gamma_text": "0.00011816"
         },
         "put": {
           "pennyPilot": true,
@@ -32003,7 +32597,9 @@
           "volume_text": "0",
           "iv_text": "52.56",
           "bid_text": "76.19",
-          "ask_text": "79.12"
+          "ask_text": "79.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32039,7 +32635,9 @@
           "volume_text": "0",
           "iv_text": "49.57",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00084325",
+          "gamma_text": "0.00013167"
         },
         "put": {
           "pennyPilot": true,
@@ -32056,7 +32654,9 @@
           "volume_text": "0",
           "iv_text": "49.57",
           "bid_text": "70.90",
-          "ask_text": "73.86"
+          "ask_text": "73.86",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32092,7 +32692,9 @@
           "volume_text": "0",
           "iv_text": "46.55",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00089357",
+          "gamma_text": "0.0001479"
         },
         "put": {
           "pennyPilot": true,
@@ -32109,7 +32711,9 @@
           "volume_text": "0",
           "iv_text": "46.55",
           "bid_text": "66.11",
-          "ask_text": "68.80"
+          "ask_text": "68.80",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32145,7 +32749,9 @@
           "volume_text": "0",
           "iv_text": "43.49",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00095203",
+          "gamma_text": "0.00016779"
         },
         "put": {
           "pennyPilot": true,
@@ -32162,7 +32768,9 @@
           "volume_text": "0",
           "iv_text": "43.49",
           "bid_text": "61.10",
-          "ask_text": "64.33"
+          "ask_text": "64.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32198,7 +32806,9 @@
           "volume_text": "0",
           "iv_text": "42.89",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00096435",
+          "gamma_text": "0.00017216"
         },
         "put": {
           "pennyPilot": true,
@@ -32215,7 +32825,9 @@
           "volume_text": "0",
           "iv_text": "42.89",
           "bid_text": "60.04",
-          "ask_text": "63.33"
+          "ask_text": "63.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32251,7 +32863,9 @@
           "volume_text": "0",
           "iv_text": "42.27",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00097736",
+          "gamma_text": "0.00017684"
         },
         "put": {
           "pennyPilot": true,
@@ -32268,7 +32882,9 @@
           "volume_text": "0",
           "iv_text": "42.27",
           "bid_text": "59.08",
-          "ask_text": "62.34"
+          "ask_text": "62.34",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32304,7 +32920,9 @@
           "volume_text": "0",
           "iv_text": "41.65",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00099078",
+          "gamma_text": "0.00018173"
         },
         "put": {
           "pennyPilot": true,
@@ -32321,7 +32939,9 @@
           "volume_text": "0",
           "iv_text": "41.65",
           "bid_text": "58.15",
-          "ask_text": "61.12"
+          "ask_text": "61.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32357,7 +32977,9 @@
           "volume_text": "0",
           "iv_text": "41.03",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00100462",
+          "gamma_text": "0.00018684"
         },
         "put": {
           "pennyPilot": true,
@@ -32374,7 +32996,9 @@
           "volume_text": "0",
           "iv_text": "41.03",
           "bid_text": "57.11",
-          "ask_text": "59.79"
+          "ask_text": "59.79",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32410,7 +33034,9 @@
           "volume_text": "0",
           "iv_text": "40.41",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00101891",
+          "gamma_text": "0.00019219"
         },
         "put": {
           "pennyPilot": true,
@@ -32427,7 +33053,9 @@
           "volume_text": "0",
           "iv_text": "40.41",
           "bid_text": "55.70",
-          "ask_text": "59.33"
+          "ask_text": "59.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32463,7 +33091,9 @@
           "volume_text": "0",
           "iv_text": "39.79",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00103366",
+          "gamma_text": "0.00019779"
         },
         "put": {
           "pennyPilot": true,
@@ -32480,7 +33110,9 @@
           "volume_text": "0",
           "iv_text": "39.79",
           "bid_text": "55.11",
-          "ask_text": "57.79"
+          "ask_text": "57.79",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32516,7 +33148,9 @@
           "volume_text": "0",
           "iv_text": "39.16",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00104891",
+          "gamma_text": "0.00020367"
         },
         "put": {
           "pennyPilot": true,
@@ -32533,7 +33167,9 @@
           "volume_text": "0",
           "iv_text": "39.16",
           "bid_text": "54.00",
-          "ask_text": "57.33"
+          "ask_text": "57.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32569,7 +33205,9 @@
           "volume_text": "0",
           "iv_text": "38.53",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00106467",
+          "gamma_text": "0.00020983"
         },
         "put": {
           "pennyPilot": true,
@@ -32586,7 +33224,9 @@
           "volume_text": "0",
           "iv_text": "38.53",
           "bid_text": "53.11",
-          "ask_text": "56.12"
+          "ask_text": "56.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32622,7 +33262,9 @@
           "volume_text": "0",
           "iv_text": "37.91",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00108097",
+          "gamma_text": "0.00021631"
         },
         "put": {
           "pennyPilot": true,
@@ -32639,7 +33281,9 @@
           "volume_text": "0",
           "iv_text": "37.91",
           "bid_text": "52.08",
-          "ask_text": "55.33"
+          "ask_text": "55.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32675,7 +33319,9 @@
           "volume_text": "0",
           "iv_text": "37.28",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00109785",
+          "gamma_text": "0.00022311"
         },
         "put": {
           "pennyPilot": true,
@@ -32692,7 +33338,9 @@
           "volume_text": "0",
           "iv_text": "37.28",
           "bid_text": "51.11",
-          "ask_text": "54.33"
+          "ask_text": "54.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32728,7 +33376,9 @@
           "volume_text": "0",
           "iv_text": "36.64",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00111534",
+          "gamma_text": "0.00023027"
         },
         "put": {
           "pennyPilot": true,
@@ -32745,7 +33395,9 @@
           "volume_text": "0",
           "iv_text": "36.64",
           "bid_text": "50.11",
-          "ask_text": "53.21"
+          "ask_text": "53.21",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32781,7 +33433,9 @@
           "volume_text": "0",
           "iv_text": "36.01",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00113346",
+          "gamma_text": "0.0002378"
         },
         "put": {
           "pennyPilot": true,
@@ -32798,7 +33452,9 @@
           "volume_text": "0",
           "iv_text": "36.01",
           "bid_text": "49.11",
-          "ask_text": "52.12"
+          "ask_text": "52.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32834,7 +33490,9 @@
           "volume_text": "0",
           "iv_text": "35.37",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00115226",
+          "gamma_text": "0.00024575"
         },
         "put": {
           "pennyPilot": true,
@@ -32851,7 +33509,9 @@
           "volume_text": "0",
           "iv_text": "35.37",
           "bid_text": "48.11",
-          "ask_text": "51.33"
+          "ask_text": "51.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32887,7 +33547,9 @@
           "volume_text": "0",
           "iv_text": "34.74",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00117177",
+          "gamma_text": "0.00025413"
         },
         "put": {
           "pennyPilot": true,
@@ -32904,7 +33566,9 @@
           "volume_text": "0",
           "iv_text": "34.74",
           "bid_text": "47.06",
-          "ask_text": "50.33"
+          "ask_text": "50.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32940,7 +33604,9 @@
           "volume_text": "0",
           "iv_text": "34.09",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00118894",
+          "gamma_text": "0.00026243"
         },
         "put": {
           "pennyPilot": true,
@@ -32957,7 +33623,9 @@
           "volume_text": "0",
           "iv_text": "34.09",
           "bid_text": "46.00",
-          "ask_text": "49.33"
+          "ask_text": "49.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -32993,7 +33661,9 @@
           "volume_text": "0",
           "iv_text": "33.45",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00120978",
+          "gamma_text": "0.00027175"
         },
         "put": {
           "pennyPilot": true,
@@ -33010,7 +33680,9 @@
           "volume_text": "0",
           "iv_text": "33.45",
           "bid_text": "45.07",
-          "ask_text": "48.12"
+          "ask_text": "48.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33046,7 +33718,9 @@
           "volume_text": "0",
           "iv_text": "32.81",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00123147",
+          "gamma_text": "0.00028161"
         },
         "put": {
           "pennyPilot": true,
@@ -33063,7 +33737,9 @@
           "volume_text": "0",
           "iv_text": "32.81",
           "bid_text": "44.13",
-          "ask_text": "47.12"
+          "ask_text": "47.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33099,7 +33775,9 @@
           "volume_text": "0",
           "iv_text": "32.17",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00125406",
+          "gamma_text": "0.00029207"
         },
         "put": {
           "pennyPilot": true,
@@ -33116,7 +33794,9 @@
           "volume_text": "0",
           "iv_text": "32.17",
           "bid_text": "43.07",
-          "ask_text": "46.34"
+          "ask_text": "46.34",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33152,7 +33832,9 @@
           "volume_text": "0",
           "iv_text": "31.53",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00128156",
+          "gamma_text": "0.00030394"
         },
         "put": {
           "pennyPilot": true,
@@ -33169,7 +33851,9 @@
           "volume_text": "0",
           "iv_text": "31.53",
           "bid_text": "42.07",
-          "ask_text": "44.92"
+          "ask_text": "44.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33205,7 +33889,9 @@
           "volume_text": "0",
           "iv_text": "30.88",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00130639",
+          "gamma_text": "0.00031581"
         },
         "put": {
           "pennyPilot": true,
@@ -33222,7 +33908,9 @@
           "volume_text": "0",
           "iv_text": "30.88",
           "bid_text": "41.07",
-          "ask_text": "44.33"
+          "ask_text": "44.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33258,7 +33946,9 @@
           "volume_text": "0",
           "iv_text": "30.23",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00133241",
+          "gamma_text": "0.00032846"
         },
         "put": {
           "pennyPilot": true,
@@ -33275,7 +33965,9 @@
           "volume_text": "0",
           "iv_text": "30.23",
           "bid_text": "40.11",
-          "ask_text": "43.33"
+          "ask_text": "43.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33311,7 +34003,9 @@
           "volume_text": "0",
           "iv_text": "29.58",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00135952",
+          "gamma_text": "0.00034194"
         },
         "put": {
           "pennyPilot": true,
@@ -33328,7 +34022,9 @@
           "volume_text": "0",
           "iv_text": "29.58",
           "bid_text": "39.07",
-          "ask_text": "42.11"
+          "ask_text": "42.11",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33364,7 +34060,9 @@
           "volume_text": "0",
           "iv_text": "28.92",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00138789",
+          "gamma_text": "0.00035633"
         },
         "put": {
           "pennyPilot": true,
@@ -33381,7 +34079,9 @@
           "volume_text": "0",
           "iv_text": "28.92",
           "bid_text": "37.97",
-          "ask_text": "41.34"
+          "ask_text": "41.34",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33417,7 +34117,9 @@
           "volume_text": "0",
           "iv_text": "28.27",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00141762",
+          "gamma_text": "0.00037172"
         },
         "put": {
           "pennyPilot": true,
@@ -33434,7 +34136,9 @@
           "volume_text": "13",
           "iv_text": "28.27",
           "bid_text": "36.69",
-          "ask_text": "40.33"
+          "ask_text": "40.33",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33470,7 +34174,9 @@
           "volume_text": "0",
           "iv_text": "27.61",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0014488",
+          "gamma_text": "0.00038822"
         },
         "put": {
           "pennyPilot": true,
@@ -33487,7 +34193,9 @@
           "volume_text": "40",
           "iv_text": "27.61",
           "bid_text": "36.97",
-          "ask_text": "38.98"
+          "ask_text": "38.98",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33523,7 +34231,9 @@
           "volume_text": "0",
           "iv_text": "26.95",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00148155",
+          "gamma_text": "0.00040593"
         },
         "put": {
           "pennyPilot": true,
@@ -33540,7 +34250,9 @@
           "volume_text": "8",
           "iv_text": "26.95",
           "bid_text": "35.00",
-          "ask_text": "38.59"
+          "ask_text": "38.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33576,7 +34288,9 @@
           "volume_text": "0",
           "iv_text": "26.29",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.001516",
+          "gamma_text": "0.00042497"
         },
         "put": {
           "pennyPilot": true,
@@ -33593,7 +34307,9 @@
           "volume_text": "16",
           "iv_text": "26.29",
           "bid_text": "33.91",
-          "ask_text": "37.13"
+          "ask_text": "37.13",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33629,7 +34345,9 @@
           "volume_text": "0",
           "iv_text": "25.62",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00155229",
+          "gamma_text": "0.00044551"
         },
         "put": {
           "pennyPilot": true,
@@ -33646,7 +34364,9 @@
           "volume_text": "6",
           "iv_text": "25.62",
           "bid_text": "33.11",
-          "ask_text": "36.12"
+          "ask_text": "36.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33682,7 +34402,9 @@
           "volume_text": "80",
           "iv_text": "24.95",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00159056",
+          "gamma_text": "0.00046768"
         },
         "put": {
           "pennyPilot": true,
@@ -33699,7 +34421,9 @@
           "volume_text": "14",
           "iv_text": "24.95",
           "bid_text": "32.00",
-          "ask_text": "35.59"
+          "ask_text": "35.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33735,7 +34459,9 @@
           "volume_text": "1",
           "iv_text": "24.29",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00163099",
+          "gamma_text": "0.00049169"
         },
         "put": {
           "pennyPilot": true,
@@ -33752,7 +34478,9 @@
           "volume_text": "12",
           "iv_text": "24.29",
           "bid_text": "31.11",
-          "ask_text": "33.84"
+          "ask_text": "33.84",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33788,7 +34516,9 @@
           "volume_text": "134",
           "iv_text": "23.61",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00167378",
+          "gamma_text": "0.00051775"
         },
         "put": {
           "pennyPilot": true,
@@ -33805,7 +34535,9 @@
           "volume_text": "30",
           "iv_text": "23.61",
           "bid_text": "30.10",
-          "ask_text": "33.59"
+          "ask_text": "33.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33841,7 +34573,9 @@
           "volume_text": "794",
           "iv_text": "22.94",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00171915",
+          "gamma_text": "0.00054611"
         },
         "put": {
           "pennyPilot": true,
@@ -33858,7 +34592,9 @@
           "volume_text": "0",
           "iv_text": "22.94",
           "bid_text": "28.99",
-          "ask_text": "32.17"
+          "ask_text": "32.17",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33894,7 +34630,9 @@
           "volume_text": "83",
           "iv_text": "22.26",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.00176733",
+          "gamma_text": "0.00057705"
         },
         "put": {
           "pennyPilot": true,
@@ -33911,7 +34649,9 @@
           "volume_text": "0",
           "iv_text": "22.26",
           "bid_text": "28.07",
-          "ask_text": "31.12"
+          "ask_text": "31.12",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -33947,7 +34687,9 @@
           "volume_text": "524",
           "iv_text": "21.58",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "0.0018112",
+          "gamma_text": "0.00060891"
         },
         "put": {
           "pennyPilot": true,
@@ -33964,7 +34706,9 @@
           "volume_text": "0",
           "iv_text": "21.58",
           "bid_text": "27.08",
-          "ask_text": "30.56"
+          "ask_text": "30.56",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34000,7 +34744,9 @@
           "volume_text": "286",
           "iv_text": "23.33",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00472635",
+          "gamma_text": "0.00133627"
         },
         "put": {
           "pennyPilot": true,
@@ -34017,7 +34763,9 @@
           "volume_text": "0",
           "iv_text": "23.33",
           "bid_text": "26.15",
-          "ask_text": "29.59"
+          "ask_text": "29.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34053,7 +34801,9 @@
           "volume_text": "283",
           "iv_text": "22.58",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00486857",
+          "gamma_text": "0.00141769"
         },
         "put": {
           "pennyPilot": true,
@@ -34070,7 +34820,9 @@
           "volume_text": "6",
           "iv_text": "22.58",
           "bid_text": "25.11",
-          "ask_text": "28.59"
+          "ask_text": "28.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34106,7 +34858,9 @@
           "volume_text": "930",
           "iv_text": "21.83",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00502046",
+          "gamma_text": "0.0015074"
         },
         "put": {
           "pennyPilot": true,
@@ -34123,7 +34877,9 @@
           "volume_text": "64",
           "iv_text": "21.83",
           "bid_text": "23.81",
-          "ask_text": "27.59"
+          "ask_text": "27.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34159,7 +34915,9 @@
           "volume_text": "275",
           "iv_text": "21.07",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00518312",
+          "gamma_text": "0.00160663"
         },
         "put": {
           "pennyPilot": true,
@@ -34176,7 +34934,9 @@
           "volume_text": "34",
           "iv_text": "21.07",
           "bid_text": "23.15",
-          "ask_text": "26.57"
+          "ask_text": "26.57",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34212,7 +34972,9 @@
           "volume_text": "32",
           "iv_text": "20.31",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00535784",
+          "gamma_text": "0.00171684"
         },
         "put": {
           "pennyPilot": true,
@@ -34229,7 +34991,9 @@
           "volume_text": "82",
           "iv_text": "20.31",
           "bid_text": "22.77",
-          "ask_text": "25.59"
+          "ask_text": "25.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34265,7 +35029,9 @@
           "volume_text": "888",
           "iv_text": "19.54",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00554611",
+          "gamma_text": "0.0018398"
         },
         "put": {
           "pennyPilot": true,
@@ -34282,7 +35048,9 @@
           "volume_text": "42",
           "iv_text": "19.54",
           "bid_text": "21.19",
-          "ask_text": "24.59"
+          "ask_text": "24.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34318,7 +35086,9 @@
           "volume_text": "276",
           "iv_text": "18.77",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.0057497",
+          "gamma_text": "0.00197766"
         },
         "put": {
           "pennyPilot": true,
@@ -34335,7 +35105,9 @@
           "volume_text": "92",
           "iv_text": "18.75",
           "bid_text": "21.20",
-          "ask_text": "23.59"
+          "ask_text": "23.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34371,7 +35143,9 @@
           "volume_text": "245",
           "iv_text": "17.99",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00597069",
+          "gamma_text": "0.00213303"
         },
         "put": {
           "pennyPilot": true,
@@ -34388,7 +35162,9 @@
           "volume_text": "96",
           "iv_text": "17.97",
           "bid_text": "20.35",
-          "ask_text": "22.59"
+          "ask_text": "22.59",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34424,7 +35200,9 @@
           "volume_text": "225",
           "iv_text": "17.21",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.0062116",
+          "gamma_text": "0.0023092"
         },
         "put": {
           "pennyPilot": true,
@@ -34441,7 +35219,9 @@
           "volume_text": "40",
           "iv_text": "17.19",
           "bid_text": "18.44",
-          "ask_text": "20.92"
+          "ask_text": "20.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34477,7 +35257,9 @@
           "volume_text": "764",
           "iv_text": "16.42",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "0.00645531",
+          "gamma_text": "0.00250443"
         },
         "put": {
           "pennyPilot": true,
@@ -34494,7 +35276,9 @@
           "volume_text": "0",
           "iv_text": "16.40",
           "bid_text": "17.19",
-          "ask_text": "19.92"
+          "ask_text": "19.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34530,7 +35314,9 @@
           "volume_text": "998",
           "iv_text": "16.62",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "0.01008505",
+          "gamma_text": "0.00366249"
         },
         "put": {
           "pennyPilot": true,
@@ -34547,7 +35333,9 @@
           "volume_text": "0",
           "iv_text": "16.60",
           "bid_text": "16.19",
-          "ask_text": "18.92"
+          "ask_text": "18.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34583,7 +35371,9 @@
           "volume_text": "1,200",
           "iv_text": "15.79",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "0.01056246",
+          "gamma_text": "0.00401434"
         },
         "put": {
           "pennyPilot": true,
@@ -34600,7 +35390,9 @@
           "volume_text": "1",
           "iv_text": "15.77",
           "bid_text": "15.19",
-          "ask_text": "17.92"
+          "ask_text": "17.92",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34636,7 +35428,9 @@
           "volume_text": "1,162",
           "iv_text": "15.62",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "0.01433729",
+          "gamma_text": "0.00528581"
         },
         "put": {
           "pennyPilot": true,
@@ -34653,7 +35447,9 @@
           "volume_text": "45",
           "iv_text": "15.60",
           "bid_text": "15.36",
-          "ask_text": "16.77"
+          "ask_text": "16.77",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34689,7 +35485,9 @@
           "volume_text": "1,323",
           "iv_text": "15.30",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "0.01854892",
+          "gamma_text": "0.0067272"
         },
         "put": {
           "pennyPilot": true,
@@ -34706,7 +35504,9 @@
           "volume_text": "9",
           "iv_text": "15.30",
           "bid_text": "14.01",
-          "ask_text": "15.67"
+          "ask_text": "15.67",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": false,
         "put_itm": true,
@@ -34742,7 +35542,9 @@
           "volume_text": "1,590",
           "iv_text": "14.98",
           "bid_text": "0.06",
-          "ask_text": "0.07"
+          "ask_text": "0.07",
+          "delta_text": "0.02242914",
+          "gamma_text": "0.00807694"
         },
         "put": {
           "pennyPilot": true,
@@ -34759,7 +35561,9 @@
           "volume_text": "12",
           "iv_text": "14.98",
           "bid_text": "12.36",
-          "ask_text": "14.67"
+          "ask_text": "14.67",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -34795,7 +35599,9 @@
           "volume_text": "5,081",
           "iv_text": "15.09",
           "bid_text": "0.08",
-          "ask_text": "0.09"
+          "ask_text": "0.09",
+          "delta_text": "0.0326879",
+          "gamma_text": "0.01097347"
         },
         "put": {
           "pennyPilot": true,
@@ -34812,7 +35618,9 @@
           "volume_text": "164",
           "iv_text": "15.09",
           "bid_text": "12.37",
-          "ask_text": "12.70"
+          "ask_text": "12.70",
+          "delta_text": "-1",
+          "gamma_text": "0"
         },
         "call_itm": null,
         "put_itm": null,
@@ -34848,7 +35656,9 @@
           "volume_text": "4,383",
           "iv_text": "14.90",
           "bid_text": "0.12",
-          "ask_text": "0.13"
+          "ask_text": "0.13",
+          "delta_text": "0.04301393",
+          "gamma_text": "0.01390737"
         },
         "put": {
           "pennyPilot": true,
@@ -34865,7 +35675,9 @@
           "volume_text": "40",
           "iv_text": "14.90",
           "bid_text": "11.39",
-          "ask_text": "11.82"
+          "ask_text": "11.82",
+          "delta_text": "-0.96976981",
+          "gamma_text": "0.01247677"
         },
         "call_itm": null,
         "put_itm": null,
@@ -34901,7 +35713,9 @@
           "volume_text": "5,059",
           "iv_text": "14.91",
           "bid_text": "0.17",
-          "ask_text": "0.18"
+          "ask_text": "0.18",
+          "delta_text": "0.05861056",
+          "gamma_text": "0.01779364"
         },
         "put": {
           "pennyPilot": true,
@@ -34918,7 +35732,9 @@
           "volume_text": "49",
           "iv_text": "14.91",
           "bid_text": "10.42",
-          "ask_text": "10.62"
+          "ask_text": "10.62",
+          "delta_text": "-0.95481486",
+          "gamma_text": "0.01781676"
         },
         "call_itm": null,
         "put_itm": null,
@@ -34954,7 +35770,9 @@
           "volume_text": "5,881",
           "iv_text": "15.11",
           "bid_text": "0.25",
-          "ask_text": "0.26"
+          "ask_text": "0.26",
+          "delta_text": "0.08118754",
+          "gamma_text": "0.02256235"
         },
         "put": {
           "pennyPilot": true,
@@ -34971,7 +35789,9 @@
           "volume_text": "77",
           "iv_text": "15.11",
           "bid_text": "9.47",
-          "ask_text": "9.66"
+          "ask_text": "9.66",
+          "delta_text": "-0.93130983",
+          "gamma_text": "0.02354517"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35007,7 +35827,9 @@
           "volume_text": "3,927",
           "iv_text": "15.21",
           "bid_text": "0.36",
-          "ask_text": "0.37"
+          "ask_text": "0.37",
+          "delta_text": "0.10743089",
+          "gamma_text": "0.02755825"
         },
         "put": {
           "pennyPilot": true,
@@ -35024,7 +35846,9 @@
           "volume_text": "86",
           "iv_text": "15.21",
           "bid_text": "8.56",
-          "ask_text": "8.73"
+          "ask_text": "8.73",
+          "delta_text": "-0.90363928",
+          "gamma_text": "0.0289939"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35060,7 +35884,9 @@
           "volume_text": "8,678",
           "iv_text": "15.42",
           "bid_text": "0.50",
-          "ask_text": "0.51"
+          "ask_text": "0.51",
+          "delta_text": "0.14050361",
+          "gamma_text": "0.03281583"
         },
         "put": {
           "pennyPilot": true,
@@ -35077,7 +35903,9 @@
           "volume_text": "175",
           "iv_text": "15.42",
           "bid_text": "7.69",
-          "ask_text": "7.83"
+          "ask_text": "7.83",
+          "delta_text": "-0.86870305",
+          "gamma_text": "0.03436998"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35113,7 +35941,9 @@
           "volume_text": "5,912",
           "iv_text": "15.63",
           "bid_text": "0.69",
-          "ask_text": "0.70"
+          "ask_text": "0.70",
+          "delta_text": "0.17895908",
+          "gamma_text": "0.03792193"
         },
         "put": {
           "pennyPilot": true,
@@ -35130,7 +35960,9 @@
           "volume_text": "236",
           "iv_text": "15.63",
           "bid_text": "6.85",
-          "ask_text": "6.91"
+          "ask_text": "6.91",
+          "delta_text": "-0.82842831",
+          "gamma_text": "0.03939344"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35166,7 +35998,9 @@
           "volume_text": "7,705",
           "iv_text": "15.93",
           "bid_text": "0.93",
-          "ask_text": "0.94"
+          "ask_text": "0.94",
+          "delta_text": "0.22336141",
+          "gamma_text": "0.04251854"
         },
         "put": {
           "pennyPilot": true,
@@ -35183,7 +36017,9 @@
           "volume_text": "182",
           "iv_text": "15.97",
           "bid_text": "6.08",
-          "ask_text": "6.14"
+          "ask_text": "6.14",
+          "delta_text": "-0.78176077",
+          "gamma_text": "0.04373969"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35219,7 +36055,9 @@
           "volume_text": "8,372",
           "iv_text": "16.26",
           "bid_text": "1.23",
-          "ask_text": "1.24"
+          "ask_text": "1.24",
+          "delta_text": "0.27198272",
+          "gamma_text": "0.04629346"
         },
         "put": {
           "pennyPilot": true,
@@ -35236,7 +36074,9 @@
           "volume_text": "547",
           "iv_text": "16.26",
           "bid_text": "5.38",
-          "ask_text": "5.42"
+          "ask_text": "5.42",
+          "delta_text": "-0.73232153",
+          "gamma_text": "0.04733438"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35272,7 +36112,9 @@
           "volume_text": "9,031",
           "iv_text": "16.62",
           "bid_text": "1.59",
-          "ask_text": "1.60"
+          "ask_text": "1.60",
+          "delta_text": "0.32362549",
+          "gamma_text": "0.04902131"
         },
         "put": {
           "pennyPilot": true,
@@ -35289,7 +36131,9 @@
           "volume_text": "1,265",
           "iv_text": "16.62",
           "bid_text": "4.73",
-          "ask_text": "4.76"
+          "ask_text": "4.76",
+          "delta_text": "-0.6795703",
+          "gamma_text": "0.04983575"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35325,7 +36169,9 @@
           "volume_text": "15,619",
           "iv_text": "16.95",
           "bid_text": "2.00",
-          "ask_text": "2.01"
+          "ask_text": "2.01",
+          "delta_text": "0.37629508",
+          "gamma_text": "0.05078459"
         },
         "put": {
           "pennyPilot": true,
@@ -35342,7 +36188,9 @@
           "volume_text": "4,019",
           "iv_text": "16.95",
           "bid_text": "4.15",
-          "ask_text": "4.16"
+          "ask_text": "4.16",
+          "delta_text": "-0.62608002",
+          "gamma_text": "0.051402"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35378,7 +36226,9 @@
           "volume_text": "6,147",
           "iv_text": "17.37",
           "bid_text": "2.47",
-          "ask_text": "2.49"
+          "ask_text": "2.49",
+          "delta_text": "0.4296756",
+          "gamma_text": "0.05128132"
         },
         "put": {
           "pennyPilot": true,
@@ -35395,7 +36245,9 @@
           "volume_text": "2,726",
           "iv_text": "17.37",
           "bid_text": "3.62",
-          "ask_text": "3.64"
+          "ask_text": "3.64",
+          "delta_text": "-0.57209053",
+          "gamma_text": "0.05172055"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35431,7 +36283,9 @@
           "volume_text": "10,575",
           "iv_text": "17.76",
           "bid_text": "3.01",
-          "ask_text": "3.02"
+          "ask_text": "3.02",
+          "delta_text": "0.48183555",
+          "gamma_text": "0.0508974"
         },
         "put": {
           "pennyPilot": true,
@@ -35448,7 +36302,9 @@
           "volume_text": "6,138",
           "iv_text": "17.76",
           "bid_text": "3.15",
-          "ask_text": "3.16"
+          "ask_text": "3.16",
+          "delta_text": "-0.51952071",
+          "gamma_text": "0.05119151"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35484,7 +36340,9 @@
           "volume_text": "11,871",
           "iv_text": "17.59",
           "bid_text": "3.59",
-          "ask_text": "3.61"
+          "ask_text": "3.61",
+          "delta_text": "0.53301597",
+          "gamma_text": "0.05127368"
         },
         "put": {
           "pennyPilot": true,
@@ -35501,7 +36359,9 @@
           "volume_text": "9,635",
           "iv_text": "17.59",
           "bid_text": "2.74",
-          "ask_text": "2.75"
+          "ask_text": "2.75",
+          "delta_text": "-0.46798365",
+          "gamma_text": "0.05149876"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35537,7 +36397,9 @@
           "volume_text": "8,353",
           "iv_text": "18.00",
           "bid_text": "4.23",
-          "ask_text": "4.24"
+          "ask_text": "4.24",
+          "delta_text": "0.58213108",
+          "gamma_text": "0.04919971"
         },
         "put": {
           "pennyPilot": true,
@@ -35554,7 +36416,9 @@
           "volume_text": "13,780",
           "iv_text": "18.00",
           "bid_text": "2.37",
-          "ask_text": "2.38"
+          "ask_text": "2.38",
+          "delta_text": "-0.41865504",
+          "gamma_text": "0.04937305"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35590,7 +36454,9 @@
           "volume_text": "5,610",
           "iv_text": "18.41",
           "bid_text": "4.91",
-          "ask_text": "4.93"
+          "ask_text": "4.93",
+          "delta_text": "0.62798162",
+          "gamma_text": "0.04660403"
         },
         "put": {
           "pennyPilot": true,
@@ -35607,7 +36473,9 @@
           "volume_text": "13,834",
           "iv_text": "18.41",
           "bid_text": "2.06",
-          "ask_text": "2.07"
+          "ask_text": "2.07",
+          "delta_text": "-0.37264485",
+          "gamma_text": "0.04673826"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35643,7 +36511,9 @@
           "volume_text": "1,851",
           "iv_text": "18.87",
           "bid_text": "5.62",
-          "ask_text": "5.65"
+          "ask_text": "5.65",
+          "delta_text": "0.66984748",
+          "gamma_text": "0.04354399"
         },
         "put": {
           "pennyPilot": true,
@@ -35660,7 +36530,9 @@
           "volume_text": "7,549",
           "iv_text": "18.87",
           "bid_text": "1.78",
-          "ask_text": "1.79"
+          "ask_text": "1.79",
+          "delta_text": "-0.33066005",
+          "gamma_text": "0.04364572"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35696,7 +36568,9 @@
           "volume_text": "1,015",
           "iv_text": "19.32",
           "bid_text": "6.38",
-          "ask_text": "6.41"
+          "ask_text": "6.41",
+          "delta_text": "0.7079995",
+          "gamma_text": "0.04032409"
         },
         "put": {
           "pennyPilot": true,
@@ -35713,7 +36587,9 @@
           "volume_text": "4,949",
           "iv_text": "19.32",
           "bid_text": "1.54",
-          "ask_text": "1.55"
+          "ask_text": "1.55",
+          "delta_text": "-0.29242171",
+          "gamma_text": "0.04039923"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35749,7 +36625,9 @@
           "volume_text": "486",
           "iv_text": "19.75",
           "bid_text": "7.17",
-          "ask_text": "7.22"
+          "ask_text": "7.22",
+          "delta_text": "0.74261659",
+          "gamma_text": "0.03706364"
         },
         "put": {
           "pennyPilot": true,
@@ -35766,7 +36644,9 @@
           "volume_text": "4,686",
           "iv_text": "19.75",
           "bid_text": "1.33",
-          "ask_text": "1.34"
+          "ask_text": "1.34",
+          "delta_text": "-0.25774353",
+          "gamma_text": "0.03711749"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35802,7 +36682,9 @@
           "volume_text": "211",
           "iv_text": "20.19",
           "bid_text": "7.99",
-          "ask_text": "8.03"
+          "ask_text": "8.03",
+          "delta_text": "0.77359648",
+          "gamma_text": "0.03382082"
         },
         "put": {
           "pennyPilot": true,
@@ -35819,7 +36701,9 @@
           "volume_text": "6,148",
           "iv_text": "20.19",
           "bid_text": "1.15",
-          "ask_text": "1.16"
+          "ask_text": "1.16",
+          "delta_text": "-0.22672184",
+          "gamma_text": "0.03385815"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35855,7 +36739,9 @@
           "volume_text": "315",
           "iv_text": "20.63",
           "bid_text": "8.83",
-          "ask_text": "8.88"
+          "ask_text": "8.88",
+          "delta_text": "0.8012324",
+          "gamma_text": "0.0306802"
         },
         "put": {
           "pennyPilot": true,
@@ -35872,7 +36758,9 @@
           "volume_text": "20,010",
           "iv_text": "20.63",
           "bid_text": "0.99",
-          "ask_text": "1.00"
+          "ask_text": "1.00",
+          "delta_text": "-0.1990582",
+          "gamma_text": "0.03070532"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35908,7 +36796,9 @@
           "volume_text": "261",
           "iv_text": "21.05",
           "bid_text": "9.69",
-          "ask_text": "9.74"
+          "ask_text": "9.74",
+          "delta_text": "0.82598333",
+          "gamma_text": "0.02769512"
         },
         "put": {
           "pennyPilot": true,
@@ -35925,7 +36815,9 @@
           "volume_text": "3,536",
           "iv_text": "21.05",
           "bid_text": "0.85",
-          "ask_text": "0.86"
+          "ask_text": "0.86",
+          "delta_text": "-0.17428937",
+          "gamma_text": "0.02771167"
         },
         "call_itm": null,
         "put_itm": null,
@@ -35961,7 +36853,9 @@
           "volume_text": "43",
           "iv_text": "21.48",
           "bid_text": "10.57",
-          "ask_text": "10.62"
+          "ask_text": "10.62",
+          "delta_text": "0.8477743",
+          "gamma_text": "0.02488675"
         },
         "put": {
           "pennyPilot": true,
@@ -35978,7 +36872,9 @@
           "volume_text": "2,716",
           "iv_text": "21.48",
           "bid_text": "0.73",
-          "ask_text": "0.74"
+          "ask_text": "0.74",
+          "delta_text": "-0.15248719",
+          "gamma_text": "0.02489758"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36014,7 +36910,9 @@
           "volume_text": "90",
           "iv_text": "21.83",
           "bid_text": "11.47",
-          "ask_text": "11.52"
+          "ask_text": "11.52",
+          "delta_text": "0.86775585",
+          "gamma_text": "0.0222628"
         },
         "put": {
           "pennyPilot": true,
@@ -36031,7 +36929,9 @@
           "volume_text": "2,364",
           "iv_text": "21.83",
           "bid_text": "0.62",
-          "ask_text": "0.63"
+          "ask_text": "0.63",
+          "delta_text": "-0.13249852",
+          "gamma_text": "0.02226997"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36067,7 +36967,9 @@
           "volume_text": "110",
           "iv_text": "22.24",
           "bid_text": "12.38",
-          "ask_text": "12.42"
+          "ask_text": "12.42",
+          "delta_text": "0.88480301",
+          "gamma_text": "0.0198477"
         },
         "put": {
           "pennyPilot": true,
@@ -36084,7 +36986,9 @@
           "volume_text": "2,747",
           "iv_text": "22.24",
           "bid_text": "0.54",
-          "ask_text": "0.55"
+          "ask_text": "0.55",
+          "delta_text": "-0.1154468",
+          "gamma_text": "0.0198527"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36120,7 +37024,9 @@
           "volume_text": "115",
           "iv_text": "22.60",
           "bid_text": "13.30",
-          "ask_text": "13.35"
+          "ask_text": "13.35",
+          "delta_text": "0.90014347",
+          "gamma_text": "0.01762163"
         },
         "put": {
           "pennyPilot": true,
@@ -36137,7 +37043,9 @@
           "volume_text": "9,514",
           "iv_text": "22.60",
           "bid_text": "0.46",
-          "ask_text": "0.47"
+          "ask_text": "0.47",
+          "delta_text": "-0.10010329",
+          "gamma_text": "0.01762549"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36173,7 +37081,9 @@
           "volume_text": "116",
           "iv_text": "22.95",
           "bid_text": "14.24",
-          "ask_text": "14.28"
+          "ask_text": "14.28",
+          "delta_text": "0.91371204",
+          "gamma_text": "0.01558475"
         },
         "put": {
           "pennyPilot": true,
@@ -36190,7 +37100,9 @@
           "volume_text": "1,946",
           "iv_text": "22.95",
           "bid_text": "0.39",
-          "ask_text": "0.40"
+          "ask_text": "0.40",
+          "delta_text": "-0.08653237",
+          "gamma_text": "0.01558806"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36226,7 +37138,9 @@
           "volume_text": "146",
           "iv_text": "23.29",
           "bid_text": "15.06",
-          "ask_text": "15.24"
+          "ask_text": "15.24",
+          "delta_text": "0.9255693",
+          "gamma_text": "0.01373794"
         },
         "put": {
           "pennyPilot": true,
@@ -36243,7 +37157,9 @@
           "volume_text": "3,427",
           "iv_text": "23.29",
           "bid_text": "0.33",
-          "ask_text": "0.34"
+          "ask_text": "0.34",
+          "delta_text": "-0.07467309",
+          "gamma_text": "0.01374095"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36279,7 +37195,9 @@
           "volume_text": "67",
           "iv_text": "23.65",
           "bid_text": "16.01",
-          "ask_text": "16.19"
+          "ask_text": "16.19",
+          "delta_text": "0.93570469",
+          "gamma_text": "0.01208983"
         },
         "put": {
           "pennyPilot": true,
@@ -36296,7 +37214,9 @@
           "volume_text": "3,232",
           "iv_text": "23.65",
           "bid_text": "0.28",
-          "ask_text": "0.29"
+          "ask_text": "0.29",
+          "delta_text": "-0.06453587",
+          "gamma_text": "0.01209265"
         },
         "call_itm": null,
         "put_itm": null,
@@ -36332,7 +37252,9 @@
           "volume_text": "29",
           "iv_text": "24.02",
           "bid_text": "16.96",
-          "ask_text": "17.14"
+          "ask_text": "17.14",
+          "delta_text": "0.94584592",
+          "gamma_text": "0.01040333"
         },
         "put": {
           "pennyPilot": true,
@@ -36349,7 +37271,9 @@
           "volume_text": "1,535",
           "iv_text": "24.02",
           "bid_text": "0.25",
-          "ask_text": "0.26"
+          "ask_text": "0.26",
+          "delta_text": "-0.05435207",
+          "gamma_text": "0.01040566"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36385,7 +37309,9 @@
           "volume_text": "62",
           "iv_text": "24.49",
           "bid_text": "17.92",
-          "ask_text": "18.10"
+          "ask_text": "18.10",
+          "delta_text": "0.95255286",
+          "gamma_text": "0.00918729"
         },
         "put": {
           "pennyPilot": true,
@@ -36402,7 +37328,9 @@
           "volume_text": "4,142",
           "iv_text": "24.49",
           "bid_text": "0.21",
-          "ask_text": "0.22"
+          "ask_text": "0.22",
+          "delta_text": "-0.04764395",
+          "gamma_text": "0.00918945"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36438,7 +37366,9 @@
           "volume_text": "11",
           "iv_text": "24.88",
           "bid_text": "18.89",
-          "ask_text": "19.08"
+          "ask_text": "19.08",
+          "delta_text": "0.95885973",
+          "gamma_text": "0.0080646"
         },
         "put": {
           "pennyPilot": true,
@@ -36455,7 +37385,9 @@
           "volume_text": "877",
           "iv_text": "24.88",
           "bid_text": "0.18",
-          "ask_text": "0.19"
+          "ask_text": "0.19",
+          "delta_text": "-0.04133592",
+          "gamma_text": "0.00806652"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36491,7 +37423,9 @@
           "volume_text": "41",
           "iv_text": "25.14",
           "bid_text": "19.40",
-          "ask_text": "20.06"
+          "ask_text": "20.06",
+          "delta_text": "0.96507638",
+          "gamma_text": "0.0069888"
         },
         "put": {
           "pennyPilot": true,
@@ -36508,7 +37442,9 @@
           "volume_text": "826",
           "iv_text": "25.14",
           "bid_text": "0.16",
-          "ask_text": "0.17"
+          "ask_text": "0.17",
+          "delta_text": "-0.03511817",
+          "gamma_text": "0.00699039"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36544,7 +37480,9 @@
           "volume_text": "13",
           "iv_text": "25.57",
           "bid_text": "19.47",
-          "ask_text": "21.04"
+          "ask_text": "21.04",
+          "delta_text": "0.96953628",
+          "gamma_text": "0.00614326"
         },
         "put": {
           "pennyPilot": true,
@@ -36561,7 +37499,9 @@
           "volume_text": "961",
           "iv_text": "25.57",
           "bid_text": "0.13",
-          "ask_text": "0.14"
+          "ask_text": "0.14",
+          "delta_text": "-0.03065758",
+          "gamma_text": "0.00614451"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36597,7 +37537,9 @@
           "volume_text": "4",
           "iv_text": "25.90",
           "bid_text": "20.48",
-          "ask_text": "22.02"
+          "ask_text": "22.02",
+          "delta_text": "0.97386235",
+          "gamma_text": "0.00534418"
         },
         "put": {
           "pennyPilot": true,
@@ -36614,7 +37556,9 @@
           "volume_text": "330",
           "iv_text": "25.90",
           "bid_text": "0.12",
-          "ask_text": "0.13"
+          "ask_text": "0.13",
+          "delta_text": "-0.02633097",
+          "gamma_text": "0.00534507"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36650,7 +37594,9 @@
           "volume_text": "165",
           "iv_text": "26.51",
           "bid_text": "21.50",
-          "ask_text": "23.01"
+          "ask_text": "23.01",
+          "delta_text": "0.97640504",
+          "gamma_text": "0.00479414"
         },
         "put": {
           "pennyPilot": true,
@@ -36667,7 +37613,9 @@
           "volume_text": "2,355",
           "iv_text": "26.51",
           "bid_text": "0.10",
-          "ask_text": "0.11"
+          "ask_text": "0.11",
+          "delta_text": "-0.02378809",
+          "gamma_text": "0.00479477"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36703,7 +37651,9 @@
           "volume_text": "3",
           "iv_text": "27.08",
           "bid_text": "22.43",
-          "ask_text": "24.00"
+          "ask_text": "24.00",
+          "delta_text": "0.97882902",
+          "gamma_text": "0.00428725"
         },
         "put": {
           "pennyPilot": true,
@@ -36720,7 +37670,9 @@
           "volume_text": "1,252",
           "iv_text": "27.08",
           "bid_text": "0.09",
-          "ask_text": "0.10"
+          "ask_text": "0.10",
+          "delta_text": "-0.02136401",
+          "gamma_text": "0.00428763"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36756,7 +37708,9 @@
           "volume_text": "12",
           "iv_text": "27.59",
           "bid_text": "23.53",
-          "ask_text": "24.99"
+          "ask_text": "24.99",
+          "delta_text": "0.98115833",
+          "gamma_text": "0.00381571"
         },
         "put": {
           "pennyPilot": true,
@@ -36773,7 +37727,9 @@
           "volume_text": "492",
           "iv_text": "27.59",
           "bid_text": "0.08",
-          "ask_text": "0.09"
+          "ask_text": "0.09",
+          "delta_text": "-0.01903472",
+          "gamma_text": "0.00381587"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36809,7 +37765,9 @@
           "volume_text": "12",
           "iv_text": "28.03",
           "bid_text": "24.69",
-          "ask_text": "25.98"
+          "ask_text": "25.98",
+          "delta_text": "0.98340745",
+          "gamma_text": "0.00337349"
         },
         "put": {
           "pennyPilot": true,
@@ -36826,7 +37784,9 @@
           "volume_text": "756",
           "iv_text": "28.03",
           "bid_text": "0.07",
-          "ask_text": "0.08"
+          "ask_text": "0.08",
+          "delta_text": "-0.01678574",
+          "gamma_text": "0.00337342"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36862,7 +37822,9 @@
           "volume_text": "0",
           "iv_text": "28.98",
           "bid_text": "25.54",
-          "ask_text": "26.97"
+          "ask_text": "26.97",
+          "delta_text": "0.98390145",
+          "gamma_text": "0.00318071"
         },
         "put": {
           "pennyPilot": true,
@@ -36879,7 +37841,9 @@
           "volume_text": "492",
           "iv_text": "28.98",
           "bid_text": "0.07",
-          "ask_text": "0.08"
+          "ask_text": "0.08",
+          "delta_text": "-0.01629183",
+          "gamma_text": "0.0031806"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36915,7 +37879,9 @@
           "volume_text": "85",
           "iv_text": "29.33",
           "bid_text": "27.34",
-          "ask_text": "27.97"
+          "ask_text": "27.97",
+          "delta_text": "0.98600714",
+          "gamma_text": "0.00279062"
         },
         "put": {
           "pennyPilot": true,
@@ -36932,7 +37898,9 @@
           "volume_text": "3,178",
           "iv_text": "29.33",
           "bid_text": "0.06",
-          "ask_text": "0.07"
+          "ask_text": "0.07",
+          "delta_text": "-0.01418644",
+          "gamma_text": "0.00279032"
         },
         "call_itm": true,
         "put_itm": false,
@@ -36968,7 +37936,9 @@
           "volume_text": "3",
           "iv_text": "30.28",
           "bid_text": "27.47",
-          "ask_text": "28.96"
+          "ask_text": "28.96",
+          "delta_text": "0.98640987",
+          "gamma_text": "0.0026366"
         },
         "put": {
           "pennyPilot": true,
@@ -36985,7 +37955,9 @@
           "volume_text": "830",
           "iv_text": "30.28",
           "bid_text": "0.06",
-          "ask_text": "0.07"
+          "ask_text": "0.07",
+          "delta_text": "-0.01378382",
+          "gamma_text": "0.00263628"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37021,7 +37993,9 @@
           "volume_text": "6",
           "iv_text": "30.49",
           "bid_text": "28.50",
-          "ask_text": "29.96"
+          "ask_text": "29.96",
+          "delta_text": "0.98846252",
+          "gamma_text": "0.00227769"
         },
         "put": {
           "pennyPilot": true,
@@ -37038,7 +38012,9 @@
           "volume_text": "1,047",
           "iv_text": "30.49",
           "bid_text": "0.05",
-          "ask_text": "0.06"
+          "ask_text": "0.06",
+          "delta_text": "-0.01173166",
+          "gamma_text": "0.00227723"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37074,7 +38050,9 @@
           "volume_text": "15",
           "iv_text": "31.40",
           "bid_text": "29.92",
-          "ask_text": "30.95"
+          "ask_text": "30.95",
+          "delta_text": "0.98877023",
+          "gamma_text": "0.00216135"
         },
         "put": {
           "pennyPilot": true,
@@ -37091,7 +38069,9 @@
           "volume_text": "1,138",
           "iv_text": "31.40",
           "bid_text": "0.05",
-          "ask_text": "0.06"
+          "ask_text": "0.06",
+          "delta_text": "-0.01142406",
+          "gamma_text": "0.00216088"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37127,7 +38107,9 @@
           "volume_text": "4",
           "iv_text": "32.30",
           "bid_text": "30.50",
-          "ask_text": "31.95"
+          "ask_text": "31.95",
+          "delta_text": "0.98906101",
+          "gamma_text": "0.00205415"
         },
         "put": {
           "pennyPilot": true,
@@ -37144,7 +38126,9 @@
           "volume_text": "218",
           "iv_text": "32.30",
           "bid_text": "0.05",
-          "ask_text": "0.06"
+          "ask_text": "0.06",
+          "delta_text": "-0.01113338",
+          "gamma_text": "0.00205367"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37180,7 +38164,9 @@
           "volume_text": "10",
           "iv_text": "32.36",
           "bid_text": "31.49",
-          "ask_text": "32.95"
+          "ask_text": "32.95",
+          "delta_text": "0.99093835",
+          "gamma_text": "0.00174568"
         },
         "put": {
           "pennyPilot": true,
@@ -37197,7 +38183,9 @@
           "volume_text": "386",
           "iv_text": "32.36",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "-0.00925672",
+          "gamma_text": "0.00174512"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37233,7 +38221,9 @@
           "volume_text": "8",
           "iv_text": "33.24",
           "bid_text": "31.70",
-          "ask_text": "35.43"
+          "ask_text": "35.43",
+          "delta_text": "0.99116226",
+          "gamma_text": "0.00166315"
         },
         "put": {
           "pennyPilot": true,
@@ -37250,7 +38240,9 @@
           "volume_text": "29",
           "iv_text": "33.24",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "-0.00903291",
+          "gamma_text": "0.0016626"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37286,7 +38278,9 @@
           "volume_text": "16",
           "iv_text": "34.13",
           "bid_text": "32.76",
-          "ask_text": "36.50"
+          "ask_text": "36.50",
+          "delta_text": "0.99137477",
+          "gamma_text": "0.00158662"
         },
         "put": {
           "pennyPilot": true,
@@ -37303,7 +38297,9 @@
           "volume_text": "47",
           "iv_text": "34.13",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "-0.0088205",
+          "gamma_text": "0.00158607"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37339,7 +38335,9 @@
           "volume_text": "18",
           "iv_text": "35.01",
           "bid_text": "35.29",
-          "ask_text": "36.13"
+          "ask_text": "36.13",
+          "delta_text": "0.99157678",
+          "gamma_text": "0.0015155"
         },
         "put": {
           "pennyPilot": true,
@@ -37356,7 +38354,9 @@
           "volume_text": "98",
           "iv_text": "35.01",
           "bid_text": "0.04",
-          "ask_text": "0.05"
+          "ask_text": "0.05",
+          "delta_text": "-0.0086186",
+          "gamma_text": "0.00151496"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37392,7 +38392,9 @@
           "volume_text": "10",
           "iv_text": "34.80",
           "bid_text": "34.70",
-          "ask_text": "38.14"
+          "ask_text": "38.14",
+          "delta_text": "0.9933304",
+          "gamma_text": "0.00124802"
         },
         "put": {
           "pennyPilot": true,
@@ -37409,7 +38411,9 @@
           "volume_text": "35",
           "iv_text": "34.80",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00686581",
+          "gamma_text": "0.00124747"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37445,7 +38449,9 @@
           "volume_text": "32",
           "iv_text": "35.66",
           "bid_text": "36.40",
-          "ask_text": "37.94"
+          "ask_text": "37.94",
+          "delta_text": "0.99347982",
+          "gamma_text": "0.00119446"
         },
         "put": {
           "pennyPilot": true,
@@ -37462,7 +38468,9 @@
           "volume_text": "255",
           "iv_text": "35.66",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00671648",
+          "gamma_text": "0.00119393"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37498,7 +38506,9 @@
           "volume_text": "22",
           "iv_text": "36.52",
           "bid_text": "38.12",
-          "ask_text": "39.39"
+          "ask_text": "39.39",
+          "delta_text": "0.99362233",
+          "gamma_text": "0.00114444"
         },
         "put": {
           "pennyPilot": true,
@@ -37515,7 +38525,9 @@
           "volume_text": "111",
           "iv_text": "36.52",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00657405",
+          "gamma_text": "0.00114393"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37551,7 +38563,9 @@
           "volume_text": "18",
           "iv_text": "37.38",
           "bid_text": "38.48",
-          "ask_text": "39.94"
+          "ask_text": "39.94",
+          "delta_text": "0.99375845",
+          "gamma_text": "0.00109764"
         },
         "put": {
           "pennyPilot": true,
@@ -37568,7 +38582,9 @@
           "volume_text": "24",
           "iv_text": "37.38",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00643801",
+          "gamma_text": "0.00109714"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37604,7 +38620,9 @@
           "volume_text": "70",
           "iv_text": "38.24",
           "bid_text": "40.12",
-          "ask_text": "41.53"
+          "ask_text": "41.53",
+          "delta_text": "0.99388861",
+          "gamma_text": "0.00105378"
         },
         "put": {
           "pennyPilot": true,
@@ -37621,7 +38639,9 @@
           "volume_text": "65",
           "iv_text": "38.24",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00630792",
+          "gamma_text": "0.00105329"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37657,7 +38677,9 @@
           "volume_text": "86",
           "iv_text": "39.10",
           "bid_text": "40.45",
-          "ask_text": "43.45"
+          "ask_text": "43.45",
+          "delta_text": "0.99401325",
+          "gamma_text": "0.00101261"
         },
         "put": {
           "pennyPilot": true,
@@ -37674,7 +38696,9 @@
           "volume_text": "7",
           "iv_text": "39.10",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00618336",
+          "gamma_text": "0.00101213"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37710,7 +38734,9 @@
           "volume_text": "173",
           "iv_text": "39.95",
           "bid_text": "41.77",
-          "ask_text": "44.19"
+          "ask_text": "44.19",
+          "delta_text": "0.99413273",
+          "gamma_text": "0.0009739"
         },
         "put": {
           "pennyPilot": true,
@@ -37727,7 +38753,9 @@
           "volume_text": "168",
           "iv_text": "39.93",
           "bid_text": "0.03",
-          "ask_text": "0.04"
+          "ask_text": "0.04",
+          "delta_text": "-0.00606688",
+          "gamma_text": "0.00097438"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37763,7 +38791,9 @@
           "volume_text": "44",
           "iv_text": "42.59",
           "bid_text": "47.11",
-          "ask_text": "48.41"
+          "ask_text": "48.41",
+          "delta_text": "0.99602557",
+          "gamma_text": "0.0006548"
         },
         "put": {
           "pennyPilot": true,
@@ -37780,7 +38810,9 @@
           "volume_text": "195",
           "iv_text": "42.57",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00417397",
+          "gamma_text": "0.00065504"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37816,7 +38848,9 @@
           "volume_text": "145",
           "iv_text": "46.73",
           "bid_text": "50.68",
-          "ask_text": "53.04"
+          "ask_text": "53.04",
+          "delta_text": "0.99634847",
+          "gamma_text": "0.00055529"
         },
         "put": {
           "pennyPilot": true,
@@ -37833,7 +38867,9 @@
           "volume_text": "232",
           "iv_text": "46.73",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00384949",
+          "gamma_text": "0.00055501"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37869,7 +38905,9 @@
           "volume_text": "22",
           "iv_text": "51.02",
           "bid_text": "56.50",
-          "ask_text": "57.91"
+          "ask_text": "57.91",
+          "delta_text": "0.9965466",
+          "gamma_text": "0.00048502"
         },
         "put": {
           "pennyPilot": true,
@@ -37886,7 +38924,9 @@
           "volume_text": "604",
           "iv_text": "51.02",
           "bid_text": "0.02",
-          "ask_text": "0.03"
+          "ask_text": "0.03",
+          "delta_text": "-0.00365147",
+          "gamma_text": "0.00048479"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37922,7 +38962,9 @@
           "volume_text": "81",
           "iv_text": "52.28",
           "bid_text": "61.98",
-          "ask_text": "64.34"
+          "ask_text": "64.34",
+          "delta_text": "0.99804916",
+          "gamma_text": "0.00029334"
         },
         "put": {
           "pennyPilot": true,
@@ -37939,7 +38981,9 @@
           "volume_text": "86",
           "iv_text": "52.26",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.0021502",
+          "gamma_text": "0.00029348"
         },
         "call_itm": true,
         "put_itm": false,
@@ -37975,7 +39019,9 @@
           "volume_text": "40",
           "iv_text": "56.49",
           "bid_text": "66.41",
-          "ask_text": "68.17"
+          "ask_text": "68.17",
+          "delta_text": "0.99810927",
+          "gamma_text": "0.00026457"
         },
         "put": {
           "pennyPilot": true,
@@ -37992,7 +39038,9 @@
           "volume_text": "145",
           "iv_text": "56.47",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00209024",
+          "gamma_text": "0.00026471"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38028,7 +39076,9 @@
           "volume_text": "36",
           "iv_text": "60.39",
           "bid_text": "71.14",
-          "ask_text": "74.17"
+          "ask_text": "74.17",
+          "delta_text": "0.99825628",
+          "gamma_text": "0.00023161"
         },
         "put": {
           "pennyPilot": true,
@@ -38045,7 +39095,9 @@
           "volume_text": "218",
           "iv_text": "60.39",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00194245",
+          "gamma_text": "0.0002316"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38081,7 +39133,9 @@
           "volume_text": "32",
           "iv_text": "64.31",
           "bid_text": "76.00",
-          "ask_text": "79.25"
+          "ask_text": "79.25",
+          "delta_text": "0.9983859",
+          "gamma_text": "0.00020424"
         },
         "put": {
           "pennyPilot": true,
@@ -38098,7 +39152,9 @@
           "volume_text": "206",
           "iv_text": "64.31",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00181283",
+          "gamma_text": "0.00020422"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38134,7 +39190,9 @@
           "volume_text": "26",
           "iv_text": "68.30",
           "bid_text": "81.34",
-          "ask_text": "83.98"
+          "ask_text": "83.98",
+          "delta_text": "0.99848826",
+          "gamma_text": "0.00018241"
         },
         "put": {
           "pennyPilot": true,
@@ -38151,7 +39209,9 @@
           "volume_text": "703",
           "iv_text": "68.30",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00171047",
+          "gamma_text": "0.00018241"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38187,7 +39247,9 @@
           "volume_text": "28",
           "iv_text": "72.50",
           "bid_text": "86.13",
-          "ask_text": "89.18"
+          "ask_text": "89.18",
+          "delta_text": "0.99853603",
+          "gamma_text": "0.00016745"
         },
         "put": {
           "pennyPilot": true,
@@ -38204,7 +39266,9 @@
           "volume_text": "478",
           "iv_text": "72.50",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.0016627",
+          "gamma_text": "0.00016746"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38240,7 +39304,9 @@
           "volume_text": "24",
           "iv_text": "76.43",
           "bid_text": "91.40",
-          "ask_text": "94.13"
+          "ask_text": "94.13",
+          "delta_text": "0.99864113",
+          "gamma_text": "0.00014965"
         },
         "put": {
           "pennyPilot": true,
@@ -38257,7 +39323,9 @@
           "volume_text": "5",
           "iv_text": "76.43",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00155758",
+          "gamma_text": "0.00014966"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38293,7 +39361,9 @@
           "volume_text": "19",
           "iv_text": "80.39",
           "bid_text": "95.65",
-          "ask_text": "99.29"
+          "ask_text": "99.29",
+          "delta_text": "0.99872926",
+          "gamma_text": "0.00013491"
         },
         "put": {
           "pennyPilot": true,
@@ -38310,7 +39380,9 @@
           "volume_text": "11",
           "iv_text": "80.39",
           "bid_text": "0.01",
-          "ask_text": "0.02"
+          "ask_text": "0.02",
+          "delta_text": "-0.00146943",
+          "gamma_text": "0.00013493"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38346,7 +39418,9 @@
           "volume_text": "14",
           "iv_text": "77.20",
           "bid_text": "100.65",
-          "ask_text": "104.28"
+          "ask_text": "104.28",
+          "delta_text": "0.99964882",
+          "gamma_text": "0.00005682"
         },
         "put": {
           "pennyPilot": true,
@@ -38363,7 +39437,9 @@
           "volume_text": "347",
           "iv_text": "77.20",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00054902",
+          "gamma_text": "0.00005692"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38399,7 +39475,9 @@
           "volume_text": "12",
           "iv_text": "80.97",
           "bid_text": "105.64",
-          "ask_text": "109.32"
+          "ask_text": "109.32",
+          "delta_text": "0.9996727",
+          "gamma_text": "0.00005198"
         },
         "put": {
           "pennyPilot": true,
@@ -38416,7 +39494,9 @@
           "volume_text": "353",
           "iv_text": "80.97",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00052509",
+          "gamma_text": "0.00005208"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38452,7 +39532,9 @@
           "volume_text": "18",
           "iv_text": "84.74",
           "bid_text": "110.67",
-          "ask_text": "114.15"
+          "ask_text": "114.15",
+          "delta_text": "0.99969473",
+          "gamma_text": "0.00004773"
         },
         "put": {
           "pennyPilot": true,
@@ -38469,7 +39551,9 @@
           "volume_text": "20",
           "iv_text": "84.74",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00050302",
+          "gamma_text": "0.00004783"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38505,7 +39589,9 @@
           "volume_text": "24",
           "iv_text": "88.55",
           "bid_text": "115.64",
-          "ask_text": "119.12"
+          "ask_text": "119.12",
+          "delta_text": "0.99971516",
+          "gamma_text": "0.00004396"
         },
         "put": {
           "pennyPilot": true,
@@ -38522,7 +39608,9 @@
           "volume_text": "0",
           "iv_text": "88.55",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00048254",
+          "gamma_text": "0.00004405"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38558,7 +39646,9 @@
           "volume_text": "0",
           "iv_text": "92.38",
           "bid_text": "120.64",
-          "ask_text": "124.27"
+          "ask_text": "124.27",
+          "delta_text": "0.99973405",
+          "gamma_text": "0.0000406"
         },
         "put": {
           "pennyPilot": true,
@@ -38575,7 +39665,9 @@
           "volume_text": "60",
           "iv_text": "92.38",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00046361",
+          "gamma_text": "0.00004069"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38611,7 +39703,9 @@
           "volume_text": "18",
           "iv_text": "96.23",
           "bid_text": "125.63",
-          "ask_text": "129.14"
+          "ask_text": "129.14",
+          "delta_text": "0.99975158",
+          "gamma_text": "0.00003761"
         },
         "put": {
           "pennyPilot": true,
@@ -38628,7 +39722,9 @@
           "volume_text": "0",
           "iv_text": "96.23",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00044603",
+          "gamma_text": "0.00003769"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38664,7 +39760,9 @@
           "volume_text": "18",
           "iv_text": "100.10",
           "bid_text": "130.63",
-          "ask_text": "134.20"
+          "ask_text": "134.20",
+          "delta_text": "0.9997679",
+          "gamma_text": "0.00003492"
         },
         "put": {
           "pennyPilot": true,
@@ -38681,7 +39779,9 @@
           "volume_text": "51",
           "iv_text": "100.12",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.0004296",
+          "gamma_text": "0.00003499"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38717,7 +39817,9 @@
           "volume_text": "8",
           "iv_text": "103.99",
           "bid_text": "136.10",
-          "ask_text": "139.15"
+          "ask_text": "139.15",
+          "delta_text": "0.99978314",
+          "gamma_text": "0.00003251"
         },
         "put": {
           "pennyPilot": true,
@@ -38734,7 +39836,9 @@
           "volume_text": "0",
           "iv_text": "104.01",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00041433",
+          "gamma_text": "0.00003257"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38770,7 +39874,9 @@
           "volume_text": "22",
           "iv_text": "107.93",
           "bid_text": "140.71",
-          "ask_text": "144.04"
+          "ask_text": "144.04",
+          "delta_text": "0.99979745",
+          "gamma_text": "0.00003031"
         },
         "put": {
           "pennyPilot": true,
@@ -38787,7 +39893,9 @@
           "volume_text": "0",
           "iv_text": "107.93",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00040005",
+          "gamma_text": "0.00003039"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38823,7 +39931,9 @@
           "volume_text": "22",
           "iv_text": "111.87",
           "bid_text": "146.41",
-          "ask_text": "149.08"
+          "ask_text": "149.08",
+          "delta_text": "0.99981096",
+          "gamma_text": "0.00002833"
         },
         "put": {
           "pennyPilot": true,
@@ -38840,7 +39950,9 @@
           "volume_text": "0",
           "iv_text": "111.87",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00038651",
+          "gamma_text": "0.0000284"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38876,7 +39988,9 @@
           "volume_text": "20",
           "iv_text": "115.84",
           "bid_text": "151.10",
-          "ask_text": "154.17"
+          "ask_text": "154.17",
+          "delta_text": "0.99982338",
+          "gamma_text": "0.00002654"
         },
         "put": {
           "pennyPilot": true,
@@ -38893,7 +40007,9 @@
           "volume_text": "0",
           "iv_text": "115.82",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00037412",
+          "gamma_text": "0.00002661"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38929,7 +40045,9 @@
           "volume_text": "8",
           "iv_text": "119.83",
           "bid_text": "155.62",
-          "ask_text": "159.24"
+          "ask_text": "159.24",
+          "delta_text": "0.99983521",
+          "gamma_text": "0.0000249"
         },
         "put": {
           "pennyPilot": true,
@@ -38946,7 +40064,9 @@
           "volume_text": "0",
           "iv_text": "119.82",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00036226",
+          "gamma_text": "0.00002497"
         },
         "call_itm": true,
         "put_itm": false,
@@ -38982,7 +40102,9 @@
           "volume_text": "0",
           "iv_text": "123.85",
           "bid_text": "160.62",
-          "ask_text": "163.93"
+          "ask_text": "163.93",
+          "delta_text": "0.99984638",
+          "gamma_text": "0.0000234"
         },
         "put": {
           "pennyPilot": true,
@@ -38999,7 +40121,9 @@
           "volume_text": "0",
           "iv_text": "123.85",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.000351",
+          "gamma_text": "0.00002346"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39035,7 +40159,9 @@
           "volume_text": "14",
           "iv_text": "127.90",
           "bid_text": "165.62",
-          "ask_text": "169.13"
+          "ask_text": "169.13",
+          "delta_text": "0.99985693",
+          "gamma_text": "0.00002202"
         },
         "put": {
           "pennyPilot": true,
@@ -39052,7 +40178,9 @@
           "volume_text": "0",
           "iv_text": "127.90",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00034043",
+          "gamma_text": "0.00002208"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39088,7 +40216,9 @@
           "volume_text": "0",
           "iv_text": "131.96",
           "bid_text": "171.28",
-          "ask_text": "174.05"
+          "ask_text": "174.05",
+          "delta_text": "0.99986689",
+          "gamma_text": "0.00002076"
         },
         "put": {
           "pennyPilot": true,
@@ -39105,7 +40235,9 @@
           "volume_text": "0",
           "iv_text": "131.96",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00033043",
+          "gamma_text": "0.00002082"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39141,7 +40273,9 @@
           "volume_text": "16",
           "iv_text": "136.06",
           "bid_text": "176.83",
-          "ask_text": "178.42"
+          "ask_text": "178.42",
+          "delta_text": "0.99987636",
+          "gamma_text": "0.0000196"
         },
         "put": {
           "pennyPilot": true,
@@ -39158,7 +40292,9 @@
           "volume_text": "0",
           "iv_text": "136.06",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00032094",
+          "gamma_text": "0.00001966"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39194,7 +40330,9 @@
           "volume_text": "17",
           "iv_text": "140.20",
           "bid_text": "181.40",
-          "ask_text": "183.51"
+          "ask_text": "183.51",
+          "delta_text": "0.99988537",
+          "gamma_text": "0.00001852"
         },
         "put": {
           "pennyPilot": true,
@@ -39211,7 +40349,9 @@
           "volume_text": "0",
           "iv_text": "140.20",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.0003119",
+          "gamma_text": "0.00001857"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39247,7 +40387,9 @@
           "volume_text": "0",
           "iv_text": "144.36",
           "bid_text": "185.61",
-          "ask_text": "189.20"
+          "ask_text": "189.20",
+          "delta_text": "0.99989396",
+          "gamma_text": "0.00001752"
         },
         "put": {
           "pennyPilot": true,
@@ -39264,7 +40406,9 @@
           "volume_text": "0",
           "iv_text": "144.36",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00030329",
+          "gamma_text": "0.00001757"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39300,7 +40444,9 @@
           "volume_text": "10",
           "iv_text": "148.56",
           "bid_text": "190.61",
-          "ask_text": "194.29"
+          "ask_text": "194.29",
+          "delta_text": "0.99990212",
+          "gamma_text": "0.0000166"
         },
         "put": {
           "pennyPilot": true,
@@ -39317,7 +40463,9 @@
           "volume_text": "0",
           "iv_text": "148.56",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00029511",
+          "gamma_text": "0.00001665"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39353,7 +40501,9 @@
           "volume_text": "10",
           "iv_text": "152.79",
           "bid_text": "196.00",
-          "ask_text": "199.11"
+          "ask_text": "199.11",
+          "delta_text": "0.99990991",
+          "gamma_text": "0.00001574"
         },
         "put": {
           "pennyPilot": true,
@@ -39370,7 +40520,9 @@
           "volume_text": "0",
           "iv_text": "152.79",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00028729",
+          "gamma_text": "0.00001579"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39406,7 +40558,9 @@
           "volume_text": "10",
           "iv_text": "157.06",
           "bid_text": "201.39",
-          "ask_text": "204.08"
+          "ask_text": "204.08",
+          "delta_text": "0.99991739",
+          "gamma_text": "0.00001494"
         },
         "put": {
           "pennyPilot": true,
@@ -39423,7 +40577,9 @@
           "volume_text": "50",
           "iv_text": "157.06",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.0002798",
+          "gamma_text": "0.00001499"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39459,7 +40615,9 @@
           "volume_text": "0",
           "iv_text": "161.36",
           "bid_text": "206.07",
-          "ask_text": "209.06"
+          "ask_text": "209.06",
+          "delta_text": "0.9999245",
+          "gamma_text": "0.0000142"
         },
         "put": {
           "pennyPilot": true,
@@ -39476,7 +40634,9 @@
           "volume_text": "0",
           "iv_text": "161.36",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00027266",
+          "gamma_text": "0.00001424"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39512,7 +40672,9 @@
           "volume_text": "0",
           "iv_text": "165.69",
           "bid_text": "210.68",
-          "ask_text": "213.79"
+          "ask_text": "213.79",
+          "delta_text": "0.99993131",
+          "gamma_text": "0.00001351"
         },
         "put": {
           "pennyPilot": true,
@@ -39529,7 +40691,9 @@
           "volume_text": "0",
           "iv_text": "165.69",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00026583",
+          "gamma_text": "0.00001355"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39565,7 +40729,9 @@
           "volume_text": "0",
           "iv_text": "170.05",
           "bid_text": "216.26",
-          "ask_text": "219.08"
+          "ask_text": "219.08",
+          "delta_text": "0.99993796",
+          "gamma_text": "0.00001285"
         },
         "put": {
           "pennyPilot": true,
@@ -39582,7 +40748,9 @@
           "volume_text": "0",
           "iv_text": "170.03",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.0002592",
+          "gamma_text": "0.0000129"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39618,7 +40786,9 @@
           "volume_text": "0",
           "iv_text": "174.43",
           "bid_text": "221.34",
-          "ask_text": "224.09"
+          "ask_text": "224.09",
+          "delta_text": "0.99994412",
+          "gamma_text": "0.00001225"
         },
         "put": {
           "pennyPilot": true,
@@ -39635,7 +40805,9 @@
           "volume_text": "0",
           "iv_text": "174.43",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00025299",
+          "gamma_text": "0.00001229"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39671,7 +40843,9 @@
           "volume_text": "2",
           "iv_text": "178.87",
           "bid_text": "225.59",
-          "ask_text": "229.16"
+          "ask_text": "229.16",
+          "delta_text": "0.99995007",
+          "gamma_text": "0.00001169"
         },
         "put": {
           "pennyPilot": true,
@@ -39688,7 +40862,9 @@
           "volume_text": "0",
           "iv_text": "178.87",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00024701",
+          "gamma_text": "0.00001172"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39724,7 +40900,9 @@
           "volume_text": "2",
           "iv_text": "183.35",
           "bid_text": "230.62",
-          "ask_text": "234.50"
+          "ask_text": "234.50",
+          "delta_text": "0.99995585",
+          "gamma_text": "0.00001115"
         },
         "put": {
           "pennyPilot": true,
@@ -39741,7 +40919,9 @@
           "volume_text": "0",
           "iv_text": "183.35",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00024122",
+          "gamma_text": "0.00001119"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39777,7 +40957,9 @@
           "volume_text": "0",
           "iv_text": "187.86",
           "bid_text": "236.38",
-          "ask_text": "239.06"
+          "ask_text": "239.06",
+          "delta_text": "0.99996149",
+          "gamma_text": "0.00001065"
         },
         "put": {
           "pennyPilot": true,
@@ -39794,7 +40976,9 @@
           "volume_text": "0",
           "iv_text": "187.86",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00023556",
+          "gamma_text": "0.00001068"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39830,7 +41014,9 @@
           "volume_text": "0",
           "iv_text": "192.41",
           "bid_text": "241.28",
-          "ask_text": "244.11"
+          "ask_text": "244.11",
+          "delta_text": "0.99996676",
+          "gamma_text": "0.00001018"
         },
         "put": {
           "pennyPilot": true,
@@ -39847,7 +41033,9 @@
           "volume_text": "0",
           "iv_text": "192.43",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00023025",
+          "gamma_text": "0.00001021"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39883,7 +41071,9 @@
           "volume_text": "4",
           "iv_text": "197.00",
           "bid_text": "245.59",
-          "ask_text": "249.15"
+          "ask_text": "249.15",
+          "delta_text": "0.99997192",
+          "gamma_text": "0.00000973"
         },
         "put": {
           "pennyPilot": true,
@@ -39900,7 +41090,9 @@
           "volume_text": "0",
           "iv_text": "197.02",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00022508",
+          "gamma_text": "0.00000976"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39936,7 +41128,9 @@
           "volume_text": "0",
           "iv_text": "201.65",
           "bid_text": "251.06",
-          "ask_text": "254.27"
+          "ask_text": "254.27",
+          "delta_text": "0.99997691",
+          "gamma_text": "0.00000931"
         },
         "put": {
           "pennyPilot": true,
@@ -39953,7 +41147,9 @@
           "volume_text": "0",
           "iv_text": "201.65",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00022009",
+          "gamma_text": "0.00000934"
         },
         "call_itm": true,
         "put_itm": false,
@@ -39989,7 +41185,9 @@
           "volume_text": "7",
           "iv_text": "206.33",
           "bid_text": "256.27",
-          "ask_text": "257.83"
+          "ask_text": "257.83",
+          "delta_text": "0.99998171",
+          "gamma_text": "0.00000891"
         },
         "put": {
           "pennyPilot": true,
@@ -40006,7 +41204,9 @@
           "volume_text": "0",
           "iv_text": "206.33",
           "bid_text": "0.00",
-          "ask_text": "0.01"
+          "ask_text": "0.01",
+          "delta_text": "-0.00021528",
+          "gamma_text": "0.00000894"
         },
         "call_itm": true,
         "put_itm": false,
