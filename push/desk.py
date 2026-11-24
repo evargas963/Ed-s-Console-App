@@ -8,7 +8,7 @@ chart's bars (push.bars).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal, TypedDict
 
 from calc.micro_structure import Candle
 from calc.terrain_engine import OPTION_LEVELS, WALL_BREACHED
@@ -41,6 +41,64 @@ DESK_LOOKBACK: dict[str, tuple[int | Literal["session"], str]] = {
 DESK_MARKERS = 6
 
 
+class QueueItem(TypedDict):
+    """One event of the desk's queue as the page draws it: its time, domain and words.
+
+    `time_ct` is the event's own time as the screen shows it; None for an event with no time.
+    """
+
+    key: str
+    ts: float | None
+    dom: str
+    dir: str | None
+    warn: bool
+    title: str
+    detail: str | None
+    src: str
+    time_ct: str | None
+
+
+class CrossItem(TypedDict):
+    """A level cross in the queue, numbered oldest first.
+
+    It carries its level's price and whether the chart marks it (the newest cross at each level,
+    for the newest DESK_MARKERS levels). Its keys are a QueueItem's, `time_ct` last.
+    """
+
+    key: str
+    ts: float
+    dom: str
+    dir: str
+    warn: bool
+    title: str
+    detail: str
+    src: str
+    n: int
+    price: float
+    marker: bool
+    time_ct: str
+
+
+class CrossCounts(TypedDict):
+    """The window's level crosses by direction."""
+
+    up: int
+    down: int
+
+
+class DeskQueue(TypedDict):
+    """The `desk` panel: the Trade Desk's alerts in a timeframe's window, newest first."""
+
+    ticker: str
+    tf: str
+    window_start_ts_utc: float
+    window_label: str
+    items: list[CrossItem | QueueItem]
+    cross_counts: CrossCounts
+    markers_off_chart: int
+    markers_off_chart_text: str
+
+
 def _desk_window_start(tf: str, now: datetime) -> float:
     """Start of the Trade Desk's event window for chart timeframe `tf`.
 
@@ -58,7 +116,7 @@ def _desk_window_start(tf: str, now: datetime) -> float:
     return start.timestamp()
 
 
-def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[str, Any]:
+def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> DeskQueue:
     """Return the Trade Desk's alerts at `now`.
 
     Level crosses in the timeframe's window as recorded (level, direction, price, spot, time),
@@ -76,16 +134,12 @@ def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[
     marked = [it for it in cross_items if it["marker"]]
     chart = chart_bars(tk, tf, held_minutes(tk, limit), now)
     off_chart = [it for it in marked if not chart or it["ts"] < chart[0].ts]
-    items = [
-        *cross_items,
-        *_terrain_items(tk, now),
-    ]
+    terrain_items = _terrain_items(tk, now)
+    timed: list[tuple[float, CrossItem | QueueItem]] = [(it["ts"], it) for it in cross_items]
+    timed += [(ts, it) for it in terrain_items if (ts := it["ts"]) is not None]
     # newest first; an event with no time of its own after every timed one
-    items = sorted((it for it in items if it["ts"] is not None), key=lambda it: -it["ts"]) + [
-        it for it in items if it["ts"] is None
-    ]
-    for it in items:  # each event's own time as the screen shows it
-        it["time_ct"] = None if it["ts"] is None else ct_label(it["ts"])
+    items = [it for _, it in sorted(timed, key=lambda pair: -pair[0])]
+    items += [it for it in terrain_items if it["ts"] is None]
     return {
         "ticker": tk,
         "tf": tf,
@@ -93,7 +147,8 @@ def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> dict[
         "window_label": DESK_LOOKBACK[tf][1],
         "items": items,
         "cross_counts": {
-            d: sum(1 for c in in_window if c.cross.direction == d) for d in ("up", "down")
+            "up": sum(1 for c in in_window if c.cross.direction == "up"),
+            "down": sum(1 for c in in_window if c.cross.direction == "down"),
         },
         "markers_off_chart": len(off_chart),
         "markers_off_chart_text": _off_chart_text(len(off_chart), len(marked), chart),
@@ -122,7 +177,7 @@ def _item(
     src: str,
     *,
     warn: bool = False,
-) -> dict[str, Any]:
+) -> QueueItem:
     """Return one item of the desk's queue as the page draws it: its time, domain and words."""
     return {
         "key": key,
@@ -133,32 +188,33 @@ def _item(
         "title": title,
         "detail": detail,
         "src": src,
+        "time_ct": None if ts is None else ct_label(ts),
     }
 
 
-def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
+def _cross_items(in_window: list[MergedCross]) -> list[CrossItem]:
     """Return the window's level crosses, numbered oldest first (cross_store's, oldest first).
 
     The newest cross at each level, for the newest DESK_MARKERS levels, is flagged for the chart.
     """
-    items: list[dict[str, Any]] = []
+    items: list[CrossItem] = []
     for i, merged in enumerate(in_window):
         c = merged.cross
         items.append(
             {
-                **_item(
-                    f"x{c.cross_id}",
-                    c.ts_utc,
-                    "LEVELS",
-                    c.direction,
-                    f"Crossed {_CROSS_WORD[c.direction]} {' + '.join(merged.level_names)}",
-                    f"{price_text(c.level_value)} · spot "
-                    f"{price_text(c.spot_at_cross)} at the cross",
-                    "level_crosses",
-                ),
+                "key": f"x{c.cross_id}",
+                "ts": c.ts_utc,
+                "dom": "LEVELS",
+                "dir": c.direction,
+                "warn": False,
+                "title": f"Crossed {_CROSS_WORD[c.direction]} {' + '.join(merged.level_names)}",
+                "detail": f"{price_text(c.level_value)} · spot "
+                f"{price_text(c.spot_at_cross)} at the cross",
+                "src": "level_crosses",
                 "n": i + 1,
                 "price": c.level_value,
                 "marker": False,
+                "time_ct": ct_label(c.ts_utc),
             }
         )
     # the chart's few: the newest cross at each level, for the newest DESK_MARKERS levels
@@ -168,12 +224,12 @@ def _cross_items(in_window: list[MergedCross]) -> list[dict[str, Any]]:
     return items
 
 
-def _terrain_items(tk: str, now: datetime) -> list[dict[str, Any]]:
+def _terrain_items(tk: str, now: datetime) -> list[QueueItem]:
     """Return Gamma Call or Gamma Put when the live price is through it, and stale levels.
 
     In the terrain panel's words, each level by its name in the one list (OPTION_LEVELS).
     """
-    items: list[dict[str, Any]] = []
+    items: list[QueueItem] = []
     t = terrain(tk, now.timestamp())  # the levels the page's terrain panel is sent
     spot, _src, spot_ts = resolve_spot(tk, now=now.timestamp())  # the price they are through
     names = dict(OPTION_LEVELS)

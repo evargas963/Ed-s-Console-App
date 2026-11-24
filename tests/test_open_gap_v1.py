@@ -220,6 +220,6 @@ def test_today_s_card_after_the_open_waits_for_the_bar_then_serves_its_result():
     today = closed["today"]
     assert (today["gap_text"], today["gap_up"]) == ("▼ -0.58%", False)
     (result,) = today["results"]
-    assert result["label"] == "Today 09:30–09:35 ET"
+    assert result["label"] == "Today 08:30 AM CT–08:35 AM CT"  # the 09:30 ET bar, as shown
     assert (result["five_text"], result["called"]) == ("▲ +0.35%", False)
     assert result["called_text"] == "✗ the gap pointed down, the open went up"
