@@ -29,11 +29,11 @@ import sys
 import threading
 import time
 from collections import Counter
-from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import IO, Any, cast, override
+from typing import IO, TYPE_CHECKING, Any, TypedDict, cast, override
 
 import time_et
 from calc.order_flow import Book, Exchanges, Json, Level
@@ -54,8 +54,22 @@ from option_contract import (
 )
 from time_et import ET, ct_label
 
+if TYPE_CHECKING:
+    from state.news_store import NewsHeadline
+
 log = logging.getLogger(__name__)
 
+#: A message as published on the bus (MessageBus.publish): one of the stream's shapes, or a plain
+#: dict (the chain sweep's answers and chains, the watchlist, the feed status).
+type BusMessage = (
+    QuoteMessage
+    | BarMessage
+    | VerbatimMessage
+    | BookMessage
+    | NewsMessage
+    | SubscriptionMessage
+    | dict[str, Any]
+)
 #: A bus message as a reader may find it: the dict its builder made, or, read back from a spill
 #: file or handed in by a test, any JSON value. Code that reads one checks it is a dict first.
 type Payload = dict[str, Any] | list[Any] | str | float | None
@@ -234,6 +248,78 @@ WAL_SIZE_LIMIT_BYTES = 256 * 1024 * 1024
 #: delivered it. Which value is current is decided by it (docs/DATA_FLOW.md §2 D1).
 
 
+class QuoteMessage(TypedDict):
+    """quote.* (LEVELONE_EQUITIES) as quote_msg builds it: the flat columns and `native`."""
+
+    ts_recv: float
+    schwab_ts: int | None
+    symbol: str
+    bid: float | None
+    ask: float | None
+    last: float | None
+    bid_size: int | None
+    ask_size: int | None
+    last_size: int | None
+    total_volume: int | None
+    quote_time_ms: int | None
+    trade_time_ms: int | None
+    src: str
+    native: dict[str, Any] | None
+
+
+class VerbatimMessage(TypedDict):
+    """optquote.* (LEVELONE_OPTIONS) as verbatim_msg builds it: Schwab's item as `content`."""
+
+    ts_recv: float
+    schwab_ts: int | None
+    symbol: str
+    content: dict[str, Any]
+    src: str
+
+
+class BookMessage(VerbatimMessage):
+    """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK) as book_msg builds it, with its service."""
+
+    service: str
+
+
+class NewsMessage(VerbatimMessage):
+    """news.* (NEWS_HEADLINE): Schwab's item and Feed's read of its fields (`headline`).
+
+    Feed builds it (feed.connection._message, its fields read by feed.connection.news_headline);
+    the header's news line takes `headline`.
+    """
+
+    headline: NewsHeadline
+
+
+class BarMessage(TypedDict):
+    """bar1m.* (CHART_EQUITY) as bar_msg builds it: the flat columns and `native`."""
+
+    ts_recv: float
+    schwab_ts: int | None
+    symbol: str
+    bar_start_ms: int | None
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    volume: int | None
+    src: str
+    native: dict[str, Any] | None
+
+
+class SubscriptionMessage(TypedDict):
+    """sub.* as subscription_msg builds it: one request the daemon sent and Schwab's answer."""
+
+    ts: float
+    service: str
+    command: str
+    symbols: list[str]
+    code: int | None
+    reason: str
+
+
 def quote_msg(
     *,
     symbol: str,
@@ -250,7 +336,7 @@ def quote_msg(
     ts_recv: float,
     native: dict[str, Any] | None = None,
     schwab_ts: int | None = None,
-) -> dict[str, Any]:
+) -> QuoteMessage:
     """quote.* (LEVELONE_EQUITIES).
 
     `native` is Schwab's item verbatim -- readers need fields the flat columns do not carry
@@ -282,7 +368,7 @@ def book_msg(
     src: str,
     ts_recv: float,
     schwab_ts: int | None = None,
-) -> dict[str, Any]:
+) -> BookMessage:
     """book.* (NYSE_BOOK / NASDAQ_BOOK / OPTIONS_BOOK), Schwab's item verbatim, and its service."""
     return {
         **verbatim_msg(
@@ -299,7 +385,7 @@ def verbatim_msg(
     src: str,
     ts_recv: float,
     schwab_ts: int | None = None,
-) -> dict[str, Any]:
+) -> VerbatimMessage:
     """optquote.* (LEVELONE_OPTIONS) and news.* (NEWS_HEADLINE), Schwab's item verbatim.
 
     A news message carries one thing more: Feed's read of the item's fields, `headline`
@@ -327,7 +413,7 @@ def bar_msg(
     ts_recv: float,
     native: dict[str, Any] | None = None,
     schwab_ts: int | None = None,
-) -> dict[str, Any]:
+) -> BarMessage:
     """bar1m.* (CHART_EQUITY). `native` is Schwab's item verbatim (SEQUENCE, CHART_DAY, ...)."""
     return {
         "ts_recv": ts_recv,
@@ -352,7 +438,7 @@ def subscription_msg(
     code: int | None,
     reason: str,
     ts: float,
-) -> dict[str, Any]:
+) -> SubscriptionMessage:
     """sub.* -- one request the daemon sent and Schwab's answer."""
     return {
         "ts": ts,
@@ -499,7 +585,7 @@ def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
     return tuple(out)
 
 
-def current_key(topic: str, msg: Payload) -> str:
+def current_key(topic: str, msg: BusMessage | Payload) -> str:
     """Return a topic's key in the current state, by its source and, for a book, its service.
 
     By its source (`src`: a message from elsewhere is never merged into Schwab's record) and,
@@ -627,7 +713,7 @@ class MessageBus:
         # a topic's record (a dict); a chain's, its parts (a list)
         self.current: dict[str, tuple[str, Any]] = {}
         #: chain topic -> (fetch time, {part: message}, parts): the newest fetch, filling
-        self._chains: dict[str, tuple[float, dict[int, dict[str, Any]], int]] = {}
+        self._chains: dict[str, tuple[float, dict[int, Mapping[str, Any]], int]] = {}
 
     def subscribe(self, prefix: str, *, policy: str = LATEST) -> Subscription:
         """Subscribe a reader; a LATEST one starts with every current record under `prefix`."""
@@ -643,7 +729,7 @@ class MessageBus:
         if sub in self._subs:
             self._subs.remove(sub)
 
-    def publish(self, topic: str, msg: dict[str, Any]) -> None:
+    def publish(self, topic: str, msg: BusMessage) -> None:
         key = current_key(topic, msg)
         chain = topic.startswith("chain.")
         changed = self._chain(key, topic, msg) if chain else self._newest(key, topic, msg)
@@ -657,7 +743,7 @@ class MessageBus:
             if (sub.policy == LOG and not chain) or (sub.policy == LATEST and (changed or own)):
                 sub.deliver(key, topic, msg, own)
 
-    def _newest(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
+    def _newest(self, key: str, topic: str, msg: BusMessage) -> bool:
         """Make `msg` part of its topic's current record where it is the newest by Schwab's time.
 
         Returns whether the record changed.
@@ -699,14 +785,14 @@ class MessageBus:
         )
         return True
 
-    def _chain(self, key: str, topic: str, msg: dict[str, Any]) -> bool:
+    def _chain(self, key: str, topic: str, msg: Mapping[str, Any]) -> bool:
         """Take a chain part (a failed fetch is its one part).
 
         The newest fetch of the ticker is kept; once all its parts are in it replaces the current
         chain whole.
         """
         ts = msg["ts_recv"]
-        held: tuple[float, dict[int, dict[str, Any]], int] | None
+        held: tuple[float, dict[int, Mapping[str, Any]], int] | None
         held = self._chains.get(key)
         if held is not None and ts < held[0]:
             return False  # an older fetch: never current
@@ -718,6 +804,12 @@ class MessageBus:
             return False
         self.current[key] = (topic, [held[1][i] for i in sorted(held[1])])
         return True
+
+
+class ServiceAge(TypedDict):
+    """How long before the report a Schwab service last carried data (HealthRegistry.report)."""
+
+    age_sec: float
 
 
 class HealthRegistry:
@@ -737,7 +829,7 @@ class HealthRegistry:
         """When this feed last carried data (None: never, this connection)."""
         return self._last.get(feed)
 
-    def report(self, now: float) -> dict[str, dict[str, float]]:
+    def report(self, now: float) -> dict[str, ServiceAge]:
         return {f: {"age_sec": now - ts} for f, ts in self._last.items()}
 
 
@@ -1088,9 +1180,20 @@ class KeptFailure:
     ts: float
 
 
-@dataclass(frozen=True)
-class WriterStatus:
-    """The writer as the heartbeat carries it, counted at commit.
+class SpillStatus(TypedDict):
+    """A spill file as the heartbeat carries it (_Spill.status).
+
+    Its path, bytes, messages and how many are written back.
+    """
+
+    path: str
+    bytes: int
+    messages: int
+    written_back: int
+
+
+class _WriterCounts(TypedDict):
+    """The writer's state and counts, counted at commit, from which its Record is made.
 
     `failures`: messages kept in stream_write_failures; `held`: messages in memory not yet in
     the database (queued, taken in the round being written, in the open batch or waiting);
@@ -1104,9 +1207,7 @@ class WriterStatus:
     with how many records are written back; `lost`: messages neither the
     database nor the spill file took, received from `lost_first_ts` to `lost_last_ts`;
     `unrecorded`: messages a dead writer could not write; `error`: the database's refusal
-    (blocked) or what ended the thread (dead), from `error_ct`. `word`, `line` and `cls`: the
-    header's Record, as the page prints it: its cell's one word, the whole line (the cell's
-    title, and the header's alert while the class is "neg") and its class.
+    (blocked) or what ended the thread (dead), from `error_ct`.
     """
 
     state: str
@@ -1118,21 +1219,31 @@ class WriterStatus:
     waiting: int
     held: int
     held_bytes: int
-    spill: dict[str, str | int] | None
-    spills_after: list[dict[str, str | int]]
-    left_on_disk: list[dict[str, str | int]]
+    spill: SpillStatus | None
+    spills_after: list[SpillStatus]
+    left_on_disk: list[SpillStatus]
     lost: int
     lost_first_ts: float | None
     lost_last_ts: float | None
     unrecorded: int
     error: str | None
     error_ct: str | None
+
+
+class WriterStatus(_WriterCounts):
+    """The writer as the heartbeat carries it (CaptureWriter.status): its counts and its Record.
+
+    `word`, `line` and `cls`: the header's Record, as the page prints it: its cell's one word,
+    the whole line (the cell's title, and the header's alert while the class is "neg") and its
+    class.
+    """
+
     word: str
     line: str
     cls: str
 
 
-def _record_line(s: dict[str, Any]) -> tuple[str, str, str]:
+def _record_line(s: Mapping[str, Any]) -> tuple[str, str, str]:
     """Return the header's Record for a writer status: its word, the line, and its class.
 
     The line begins with the word. The class is "neg" for anything but recording with nothing
@@ -1369,7 +1480,7 @@ class _Spill:
             spill.read_at = disk
         return spill
 
-    def status(self) -> dict[str, str | int]:
+    def status(self) -> SpillStatus:
         """Return the spill file as the heartbeat carries it, and as listed when left on disk."""
         return {
             "path": str(self.path),
@@ -1541,7 +1652,7 @@ class CaptureWriter:
         self._waiters: dict[tuple[str, str, float], tuple[threading.Event, list[Outcome]]] = {}
         self.error: str | None = None
         self.error_ts: float | None = None
-        self.left_on_disk: list[dict[str, str | int]] = []
+        self.left_on_disk: list[SpillStatus] = []
         #: which bus messages are recorded (topic, message) -> bool; the daemon sets its own
         #: (Daemon.saves: option quotes and option books of the contracts it keeps)
         self.saves: Callable[[str, Any], bool] = _every_message
@@ -1738,10 +1849,10 @@ class CaptureWriter:
         if self.state == WRITER_BLOCKED:
             self.state, self.error, self.error_ts = WRITER_RECORDING, None, None
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> WriterStatus:
         """Return the writer's WriterStatus, as the heartbeat carries it."""
         with self._lock:
-            s: dict[str, Any] = {
+            s: _WriterCounts = {
                 "state": self.state,
                 "rows_written": self.rows_written,
                 "failures": self.failures,
@@ -1765,7 +1876,7 @@ class CaptureWriter:
                 "held_bytes": self._waiting_bytes,
                 "spill": self._spills[0].status() if self._spills else None,
                 "spills_after": [s.status() for s in self._spills[1:]],
-                "left_on_disk": [dict(k) for k in self.left_on_disk],
+                "left_on_disk": [k.copy() for k in self.left_on_disk],
                 "lost": self.lost,
                 "lost_first_ts": self.lost_first_ts,
                 "lost_last_ts": self.lost_last_ts,
@@ -1774,7 +1885,7 @@ class CaptureWriter:
                 "error_ct": ct_label(self.error_ts) if self.error_ts is not None else None,
             }
         word, line, cls = _record_line(s)
-        return asdict(WriterStatus(**s, word=word, line=line, cls=cls))
+        return WriterStatus(**s, word=word, line=line, cls=cls)
 
     async def run(self, sub: Subscription, *, stop: asyncio.Event) -> None:
         """Hand every bus message to the writer thread until `stop`.
