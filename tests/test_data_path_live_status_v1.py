@@ -17,6 +17,7 @@ built here in its shape (no status is captured).
 from __future__ import annotations
 
 import json
+import math
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -142,10 +143,53 @@ def test_a_status_stamped_before_the_time_judged_keeps_the_streamed_cell_live(be
 
 @pytest.mark.parametrize("after", [0.001, 0.5, 2.9])
 def test_a_status_stamped_after_the_time_judged_is_not_that_time(after):
-    """A stamp after `_AT` is not `_AT`. The last price still stands, and the cell is not live."""
+    """A stamp after `_AT` is not `_AT`, and no status before it answers for `_AT`.
+
+    The last price still stands, and the cell is not live.
+    """
     states = _states_when_the_status_was_sent(after)
     assert lmp.daemon_status(_AT) is None
     assert states and "live" not in states
+
+
+@pytest.mark.parametrize("after", [0.001, 0.5, 2.9])
+def test_a_status_stamped_after_the_time_judged_leaves_the_one_before_it_in_force(after):
+    """The status in force at `_AT` is the latest stamped at or before it (an as-of join).
+
+    INDUCED: the daemon's next status lands after the instant a panel is stamped and before it is
+    judged (the daemon beats every second; the panel is computed on another thread). The status
+    stamped 0.5 s before `_AT` still answers for `_AT`: the streamed cell is live.
+    """
+    _beat(_AT - 0.5)
+    assert _states_when_the_status_was_sent(after) == ["live"]
+    assert lmp.daemon_status(_AT)["ts"] == _AT - 0.5
+
+
+def test_every_time_within_the_live_limit_of_the_newest_status_finds_the_one_in_force():
+    """Twenty statuses a second apart: each time judged finds the latest stamped at or before it.
+
+    Every time from the newest status back to the live limit before it, and the one at the limit
+    itself, which is no longer current.
+    """
+    for k in range(20):
+        _beat(_AT - (19 - k))
+    for back in (0.0, 0.4, 1.0, 1.7, 2.0, 2.99):
+        at = _AT - back
+        assert lmp.daemon_status(at)["ts"] == _AT - math.ceil(back)
+    assert lmp.daemon_status(_AT + lmp.FEED_HEARTBEAT_MAX_AGE_SEC) is None
+
+
+def test_a_status_that_arrives_late_answers_only_by_its_own_stamp():
+    """INDUCED: the status stamped 0.5 s before `_AT` arrives after the one stamped `_AT`.
+
+    Each time judged still finds the latest stamped at or before it.
+    """
+    _beat(_AT - 1.0)
+    _beat(_AT)
+    _beat(_AT - 0.5)
+    assert lmp.daemon_status(_AT)["ts"] == _AT
+    assert lmp.daemon_status(_AT - 0.2)["ts"] == _AT - 0.5
+    assert lmp.daemon_status(_AT - 0.7)["ts"] == _AT - 1.0
 
 
 def test_a_streamed_cell_is_not_live_after_its_own_option_close():

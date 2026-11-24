@@ -411,7 +411,7 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
         live, down = asyncio.run(asyncio.wait_for(go(), 30))
     finally:
         with lmp._lock:
-            lmp._feed["status"] = None
+            lmp._beats.clear()
     assert live["feed"]["watchlist"] == ["SPY", "TSLA"] and live["feed"]["ts"] is not None
     # the header's time and day: the beat's own instant, in Central Time
     at = datetime.fromtimestamp(live["feed"]["ts"], ZoneInfo("America/Chicago"))

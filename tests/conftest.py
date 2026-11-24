@@ -161,9 +161,7 @@ def _live_feed_starts_down(_markets_answers_held):
             server._reprice_timers.clear()
             server._repriced_at.clear()
     with live_market_plane._lock:
-        live_market_plane._feed["rx"] = None
-        live_market_plane._feed["held"] = {}
-        live_market_plane._feed["status"] = None
+        live_market_plane._beats.clear()
         live_market_plane._by_ticker.clear()
         live_market_plane._fields_by_ticker.clear()
         live_market_plane._built.clear()
@@ -173,9 +171,7 @@ def _live_feed_starts_down(_markets_answers_held):
     ofls.bind_bus(feed_live_helper.BUS.current)
     yield
     with live_market_plane._lock:
-        live_market_plane._feed["rx"] = None
-        live_market_plane._feed["held"] = {}
-        live_market_plane._feed["status"] = None
+        live_market_plane._beats.clear()
 
 
 @pytest.fixture

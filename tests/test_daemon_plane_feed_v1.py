@@ -21,7 +21,7 @@ import time_et
 from app.options.order_flow.state import read_book
 from push import book as push_book
 from stream_spine import book_msg, quote_msg
-from tests.feed_live_helper import RTH_INSTANT, daemon_status
+from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down
 
 
 def _reset(tmp_path):
@@ -152,9 +152,7 @@ def test_a_book_is_live_by_the_one_rule_on_its_venue_not_by_its_book_time(tmp_pa
     }
     lmp.record_feed_heartbeat(daemon_status(RTH_INSTANT, **held))
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (False, True)
-    lmp.record_feed_heartbeat(
-        daemon_status(RTH_INSTANT - lmp.FEED_HEARTBEAT_MAX_AGE_SEC - 1, **held)
-    )
+    mark_feed_down()
     assert (stale("NASDAQ_BOOK"), stale("NYSE_BOOK")) == (True, True)
 
 

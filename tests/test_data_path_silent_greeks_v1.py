@@ -28,7 +28,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
     """
     ofls.clear_all_live_state()
     with lmp._lock:
-        lmp._feed["held"] = {}
+        lmp._beats.clear()
     try:
         _daemon(held=[_A], socket_open=True, at=_T)
         # INDUCED: a volume CRWD's chain does not carry, so the levels show it only from the stream
@@ -54,7 +54,7 @@ def test_a_missing_heartbeat_keeps_the_last_streamed_volume_on_the_levels():
     finally:
         ofls.clear_all_live_state()
         with lmp._lock:
-            lmp._feed["held"] = {}
+            lmp._beats.clear()
         lmp._by_ticker.pop(TK, None)
         lmp._fields_by_ticker.pop(TK, None)
         with level_store._lock:
