@@ -6,13 +6,18 @@
  * therefore cannot block the pytest controller, and xdist workers cannot idle behind a
  * controller stuck in a terminal write (measured: an hours-long "stall" at ~94% executed).
  *
- * Only bounded output reaches the terminal: two lines at start, a TAIL_BYTES-bounded tail
- * of the log, and the exit code at the end — under 4 KiB in total, the smallest pipe buffer
- * on a supported host, so even a dead reader receives the exit code. The full log is the
- * diagnostic record.
+ * Only bounded output reaches the terminal: a line at start naming the log, a bounded tail of
+ * the log, and the exit code at the end — under 4 KiB in total, the smallest pipe buffer on a
+ * supported host, so even a dead reader receives the exit code. The full log is the diagnostic
+ * record.
+ *
+ * The suite runs as CI runs it (.github/workflows/pytest.yml): the workers on every test but
+ * those marked `alone`, then each `alone` test (a limit on the wall clock) with none beside it,
+ * each part with its own log and its share of the tail (PART_TAIL_BYTES). Both parts run, as in
+ * CI.
  *
  * Usage: node scripts/run-pytest-full.mjs [extra pytest args]
- *   Extra args follow the canonical args, so a later `-n 0` or a test path narrows the run
+ *   Extra args follow the canonical args, so a later `-n 0` or a test path narrows both parts
  *   (pytest keeps the last value of a repeated option).
  *
  * `runWithFileSink` is shared with scripts/run-playwright-e2e.mjs, which sinks the Playwright
@@ -109,8 +114,28 @@ export function runWithFileSink(
   }
   // a run that could not start, or ended by a signal, has no exit status of its own: it failed
   const code = result.error || result.status === null ? 1 : result.status;
-  console.log(`[${label}] exit code ${code} (full output: ${logPath})`);
+  console.log(`[${label}] exit code ${code}`); // the start line names the log
   return code;
+}
+
+/** pytest's exit code when a run's selection holds no test (pytest's ExitCode.NO_TESTS_COLLECTED). */
+const NO_TESTS_COLLECTED = 5;
+
+/**
+ * Each part's tail: two parts' tails, and the second part's own start and exit lines in the
+ * third share, keep the run's terminal output inside one part's budget.
+ */
+const PART_TAIL_BYTES = Math.floor(TAIL_BYTES / 3);
+
+/**
+ * The suite's exit code from its parts' codes: the first part's failure, else 0; a part whose
+ * selection held no test neither passed nor failed, and a run where no part held one is
+ * NO_TESTS_COLLECTED, as pytest says of such a run.
+ */
+function suiteCode(codes) {
+  const failed = codes.filter((c) => c !== 0 && c !== NO_TESTS_COLLECTED);
+  if (failed.length) return failed[0];
+  return codes.every((c) => c === NO_TESTS_COLLECTED) ? NO_TESTS_COLLECTED : 0;
 }
 
 const invokedDirectly =
@@ -120,18 +145,28 @@ if (invokedDirectly) {
   // One worker per processor the machine has, as CI pins it (.github/workflows/pytest.yml):
   // xdist's `-n auto` reads fewer.
   const workers = String(os.availableParallelism());
-  const args = [
-    "-m",
-    "pytest",
-    "-n",
-    workers,
-    "--dist",
-    "loadfile",
-    "--durations=20",
-    ...process.argv.slice(2),
+  const parts = [
+    {
+      label: "pytest",
+      args: ["-n", workers, "--dist", "loadfile", "--durations=20", "-m", "not alone"],
+      log: "test_pytest_last.log",
+    },
+    {
+      label: "pytest alone",
+      args: ["--durations=1", "-m", "alone"],
+      log: "test_pytest_alone_last.log",
+    },
   ];
-  const code = runWithFileSink("pytest", projectPython(root), args, {
-    logPath: path.join(logDir(), "test_pytest_last.log"),
-  });
-  process.exit(code);
+  const codes = parts.map(({ label, args, log }) =>
+    runWithFileSink(
+      label,
+      projectPython(root),
+      ["-m", "pytest", ...args, ...process.argv.slice(2)],
+      {
+        logPath: path.join(logDir(), log),
+        tailBytes: PART_TAIL_BYTES,
+      },
+    ),
+  );
+  process.exit(suiteCode(codes));
 }
