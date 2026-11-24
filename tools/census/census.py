@@ -38,7 +38,7 @@ import db
 import time_et
 from tools import check_end_to_end as e2e
 from tools import check_integrity
-from tools.census import python_literals
+from tools.census import copied_blocks, python_literals
 
 log = logging.getLogger("census")
 ARGS = argparse.ArgumentParser(description="The census of everything that must reach 0.")
@@ -351,29 +351,24 @@ for fs in bodies.values():
             " = ".join(fs),
         )
 
-WIN = 8
-seen = {}
-for f in [
+compared = [
     f
     for f in FILES
     if lang(f) and lang(f) not in ("Markdown", "JSON") and "vendor" not in f and f in TEXT
-]:
+]
+for f in compared:
     add(S, f"copied blocks (8+ lines): {lang(f)} {area(f)}", "1", "line-window hash")
-    lines = [(n, re.sub(r"\s+", " ", ln.strip())) for n, ln in enumerate(TEXT[f].splitlines(), 1)]
-    lines = [(n, s) for n, s in lines if len(s) > 3 and not s.startswith(("#", "//", '"""'))]
-    last_hit = -WIN
-    for i in range(len(lines) - WIN + 1):
-        h = hashlib.sha1("\n".join(s for _, s in lines[i : i + WIN]).encode()).hexdigest()
-        if h in seen and seen[h][0] != (f, i) and i >= last_hit + WIN:
-            add(
-                S,
-                f"copied blocks (8+ lines): {lang(f)} {area(f)}",
-                "1",
-                "line-window hash",
-                f"{f}:{lines[i][0]} = {seen[h][1]}",
-            )
-            last_hit = i
-        seen.setdefault(h, ((f, i), f"{f}:{lines[i][0]}"))
+for at, first in copied_blocks.copied(
+    {f: (TEXT[f], copied_blocks.import_lines(trees[f]) if f in trees else set()) for f in compared}
+):
+    f = at.rpartition(":")[0]
+    add(
+        S,
+        f"copied blocks (8+ lines): {lang(f)} {area(f)}",
+        "1",
+        "line-window hash",
+        f"{at} = {first}",
+    )
 
 
 class _Unnamed(ast.NodeTransformer):
