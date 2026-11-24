@@ -109,7 +109,7 @@ from state.price_level_store import (
     canonical_price_level_snapshot,
     materialize_price_level_snapshot,
 )
-from stream_spine import CAPTURE_STORED
+from stream_spine import CAPTURE_HELD, CAPTURE_STORED, StoredFirst, cross_ids
 from time_et import (
     ET,
     ct_label,
@@ -616,21 +616,30 @@ _last_feed_stamp: dict[str, tuple[bool, frozenset[str], bool | None]] = {}
 def restamp_off_the_loop() -> None:
     """Take the daemon's beat (the feed's callback, on the event loop) to the pricing thread.
 
-    The surfaces are stamped where they are priced (chain_pricing), never on the event loop,
-    whose one reader takes Schwab's stream (docs/DATA_FLOW.md §4). The restamp is at the
-    instant it runs, as a pricing is (_price_waiting_chain): one that waited behind a pricing
-    is judged by the beat of then, not by the time it was queued.
+    There each beat takes the Recorder's answers for the level crosses it did not commit in
+    their wait (_hold_answered_crosses), then restamps the surfaces. The surfaces are stamped
+    where they are priced (chain_pricing), never on the event loop, whose one reader takes
+    Schwab's stream (docs/DATA_FLOW.md §4). The restamp is at the instant it runs, as a pricing
+    is (_price_waiting_chain): one that waited behind a pricing is judged by the beat of then,
+    not by the time it was queued.
     """
-    chain_pricing.submit(lambda: restamp_open_surfaces(time_et.now())).add_done_callback(
-        _restamp_ended
-    )
+    chain_pricing.submit(_on_beat).add_done_callback(_pricing_job_ended)
 
 
-def _restamp_ended(done: Future[None]) -> None:
-    """Log a restamp that ended on an error, with its traceback; the next beat restamps."""
+def _on_beat() -> None:
+    """Run the daemon's beat on the pricing thread (restamp_off_the_loop)."""
+    _hold_answered_crosses()
+    restamp_open_surfaces(time_et.now())
+
+
+def _pricing_job_ended(done: Future[None]) -> None:
+    """Log a pricing-thread job (a beat's, a price's crosses) that ended on an error.
+
+    With its traceback, which names the job; the next beat or price runs its own.
+    """
     if done.exception() is not None:
         e = done.exception()
-        log.warning("restamping the surfaces failed: %s", e, exc_info=e)
+        log.warning("a job of the pricing thread failed: %s", e, exc_info=e)
 
 
 #: the page's socket panels (PAGE_PANELS) read from the published levels and the live price
@@ -1014,15 +1023,32 @@ def _level_crosses_at(
 CROSS_WAIT_SEC = 10.0
 
 
+@dataclass(frozen=True, eq=False)
+class _Crosses:
+    """A price's level crosses handed to the Recorder (_log_level_crosses), with its answer."""
+
+    tk: str
+    spot: float
+    crosses: list[tuple[float, str, str]]  # as _level_crosses_at found them, for the log
+    events: list[LevelCrossEvent]
+    stored: StoredFirst  # told once the Recorder commits them (CaptureWriter.store_crosses)
+
+
+#: the prices' level crosses the Recorder did not commit in CROSS_WAIT_SEC, oldest first, kept
+#: until it answers (_hold_answered_crosses); read and written on the pricing thread alone
+_crosses_unanswered: list[_Crosses] = []
+
+
 def _log_level_crosses(
     tk: str, spot: float, crosses: list[tuple[float, str, str]], now: float, now_text: str
 ) -> None:
     """Store the crosses _level_crosses_at found, hold them for live readers, tell the open pages.
 
     Every cross is stored as it happened, by the Recorder, the database's one writer, before it
-    is held (store first: CaptureWriter.store_crosses). Runs on the pricing thread; crosses the
-    Recorder did not store in the wait (refused, or held while the database refuses writes, and
-    written once it takes them) are logged and not held.
+    is held (store first: CaptureWriter.store_crosses). Runs on the pricing thread. Crosses the
+    Recorder did not commit in CROSS_WAIT_SEC (held while the database refuses writes, and
+    written once it takes them) are logged and kept until it answers (_hold_answered_crosses);
+    refused, they are logged and not held.
     """
     events = [
         LevelCrossEvent(
@@ -1044,12 +1070,55 @@ def _log_level_crosses(
         log.warning("level crosses of %s at %s not stored: no Recorder runs", tk, spot)
         return
     msg = {"ticker": tk, "ts_utc": now, "crosses": [asdict(e) for e in events]}
-    outcome, ids = daemon.writer.store_crosses(msg, CROSS_WAIT_SEC)
-    if outcome != CAPTURE_STORED:
+    handed = _Crosses(tk, spot, crosses, events, daemon.writer.store_crosses(msg))
+    outcome = handed.stored.outcome(CROSS_WAIT_SEC)
+    if outcome == CAPTURE_HELD:
+        log.warning(
+            "level crosses of %s at %s not committed by the Recorder in %g s: kept until it "
+            "answers, shown once it commits them: %s",
+            tk,
+            spot,
+            CROSS_WAIT_SEC,
+            crosses,
+        )
+        _crosses_unanswered.append(handed)
+    elif outcome == CAPTURE_STORED:
+        _hold_crosses(handed)
+    else:
         log.warning("level crosses of %s at %s not stored (%s): %s", tk, spot, outcome, crosses)
-        return
-    cross_store.add(tk, [StoredCross(**asdict(e), cross_id=i) for e, i in zip(events, ids)])
-    _levels_changed(tk)
+
+
+def _hold_crosses(handed: _Crosses) -> None:
+    """Hold a price's crosses the Recorder committed for the live readers; tell the open pages."""
+    ids = cross_ids(handed.stored)
+    cross_store.add(
+        handed.tk, [StoredCross(**asdict(e), cross_id=i) for e, i in zip(handed.events, ids)]
+    )
+    _levels_changed(handed.tk)
+
+
+def _hold_answered_crosses() -> None:
+    """Take the Recorder's answer for each price's crosses not committed in their wait.
+
+    On the pricing thread, at each of the daemon's beats (restamp_off_the_loop). Committed, they
+    are held as crosses committed in their wait are (_hold_crosses); refused, none is held. Each
+    answer is logged. Those still unanswered stay kept: a Recorder that died answers none of
+    them, and the console's next start reads what was written.
+    """
+    for handed in list(_crosses_unanswered):
+        outcome = handed.stored.outcome()
+        if outcome == CAPTURE_HELD:
+            continue
+        _crosses_unanswered.remove(handed)
+        log.warning(
+            "level crosses of %s at %s %s by the Recorder after their wait: %s",
+            handed.tk,
+            handed.spot,
+            outcome,
+            handed.crosses,
+        )
+        if outcome == CAPTURE_STORED:
+            _hold_crosses(handed)
 
 
 def _tick_ticker(sym: str) -> str | None:
@@ -1093,7 +1162,7 @@ def _on_stream_tick(sym: str) -> None:
                 crosses,
                 now,
                 datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"),
-            )
+            ).add_done_callback(_pricing_job_ended)
     if tk and _gamma_surface_wanted(tk):
         _reprice_from_tick(tk)
 

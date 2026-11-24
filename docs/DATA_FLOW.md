@@ -509,8 +509,12 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `server.CROSS_LEVELS` (Gamma Flip, Gamma Call, Gamma Put and Gamma Total) are checked for a cross
   between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses are
   stored by the Recorder first (`server._log_level_crosses`, `CaptureWriter.store_crosses`,
-  `level_crosses`); a cross the Recorder did not store is logged and not held. Held in
-  `state/cross_store.py` and served by the `desk` panel (`push.desk.desk_events_payload`, window
+  `level_crosses`); a cross the Recorder refused is logged and not held. One it holds past
+  `server.CROSS_WAIT_SEC` is logged and kept (its owner: `server._hold_answered_crosses`, on the
+  pricing thread at each of the daemon's beats), and once the Recorder answers it is held as one
+  committed in its wait, or, refused, logged and not held; a Recorder that dies answers none, and
+  the next start reads what it wrote. Held in `state/cross_store.py`, each in its place by its time,
+  and served by the `desk` panel (`push.desk.desk_events_payload`, window
   `push.desk.DESK_LOOKBACK`), which counts and words the chart's markers before the first bar of the
   span its chart asks (`markers_off_chart`, the `bars` panel's `push.bars.chart_bars`). Enforced by:
   `tests/test_level_crosses_wire.py`, `tests/test_trade_desk_served_v1.py`.
@@ -564,7 +568,8 @@ ENF-23.
 
 - **Feed:** the event loop reads Schwab's stream; the chain sweep runs on its own thread.
 - **Calculators:** never the event loop, so the loop always reads Schwab's next frame. One pricing
-  thread (`server.chain_pricing`): the levels and the heatmap's restamp
+  thread (`server.chain_pricing`): the levels, each price's level crosses, and at each of the
+  daemon's beats the crosses the Recorder answered late and the heatmap's restamp
   (`server.restamp_off_the_loop`). One ordering thread (`capture.chain_ordering`): a chain's layout
   and its order for the option rule (`capture.strike_ladders`, `capture.shown_first`), one chain at
   a time in the order asked, so Schwab is asked for a chain's contracts behind no pricing and a

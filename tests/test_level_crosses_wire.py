@@ -10,6 +10,7 @@ SPY's LEVELONE_EQUITIES prints after it, in the order the daemon received them: 
 
 from __future__ import annotations
 
+import asyncio
 import gc
 import json
 import sqlite3
@@ -26,6 +27,7 @@ import live_market_plane as lmp
 import live_price_rows
 import server
 import time_et
+from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
 from calc.terrain_read import CROSSED_DOWN, CROSSED_UP, LEVEL_AT, crossed
 from db import EdDB, LevelCrossEvent, StoredCross
@@ -36,7 +38,7 @@ from push import strikes as push_strikes
 from push import surface as push_surface
 from push import terrain as push_terrain
 from state import cross_store, level_store
-from stream_spine import CAPTURE_REFUSED, CaptureWriter
+from stream_spine import CAPTURE_REFUSED, CaptureWriter, HealthRegistry, MessageBus, cross_ids
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import (
     clock_from,
@@ -55,6 +57,7 @@ from tests.real_chains import (
     SPY_PRINT_A_STRIKE_AWAY,
     SPY_PRINT_ON_A_STRIKE,
 )
+from tests.test_data_path_capture_whole_v1 import _running, _until_counted
 from time_et import ET, age_text, ct_label
 
 ON_A_STRIKE = SPY_PRINT_ON_A_STRIKE["native"]["LAST_PRICE"]
@@ -247,6 +250,131 @@ def test_a_level_crossed_again_is_stored_again():
     assert _named(again) == _named(first)
     ids = [c.cross_id for c in first + back + again]
     assert len(set(ids)) == len(ids) and set(ids) <= held
+
+
+def test_the_first_cross_of_a_ticker_whose_crosses_are_not_yet_read_is_held_once():
+    """A ticker the console's start did not read (put on the watchlist after it) at its first cross.
+
+    Its crosses are read at that cross (cross_store), from the database, which holds the price's
+    crosses already (stored first): each cross is held once, as stored. The ticker ZZFIRST
+    carries SPY's chain and prints.
+    """
+    tk = "ZZFIRST"
+    _forget(tk)
+    _publish_close(tk)
+    try:
+        _print(SPY_PRINT_ON_A_STRIKE, tk)
+        up = _print(SPY_PRINT_A_STRIKE_AWAY, tk)
+        with cross_store._lock:
+            held = sorted(c.cross_id for c in cross_store._crosses[tk])
+    finally:
+        _forget(tk)
+    assert set(_named(up)) == BETWEEN
+    assert held == sorted(c.cross_id for c in _stored(tk)), "each stored cross, held once"
+
+
+@pytest.mark.parametrize(
+    ("tk", "refused"), [("ZZHELD", False), ("ZZREFUSED", True)], ids=["committed", "refused"]
+)
+def test_crosses_the_recorder_answers_after_the_wait_reach_the_screen_or_are_logged(
+    tk, refused, caplog
+):
+    """A price's crosses the Recorder holds past the pricing thread's wait, then answers.
+
+    INDUCED CONDITION: another connection holds the database's write lock past the wait
+    (server.CROSS_WAIT_SEC), as a backup or a second writer would; for `refused` it also adds a
+    trigger refusing the ticker's crosses before it lets go. The 16:39 print (773.1269) crosses
+    Gamma Call and Gamma Total up from the 16:33 print: the Recorder holds the price's crosses,
+    and the console logs them and holds none. Once the lock is released the Recorder answers,
+    and the daemon's next beat (restamp_off_the_loop, on the pricing thread) takes the answer:
+    committed, the crosses are held for the live readers (cross_store, the desk's one reader),
+    each once, with the cross_id the Recorder stored; refused, none is stored or held. Each is
+    logged. Without that beat committed crosses stayed off the screen until a restart read the
+    database. The tickers carry SPY's chain and prints, so no other test's SPY rows count.
+    """
+    db = server.get_db().db_path
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    daemon.writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.05)
+    _forget(tk)
+    levels = _publish_close(tk)
+    found = server._level_crosses_at(
+        level_store.published_levels(tk).snap, ON_A_STRIKE, STRIKE_AWAY
+    )
+    cross_store.load([tk])  # as the console's start loads the watchlist's
+    ofs.bind_daemon(daemon)  # as capture.run binds it
+
+    def console(writer: CaptureWriter) -> tuple[list, list]:
+        _print(SPY_PRINT_ON_A_STRIKE, tk)
+        with closing(sqlite3.connect(db)) as other:
+            other.execute("BEGIN EXCLUSIVE")
+            _print(SPY_PRINT_A_STRIKE_AWAY, tk)  # the pricing thread's wait ends: held
+            while_held = cross_store.merged_since(tk, 0.0)
+            if refused:
+                other.execute(
+                    f"CREATE TRIGGER refuse_{tk} BEFORE INSERT ON level_crosses "
+                    f"WHEN NEW.ticker = '{tk}' BEGIN SELECT RAISE(ABORT, 'refused'); END"
+                )
+            other.commit()
+        _until_counted(writer, "failures" if refused else "rows_written")
+        server.restamp_off_the_loop()  # the daemon's next beat
+        server.chain_pricing.submit(int).result(10)
+        return while_held, cross_store.merged_since(tk, 0.0)
+
+    try:
+        while_held, shown = asyncio.run(_running(daemon.writer, console))
+        with cross_store._lock:
+            held = sorted(cross_store._crosses[tk], key=lambda c: c.cross_id)
+    finally:
+        _forget(tk)
+        with closing(sqlite3.connect(db)) as conn, conn:
+            conn.execute(f"DROP TRIGGER IF EXISTS refuse_{tk}")
+    stored = sorted(_stored(tk), key=lambda c: c.cross_id)
+    assert {n for _v, n, _s in found} == BETWEEN
+    assert while_held == [], "held by the Recorder: none on the screen yet"
+    if refused:
+        assert stored == held == shown == [], "refused: none stored, none held"
+    else:
+        assert len(stored) == len(BETWEEN) and held == stored, "each committed cross, held once"
+        assert {
+            (n, e.cross.direction, e.cross.level_value) for e in shown for n in e.level_names
+        } == {(n, CROSSED_UP, levels[n]) for n in BETWEEN}
+    said = f"level crosses of {tk} at {STRIKE_AWAY}"
+    answer = "refused" if refused else "stored"
+    assert [r.getMessage() for r in caplog.records if said in r.getMessage()] == [
+        f"{said} not committed by the Recorder in {server.CROSS_WAIT_SEC:g} s: kept until it "
+        f"answers, shown once it commits them: {found}",
+        f"{said} {answer} by the Recorder after their wait: {found}",
+    ]
+
+
+def test_a_price_whose_crosses_the_recorder_raises_on_is_logged_with_its_error(caplog):
+    """The pricing thread's job for a price's crosses never ends on an error unseen.
+
+    INDUCED CONDITIONS: the Recorder's thread is not running (before its start, or after its
+    stop), so it writes the crosses at once on a connection of its own, and another connection
+    holds the database's write lock: the store raises the database's refusal on the pricing
+    thread. The job's error is logged with its traceback. The ticker ZZRAISES carries SPY's chain
+    and prints.
+    """
+    tk = "ZZRAISES"
+    db = server.get_db().db_path
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), [])
+    daemon.writer = CaptureWriter(db, timeout_sec=0.05)
+    _forget(tk)
+    _publish_close(tk)
+    ofs.bind_daemon(daemon)  # as capture.run binds it
+    try:
+        _print(SPY_PRINT_ON_A_STRIKE, tk)
+        with closing(sqlite3.connect(db)) as other:
+            other.execute("BEGIN EXCLUSIVE")
+            _print(SPY_PRINT_A_STRIKE_AWAY, tk)
+            other.commit()
+    finally:
+        _forget(tk)
+    failed = [r for r in caplog.records if r.name == server.log.name and r.exc_info]
+    assert [(r.getMessage(), r.exc_info[0]) for r in failed] == [
+        ("a job of the pricing thread failed: database is locked", sqlite3.OperationalError)
+    ]
 
 
 def test_a_price_that_reaches_a_level_crosses_it_and_one_that_leaves_it_does_not():
@@ -521,7 +649,8 @@ def test_the_crosses_of_one_price_are_stored_together_or_not_at_all(tmp_path: Pa
     edb = EdDB(tmp_path / "level_crosses.db")
     sent = [asdict(_cross()), asdict(_cross("Gamma Flip", None))]
     msg = {"ticker": "SPY", "ts_utc": SPY_PRINT_A_STRIKE_AWAY["ts_recv"], "crosses": sent}
-    assert writer.store_crosses(msg, 10.0) == (CAPTURE_REFUSED, ())
+    told = writer.store_crosses(msg)
+    assert (told.outcome(10.0), cross_ids(told)) == (CAPTURE_REFUSED, ())
     assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == []
     with closing(sqlite3.connect(tmp_path / "level_crosses.db")) as conn:
         (kept,) = conn.execute("SELECT topic, error FROM stream_write_failures").fetchall()
@@ -601,6 +730,39 @@ def test_every_cross_of_the_longest_window_is_held_and_read_however_many():
     assert [e.cross.ts_utc for e in events] == sorted(
         (e.cross.ts_utc for e in events), reverse=True
     )
+
+
+def test_crosses_the_recorder_commits_late_are_held_in_their_place_by_time():
+    """A price's crosses the Recorder held past the wait can be held after a newer price's.
+
+    INDUCED: the order server._hold_answered_crosses can hold them in. Real SPY rows,
+    tests/fixtures/real_spy_level_crosses.json: the newest event's rows are held first, then the
+    event's before it. Every row is held oldest first, each event's rows in their stored order,
+    and a window from the older event's time serves both, newest first.
+    """
+    rows = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_level_crosses.json").read_text(
+            encoding="utf-8"
+        )
+    )["rows"][::-1]
+    stored = {f.name for f in fields(StoredCross)}
+    crosses = [StoredCross(**{k: v for k, v in r.items() if k in stored}) for r in rows]
+    before, last = sorted({c.ts_utc for c in crosses})[-2:]
+    older = [c for c in crosses if c.ts_utc == before]
+    newer = [c for c in crosses if c.ts_utc == last]
+    tk = "ZZLATE"
+    with cross_store._lock:
+        cross_store._crosses[tk] = []  # read at the console's start: none
+    try:
+        cross_store.add(tk, newer)
+        cross_store.add(tk, older)  # committed late
+        held = list(cross_store._crosses[tk])
+        events = cross_store.merged_since(tk, before)
+    finally:
+        with cross_store._lock:
+            cross_store._crosses.pop(tk, None)
+    assert held == older + newer, "oldest first"
+    assert [e.cross.ts_utc for e in events] == [last, before]
 
 
 def test_a_test_publishes_spys_close_levels_and_leaves_them():

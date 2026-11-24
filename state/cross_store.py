@@ -1,7 +1,7 @@
 """Every ticker's level crosses over the longest window a screen reads, oldest first, as stored.
 
 Loaded from level_crosses once the watchlist is known (load), then each cross as it is recorded
-(add, from server._log_level_crosses). Every live reader reads them here, never the database
+(add, from server._hold_crosses). Every live reader reads them here, never the database
 (docs/DATA_FLOW.md §2 D6).
 """
 
@@ -50,13 +50,18 @@ def load(watchlist: list[str]) -> None:
 
 
 def add(tk: str, logged: list[StoredCross]) -> None:
-    """Hold the crosses just stored (`logged`, the rows record_level_crosses returned).
+    """Hold crosses the Recorder has committed (`logged`), each in its place by its time.
 
-    Those older than CROSSES_HELD_SEC before the newest held are let go.
+    A price's crosses the Recorder held past the pricing thread's wait can come after newer ones
+    (server._hold_answered_crosses). A ticker not yet read is read now (_held), from the
+    database, which holds `logged` already (stored first): they are not held twice. Those older
+    than CROSSES_HELD_SEC before the newest held are let go.
     """
     with _lock:
+        if tk in _crosses:
+            _crosses[tk] += logged
+            _crosses[tk].sort(key=lambda c: c.ts_utc)  # stable: one price's rows keep their order
         held = _held(tk)
-        held.extend(logged)
         if held:
             oldest = held[-1].ts_utc - CROSSES_HELD_SEC
             del held[: bisect_left(held, oldest, key=lambda c: c.ts_utc)]

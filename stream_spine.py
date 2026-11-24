@@ -1067,6 +1067,15 @@ def _crosses_written(conn: sqlite3.Connection, msg: Any) -> RowWritten:
     return RowWritten(CROSS_TABLE, (msg["ticker"], msg["ts_utc"], ids))
 
 
+def cross_ids(stored: StoredFirst) -> tuple[int, ...]:
+    """Return each row's cross_id of a price's crosses the writer stored (_crosses_written).
+
+    () until it is told, or when refused (StoredFirst.outcome).
+    """
+    out = stored.out[0] if stored.outcome() == CAPTURE_STORED else None
+    return out.values[2] if isinstance(out, RowWritten) else ()
+
+
 #: the kinds stored first, each message written as its several rows, all or none (_stored_first)
 _STORED_FIRST = {CAPTURE: _capture_written, CROSS: _crosses_written}
 
@@ -1833,18 +1842,15 @@ class CaptureWriter:
         """
         return self._stored_first(CAPTURE, msg)
 
-    def store_crosses(self, msg: dict[str, Any], wait_sec: float) -> tuple[str, tuple[int, ...]]:
-        """Write a price's level crosses and wait up to `wait_sec` for their commit.
+    def store_crosses(self, msg: dict[str, Any]) -> StoredFirst:
+        """Write a price's level crosses; its StoredFirst is told once they are committed.
 
         `msg` is {"ticker", "ts_utc", "crosses": [a row of CROSS_COLUMNS, ...]}. Another thread:
-        the console's pricing thread, which holds the crosses only once they are stored (store
-        first). Returns (CAPTURE_STORED, each row's cross_id), or (CAPTURE_REFUSED or
-        CAPTURE_HELD, ()) (StoredFirst.outcome).
+        the console's pricing thread, which waits on it and holds the crosses only once they are
+        stored (store first), each with its cross_id (cross_ids), and keeps those its wait did
+        not see committed until it is told (server._hold_answered_crosses).
         """
-        stored = self._stored_first(CROSS, msg)
-        outcome = stored.outcome(wait_sec)
-        out = stored.out[0] if outcome == CAPTURE_STORED else None
-        return outcome, out.values[2] if isinstance(out, RowWritten) else ()
+        return self._stored_first(CROSS, msg)
 
     def _stored_first(self, kind: str, msg: dict[str, Any]) -> StoredFirst:
         """Write `msg`, a message of a kind stored first; its StoredFirst is told at its commit.
