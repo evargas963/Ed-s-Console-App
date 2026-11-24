@@ -250,11 +250,12 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    the last value stands, marked not live with its time and age, and everything computed from it is
    marked too; during a feed outage the header says OFFLINE. While the program's push to the page
    has stopped, the time stands with no age (the page computes none, and the last age served is not
-   the age now) and the header says OFFLINE. A value never received, or sent invalid, shows "-".
-   Never a fallback, default, estimate, proxy, interpolation or synthetic value. Enforced by:
+   the age now) and the header says OFFLINE. A value never received, or sent invalid, shows "-". A
+   list by strike keeps every strike: one whose value is not known shows "-", never left out. Never
+   a fallback, default, estimate, proxy, interpolation or synthetic value. Enforced by:
    `tests/test_live_quote_and_order_flow_no_fallbacks_v1.py`,
-   `tests/test_gamma_exposure_honest_absence_v1.py`, `tests/test_data_path_heatmap_absent_v1.py` (in
-   force)
+   `tests/test_gamma_exposure_honest_absence_v1.py`, `tests/test_data_path_heatmap_absent_v1.py`,
+   `tests/test_strikes_follow_the_expiry_v1.py` (in force)
 6. **One program, one path** (serves 2, 6). Schwab → program memory → pushed to the page. The
    databases are history, written by the Recorder, read at startup, after the close and for
    research, never for a live screen. Enforced by: `sqlite3`, a banned name counted per product file
@@ -310,14 +311,16 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     `ruff format` and ruff's rules read them; PEP 20 as the shape. Imports at the top, with no
     exception: the daemon runs under `python` in its window, so an error while it loads shows there,
     and `capture_main` imports it at the top. Ruff `PLC0415` holds the rule (locks). One formatter
-    per format (price, Central Time, dollars), on the server (no machine check — ENF-11). Enforced
-    by: `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100 columns;
-    `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with a safe
-    fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or with no
-    fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force; `UP042`, `E711`, `E712`, `E731`
-    and the `B` and `SIM` rules whose only fix is unsafe deselected, in `pyproject.toml`, and
-    `SIM115`, whose findings are mostly files held open past the function, which a `with` would
-    close); ruff `TRY` (but `TRY003`, rule 1), `C90` and `PLC0415` as one-way counts (locks)
+    per format (price, Central Time, dollars; a Greek with every digit Schwab sent, as a plain
+    decimal, never in exponent form, `tests/test_served_numbers_v1.py`), on the server (no machine
+    check — ENF-11). Enforced by: `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`:
+    lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and
+    the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`,
+    `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`) (in force;
+    `UP042`, `E711`, `E712`, `E731` and the `B` and `SIM` rules whose only fix is unsafe deselected,
+    in `pyproject.toml`, and `SIM115`, whose findings are mostly files held open past the function,
+    which a `with` would close); ruff `TRY` (but `TRY003`, rule 1), `C90` and `PLC0415` as one-way
+    counts (locks)
 14. **The builder answers for the change** (serves 9, 11). The agent that builds a change audits it
     end to end, Schwab to the screen, the right amount, not too much and not too little: it moves a
     value onto the one wire and deletes what it replaces; product code that grows beside the old
