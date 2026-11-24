@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from calc.forming_bar import Built, BuiltMinute, next_built
 from calc.l1_trade_observation import (
@@ -252,6 +252,61 @@ def built_minutes(ticker: str) -> tuple[BuiltMinute, ...]:
 FEED_HEARTBEAT_MAX_AGE_SEC: float = 3.0
 
 
+class SignInLine(TypedDict):
+    """The header's Schwab sign-in (capture.sign_in_line): its cell, its alert, why, its class."""
+
+    word: str
+    line: str
+    why: str
+    cls: str
+
+
+class LeftOutLine(TypedDict):
+    """The header's count of what the program left out (live_ui.left_out_line): line, why, class."""
+
+    line: str
+    why: str
+    cls: str
+
+
+class DaemonStatus(TypedDict):
+    """The daemon's status at `ts` (capture's status), what the console is told every second.
+
+    The header's clock, day and session; the Schwab socket and why it is down; the watchlist;
+    the chain sweep's round, its start and why it waits; the symbols held per service; each
+    service's age (HealthRegistry.report); the Recorder's state; the sign-in; and the console's
+    counts of what it failed to apply.
+    """
+
+    ts: float
+    clock_ct: str
+    day_ct: str
+    session: str
+    schwab_socket_open: bool
+    schwab_down: str | None
+    watchlist: list[str]
+    chain_round_sec: float | None
+    chains_began: float | None
+    chains_waiting: str | None
+    held: dict[str, list[str]]
+    health: dict[str, dict[str, float]]
+    writer: dict[str, Any] | None
+    sign_in: SignInLine | None
+    apply_failures: int
+    tick_failures: int
+
+
+class Beat(DaemonStatus):
+    """One heartbeat as live_ui sends it: the status with this server's own page counts.
+
+    `page_socket` holds the pages, the rows sent and the frames refused; `left_out` is None when
+    nothing was left out.
+    """
+
+    page_socket: dict[str, int]
+    left_out: LeftOutLine | None
+
+
 @dataclass(frozen=True)
 class _Beat:
     """One daemon status (its heartbeat): its stamp, the status and the symbols it holds.
@@ -260,7 +315,7 @@ class _Beat:
     """
 
     rx: float
-    status: dict[str, Any]
+    status: Beat
     held: dict[str, frozenset[str]]
 
 
@@ -269,7 +324,7 @@ class _Beat:
 _beats: deque[_Beat] = deque()
 
 
-def record_feed_heartbeat(msg: dict[str, Any]) -> None:
+def record_feed_heartbeat(msg: Beat) -> None:
     """Apply one daemon heartbeat (capture.Daemon.status, live_ui's beat).
 
     It is judged by the time the daemon stamped it (`ts`), never by when it arrived: a status that
@@ -288,7 +343,7 @@ def record_feed_heartbeat(msg: dict[str, Any]) -> None:
             _beats.popleft()
 
 
-def last_beat() -> dict[str, Any] | None:
+def last_beat() -> Beat | None:
     """Return the latest status the daemon sent, current or not; None until one arrives.
 
     What it reported stands while a beat is late or missing (its watchlist, its last round of
@@ -316,7 +371,7 @@ class FeedNow:
     force: they stand when it is too old. With no beat in force, neither.
     """
 
-    status: dict[str, Any] | None
+    status: Beat | None
     held: dict[str, frozenset[str]]
 
 
@@ -351,7 +406,7 @@ def live_on(feed: FeedNow, symbol: str, service: str) -> bool:
     return bool(t) and symbols is not None and t in symbols
 
 
-def daemon_status(now: float) -> dict[str, Any] | None:
+def daemon_status(now: float) -> Beat | None:
     """Return the daemon's latest status while its heartbeat is current at `now`, else None."""
     return feed_now(now).status
 
