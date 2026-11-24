@@ -38,7 +38,7 @@ from typing import IO, Any, cast, override
 import time_et
 from calc.order_flow import Book, Exchanges, Json, Level
 from calibration.complete_chain_capture import ensure_schema, store_capture_message
-from db_authority import canonical_db_path
+from db_authority import resolve_stream_db_path
 from json_blob_codec import decode_text_blob, encode_text_blob
 from numeric_contract import schwab_count, schwab_number
 from option_contract import (
@@ -63,13 +63,6 @@ type Payload = dict[str, Any] | list[Any] | str | float | None
 type Item = tuple[str, Payload] | KeptFailure
 #: What became of a held message: its row, its kept failure, or nothing to write (insert).
 type Outcome = RowWritten | KeptFailure | None
-
-
-def resolve_stream_db_path(default: Path | str | None = None) -> Path:
-    """Return the one database's path (runtime_layout). `default` is for tests."""
-    if default is not None:
-        return Path(default).resolve()
-    return canonical_db_path()
 
 
 STREAM_SCHEMA_SQL = """
@@ -1512,7 +1505,7 @@ class CaptureWriter:
         hold_cap_bytes: int = HOLD_CAP_BYTES,
         clock: Callable[[], float] = time_et.now,
     ) -> None:
-        p = resolve_stream_db_path() if db_path is None else Path(db_path).resolve()
+        p = resolve_stream_db_path(db_path)
         p.parent.mkdir(parents=True, exist_ok=True)
         self.db_path = p
         self.batch_rows = int(batch_rows)

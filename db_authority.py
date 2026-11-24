@@ -29,6 +29,13 @@ def canonical_db_path() -> Path:
     return (data_dir() / "ed.db").resolve()
 
 
+def resolve_stream_db_path(default: Path | str | None = None) -> Path:
+    """Return the one database's path (canonical_db_path). `default` is for tests."""
+    if default is not None:
+        return Path(default).resolve()
+    return canonical_db_path()
+
+
 def is_canonical_db_path(p: Path | str) -> bool:
     return Path(p).resolve() == canonical_db_path()
 
