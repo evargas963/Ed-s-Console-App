@@ -21,9 +21,7 @@ from typing import Any
 
 from app.options.order_flow import history
 from calc.l1_trade_observation import (
-    VENDOR_LAST_PRICE,
-    VENDOR_LAST_SIZE,
-    VENDOR_TRADE_TIME,
+    PRINT_FIELDS,
     KeptPrint,
     TradePrint,
     extract_vendor_print,
@@ -38,7 +36,7 @@ from stream_spine import (
     FIELD_DELTA,
     NOT_STREAMED,
     held_key,
-    quote_before,
+    quotes_at_trade,
     read_book,
     read_streamed,
     streamed_record,
@@ -47,8 +45,6 @@ from time_et import ET
 
 # Limits to prevent unbounded growth
 MAX_TAPE_PRINTS = 500
-#: a print's three fields: a new value of any makes a new print
-_PRINT_FIELDS = (VENDOR_LAST_PRICE, VENDOR_LAST_SIZE, VENDOR_TRADE_TIME)
 #: the fields a contract's look-back record takes: a message bringing neither only marks its minute
 _LOOK_FIELDS = ("TOTAL_VOLUME", "VOLATILITY")
 
@@ -193,8 +189,9 @@ class OrderFlowState:
     ) -> None:
         """Keep the print one Schwab L1 record of `service` carries, with the quote in force then.
 
-        That quote is the newest Schwab timed at or before the trade (quote_in_force): Schwab
-        sends a trade with the quote that followed it. A current record merged from several
+        That quote is the newest Schwab timed at or before the trade (quote_in_force), of the
+        quotes the record held when the trade came (stream_spine.quotes_at_trade): Schwab sends a
+        trade with the quote that followed it. A current record merged from several
         messages (the daemon's bus) carries each field's own receive time in `field_received`;
         the print is stamped with the newest of its fields'. An option contract's record also
         goes to its look-back record (_take_record).
@@ -209,8 +206,8 @@ class OrderFlowState:
             # delayed message read as live
             raise TypeError("push_level_one: ts_recv (the daemon receive time) is required")
         trade = extract_vendor_print(content_item)
-        # the symbol's record on the bus, taken once: its newest quote and the one that replaced,
-        # read from the same version of it
+        # the symbol's record on the bus, taken once: its Greeks, and the quotes its last trade
+        # came with, read from the same version of it
         record = self.current.get(held_key(service, sym))
         if service == "LEVELONE_OPTIONS":
             self._take_record(sym, ts_recv, content_item, field_received, trade, record)
@@ -234,10 +231,10 @@ class OrderFlowState:
                     # the daemon's receive time of the message that carried the trade, not the
                     # console's clock: the newest of the print's own fields, since a trade at an
                     # unchanged price carries a new time and size but no LAST_PRICE (Change)
-                    float(max(received(f) for f in _PRINT_FIELDS if f in content_item)),
+                    float(max(received(f) for f in PRINT_FIELDS if f in content_item)),
                     # the bid and ask in force when the trade was made, by Schwab's own quote and
-                    # trade times (never the quote that followed it), and the record's Greeks
-                    quote_in_force(trade.time_millis, sent.top, quote_before(record)),
+                    # trade times (never a quote that followed it), and the record's Greeks
+                    quote_in_force(trade.time_millis, *quotes_at_trade(record)),
                     sent.greeks,
                 )
             )
@@ -295,7 +292,7 @@ class OrderFlowState:
                 quote = (
                     NO_TOP
                     if trade is None
-                    else quote_in_force(trade.time_millis, own.top, quote_before(record))
+                    else quote_in_force(trade.time_millis, *quotes_at_trade(record))
                 )
                 adds = list(
                     step_totals(

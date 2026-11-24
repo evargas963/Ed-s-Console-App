@@ -58,15 +58,16 @@ The rules for the data itself, at every hop from Schwab to the screen.
   ticker's chain, a series' candles, a date's sessions). A message that is its own item (a `/quotes`
   answer for its own contracts, one minute's bar, a news story, the answer to one watchlist request)
   is no newer value of the one before it: each live reader takes every one, once, in the order
-  published, and none replaces another before it is taken. A quote's record keeps one thing more,
-  the quote its newest quote replaced (`quote_before`, whole as the record held it): Schwab sends a
-  trade with the quote that followed it, so the tape reads a trade against the quote in force when
-  it was made (§3.4 Tape). Of a topic with versions only the Recorder takes every message, and while
-  the database refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`;
-  an item never replaced, `tests/test_stream_spine_v1.py`,
-  `tests/test_rest_quotes_reach_the_levels_v1.py`, `tests/test_data_path_one_watchlist_v1.py` and
-  `tests/test_data_path_header_news_v1.py`; the quote kept before, `tests/test_quote_in_force_v1.py`
-  and `tests/test_stream_greeks_capture_v1.py`.
+  published, and none replaces another before it is taken. A quote's record keeps more: the quote
+  its newest quote replaced (`quote_before`, whole as the record held it), and the two as they stood
+  when its last trade came (`quotes_at_trade`), which a message bringing no new trade leaves: Schwab
+  sends a trade with the quote that followed it, so the tape reads a trade against the quote in
+  force when it was made (§3.4 Tape), however many messages came before a live reader took the
+  record. Of a topic with versions only the Recorder takes every message, and while the database
+  refuses writes it holds them (D4). Enforced by: `tests/test_data_path_rules_v1.py`; an item never
+  replaced, `tests/test_stream_spine_v1.py`, `tests/test_rest_quotes_reach_the_levels_v1.py`,
+  `tests/test_data_path_one_watchlist_v1.py` and `tests/test_data_path_header_news_v1.py`; the
+  quotes kept, `tests/test_quote_in_force_v1.py` and `tests/test_stream_greeks_capture_v1.py`.
 - **D4. The stream's tables in `ed.db` are the record.** One writer, `stream_spine.CaptureWriter`,
   records every bus message but option quotes and option books, which it records for the kept
   contracts only (`capture.Daemon.saves`): every contract of each ticker's soonest expiration whose
@@ -494,8 +495,9 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   or before the trade (TRADE_TIME_MILLIS) and on its ET date. Schwab's update carries a trade with
   the quote that followed it ("quotes may be recorded ahead of trades that triggered them", Lee and
   Ready 1991), so that quote is the update's own only when Schwab timed it no later than the trade;
-  otherwise it is the quote the update replaced, which the bus keeps (D3). A quote of an earlier ET
-  date is not in force: the market closed between them (no window Schwab's /markets sends crosses
+  otherwise it is the quote the update replaced. The bus keeps both with the record's last trade
+  (D3), so a print the console takes after later quotes is read against them. A quote of an earlier
+  ET date is not in force: the market closed between them (no window Schwab's /markets sends crosses
   midnight ET). A print with no such quote has no bid and ask: where it landed is unknown and it is
   unsigned, never read against a later quote. Each print is signed by Lee and Ready against that bid
   and ask (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned print is no value,

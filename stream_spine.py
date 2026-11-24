@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, TypedDict, cast, override
 
 import time_et
+from calc.l1_trade_observation import PRINT_FIELDS
 from calc.order_flow import Book, Exchanges, Json, Level
 from calibration.complete_chain_capture import ensure_schema, store_capture_message
 from db_authority import resolve_stream_db_path
@@ -513,16 +514,20 @@ def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
     return held
 
 
-def quote_before(record: tuple[str, dict[str, Any]] | None) -> StreamedTop:
-    """Return the quote a LEVELONE record's newest quote replaced, read as its top of book is.
+def quotes_at_trade(
+    record: tuple[str, dict[str, Any]] | None,
+) -> tuple[StreamedTop, StreamedTop]:
+    """Return the quotes a LEVELONE record held when its last trade came, read as its top is.
 
-    The record's `quote_before` (MessageBus._newest): NO_TOP's values until a message changes
-    the quote, and when the bus holds no record. Read when a print is kept
-    (state.OrderFlowState.push_level_one), not on every message.
+    The record's `quotes_at_trade` (MessageBus._newest): its newest quote in the version that
+    brought the trade, and the one that quote replaced; a message after it, a quote alone, leaves
+    them. NO_TOP's values for a quote not yet sent, and both when the bus holds no record. Read
+    when a print is kept (state.OrderFlowState.push_level_one), not on every message.
     """
     if record is None:
-        return NO_TOP
-    return StreamedTop(**streamed_top(record[1]["quote_before"]))
+        return NO_TOP, NO_TOP
+    top, before = record[1]["quotes_at_trade"]
+    return StreamedTop(**streamed_top(top)), StreamedTop(**streamed_top(before))
 
 
 def read_book(content_item: dict[str, Any], service: str) -> Book | None:
@@ -702,9 +707,10 @@ class MessageBus:
     LATEST). A message that is its own item (a topic not VERSIONED) is also handed to each LATEST
     reader itself: the one after it never replaces it before it is taken, and a reader that
     subscribes later starts with the newest alone. A LEVELONE record also keeps the quote its
-    newest quote replaced (`quote_before`):
-    Schwab sends a trade with the quote that followed it, so a trade is read against the quote
-    in force when it was made (calc.l1_trade_observation.quote_in_force).
+    newest quote replaced (`quote_before`), and the two as they stood when its last trade came
+    (`quotes_at_trade`): Schwab sends a trade with the quote that followed it, so a trade is read
+    against the quote in force when it was made (calc.l1_trade_observation.quote_in_force), and a
+    LATEST reader that takes the record after later quotes reads it against the same quotes.
     """
 
     def __init__(self) -> None:
@@ -761,6 +767,7 @@ class MessageBus:
         before: dict[str, Any] = {}
         if held is None:
             merged, stamps, top = dict(body), dict.fromkeys(body, stamp), msg
+            at_trade = ({q: merged[q] for q in QUOTE_FIELDS if q in merged}, before)
         else:
             rec = held[1]
             merged, stamps = dict(rec[body_key]), dict(rec["field_ts"])
@@ -775,13 +782,35 @@ class MessageBus:
                 if f in body and f in merged and body[f] != merged[f] and f in took:
                     before = {q: merged[q] for q in QUOTE_FIELDS if q in merged}
                     break
+            # the quotes when the record's last trade came: its newest then and the one that
+            # replaced. A message that changes the last trade, or brings it first, makes them
+            # anew; one that brings no new trade (a quote alone, a trade restated) leaves them, so
+            # a LATEST reader that takes the record later reads the trade against them, never
+            # against a quote Schwab sent after it
+            traded = False
+            for f in PRINT_FIELDS:
+                if f in body and body[f] != merged.get(f) and f in took:
+                    traded = True
+                    break
             for f in took:
                 merged[f], stamps[f] = body[f], stamp
+            at_trade = (
+                ({q: merged[q] for q in QUOTE_FIELDS if q in merged}, before)
+                if traded
+                else rec["quotes_at_trade"]
+            )
             top = rec if _older(t, rec.get("schwab_ts")) else msg  # the record's own time
         # a new version of the record, whose fields are read on its first read (streamed_record)
         self.current[key] = (
             topic,
-            {**top, body_key: merged, "field_ts": stamps, "streamed": None, "quote_before": before},
+            {
+                **top,
+                body_key: merged,
+                "field_ts": stamps,
+                "streamed": None,
+                "quote_before": before,
+                "quotes_at_trade": at_trade,
+            },
         )
         return True
 
