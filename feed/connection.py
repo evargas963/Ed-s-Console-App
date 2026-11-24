@@ -46,8 +46,13 @@ from numeric_contract import schwab_number
 from state.news_store import NewsHeadline
 from stream_spine import (
     SERVICE_TOPIC,
+    BarMessage,
+    BookMessage,
     HealthRegistry,
     MessageBus,
+    NewsMessage,
+    QuoteMessage,
+    VerbatimMessage,
     bar_msg,
     book_msg,
     quote_msg,
@@ -190,7 +195,7 @@ def news_headline(item: dict[str, Any]) -> NewsHeadline:
 
 def _message(
     service: str, sym: str, item: dict[str, Any], schwab_ts: int | None, ts_recv: float
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[str, QuoteMessage | BarMessage | VerbatimMessage | NewsMessage | BookMessage]:
     """Return (topic kind, bus message) for one Schwab item.
 
     The message carries the timestamp of Schwab's frame and the time it was received; a news
