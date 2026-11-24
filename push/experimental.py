@@ -9,13 +9,80 @@ and its price row (live_price_rows).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, overload
+from typing import TypedDict, overload
 
 from instrument_identity import ticker_storage_key
 from live_price_rows import price_row
 from open_gap import BAR_SECONDS, LAST_OPENS, Followed, Open, OpenGapRecord, today_open
 from state import bar_store
-from time_et import ET, Session, sessions
+from time_et import ET, Session, ct_dated, sessions
+
+
+class GapFollowed(TypedDict):
+    """How one gap direction was followed, as the tab shows it.
+
+    Its words, then the bar's band, its mark and whether the band is above the coin flip, in
+    percent of the bar's width.
+    """
+
+    title: str
+    share_text: str
+    count_text: str
+    range_text: str
+    line: str
+    band_left: float
+    band_width: float
+    mark: float
+    above_half: bool
+
+
+class OpenRow(TypedDict):
+    """One of the last opens as the tab lists it: its day, its gap and its first five minutes."""
+
+    day_text: str
+    gap_text: str
+    gap_up: bool
+    five_text: str
+    five_up: bool
+    called: bool
+
+
+class TodayResult(TypedDict):
+    """Today's open once Schwab's open bar has closed: its first five minutes and the call."""
+
+    label: str
+    five_text: str
+    five_up: bool
+    called: bool
+    called_text: str
+
+
+class TodayCard(TypedDict):
+    """Today's card: its gap (None while it has none), what it is against, and its result."""
+
+    label: str
+    gap_text: str | None
+    gap_up: bool | None
+    when_text: str
+    results: list[TodayResult]
+
+
+class GapRecord(TypedDict):
+    """The open-gap record as the tab shows it: today's direction first, then the last opens."""
+
+    main: GapFollowed
+    others: list[GapFollowed]
+    last: list[OpenRow]
+    last_title: str
+    footer: str
+
+
+class ExperimentalTab(TypedDict):
+    """The `experimental` panel: the ticker's card for today and its record (none until held)."""
+
+    ticker: str
+    today: TodayCard
+    records: list[GapRecord]
 
 
 @overload
@@ -32,7 +99,7 @@ def _moved_text(fraction: float | None) -> str | None:
     return f"{'▲' if fraction > 0 else '▼'} {fraction:+.2%}"
 
 
-def _followed_served(direction: str, f: Followed) -> dict[str, Any]:
+def _followed_served(direction: str, f: Followed) -> GapFollowed:
     """How one gap direction was followed, as the tab shows it."""
     share = f.matched / f.opens
     return {
@@ -52,7 +119,7 @@ def _followed_served(direction: str, f: Followed) -> dict[str, Any]:
     }
 
 
-def _open_served(o: Open) -> dict[str, Any]:
+def _open_served(o: Open) -> OpenRow:
     return {
         "day_text": f"{o.day:%a %b %d}",
         "gap_text": _moved_text(o.gap),
@@ -71,8 +138,8 @@ def _prior_session(day: str) -> Session | None:
 
 
 def _today_card(
-    label: str, gap: float | None, when_text: str, results: list[dict[str, Any]]
-) -> dict[str, Any]:
+    label: str, gap: float | None, when_text: str, results: list[TodayResult]
+) -> TodayCard:
     """Today's card: its gap (a fraction; None while it has none) and what it is against."""
     return {
         "label": label,
@@ -83,7 +150,7 @@ def _today_card(
     }
 
 
-def _today_served(tk: str, now: float) -> dict[str, Any]:
+def _today_served(tk: str, now: float) -> TodayCard:
     """Today's gap: Schwab's live change before the open, then the open as the record defines it.
 
     `results` holds today's 9:30-9:35 result once Schwab's open bar has closed.
@@ -108,15 +175,16 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
     if o is None:
         return _today_card(label, None, "waiting for Schwab's open bar to close", [])
     went = "up" if o.first_five > 0 else "down"
-    bar_start = today.regular[0][0]
-    bar_end = datetime.fromtimestamp(bar_start.timestamp() + BAR_SECONDS, ET)
+    bar_start = today.regular[0][0].timestamp()
     return _today_card(
         label,
         o.gap,
         "vs. prior close · Schwab's 5-minute bars",
         [
             {
-                "label": f"Today {bar_start:%H:%M}–{bar_end:%H:%M} ET",
+                "label": (
+                    f"Today {ct_dated(bar_start, now)}–{ct_dated(bar_start + BAR_SECONDS, now)}"
+                ),
                 "five_text": _moved_text(o.first_five),
                 "five_up": o.first_five > 0,
                 "called": o.called,
@@ -130,7 +198,7 @@ def _today_served(tk: str, now: float) -> dict[str, Any]:
     )
 
 
-def experimental(tk: str, now: float) -> dict[str, Any]:
+def experimental(tk: str, now: float) -> ExperimentalTab:
     """Return the Trade Desk's Experimental tab for the selected ticker, as its mock-up shows it.
 
     Today's gap; how gaps in today's direction (up, before any today) were followed, with the
@@ -152,7 +220,7 @@ def experimental(tk: str, now: float) -> dict[str, Any]:
     }
 
 
-def _record_served(record: OpenGapRecord, *, down_first: bool) -> dict[str, Any]:
+def _record_served(record: OpenGapRecord, *, down_first: bool) -> GapRecord:
     """Return the record as the tab shows it: today's direction first (up before any today)."""
     sides = [("down", record.down), ("up", record.up)]
     if not down_first:
