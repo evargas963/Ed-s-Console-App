@@ -39,7 +39,7 @@ from option_contract import read_chain
 from push import surface as push_surface
 from state import level_store
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
-from tests.feed_live_helper import daemon_status
+from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.page_on_socket import pages
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
@@ -612,9 +612,7 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
                 "no terrain snapshot has been computed yet — "
                 "chain fetch failed (full chain returned HTTP 400)"
             )
-            lmp.record_feed_heartbeat(
-                daemon_status(time_et.now() - 100, schwab_socket_open=True, watchlist=[on])
-            )
+            mark_feed_down()
             silent = _surface(off)
             assert silent["warming"] is False
             assert silent["reason"].startswith(
