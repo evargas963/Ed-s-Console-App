@@ -49,6 +49,7 @@ from tests.call_count import calls
 from tests.capture_store import store_capture
 from tests.page_on_socket import Pages
 from tests.real_chains import CRWD, MRVL, NFLX
+from tests.shared_helpers import until
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 from tests.test_one_levels_producer_v1 import _drain
 
@@ -67,13 +68,6 @@ WINDOW_MODE = (
     "assert k.GetConsoleMode(ctypes.c_void_p(h), ctypes.byref(m)), 'no console mode'\n"
     "sys.stdout.write(str(m.value))\n"
 )
-
-
-async def _until(cond, limit: float = 10.0) -> None:
-    end = time_et.elapsed() + limit
-    while not cond():
-        assert time_et.elapsed() < end, "timed out"
-        await asyncio.sleep(0.05)
 
 
 def _spy_0dte() -> tuple[dict, list[dict]]:
@@ -361,10 +355,7 @@ def test_a_contract_with_no_symbol_is_left_out_of_the_recorded_strikes():
 
     async def go():
         stop, task = await _following(daemon, bus, contracts, now)
-        for _ in range(100):
-            if "SPY" in daemon._ladders or task.done():
-                break
-            await asyncio.sleep(0.05)
+        await until(lambda: "SPY" in daemon._ladders or task.done(), 5)
         running = not task.done()
         stop.set()
         await asyncio.wait_for(task, timeout=10)
@@ -392,7 +383,7 @@ def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price():
 
     async def go():
         stop, task = await _following(daemon, bus, contracts, now)
-        await _until(lambda: "SPY" in daemon._ladders or task.done())  # the chain is taken first
+        await until(lambda: "SPY" in daemon._ladders or task.done())  # the chain is taken first
         bus.publish(
             "quote.SPY",
             quote_msg(
@@ -403,10 +394,7 @@ def test_a_contract_with_no_side_is_left_out_of_the_option_rule_on_a_price():
                 native={"key": "SPY", "LAST_PRICE": fixture["spot"]},
             ),
         )
-        for _ in range(100):
-            if "SPY" in daemon._ranked:
-                break
-            await asyncio.sleep(0.05)
+        await until(lambda: "SPY" in daemon._ranked or task.done(), 5)
         running = not task.done()
         stop.set()
         await asyncio.wait_for(task, timeout=10)
@@ -482,9 +470,7 @@ def test_why_schwab_is_not_connected_reaches_the_log_and_api_health(tmp_path, ca
         ui = asyncio.create_task(serve_page_socket(stop, sock, {"heartbeat_fn": daemon.status}))
         run = asyncio.create_task(daemon.run(schwab_client, stop))
         # run() logs why before it sets the status that says so
-        await _until(
-            lambda: daemon.status(time_et.now())["schwab_down"].startswith("NOT CONNECTED")
-        )
+        await until(lambda: daemon.status(time_et.now())["schwab_down"].startswith("NOT CONNECTED"))
         async with connect(f"{url}/ws", max_size=None) as ws:
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             while (msg := json.loads(await asyncio.wait_for(ws.recv(), 5)))["type"] != "feed":
@@ -559,12 +545,10 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
                         beats.append(time_et.elapsed())
 
             reader = asyncio.create_task(read_all())
-            await _until(lambda: stats.get("clients") == 2, 3)
-            await _until(lambda: stats.get("clients") == 1, 15)  # the stalled one dropped
+            await until(lambda: stats.get("clients") == 2, 3)
+            await until(lambda: stats.get("clients") == 1, 15)  # the stalled one dropped
             dropped_at, at_drop = time_et.elapsed(), stats["beat_send_failures"]
-            await _until(
-                lambda: sum(t > dropped_at for t in beats) >= 4, 10 * live_ui.HEARTBEAT_SEC
-            )
+            await until(lambda: sum(t > dropped_at for t in beats) >= 4, 10 * live_ui.HEARTBEAT_SEC)
             missed = stats["beat_send_failures"] - at_drop
             stop.set()
             await asyncio.wait_for(daemon_side, 5)

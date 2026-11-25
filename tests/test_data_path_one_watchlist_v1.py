@@ -45,6 +45,7 @@ from tests.page_on_socket import pages
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
+from tests.shared_helpers import until
 from time_et import ET
 
 #: SPY's 2026-11-20 contracts (442) and the price stored with them
@@ -54,13 +55,6 @@ SPY_CHAIN = json.loads(
     )
 )
 EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NASDAQ_BOOK")
-
-
-async def _until(cond, seconds: float = 15.0) -> None:
-    deadline = time_et.elapsed() + seconds
-    while not cond():
-        assert time_et.elapsed() < deadline, "not reached in time"
-        await asyncio.sleep(0.02)
 
 
 class _Schwab:
@@ -112,7 +106,7 @@ async def _held_when_settled(daemon, stop: asyncio.Event, tasks: list) -> dict:
     Schwab has received each one.
     """
     daemon.connection.ask()  # nothing changed: nothing is asked
-    await _until(lambda: not daemon.connection.wake.is_set())  # it has taken what is queued
+    await until(lambda: not daemon.connection.wake.is_set())  # it has taken what is queued
     connected = dict(daemon.connection.held)
     stop.set()
     await asyncio.wait_for(asyncio.gather(*tasks), 10)
@@ -158,12 +152,12 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
             asyncio.create_task(daemon.follow_market(stop)),
         ]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
-        await _until(
+        await until(
             lambda: len(schwab.streamer.answers) >= 10
         )  # login + 8 requests, one answered twice
         # the daemon has recorded each answer but the login's, and taken SPY's data entry (its
         # quote follows the one _market published)
-        await _until(lambda: log.queue.qsize() == 9 and quotes.queue.qsize() >= 2)
+        await until(lambda: log.queue.qsize() == 9 and quotes.queue.qsize() >= 2)
         return await _held_when_settled(daemon, stop, tasks)
 
     try:
@@ -250,7 +244,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
             asyncio.create_task(daemon.follow_market(stop)),
         ]
         _market(bus, "MRVL", contracts, mrvl["full"]["underlying"]["last"], mrvl["captured_utc"])
-        await _until(lambda: len(daemon.connection.held["LEVELONE_OPTIONS"]) == len(symbols))
+        await until(lambda: len(daemon.connection.held["LEVELONE_OPTIONS"]) == len(symbols))
         stop.set()
         await asyncio.wait_for(asyncio.gather(*tasks), 10)
 
@@ -303,7 +297,7 @@ def test_a_refusal_that_states_no_limit_is_recorded_and_not_asked_again(tmp_path
             asyncio.create_task(daemon.follow_market(stop)),
         ]
         _market(bus, "SPY", SPY_CHAIN["chain"], SPY_CHAIN["spot"], SPY_CHAIN["capture_ts_utc"])
-        await _until(
+        await until(
             lambda: log.queue.qsize() == 1 and daemon.connection.held["LEVELONE_OPTIONS"] == symbols
         )
         return await _held_when_settled(daemon, stop, tasks)
@@ -339,9 +333,9 @@ def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(t
     async def go():
         stop = asyncio.Event()
         run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
-        await _until(lambda: len(subs()) == 1 and daemon.connection.held["NYSE_BOOK"])
+        await until(lambda: len(subs()) == 1 and daemon.connection.held["NYSE_BOOK"])
         await daemon.connection.stream._socket.close()  # the socket is gone
-        await _until(lambda: len(subs()) == 2 and daemon.connection.held["NYSE_BOOK"])
+        await until(lambda: len(subs()) == 2 and daemon.connection.held["NYSE_BOOK"])
         stop.set()
         await asyncio.wait_for(run, 10)
 
@@ -405,7 +399,7 @@ def test_an_answer_schwab_sent_at_once_but_read_late_keeps_the_connection(tmp_pa
     async def go():
         stop = asyncio.Event()
         run = asyncio.create_task(daemon.connection.run_connection(schwab.client, stop))
-        await _until(lambda: run.done() or all(daemon.connection.held[s] for s in EQUITY), 30)
+        await until(lambda: run.done() or all(daemon.connection.held[s] for s in EQUITY), 30)
         held = dict(daemon.connection.held)
         answers = [s.answers for s in daemon.connection._sent.values()]
         stop.set()
@@ -454,20 +448,20 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
             asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop)),
             asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
         ]
-        await _until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
+        await until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
         ofs.bind_daemon(daemon)  # the console in the daemon's program (capture.serve_console)
         assert ofs.start_order_flow_stream()
         records = bus.subscribe("watchlist", policy=LOG)
         try:
             beats = [daemon.status(time_et.now())]  # a beat built before the add
             added = json.loads((await server.post_watchlist("tsla")).body)
-            await _until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
+            await until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
             beats.append(daemon.status(time_et.now()))
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
             beats.append(daemon.status(time_et.now()))
-            await _until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
+            await until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)

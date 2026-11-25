@@ -72,6 +72,7 @@ from state import level_store
 from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.feed_live_helper import clock_from, forget_news, news_on_the_bus, publish_capture
 from tests.real_chains import CRWD, MRVL
+from tests.shared_helpers import until
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
 
@@ -232,10 +233,7 @@ def test_resubscribing_sends_the_new_symbols_current_rows_at_once():
     async def body(bus, ws, _feed, _stats):
         traded = time_et.now()
         bus.publish("quote.AAPL", _trade("AAPL", 230.5, traded))
-        for _ in range(500):  # up to 5 s for the follower to hold it
-            if live_price_rows.price_row("AAPL", traded)["spot"] == 230.5:
-                break
-            await asyncio.sleep(0.01)
+        await until(lambda: live_price_rows.price_row("AAPL", traded)["spot"] == 230.5, 5)
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY", "AAPL"]}))
         rows: list = []
@@ -407,8 +405,7 @@ def test_a_missing_heartbeat_keeps_the_last_watchlist():
             serve_page_socket(stop, sock, {"heartbeat_fn": status, "stats": stats})
         )
         try:
-            while "clients" not in stats:
-                await asyncio.sleep(0.01)
+            await until(lambda: "clients" in stats, 5)  # serving
             async with connect(f"{url}/ws") as ws:
                 live = await beat(ws)
                 failing = True
@@ -475,8 +472,7 @@ def test_every_page_is_sent_the_news_line_on_its_first_beat_then_only_when_it_ch
             capture.Daemon(bus, HealthRegistry(), []).follow_market(stop)
         )
         try:
-            while "clients" not in stats:
-                await asyncio.sleep(0.01)
+            await until(lambda: "clients" in stats, 5)  # serving
             async with connect(f"{url}/ws") as ws:
                 await ws.send(json.dumps({"op": "subscribe", "symbols": []}))
                 got = [await beat(ws)]

@@ -31,7 +31,7 @@ from pathlib import Path
 import time_et
 from app.market_data.schwab.streaming import capture, live_ui
 from tests.conftest import MARKETS_ANSWERS
-from tests.shared_helpers import et_ts
+from tests.shared_helpers import et_ts, until
 
 REPO = Path(__file__).resolve().parent.parent
 #: the daemon's line for one collection: seconds, objects freed, objects it could not free
@@ -78,16 +78,21 @@ def _collections(caplog) -> list[tuple[float, int, int]]:
     return [(float(m[1]), int(m[2]), int(m[3])) for m in found if m]
 
 
-async def _looks(n: int = 20) -> None:
-    """Let the daemon's loop look at the clock `n` times (it looks every 0.01 s here)."""
-    await asyncio.sleep(0.01 * n)
+class _Clock:
+    """The daemon's clock, at the ET time the test sets (INDUCED), counting each read of it."""
+
+    def __init__(self, at: str) -> None:
+        self.at, self.reads = et_ts(at), 0
+
+    def __call__(self) -> float:
+        self.reads += 1
+        return self.at
 
 
-async def _until(ok, seconds: float = 30.0) -> None:
-    deadline = asyncio.get_running_loop().time() + seconds
-    while not ok():
-        assert asyncio.get_running_loop().time() < deadline, "never happened"
-        await asyncio.sleep(0.01)
+async def _looks(clock: _Clock, n: int = 20) -> None:
+    """Return once the daemon's loop has looked at `clock` `n` more times."""
+    reads = clock.reads + n
+    await until(lambda: clock.reads >= reads)
 
 
 def test_the_collector_as_the_program_sets_it_runs_no_full_collection_by_itself():
@@ -150,35 +155,35 @@ def test_one_full_collection_runs_after_each_close_and_none_in_the_session(caplo
     the cycles and its line gives the count. It does not run again for that close, nor in
     Thursday's session; Thursday's close has its own; a Saturday, with no session, has none.
     """
-    at = [et_ts("2026-10-07 15:00")]
+    clock = _Clock("2026-10-07 15:00")
     seen: dict[str, object] = {}
 
     async def go() -> None:
         stop = asyncio.Event()
-        loop = asyncio.create_task(capture.collect_after_close(lambda: at[0], stop, every=0.01))
+        loop = asyncio.create_task(capture.collect_after_close(clock, stop, every=0.01))
         one = _in_the_oldest_generation()
         oldest = gc.get_stats()[2]["collections"]
         _allocate()
-        await _looks()
+        await _looks(clock)
         seen["in session"] = (
             gc.get_stats()[2]["collections"] - oldest,
             one() is not None,
             len(_collections(caplog)),
         )
-        at[0] = et_ts("2026-10-07 16:16")
-        await _until(lambda: _collections(caplog))
-        await _looks()
+        clock.at = et_ts("2026-10-07 16:16")
+        await until(lambda: _collections(caplog))
+        await _looks(clock)
         seen["after the close"] = (one() is None, len(_collections(caplog)))
-        at[0] = et_ts("2026-10-08 10:00")
+        clock.at = et_ts("2026-10-08 10:00")
         two = _in_the_oldest_generation()
-        await _looks()
+        await _looks(clock)
         seen["next session"] = (two() is not None, len(_collections(caplog)))
-        at[0] = et_ts("2026-10-08 16:16")
-        await _until(lambda: len(_collections(caplog)) == 2)
-        at[0] = et_ts("2026-10-09 16:20")
-        await _until(lambda: len(_collections(caplog)) == 3)
-        at[0] = et_ts("2026-10-10 12:00")
-        await _looks()
+        clock.at = et_ts("2026-10-08 16:16")
+        await until(lambda: len(_collections(caplog)) == 2)
+        clock.at = et_ts("2026-10-09 16:20")
+        await until(lambda: len(_collections(caplog)) == 3)
+        clock.at = et_ts("2026-10-10 12:00")
+        await _looks(clock)
         seen["saturday"] = (two() is None, len(_collections(caplog)))
         stop.set()
         await loop
@@ -209,18 +214,18 @@ def test_a_start_after_the_close_runs_no_collection_for_it(caplog):
     ]
 
     async def started(held: bool) -> tuple[int, int]:
-        at = [et_ts("2026-10-07 17:00")]
+        clock = _Clock("2026-10-07 17:00")
         if not held:
             time_et.HELD.sessions = {}  # INDUCED: a program that has just started holds none
         stop = asyncio.Event()
-        loop = asyncio.create_task(capture.collect_after_close(lambda: at[0], stop, every=0.01))
-        await _looks()
+        loop = asyncio.create_task(capture.collect_after_close(clock, stop, every=0.01))
+        await _looks(clock)
         for answer in answers:
             time_et.record_markets(answer)
-        await _looks()
+        await _looks(clock)
         before = len(_collections(caplog))
-        at[0] = et_ts("2026-10-08 16:16")
-        await _until(lambda: len(_collections(caplog)) == before + 1)
+        clock.at = et_ts("2026-10-08 16:16")
+        await until(lambda: len(_collections(caplog)) == before + 1)
         stop.set()
         await loop
         return before, len(_collections(caplog))

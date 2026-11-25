@@ -86,7 +86,7 @@ def test_the_client_never_sends_more_requests_at_once_than_its_setting(tmp_path)
                 seen["open"] += 1
                 seen["most"] = max(seen["most"], seen["open"])
                 seen["ports"].add(self.client_address[1])
-            time.sleep(0.02)
+            time.sleep(0.02)  # INDUCED: each request held a moment, so requests sent at once meet
             with lock:
                 seen["open"] -= 1
             self.send_response(200)

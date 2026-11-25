@@ -337,7 +337,7 @@ def test_the_one_connection_stands_through_a_pause(tmp_path):
     url = f"http://127.0.0.1:{schwab.server.server_address[1]}{EXPIRATIONS}?symbol=SPY"
     try:
         client.session.get(url)
-        time.sleep(6)
+        time.sleep(6)  # INDUCED: the pause, past httpx's own idle limit (5 s)
         client.session.get(url)
     finally:
         client.session.close()

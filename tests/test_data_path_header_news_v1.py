@@ -32,6 +32,7 @@ from push import news as push_news
 from state import news_store
 from stream_spine import HealthRegistry, MessageBus, held_key
 from tests.feed_live_helper import forget_news, news_on_the_bus
+from tests.shared_helpers import until
 
 _FX = Path(__file__).resolve().parent / "fixtures"
 _E2E = Path(__file__).resolve().parent / "e2e" / "fixtures" / "header_news.json"
@@ -316,12 +317,10 @@ def test_every_headline_reaches_the_line_though_the_bus_holds_one_record_per_sym
         follower = asyncio.create_task(
             capture.Daemon(bus, HealthRegistry(), []).follow_market(stop)
         )
-        # its readers subscribe before the first message, as in the program
-        await asyncio.sleep(0.05)
+        # its news reader subscribes before the first message, as in the program
+        await until(lambda: any(sub.prefix == "news." for sub in bus._subs), 5)
         news_on_the_bus(bus, _OPEN)
-        async with asyncio.timeout(5):
-            while len(news_store.stories()) < 5:
-                await asyncio.sleep(0.01)
+        await until(lambda: len(news_store.stories()) >= 5, 5)
         current = bus.current[held_key("NEWS_HEADLINE", "$SPX")][1]
         assert current["content"] == _OPEN[-1]["item"]
         stop.set()
