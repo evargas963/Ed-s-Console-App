@@ -275,7 +275,8 @@ class LeftOutLine(TypedDict):
 class DaemonStatus(TypedDict):
     """The daemon's status at `ts` (capture's status), what the console is told every second.
 
-    The header's clock, day and session; the Schwab socket and why it is down; the watchlist;
+    The header's clock, day and session (its code and its word); the Schwab socket and why it is
+    down; the watchlist;
     the chain sweep's round, its start and why it waits; the symbols held per service; each
     service's age (HealthRegistry.report); the Recorder's state; the sign-in; and the console's
     counts of what it failed to apply.
@@ -285,6 +286,7 @@ class DaemonStatus(TypedDict):
     clock_ct: str
     day_ct: str
     session: str
+    session_word: str
     schwab_socket_open: bool
     schwab_down: str | None
     watchlist: list[str]

@@ -611,7 +611,10 @@ STREAM_WORDS = {
 #: The words for the states only the page can see, its own connection to the program, served in
 #: the page (meta ed-page-words): the page says them in this one wording and holds none of its
 #: own (AGENTS.md rule 4). A ticker just asked for, its row on its way; the push silent; no row
-#: yet for a symbol the page shows; "{name}" is the symbol's served display name.
+#: yet for a symbol the page shows; "{name}" is the symbol's served display name. No symbol
+#: chosen; the daemon's beat carrying no status; what the operator typed not a symbol's form
+#: ("{typed}"); a watchlist change on its way, or its request failing before any answer
+#: ("{ticker}", "{why}": the failure as the browser reports it).
 PAGE_WORDS = {
     "waiting": "WAITING",
     "no_push_yet": "no push yet",
@@ -620,6 +623,16 @@ PAGE_WORDS = {
     "no_row_yet": "no price row yet",
     "no_row_yet_symbol": "no price row yet for this symbol",
     "waiting_stream": "waiting for the {name} stream",
+    "choose_symbol": "CHOOSE A SYMBOL",
+    "no_symbol": "NO SYMBOL",
+    "daemon_silent": "the capture daemon is not reporting",
+    "session_no_status": "session unknown: the daemon sent no status",
+    "session_push_down": "session unknown: the console push is down",
+    "watchlist_empty": "Watchlist is empty — use + Add symbol below",
+    "not_a_symbol": 'Not a valid symbol: "{typed}"',
+    "checking": "Checking {ticker} with Schwab…",
+    "not_added": "{ticker} is not added: {why}",
+    "not_removed": "{ticker} is not removed: {why}",
 }
 
 #: per ticker, the beat its open surface was last stamped from (_feed_stamp_key: the socket open,

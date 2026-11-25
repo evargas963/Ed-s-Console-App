@@ -4,6 +4,7 @@
     "day_ct": "Fri, Nov 20",
     "schwab_down": null,
     "session": "RTH",
+    "session_word": "REGULAR",
     "sign_in": {
       "cls": "",
       "line": "accepted",
@@ -41,6 +42,7 @@
     "day_ct": "Fri, Nov 20",
     "schwab_down": null,
     "session": "After-Hours",
+    "session_word": "POST-MARKET",
     "sign_in": {
       "cls": "",
       "line": "accepted",
@@ -78,6 +80,7 @@
     "day_ct": "Fri, Nov 20",
     "schwab_down": "NOT CONNECTED: the stream is logging in, or its connection has just ended",
     "session": "RTH",
+    "session_word": "REGULAR",
     "sign_in": {
       "cls": "",
       "line": "accepted",
@@ -115,6 +118,7 @@
     "day_ct": "Fri, Nov 20",
     "schwab_down": null,
     "session": "RTH",
+    "session_word": "REGULAR",
     "sign_in": {
       "cls": "",
       "line": "accepted",
@@ -152,6 +156,7 @@
     "day_ct": "Fri, Nov 20",
     "schwab_down": null,
     "session": "RTH",
+    "session_word": "REGULAR",
     "sign_in": {
       "cls": "neg",
       "line": "REFUSED: run python reauth_schwab.py",

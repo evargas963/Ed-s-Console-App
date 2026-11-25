@@ -19,12 +19,18 @@ const beats = new WeakMap(); // each page's beat, sent on demand by beatNow
 function beat(page, ws) {
   const send = () => {
     const list = lists.get(page);
-    // (`session`: the daemon's word while Schwab's /markets answer for today is not held)
+    // (`session`, `session_word`: the daemon's code and word while Schwab's /markets answer for
+    // today is not held)
     if (list)
       ws.send(
         JSON.stringify({
           type: "feed",
-          feed: { ts: Date.now() / 1000, watchlist: list.slice(), session: "Unknown" },
+          feed: {
+            ts: Date.now() / 1000,
+            watchlist: list.slice(),
+            session: "Unknown",
+            session_word: "UNKNOWN",
+          },
         }),
       );
   };
@@ -73,6 +79,18 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
             ' is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["' +
             t +
             '"]}})',
+        });
+      }
+      if (list.indexOf(t) !== -1) {
+        // the daemon's answer to a ticker already listed (capture.ON_LIST, WATCHLIST_TEXT)
+        return answer({
+          ok: false,
+          op: "already on the list",
+          ticker: t,
+          tickers: list.slice(),
+          status: null,
+          answer: null,
+          text: t + " is already on the watchlist",
         });
       }
       list.push(t);

@@ -1215,7 +1215,7 @@
     return (m.mark ? " · " + m.mark.word : "") + (said != null ? " · " + said : "");
   }
   function idxTitle(m, name) {
-    if (!m) return window.EdShell.pageWords.waiting_stream.replace("{name}", name);
+    if (!m) return window.EdShell.say("waiting_stream", { name: name });
     if (m.mark) return m.mark.why;
     return m.row.trade_said;
   }

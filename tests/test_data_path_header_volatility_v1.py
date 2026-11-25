@@ -62,6 +62,7 @@ _HEADER_READS = (
     "clock_ct",
     "day_ct",
     "session",
+    "session_word",
     "watchlist",
     "writer",
     "sign_in",
@@ -201,6 +202,8 @@ def test_the_header_fixture_is_the_daemons_rows_for_schwabs_vix_messages():
         "Fri, Nov 20",
         "After-Hours",
     )
+    # each session as the header says it, the program's word (AGENTS.md rule 4)
+    assert (beat["session_word"], late["session_word"]) == ("REGULAR", "POST-MARKET")
     assert (live["feed_label"], live["outage"]) == ("LIVE", None)
     assert (live["spot"], live["spot_disp"]) == (_OPEN["item"]["LAST_PRICE"], "29.43")
     assert (live["chg_pct"], live["chg_pct_text"]) == (3.481013, "+3.48%")

@@ -738,11 +738,13 @@ class Daemon:
         """
         # open while a stream exists and Schwab sent a frame within DEAD_SEC; why not, only when not
         socket_open = self.connection.socket_open(now)
+        session = session_label(datetime.fromtimestamp(now, ET))
         return {
             "ts": now,
             "clock_ct": time_et.ct_time(now),
             "day_ct": time_et.ct_day(now),
-            "session": session_label(datetime.fromtimestamp(now, ET)),
+            "session": session,
+            "session_word": time_et.SESSION_WORDS[session],
             "schwab_socket_open": socket_open,
             "schwab_down": None if socket_open else self.connection.schwab_down,
             "watchlist": list(self.watchlist),

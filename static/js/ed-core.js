@@ -128,6 +128,12 @@
   var PAGE_WORDS = JSON.parse(
     document.querySelector('meta[name="ed-page-words"]').getAttribute("content"),
   );
+  // one served page word, its placeholders ("{ticker}") filled with `values`
+  function say(key, values) {
+    return PAGE_WORDS[key].replace(/\{(\w+)\}/g, function (_whole, name) {
+      return values[name];
+    });
+  }
   var SCOPE_MODES = SCOPES.map(function (s) {
     return s.key;
   });
@@ -760,9 +766,7 @@
   // so on the list's own state line, which stands until a beat carries a status again (the
   // message line is the answer to the operator's add or removal alone)
   function ingestWatchlist(feed) {
-    document.getElementById("wlFeed").textContent = feed
-      ? ""
-      : "the capture daemon is not reporting";
+    document.getElementById("wlFeed").textContent = feed ? "" : PAGE_WORDS.daemon_silent;
     if (feed) setWL(feed.watchlist, feed.ts);
   }
   // the daemon's answer to an add or a removal: the new list, and the served sentence of what
@@ -783,7 +787,7 @@
     if (!list.length) {
       var empty = document.createElement("div");
       empty.className = "wl-empty";
-      empty.textContent = _wl ? "Watchlist is empty — use + Add symbol below" : "-";
+      empty.textContent = _wl ? PAGE_WORDS.watchlist_empty : "-";
       host.insertBefore(empty, add);
     }
     list.forEach(function (sym) {
@@ -840,15 +844,10 @@
     var raw = sym;
     sym = normSym(sym);
     if (!sym) {
-      wlNotify('Not a valid symbol: "' + raw + '"');
+      wlNotify(say("not_a_symbol", { typed: raw }));
       return;
     }
-    if (loadWL().indexOf(sym) !== -1) {
-      wlNotify(sym + " is already on the watchlist");
-      setTicker(sym);
-      return;
-    }
-    wlNotify("Checking " + sym + " with Schwab…");
+    wlNotify(say("checking", { ticker: sym }));
     request("/api/watchlist", {
       method: "POST",
       cache: "no-store",
@@ -856,10 +855,12 @@
       body: JSON.stringify({ ticker: sym }),
     })
       .then(function (j) {
-        if (wlAnswer(j)) setTicker(sym);
+        // the program's answer, in its words; on the list now (added, or already): selected
+        wlAnswer(j);
+        if (loadWL().indexOf(sym) !== -1) setTicker(sym);
       })
       .catch(function (e) {
-        wlNotify(sym + " is not added: " + e.message);
+        wlNotify(say("not_added", { ticker: sym, why: e.message }));
       });
   }
   // ACTIVE INSTRUMENT = any supported Schwab symbol the operator wants to analyse now. The client
@@ -874,7 +875,7 @@
     request("/api/watchlist/" + encodeURIComponent(sym), { method: "DELETE", cache: "no-store" })
       .then(wlAnswer)
       .catch(function (e) {
-        wlNotify(sym + " is not removed: " + e.message);
+        wlNotify(say("not_removed", { ticker: sym, why: e.message }));
       });
   }
 
@@ -886,8 +887,8 @@
   }
   function paintNoTicker() {
     var px = document.getElementById("hPx");
-    if (px) px.textContent = "CHOOSE A SYMBOL";
-    setFeed("stale", "NO SYMBOL", "-");
+    if (px) px.textContent = PAGE_WORDS.choose_symbol;
+    setFeed("stale", PAGE_WORDS.no_symbol, "-");
     paintIdentity("-");
   }
 
@@ -1467,8 +1468,8 @@
         paintRecord(msg.feed && msg.feed.writer);
         paintSignIn(msg.feed && msg.feed.sign_in);
         paintLeftOut(msg.feed && msg.feed.left_out);
-        if (msg.feed) paintSession(msg.feed.session, "");
-        else paintSession(null, "session unknown: the daemon sent no status");
+        if (msg.feed) paintSession(msg.feed.session, msg.feed.session_word, "");
+        else paintSession(null, null, PAGE_WORDS.session_no_status);
         ingestWatchlist(msg.feed);
         if (msg.feed) tickClock(msg.feed);
         // row 2's line: the header's news as the beat carries it when it changed (push.news), on
@@ -1513,7 +1514,7 @@
       if (_priceWs !== ws) return;
       _priceWs = null;
       _priceUp = false;
-      paintSession(null, "session unknown: the console push is down");
+      paintSession(null, null, PAGE_WORDS.session_push_down);
       schedulePriceReconnect();
     };
     ws.onerror = function () {
@@ -1605,21 +1606,21 @@
   }
 
   // market session (regular, pre-market, post-market or closed, or Unknown while Schwab's /markets
-  // answer for today is not held), sent with each beat of the socket
-  // label: one of time_et's five session words, or null while the console's push is down
-  function paintSession(label, why) {
+  // answer for today is not held), sent with each beat of the socket: its code (`label`, one of
+  // time_et's five, styled here) and its word, the program's (time_et.SESSION_WORDS); null while
+  // the console's push is down or the beat carries no status
+  function paintSession(label, word, why) {
     var el = document.getElementById("hSession");
     if (!el) return;
-    var m = {
-      RTH: ["REGULAR", "rth"],
-      "Pre-Market": ["PRE-MARKET", "pre"],
-      "After-Hours": ["POST-MARKET", "ah"],
-      Closed: ["CLOSED", "closed"],
-      Unknown: ["UNKNOWN", "unknown"],
+    var style = {
+      RTH: "rth",
+      "Pre-Market": "pre",
+      "After-Hours": "ah",
+      Closed: "closed",
+      Unknown: "unknown",
     };
-    var v = label === null ? ["-", ""] : m[label];
-    el.textContent = v[0];
-    el.className = "sess " + v[1];
+    el.textContent = label === null ? "-" : word;
+    el.className = "sess " + (label === null ? "" : style[label]);
     el.title = why;
   }
 
@@ -1885,6 +1886,7 @@
     esc: esc,
     orDash: orDash,
     pageWords: PAGE_WORDS,
+    say: say,
     request: request,
     classTag: classTag,
     rowsHtml: rowsHtml,
