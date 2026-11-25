@@ -97,6 +97,8 @@ _PRICE_FIELDS = (
 )
 _COUNT_FIELDS = ("BID_SIZE", "ASK_SIZE", "TOTAL_VOLUME")
 _CLOCK_FIELDS = ("QUOTE_TIME_MILLIS",)
+#: the quote that time is of: its bid, ask and their sizes
+_QUOTE_FIELDS = ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE")
 #: signed values (any finite number): Schwab's own change of the LAST_PRICE vs the prior close.
 #: Measured: NET_CHANGE_PERCENT arrives with every LAST_PRICE; REGULAR_MARKET_CHANGE_PERCENT
 #: with every LAST_PRICE in the regular session (SPY 113/113, MU 112/112, PCG 17/17)
@@ -152,6 +154,11 @@ def record_from_level_one_equity(
     rts = float(received_ts)
     own = _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS + _TEXT_FIELDS
     sent = {name: _read_stream_field(name, item[name]) for name in own if name in item}
+    if "QUOTE_TIME_MILLIS" in sent and sent["QUOTE_TIME_MILLIS"] is None:
+        # Schwab's quote time is the last time a bid or ask updated (Streamer API §3.1, field 34):
+        # sent as no time (an index with no market, $VIX and $NDX), Schwab set no bid or ask, and
+        # the 0s beside it are no quote, cleared as not a number (option_contract.streamed_top)
+        sent.update(dict.fromkeys(_QUOTE_FIELDS))
     sent.update(last_print(item))  # the last trade's three fields: their one reader's
     if not sent:
         return False

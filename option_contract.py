@@ -268,9 +268,14 @@ def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
 
     The one reader of those stream fields (the console's order-flow state and the chain sweep).
     A field the record does not carry is left out; one it carries is as Schwab sent it, None
-    when it is not a number.
+    when it is not a number. A record whose quote time is no time (0: Schwab's quote time is the
+    last time a bid or ask updated, Streamer API §3.1, field 34) holds no quote: its bid, ask and
+    sizes are None, never a price of 0 (live_market_plane reads an equity's the same way).
     """
-    return {name: read(content[field]) for field, name, read in STREAMED_TOP if field in content}
+    top = {name: read(content[field]) for field, name, read in STREAMED_TOP if field in content}
+    if "QUOTE_TIME_MILLIS" in content and top["quote_time_ms"] is None:
+        top.update(bid=None, ask=None, bid_size=None, ask_size=None)
+    return top
 
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:
