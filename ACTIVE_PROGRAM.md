@@ -96,7 +96,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   guards. Before `check_end_to_end` can go, every old patch shape it counts is fixed at its source,
   file by file, to 0 (`python tools/check_end_to_end.py --base origin/main` prints them), and the
   fallbacks below with them. Left to the builder's audit meanwhile: a design-level patch, a clamp
-  (`max(0, x)`), a bare `if x is None: return`.
+  (`max(0, x)`), a bare `if x is None: return`. Sorted: the page's shapes are navigation defaults,
+  CSS class names, a title attribute, environment flags and an argument default, none a value (the
+  two that were values are fixed); a test's `contextlib.suppress(psutil.NoSuchProcess)` while it
+  stops processes that may have ended already is the form ruff's own SIM105 asks for, so that shape
+  is settled by the standard tool when `check_end_to_end` goes, not rewritten. Ruff's flake8-async
+  rules (`ASYNC`) are in force: no blocking call in an async function.
 - NUMBERS (QUEUED; also ENF-22, DASH): code and tests to AGENTS.md rule 5: a value that stops stands
   marked not live with its time and age, everything computed from it marked too, OFFLINE in the
   header during an outage, no rounding or dropped contract in a calculation, each with a behavior

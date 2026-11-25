@@ -26,10 +26,15 @@ select = [
   "W",
   "S110",
   "BLE",
+  "ASYNC",
 ]
 #: UP042 (str + Enum to StrEnum), E711 and E712 (== None, == True), E731 (a lambda assigned to a
-#: name), B004, B006, B007, B011, B028, B905 and B912: the one fix of each is ruff-labelled unsafe,
-#: and no unsafe fix is taken (operator, AGENTS.md "Fix what you find")
+#: name), B004, B006, B007, B011, B028, B905, B912, ASYNC105 (a trio call not awaited) and ASYNC116
+#: (a trio or anyio sleep past a day): the one fix of each is ruff-labelled unsafe,
+#: and no unsafe fix is taken (operator, AGENTS.md "Fix what you find"). ASYNC110 (a sleep in a
+#: while loop: wait on an event instead): a test's wait on state a thread or another process holds
+#: has no event to wait on, and a poll with a time-out is the accepted wait there
+#: (docs/SOURCES.md fowler-non-determinism; tests.shared_helpers.until)
 ignore = [
   "UP042",
   "E711",
@@ -42,6 +47,9 @@ ignore = [
   "B028",
   "B905",
   "B912",
+  "ASYNC105",
+  "ASYNC110",
+  "ASYNC116",
 ]
 
 [tool.ruff.format]
