@@ -254,8 +254,9 @@ def test_the_wilson_interval():
     assert lo == pytest.approx(0.0, abs=1e-12) and 0 < hi < 0.04
     lo, hi = wilson_interval(72, 120)
     assert lo < 72 / 120 < hi
-    # the interval to the four decimals it is stated in, worked out outside this code
-    assert (lo, hi) == pytest.approx((0.5106, 0.6832), abs=1e-4)
+    # the interval worked out outside this code, to 40 digits (Python's decimal, the published
+    # formula, z the normal distribution's 97.5% quantile)
+    assert (lo, hi) == pytest.approx((0.5105602479246307, 0.6832359187916286))
 
 
 def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():

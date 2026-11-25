@@ -75,14 +75,14 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
     final minutes, in MAGNITUDE, not just sign. This is the test that would have caught the floor.
     """
     T_1h = 1.0 / (24.0 * 365.0)
-    dt = 1.0 / (60.0 * 24.0 * 365.0)  # one minute of calendar time
+    dt = 1.0 / (3600.0 * 24.0 * 365.0)  # one second of calendar time
     S = 100.5  # slightly ITM — charm is finite and nonzero here
-    fd = (_call_delta(S, T_1h - dt) - _call_delta(S, T_1h)) / dt
+    # a central difference, a second each side: its own error is a few parts in a hundred million
+    # an hour from the bell, where delta bends fast
+    fd = (_call_delta(S, T_1h - dt) - _call_delta(S, T_1h + dt)) / (2.0 * dt)
     analytic = charm(S, K, T_1h, SIGMA)
     assert analytic is not None
-    # a one-minute finite difference an hour from the bell, where delta bends fast: its own step
-    # error is a few percent, so 5% asks for the magnitude a floor on T would have lost
-    assert analytic == pytest.approx(fd, rel=0.05), (
+    assert analytic == pytest.approx(fd), (
         f"one hour from the close, analytic charm {analytic:.2f} vs FD {fd:.2f} — a T floor "
         "or convention drift is flattening the near-expiry spike again"
     )
@@ -135,9 +135,10 @@ def test_the_per_strike_charm_and_vanna_are_those_derivatives_summed_on_spys_who
         got_charm, got_vanna = charm_by[strike]["call_charm"], vanna_by[strike]["call_vanna"]
         if got_charm is None or got_vanna is None:  # a call there the program could not price
             continue
-        # against a finite difference of Black-Scholes delta: its step's error sets the tolerance
-        assert got_charm == pytest.approx(want_charm, rel=1e-4, abs=1e-3), strike
-        assert got_vanna == pytest.approx(want_vanna, rel=1e-4, abs=1e-3), strike
+        # against a central difference of Black-Scholes delta (a step of 1e-4 of each input):
+        # its own error is under a part in a million
+        assert got_charm == pytest.approx(want_charm), strike
+        assert got_vanna == pytest.approx(want_vanna), strike
         checked += 1
     assert checked > 200, f"{checked} strikes checked"
 

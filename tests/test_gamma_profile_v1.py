@@ -152,8 +152,8 @@ def test_the_curve_reaches_as_far_as_the_chain_does() -> None:
     assert round(snap.gamma_flip, 1) == 238.1
     # the flip worked out from the raw chain outside the program (Black-Scholes-Merton gamma); the
     # program's curve is computed again between the two strikes it changes sign between, so its
-    # crossing is within a few hundred-thousandths of the price of the true one
-    assert snap.gamma_flip == pytest.approx(gamma_flip_worked_out(CRWD), rel=5e-5)
+    # crossing is the true one's (measured within 1e-10 of the price)
+    assert snap.gamma_flip == pytest.approx(gamma_flip_worked_out(CRWD))
 
 
 def test_profile_uses_dealer_sign_convention() -> None:
