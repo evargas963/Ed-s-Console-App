@@ -183,11 +183,12 @@
     var levelsD = sent;
     var levels = levelsD.levels; // always served (levels_payload)
     if (!levels.length)
+      // served: why no level is shown (push.levels none_said)
       return stage(
         2,
         "td-accent-green",
         "Frame — reference levels",
-        "No levels",
+        levelsD.none_said,
         "",
         null,
         [],
@@ -208,7 +209,7 @@
         2,
         "td-accent-green",
         "Frame — reference levels",
-        "No priced levels",
+        levelsD.none_said,
         "",
         null,
         [],
@@ -241,11 +242,12 @@
     if (d === undefined)
       return stage(3, "td-accent-amber", "Confirm — options regime", "-", "", null, [], null);
     if (d.failed != null)
+      // a failed read is named as one, with the program's reason, never told as no regime
       return stage(
         3,
         "td-accent-amber",
         "Confirm — options regime",
-        "No regime",
+        window.EdShell.pageWords.failed,
         d.failed,
         null,
         [],
@@ -480,11 +482,11 @@
       );
     var today = strikesD.today; // always served: the expiry chosen's rows, none when there are no levels
     if (!today.length) {
-      var stale = strikesD.levels_stale_reason;
+      // served: why there is no row (push.strikes none_said), a whole sentence
       return (
         '<div class="td-panel" id="tdMigration"><h4>Positioning migration &amp; volume</h4>' +
         '<div class="placeholder"><div class="sm">' +
-        (stale ? "no per-strike rows — " + esc(stale) : "no per-strike gamma for this symbol yet") +
+        esc(strikesD.none_said) +
         "</div></div></div>"
       );
     }

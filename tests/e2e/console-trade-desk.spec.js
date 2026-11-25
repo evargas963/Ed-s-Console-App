@@ -1390,24 +1390,29 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
-  test("Right Now: a failed read is named, never told as no book, no levels or no gamma", async ({
+  test("Right Now: a failed read is named, never told as no book, no levels, no regime or no gamma", async ({
     page,
   }) => {
-    // the book, the levels and the per-strike panels not produced (the program's words on the
-    // socket): before, they read "No book yet", "No levels" and "no per-strike gamma for this
-    // symbol yet"
+    // the book, the levels, the regime and the per-strike panels not produced (the program's
+    // words on the socket): before, they read "No book yet", "No levels", "No regime" and "no
+    // per-strike gamma for this symbol yet"
     const errs = watchErrors(page);
     const words = "the program could not produce this panel: RuntimeError: chain lock timed out";
     const levelsWords = "the program could not produce this panel: KeyError: 'SPY'";
     const bookWords = "the program could not produce this panel: OSError: book read failed";
-    await intercept(page); // every panel sent in its real shape, then the three that fail
+    const regimeWords = "the program could not produce this panel: ValueError: no chain held";
+    await intercept(page); // every panel sent in its real shape, then the four that fail
     deskPanels().strikes = { failed: words };
     deskPanels().levels = { failed: levelsWords };
     deskPanels().book = { failed: bookWords };
+    deskPanels().terrain = { failed: regimeWords };
     await openView(page, "trade-desk", "right-now");
     await expect(page.locator("#tdBody")).toContainText(bookWords);
     await expect(page.locator("#tdBody")).toContainText(levelsWords);
     await expect(page.locator("#tdMigration")).toContainText(words);
+    // the regime's stage names the failure in the served word, with the program's reason
+    const regime = page.locator("#tdBody .td-stage.td-accent-amber");
+    await expect(regime.locator(".td-hero")).toHaveText("FAILED" + regimeWords);
     expect(errs).toEqual([]);
   });
 

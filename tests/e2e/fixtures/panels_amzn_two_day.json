@@ -1013,6 +1013,7 @@
         "change_text": "+0.68"
       }
     ],
+    "none_said": null,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
     "levels_age_text": "0s",
@@ -2308,6 +2309,7 @@
         "change_text": "+0.68"
       }
     ],
+    "none_said": null,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
     "levels_age_text": "0s",
@@ -3096,6 +3098,7 @@
         "change_text": "+0.68"
       }
     ],
+    "none_said": null,
     "levels_state": "LIVE",
     "levels_stale_reason": "",
     "levels_age_text": "0s",
@@ -80978,6 +80981,7 @@
         "hvp",
         "grc"
       ],
+      "none_said": null,
       "zero_dte": [
         {
           "id": "call_wall",
@@ -82504,6 +82508,7 @@
         "hvp",
         "grc"
       ],
+      "none_said": null,
       "zero_dte": [
         {
           "id": "call_wall",
@@ -83975,6 +83980,7 @@
         "hvp",
         "grc"
       ],
+      "none_said": null,
       "zero_dte": [
         {
           "id": "call_wall",
