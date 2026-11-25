@@ -613,14 +613,14 @@
           : "";
       // Schwab's trade time stands when the feed is down; OFFLINE is the card's state, and the
       // outage stays beside the time instead of replacing it.
-      var tradeWhen = q && q.trade_time_ct != null ? "last trade " + esc(q.trade_time_ct) : null;
+      var tradeWhen = q && q.trade_time_ct != null ? esc(q.trade_said) : null;
       var tradeWhy = !q
         ? window.EdShell.pageWords.no_row_yet
         : q.outage
           ? esc(q.outage)
           : tradeWhen
             ? null
-            : "no trade sent";
+            : esc(q.trade_said);
       src(
         c,
         "Schwab LEVELONE · " +
@@ -1211,13 +1211,13 @@
   // its row is still waited for, why it is stopped, or its last trade's time. A value not
   // received reads "-".
   function idxTail(m) {
-    var when = m.mark ? m.mark.when : m.row.trade_time_ct;
-    return (m.mark ? " · " + m.mark.word : "") + (when != null ? " · last trade " + when : "");
+    var said = m.mark ? m.mark.said : m.row.trade_time_ct != null ? m.row.trade_said : null;
+    return (m.mark ? " · " + m.mark.word : "") + (said != null ? " · " + said : "");
   }
   function idxTitle(m, name) {
     if (!m) return window.EdShell.pageWords.waiting_stream.replace("{name}", name);
     if (m.mark) return m.mark.why;
-    return m.row.trade_time_ct != null ? "last trade " + m.row.trade_time_ct : "no trade sent";
+    return m.row.trade_said;
   }
   function vixText(m) {
     if (!m) return "-";

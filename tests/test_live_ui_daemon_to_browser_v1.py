@@ -186,6 +186,8 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         # epoch SECONDS: Schwab's TRADE_TIME_MILLIS as sent, over 1000
         assert row["trade_ts"] == int(now * 1000) / 1000
         assert row["trade_age_text"] in ("0s", "1s")
+        # the trade's state as every surface says it, one phrase from the producer
+        assert row["trade_said"] == "last trade " + row["trade_time_ct"]
         assert "forming_1m" not in row
         # the next trade moves it, pushed on its own: a "quotes" frame, never left to the beat
         then = clock()
@@ -555,6 +557,7 @@ def test_a_page_before_the_first_schwab_quote_reads_no_price_until_one_comes():
         assert json.loads(await asyncio.wait_for(ws.recv(), 2))["type"] == "symbols"
         _, row = await _next_row(ws, "SPY", kind="quotes")  # the subscribe's own row
         assert (row["trade_ts"], row["trade_time_ct"], row["trade_age_text"]) == (None, None, None)
+        assert row["trade_said"] == "no trade sent"  # said by the producer, not the page
         assert (row["spot"], row["spot_disp"], row["bid"], row["ask"]) == (None, None, None, None)
         assert (row["bid_text"], row["ask_text"]) == (None, None)  # nothing sent: no text
         bus.publish("quote.SPY", _trade("SPY", 583.41, time_et.now()))

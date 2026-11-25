@@ -11,8 +11,10 @@ function served(s) {
   const key = u.startsWith("$") || !INDEX_ROOTS.has(u) ? u : "$" + u;
   return { requested: s, key: key, display: key.replace(/^\$/, "") };
 }
+// STAND-IN for live_price_rows.price_row: its trade_said as the producer words it, from the row's
+// trade time (tests/test_live_ui_daemon_to_browser_v1.py holds the producer's own)
 function priceRow(ticker, spot, extra = {}) {
-  return Object.assign(
+  const row = Object.assign(
     {
       ticker: ticker,
       spot: spot,
@@ -25,6 +27,10 @@ function priceRow(ticker, spot, extra = {}) {
     },
     extra,
   );
+  if (!("trade_said" in row))
+    row.trade_said =
+      row.trade_time_ct != null ? "last trade " + row.trade_time_ct : "no trade sent";
+  return row;
 }
 // The selected ticker's expiry list as the program sends it after the subscribe's `symbols` frame
 // ({type:'expiries', ticker: key, ...server.expiries' body}).
