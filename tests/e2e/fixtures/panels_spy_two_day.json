@@ -9848,7 +9848,9 @@
     "atr_weekly_text": "19.86",
     "atr_monthly_text": "37.93",
     "regime_text": "Negative gamma",
-    "total_gamma_change": null
+    "total_gamma_change": null,
+    "pcr_none_said": null,
+    "atm_iv_none_said": null
   },
   "price_row": {
     "ticker": "SPY",
@@ -73195,7 +73197,8 @@
       "last_bar": {
         "t": 1794497340.0,
         "label": "Thu 11/12 09:29 AM CT"
-      }
+      },
+      "none_said": null
     },
     "5": {
       "bars": [
@@ -84382,7 +84385,8 @@
       "last_bar": {
         "t": 1794497340.0,
         "label": "Thu 11/12 09:29 AM CT"
-      }
+      },
+      "none_said": null
     },
     "15": {
       "bars": [
@@ -91807,7 +91811,8 @@
       "last_bar": {
         "t": 1794497340.0,
         "label": "Thu 11/12 09:29 AM CT"
-      }
+      },
+      "none_said": null
     }
   },
   "desk_newest_hour": {
@@ -92810,7 +92815,8 @@
     "last_bar": {
       "t": 1794497340.0,
       "label": "Thu 11/12 09:29 AM CT"
-    }
+    },
+    "none_said": null
   },
   "bars_flow": {
     "bars": [
@@ -93899,7 +93905,8 @@
     "last_bar": {
       "t": 1794497340.0,
       "label": "Thu 11/12 09:29 AM CT"
-    }
+    },
+    "none_said": null
   },
   "tape": {
     "ticker": "SPY",

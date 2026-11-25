@@ -58,12 +58,20 @@ class BesideTheLevels(LevelsVerdict, RelationFields, AtrFields):
     """What the terrain panel carries beside the levels' own fields, published or not.
 
     The levels' verdict, the live price's relations to them, the ATRs, the regime as the screen
-    says it (terrain_read), and the newest move of the largest total gamma strike (None: none
-    since the program started).
+    says it (terrain_read), the newest move of the largest total gamma strike (None: none since
+    the program started), and what the screen says of each by-expiry series with no expiry in it
+    (None while it has one; AGENTS.md rule 4).
     """
 
     regime_text: str
     total_gamma_change: TotalGammaMoveText | None
+    pcr_none_said: str | None
+    atm_iv_none_said: str | None
+
+
+#: what the screen says of a by-expiry series with no expiry in it
+NO_PCR = "no expiry carries open interest"
+NO_ATM_IV = "no expiry has both ATM legs priced"
 
 
 def total_gamma_text(move: TotalGammaMove | None) -> TotalGammaMoveText | None:
@@ -141,6 +149,8 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
             **_atr_fields(tk, at),  # live: today's candle from the bars held now
             "regime_text": REGIME_TEXT[cached.snap.regime],
             "total_gamma_change": total_gamma_text(cached.total_gamma.move),
+            "pcr_none_said": None if served["pcr_by_expiry"] else NO_PCR,
+            "atm_iv_none_said": None if served["atm_iv_pct_by_expiry"] else NO_ATM_IV,
         }
     _why = level_store.chain_failure(tk)
     empty = compute_terrain(tk, None, spot, now=at, sessions=sessions()).to_dict()
@@ -150,6 +160,8 @@ def terrain(tk: str, now: float) -> TerrainPanel | TerrainNotReady:
         **_atr_fields(tk, at),  # from the candles and bars, which do not wait for a chain
         "regime_text": REGIME_TEXT[empty["regime"]],
         "total_gamma_change": None,
+        "pcr_none_said": None if empty["pcr_by_expiry"] else NO_PCR,
+        "atm_iv_none_said": None if empty["atm_iv_pct_by_expiry"] else NO_ATM_IV,
         # not ready, with the producer's reason when it has one, and the levels' verdict
         "error": (
             "terrain_not_ready: no chain from the daemon yet for this ticker"

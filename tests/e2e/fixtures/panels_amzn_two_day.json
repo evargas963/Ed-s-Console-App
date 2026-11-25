@@ -3341,7 +3341,9 @@
     "atr_weekly_text": "17.39",
     "atr_monthly_text": "32.79",
     "regime_text": "Positive gamma",
-    "total_gamma_change": null
+    "total_gamma_change": null,
+    "pcr_none_said": null,
+    "atm_iv_none_said": null
   },
   "price_row": {
     "ticker": "AMZN",
@@ -107098,7 +107100,8 @@
       "last_bar": {
         "t": 1794497880.0,
         "label": "Thu 11/12 09:38 AM CT"
-      }
+      },
+      "none_said": null
     },
     "5": {
       "bars": [
@@ -118501,7 +118504,8 @@
       "last_bar": {
         "t": 1794497880.0,
         "label": "Thu 11/12 09:38 AM CT"
-      }
+      },
+      "none_said": null
     },
     "15": {
       "bars": [
@@ -126034,7 +126038,8 @@
       "last_bar": {
         "t": 1794497880.0,
         "label": "Thu 11/12 09:38 AM CT"
-      }
+      },
+      "none_said": null
     }
   },
   "desk_newest_hour": {
@@ -126659,7 +126664,8 @@
     "last_bar": {
       "t": 1794497880.0,
       "label": "Thu 11/12 09:38 AM CT"
-    }
+    },
+    "none_said": null
   },
   "bars_flow": {
     "bars": [
@@ -127748,7 +127754,8 @@
     "last_bar": {
       "t": 1794497880.0,
       "label": "Thu 11/12 09:38 AM CT"
-    }
+    },
+    "none_said": null
   },
   "tape": {
     "ticker": "AMZN",

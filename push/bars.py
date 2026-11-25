@@ -46,6 +46,7 @@ class BarsPanel(TypedDict):
     bars: list[ServedBar]
     tf: str
     last_bar: LastBar | None
+    none_said: str | None
 
 
 class FormingPanel(TypedDict):
@@ -116,7 +117,14 @@ def bars(ticker: str, now: float, params: dict[str, Any]) -> BarsPanel:
         "bars": [_served(b) for b in shown],
         "tf": tf,
         "last_bar": {"t": float(held[-1].ts), "label": ct_label(held[-1].ts)} if held else None,
+        # what the screen says with no bar to draw, a whole sentence (AGENTS.md rule 4)
+        "none_said": None if shown else _no_bars_said(tf),
     }
+
+
+def _no_bars_said(tf: str) -> str:
+    """Return what the screen says with no bar at timeframe `tf` (LEVEL_TIMEFRAMES)."""
+    return f"no {'daily' if tf == 'D' else tf + '-minute'} bars for this symbol"
 
 
 def _served(bar: Candle) -> ServedBar:

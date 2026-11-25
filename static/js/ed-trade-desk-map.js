@@ -335,8 +335,10 @@
       paintFooter();
     }
     if (PANELS[d.type]) S[PANELS[d.type]] = d;
-    if (d.type === "bars:flow") S.flowBars = ok ? d.bars : null;
-    else if (OR_NULL[d.type]) S[OR_NULL[d.type]] = ok ? d : null;
+    if (d.type === "bars:flow") {
+      S.flowBars = ok ? d.bars : null;
+      S.flowNone = ok ? d.none_said : null; // served: what the card says with no bar
+    } else if (OR_NULL[d.type]) S[OR_NULL[d.type]] = ok ? d : null;
     if (PANELS[d.type] || OR_NULL[d.type]) paintAll();
   }
   // what an answer says with nothing to draw: the program could not produce the panel (`failed`),
@@ -1009,7 +1011,7 @@
             ]
           : [],
         "Volume per 1-minute bar, last hour · green up, red down",
-        noneText(fb, "bars", "no 1-minute bars for this symbol"),
+        noneText(fb, "bars", S.flowNone),
       );
     }
     if ((c = $("tdmCardOpt"))) {
@@ -1027,7 +1029,7 @@
             ]
           : [],
         "Put/call open interest by expiry, nearest first",
-        noneText(t, "terrain", "no expiry carries open interest"),
+        noneText(t, "terrain", t && t.pcr_none_said),
       );
     }
     if ((c = $("tdmCardVol"))) {
@@ -1045,7 +1047,7 @@
             ]
           : [],
         "ATM implied vol by expiry, nearest first",
-        noneText(t, "terrain", "no expiry has both ATM legs priced"),
+        noneText(t, "terrain", t && t.atm_iv_none_said),
       );
     }
   }

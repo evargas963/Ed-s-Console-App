@@ -42,7 +42,8 @@
     "last_bar": {
       "t": 1795100580.0,
       "label": "Thu 11/19 09:03 AM CT"
-    }
+    },
+    "none_said": null
   },
   "forming_early": {
     "tf": "5",
@@ -135,7 +136,8 @@
     "last_bar": {
       "t": 1795100640.0,
       "label": "Thu 11/19 09:04 AM CT"
-    }
+    },
+    "none_said": null
   },
   "forming_after": {
     "tf": "5",

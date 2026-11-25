@@ -845,6 +845,34 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  // AGENTS.md rule 4: a card whose series is empty says the program's sentence for it, never one
+  // of the page's own. INDUCED: each served answer holds nothing, its sentence worded otherwise
+  test("Desk: an empty series is said in the program's sentence", async ({ page }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    deskPanels().terrain = Object.assign({}, TERRAIN, {
+      pcr_by_expiry: {},
+      atm_iv_pct_by_expiry: {},
+      pcr_none_said: "SERVED: no expiry carries open interest",
+      atm_iv_none_said: "SERVED: no expiry has both ATM legs priced",
+    });
+    deskPanels().bars = (key, params, name) =>
+      name === "bars:flow"
+        ? Object.assign({}, REAL.bars_flow, { bars: [], none_said: "SERVED: no 1-minute bars" })
+        : REAL.bars[params.tf];
+    await openView(page, "trade-desk", "desk");
+    await expect(page.locator("#tdmCardOpt .tdm-plot-none")).toHaveText(
+      "SERVED: no expiry carries open interest",
+    );
+    await expect(page.locator("#tdmCardVol .tdm-plot-none")).toHaveText(
+      "SERVED: no expiry has both ATM legs priced",
+    );
+    await expect(page.locator("#tdmCardFlow .tdm-plot-none")).toHaveText(
+      "SERVED: no 1-minute bars",
+    );
+    expect(errs).toEqual([]);
+  });
+
   test("Desk: the levels are drawn when they arrive, not held for the event queue", async ({
     page,
   }) => {

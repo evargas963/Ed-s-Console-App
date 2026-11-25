@@ -212,6 +212,10 @@ def test_the_bars_endpoint_serves_completed_schwab_bars_and_the_last_bars_minute
     ]
     assert not any("forming" in b for b in body["bars"])
     assert body["last_bar"] == {"t": T0 + 60, "label": ct_label(T0 + 60)}
+    # bars to draw: nothing to say of none; none held: the program's sentence (AGENTS.md rule 4)
+    assert body["none_said"] is None
+    none = push_bars.bars("ZZNOBARS", T0 + 120.0, {"tf": "1", "limit": 1500})
+    assert (none["bars"], none["none_said"]) == ([], "no 1-minute bars for this symbol")
 
 
 def test_a_test_holds_schwabs_daily_candles_through_the_bar_writer():
