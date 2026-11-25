@@ -369,7 +369,12 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     const cell = page.locator(CELL);
     await expect(cell).toHaveText("$1.00K");
 
-    panels.surface = { available: false, reason: "not currently active for this symbol" };
+    panels.surface = {
+      available: false,
+      reason: "not currently active for this symbol",
+      banner_said: "no live surface for this symbol",
+      none_said: "Gamma surface unavailable",
+    };
     sock.changed("surface");
     await expect(page.locator("#heatBody .placeholder .big")).toHaveText(
       "Gamma surface unavailable",
@@ -921,6 +926,8 @@ test.describe("Ed Console shell + gamma heatmap", () => {
       warming: false,
       requested: true,
       reason: "no live gamma surface for this ticker yet",
+      banner_said: "LIVE SURFACE REQUESTED · no live surface for this symbol",
+      none_said: "Gamma surface unavailable",
     };
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#heatBody .placeholder .big")).toContainText(
@@ -1678,15 +1685,31 @@ test.describe("Ed Console shell + gamma heatmap", () => {
   test("#1.3 a warming (not yet live) surface shows LIVE SURFACE WARMING (never a final state)", async ({
     page,
   }) => {
-    panels.surface = Object.assign({}, SURFACE, {
+    // the producer's answer (push.surface._no_surface; tests/test_gamma_surface_freshness_v1.py)
+    const warming = {
       available: false,
       source: "unavailable",
       warming: true,
       requested: true,
       reason: "no live gamma surface for this ticker yet",
-    });
+      banner_said: "LIVE SURFACE WARMING · no live surface for this symbol",
+      none_said: "Gamma surface unavailable",
+    };
+    panels.surface = Object.assign({}, SURFACE, warming);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.locator(".heat-banner.warming")).toContainText("LIVE SURFACE WARMING");
+    await expect(page.locator(".heat-banner.warming")).toHaveText(
+      "LIVE SURFACE WARMING · no live surface for this symboldetails",
+    );
+    await expect(page.locator(".heat-banner.warming")).toHaveAttribute("title", warming.reason);
+    // AGENTS.md rule 4: the banner and the heading are the program's words. INDUCED: worded
+    // otherwise
+    panels.surface = Object.assign({}, SURFACE, warming, {
+      banner_said: "SERVED: the banner",
+      none_said: "SERVED: the heading",
+    });
+    sock.changed("surface");
+    await expect(page.locator(".heat-banner .hb-main")).toHaveText("SERVED: the banner");
+    await expect(page.locator("#heatBody .placeholder .big")).toHaveText("SERVED: the heading");
   });
 
   test("switching ticker leaves a late chain frame of the old ticker undrawn", async ({ page }) => {

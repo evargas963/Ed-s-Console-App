@@ -21160,7 +21160,8 @@
         "volume": 185728.0
       },
       "missing_expiry": null
-    }
+    },
+    "missing_said": null
   },
   "surface_missing_expiry": {
     "ticker": "SPY",
@@ -21437,7 +21438,8 @@
         "volume": null
       },
       "missing_expiry": "2026-11-14"
-    }
+    },
+    "missing_said": "Expiry 2026-11-14 unavailable"
   },
   "surface_second_expiry": {
     "ticker": "SPY",
@@ -22073,7 +22075,8 @@
         "volume": 22133.0
       },
       "missing_expiry": null
-    }
+    },
+    "missing_said": null
   },
   "confluence": {
     "notes": [],
@@ -31470,7 +31473,8 @@
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
-    }
+    },
+    "none_said": null
   },
   "chain_second_expiry": {
     "ticker": "SPY",
@@ -41234,7 +41238,8 @@
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
-    }
+    },
+    "none_said": null
   },
   "book": {
     "NASDAQ_BOOK": {
@@ -41405,6 +41410,8 @@
       "venue": "NASDAQ_BOOK",
       "no_book_text": null,
       "state_word": null,
+      "asks_none_said": null,
+      "bids_none_said": null,
       "quote_time_ct": "Thu 11/12 09:30 AM CT",
       "book_time_ct": "Thu 11/12 09:30 AM CT",
       "book_age_text": "1s",
@@ -43645,6 +43652,8 @@
       "venue": "NYSE_BOOK",
       "no_book_text": null,
       "state_word": null,
+      "asks_none_said": null,
+      "bids_none_said": null,
       "quote_time_ct": "Thu 11/12 09:30 AM CT",
       "book_time_ct": "Thu 11/12 09:30 AM CT",
       "book_age_text": "1s",
@@ -46918,6 +46927,7 @@
         [1794497340.0, 756.5850319372122]
       ],
       "vwap_text": "756.59",
+      "vwap_said": "60 pts carried",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 60,
@@ -48312,6 +48322,7 @@
         [1794497100.0, 756.5850319372122]
       ],
       "vwap_text": "756.59",
+      "vwap_said": "12 pts carried",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 60,
@@ -49698,6 +49709,7 @@
         [1794496500.0, 756.5850319372122]
       ],
       "vwap_text": "756.59",
+      "vwap_said": "4 pts carried",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 60,

@@ -627,13 +627,6 @@
     host.innerHTML = '<div class="placeholder"><div class="sm"></div></div>';
     host.querySelector(".sm").textContent = words;
   }
-  // The one empty-chain message for every chain panel (Chain, Strike Detail, contract
-  // specs). The chain panel is the live chain or status 'unavailable' with a named reason --
-  // no stored or captured substitute -- so the reason IS the message.
-  function chainEmptyText(d) {
-    var why = d && d.status === "unavailable" && d.scope && d.scope.reason;
-    return why ? "chain unavailable — " + why : "no chain for this expiry";
-  }
   // The toast: one short notice at the bottom left, with a chime. Its words are served; it fades
   // by its style (.ed-toast) and a newer one takes its place. A browser lets a page make sound
   // only after the operator has clicked or typed on it, so the audio opens at the first such
@@ -1922,7 +1915,6 @@
     snapshotBadge: snapshotBadge,
     levelsBadges: levelsBadges,
     chainScopeBadge: chainScopeBadge,
-    chainEmptyText: chainEmptyText,
     placeholder: placeholder,
     setExpiry: setExpiry,
     getExpiry: function () {

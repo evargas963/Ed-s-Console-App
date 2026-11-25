@@ -153,12 +153,15 @@ def test_no_held_chain_is_unavailable_with_its_reason():
     assert set(body["scope"]) == {"kind", "reason", "kind_text"}
     # the scope as the chain's badge says it, served: the page picks no words
     assert (body["scope"]["kind"], body["scope"]["kind_text"]) == ("unavailable", "unavailable")
+    # what every chain screen says for it, its reason in it
+    assert body["none_said"] == "chain unavailable — " + body["scope"]["reason"]
 
 
 def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     body = _get(ticker="tsla")
     assert body["status"] == "ok" and body["expiry"] == _TSLA_EXPIRY
+    assert body["none_said"] is None  # rows to draw: nothing said in their place
     # the expiry is served once (`expiry`), and no label of ours rides with the chain
     assert body["scope"] == {"kind": "complete_single_expiry", "kind_text": "complete (ALL)"}
     assert _served(body) == _by_symbol(_as_shown(_TSLA_CONTRACTS))
@@ -208,6 +211,7 @@ def test_only_the_requested_expiry_is_served():
             _as_shown([c for c in _MRVL_CONTRACTS if c["expirationDate"].startswith(expiry)])
         )
     assert missing["status"] == "unavailable" and "2031-01-17" in missing["scope"]["reason"]
+    assert missing["none_said"] == "chain unavailable — the chain lists no contracts for 2031-01-17"
 
 
 def test_a_streamed_volume_newer_than_the_chain_is_overlaid():

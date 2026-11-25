@@ -81,7 +81,8 @@ class SurfacePanel(LevelsVerdict, SurfaceState):
     """The `surface` panel (gamma_surface_payload): the heatmap's window of the published grid.
 
     The levels' verdict, the chain's basis, the columns, strikes and cells drawn, the grid's own
-    counts, stream state and revision (SurfaceState), and the view.
+    counts, stream state and revision (SurfaceState), the view, and what the heatmap says when
+    the selected expiry is not in it (None while it is).
     """
 
     ticker: str
@@ -94,13 +95,14 @@ class SurfacePanel(LevelsVerdict, SurfaceState):
     strikes: list[float]
     cells: list[ShownCell]
     view: HeatView
+    missing_said: str | None
 
 
 class NoSurface(TypedDict):
     """The `surface` panel's answer with no live surface: why, and whether one is coming.
 
     `warming`: a page shows the ticker and its chain is coming (it is on the watchlist);
-    `requested`: a page shows it.
+    `requested`: a page shows it. What the heatmap says for it: its banner and its heading.
     """
 
     ticker: str
@@ -110,6 +112,13 @@ class NoSurface(TypedDict):
     warming: bool
     requested: bool
     reason: str
+    banner_said: str
+    none_said: str
+
+
+#: what the heatmap says with no live surface: its heading, and its banner after the state's word
+NO_SURFACE, NO_LIVE_SURFACE = "Gamma surface unavailable", "no live surface for this symbol"
+SURFACE_WARMING, SURFACE_REQUESTED = "LIVE SURFACE WARMING", "LIVE SURFACE REQUESTED"
 
 
 #: The heatmap header's chip, per coverage state: ALL STREAMING only when every cell on screen is
@@ -369,6 +378,11 @@ def gamma_surface_payload(
         "stream_by_expiry": surf["stream_by_expiry"],
         "surface_seq": surf["surface_seq"],
         "view": view,
+        "missing_said": (
+            None
+            if view["missing_expiry"] is None
+            else f"Expiry {view['missing_expiry']} unavailable"
+        ),
     }
 
 
@@ -399,6 +413,7 @@ def _no_surface(tk: str, levels_why: str | None, now: float, requested: bool) ->
         why = ["the surface is projected when the daemon delivers this ticker's chain"]
     else:
         why = ["no chain is fetched for this ticker: it is not on the watchlist"]
+    state = SURFACE_WARMING if requested and warming else SURFACE_REQUESTED if requested else None
     return {
         "ticker": tk,
         "available": False,
@@ -407,4 +422,6 @@ def _no_surface(tk: str, levels_why: str | None, now: float, requested: bool) ->
         "warming": requested and warming,
         "requested": requested,
         "reason": " — ".join(r for r in why if r),
+        "banner_said": NO_LIVE_SURFACE if state is None else f"{state} · {NO_LIVE_SURFACE}",
+        "none_said": NO_SURFACE,
     }

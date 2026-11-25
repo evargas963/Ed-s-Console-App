@@ -86,6 +86,18 @@ test.describe("D — Gamma Chain subview", () => {
     });
   });
 
+  // AGENTS.md rule 4: what the chain screens say with no row to draw is the program's sentence
+  // (push.chain none_said). INDUCED: SPY's chain answered unavailable, its sentence worded
+  // otherwise
+  test("a chain with no row says the program's sentence", async ({ page }) => {
+    const said = "SERVED: chain unavailable — its reason";
+    panels.chain = () =>
+      Object.assign({}, FRONT, { status: "unavailable", ladder: [], none_said: said });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.locator("#subnav .tab", { hasText: "Chain" }).click();
+    await expect(page.locator("#chainBody .placeholder")).toHaveText(said);
+  });
+
   test("Chain swaps in the ladder + single-expiry disclosure; Gamma restores on switch back", async ({
     page,
   }) => {

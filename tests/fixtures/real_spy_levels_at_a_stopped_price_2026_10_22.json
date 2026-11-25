@@ -221,6 +221,7 @@
  "tf": "1",
  "ticker": "SPY",
  "volume_profile": null,
+ "vwap_said": "not available",
  "vwap_series": null,
  "vwap_text": null,
  "walls_said": "Gamma Put 9.13 below spot, Gamma Call 8.13 below spot",

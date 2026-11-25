@@ -7729,7 +7729,8 @@
         "volume": 651.0
       },
       "missing_expiry": null
-    }
+    },
+    "missing_said": null
   },
   "tape": {
     "ticker": "CRWD",

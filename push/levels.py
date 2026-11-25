@@ -186,6 +186,7 @@ class LevelsPanel(LevelsVerdict, SessionFields):
     families_absent: list[AbsentFamily]
     none_said: str | None
     walls_said: str | None
+    vwap_said: str
 
 
 #: what the screen says when no level can be shown nearest the price: none published, or none
@@ -368,6 +369,11 @@ def _same_day_rows(published: PublishedLevels | None) -> list[SameDayRow]:
     ]
 
 
+def _vwap_said(series: list[list[float]] | None) -> str:
+    """Return the session's VWAP curve as the Levels view's foot says it: its points, or none."""
+    return f"{len(series)} pts carried" if series else "not available"
+
+
 def _walls_said(levels: list[SessionLevelRow | CarriedLevelRow]) -> str | None:
     """Return where Gamma Put and Gamma Call sit from the price, as one sentence.
 
@@ -428,8 +434,9 @@ def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
         # The VWAP curve, CARRIED: the one VWAP of the session, which no page accumulates for
         # itself. [epoch_sec, vwap]
         "vwap_series": session["vwap_series"],
-        # the session's VWAP as the VWAP family's switch shows it
+        # the session's VWAP as the VWAP family's switch shows it, and its curve as the foot does
         "vwap_text": session["vwap_text"],
+        "vwap_said": _vwap_said(session["vwap_series"]),
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
         "volume_profile": session["volume_profile"],

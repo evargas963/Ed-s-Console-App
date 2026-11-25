@@ -4,6 +4,8 @@
     "book_stale": true,
     "quote_age_sec": 846205.7660000324
   },
+  "asks_none_said": null,
+  "bids_none_said": null,
   "book_age_text": "1s",
   "book_feed_label": "OFFLINE",
   "book_time_ct": "Mon 11/02 09:02 AM CT",

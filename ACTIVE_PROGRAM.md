@@ -25,10 +25,12 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   options lean's books (`push.option_book` `book_state`, NO BOOK with none held, drawn as Options
   Level II draws it); Right Now's context summary, where the price sits among the zones
   (`push.liquidity` `location_said`) and the largest gamma strikes from it (`push.levels`
-  `walls_said`). Left, said by the value's producer as a whole phrase: the Options pages (an empty
-  chain, "no chain for this expiry" and "chain unavailable"; the surface's banner; the levels' "VWAP
-  curve: not available"; an empty book side, "no displayed asks", "no displayed bids"); Confluence;
-  the Flow pages; the chart. Then a machine check that the page scripts hold no phrase of their own.
+  `walls_said`); the Options pages' empty states, the chain's (`push.chain` `none_said`), the
+  heatmap's banner, heading and missing expiry (`push.surface` `banner_said`, `none_said`,
+  `missing_said`), the Levels view's (`push.levels` `none_said`, `vwap_said`) and the Book's empty
+  sides (`push.book` `asks_none_said`, `bids_none_said`). Left, said by the value's producer as a
+  whole phrase: Confluence; the Flow pages; the chart. Then a machine check that the page scripts
+  hold no phrase of their own.
 - SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
   "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
   program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests

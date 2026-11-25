@@ -57,8 +57,11 @@
 
   // Per-level DOM ladder from d.depth_pressure.{bid,ask} -- [{price,volume,cum}], best-first,
   // up to OF_BOOK_DEPTH_DEEP (5) levels of the displayed book, as served, each bar against the
-  // served largest size (depth_pressure.max_volume).
-  function ladderHtml(bidLevels, askLevels, maxVol) {
+  // served largest size (depth_pressure.max_volume); a side with none says the served words.
+  function noneHtml(said) {
+    return said == null ? "" : '<div class="sm" style="padding:4px 8px;">' + esc(said) + "</div>";
+  }
+  function ladderHtml(d, bidLevels, askLevels, maxVol) {
     function row(l, side) {
       var w = window.EdDraw.barWidth(l.volume, maxVol);
       return (
@@ -89,9 +92,10 @@
       .join("");
     return (
       '<div class="dom-side-label">Ask</div>' +
-      (asksHtml || '<div class="sm" style="padding:4px 8px;">no displayed asks</div>') +
+      asksHtml +
+      noneHtml(d.asks_none_said) +
       bidsHtml +
-      (bidsHtml ? "" : '<div class="sm" style="padding:4px 8px;">no displayed bids</div>') +
+      noneHtml(d.bids_none_said) +
       '<div class="dom-side-label">Bid</div>'
     );
   }
@@ -178,7 +182,7 @@
       "</span></div></div>" +
       '<div class="dom-wrap">' +
       '<div class="dom-ladder">' +
-      ladderHtml(bidLevels, askLevels, d.depth_pressure.max_volume) +
+      ladderHtml(d, bidLevels, askLevels, d.depth_pressure.max_volume) +
       midHtml +
       "</div>" +
       '<div class="dom-stats">' +

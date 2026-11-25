@@ -10679,7 +10679,8 @@
         "volume": 31885.0
       },
       "missing_expiry": null
-    }
+    },
+    "missing_said": null
   },
   "surface_missing_expiry": {
     "ticker": "AMZN",
@@ -10946,7 +10947,8 @@
         "volume": null
       },
       "missing_expiry": "2026-11-14"
-    }
+    },
+    "missing_said": "Expiry 2026-11-14 unavailable"
   },
   "surface_second_expiry": {
     "ticker": "AMZN",
@@ -11572,7 +11574,8 @@
         "volume": 3866.0
       },
       "missing_expiry": null
-    }
+    },
+    "missing_said": null
   },
   "surface_all": {
     "ticker": "AMZN",
@@ -68720,7 +68723,8 @@
         "volume": 31885.0
       },
       "missing_expiry": null
-    }
+    },
+    "missing_said": null
   },
   "confluence": {
     "notes": [],
@@ -74506,7 +74510,8 @@
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
-    }
+    },
+    "none_said": null
   },
   "chain_second_expiry": {
     "ticker": "AMZN",
@@ -77658,7 +77663,8 @@
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
-    }
+    },
+    "none_said": null
   },
   "book": {
     "NASDAQ_BOOK": {
@@ -77829,6 +77835,8 @@
       "venue": "NASDAQ_BOOK",
       "no_book_text": null,
       "state_word": null,
+      "asks_none_said": null,
+      "bids_none_said": null,
       "quote_time_ct": "Thu 11/12 09:39 AM CT",
       "book_time_ct": "Thu 11/12 09:39 AM CT",
       "book_age_text": "2s",
@@ -81211,6 +81219,7 @@
         [1794497880.0, 271.02180563918836]
       ],
       "vwap_text": "271.02",
+      "vwap_said": "69 pts carried",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
@@ -82684,6 +82693,7 @@
         [1794497700.0, 271.02180563918836]
       ],
       "vwap_text": "271.02",
+      "vwap_said": "14 pts carried",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,
@@ -84148,6 +84158,7 @@
         [1794497400.0, 271.02180563918836]
       ],
       "vwap_text": "271.02",
+      "vwap_said": "5 pts carried",
       "volume_profile": {
         "basis": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
         "bars": 69,

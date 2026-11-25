@@ -721,6 +721,7 @@
  "levels_stale_reason": "this ticker's options are closed and its levels were not current at the close",
  "levels_state": "STALE",
  "levels_time_ct": "Thu 10/22 03:17 PM CT",
+ "missing_said": null,
  "reason": null,
  "source": "terrain_live_cache",
  "stream_by_expiry": {

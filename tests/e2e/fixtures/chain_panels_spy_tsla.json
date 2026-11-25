@@ -9756,6 +9756,7 @@
     "levels_state": "CLOSE",
     "levels_time_ct": "Thu 10/22 03:17 PM CT",
     "n_strikes": 171,
+    "none_said": null,
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
@@ -19520,6 +19521,7 @@
     "levels_state": "CLOSE",
     "levels_time_ct": "Thu 10/22 03:17 PM CT",
     "n_strikes": 171,
+    "none_said": null,
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"
@@ -26263,6 +26265,7 @@
     "levels_state": "NOT LIVE",
     "levels_time_ct": "Sun 08/30 11:00 AM CT",
     "n_strikes": 118,
+    "none_said": null,
     "scope": {
       "kind": "complete_single_expiry",
       "kind_text": "complete (ALL)"

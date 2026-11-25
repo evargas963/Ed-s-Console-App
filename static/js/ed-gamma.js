@@ -70,19 +70,15 @@
         '</span><span class="hb-more" aria-label="details">details</span></div>'
       );
     }
-    // no surface: why, from the served flags (warming: its chain is coming; requested: a page asked)
-    var warming = surface.warming === true,
-      requested = !warming && surface.requested === true;
-    var stateLabel = warming ? "LIVE SURFACE WARMING" : requested ? "LIVE SURFACE REQUESTED" : "";
-    var brief = "no live surface for this symbol";
+    // no surface: the served banner, why on hover; its tone from the served flags (warming: its
+    // chain is coming; requested: a page asked)
     return (
       '<div class="heat-banner ' +
-      (stateLabel ? "warming" : "") +
+      (surface.warming || surface.requested ? "warming" : "") +
       '" title="' +
-      escapeHtml(surface.reason || brief) +
+      escapeHtml(surface.reason) +
       '"><span class="hb-main">' +
-      (stateLabel ? stateLabel + " · " : "") +
-      brief +
+      escapeHtml(surface.banner_said) +
       '</span><span class="hb-more" aria-label="details">details</span></div>'
     );
   }
@@ -105,25 +101,30 @@
       _lastSurface = null;
       _lastRevision = null;
       paintChip(null);
+      if (surface.failed != null) {
+        window.EdShell.placeholder(host, surface.failed);
+        return;
+      }
       host.innerHTML =
-        (surface.failed != null ? "" : buildBanner(surface)) +
-        '<div class="placeholder"><div class="big">Gamma surface unavailable</div>' +
-        '<div class="sm">' +
-        escapeHtml(surface.failed != null ? surface.failed : surface.reason) +
+        buildBanner(surface) +
+        '<div class="placeholder"><div class="big">' +
+        escapeHtml(surface.none_said) +
+        '</div><div class="sm">' +
+        escapeHtml(surface.reason) +
         "</div></div>";
       return;
     }
     var view = surface.view;
     window.EdShell.panServed(_pan, view.centre);
-    if (view.missing_expiry) {
+    if (surface.missing_said != null) {
       // the selected expiry is not in this surface: nothing is drawn
       _lastSurface = surface;
       _lastRevision = null;
       paintChip(null);
       host.innerHTML =
-        '<div class="placeholder"><div class="big">Expiry ' +
-        escapeHtml(view.missing_expiry) +
-        ' unavailable</div><div class="sm">not in this surface — choose another expiry, or All Expirations</div></div>';
+        '<div class="placeholder"><div class="big">' +
+        escapeHtml(surface.missing_said) +
+        '</div><div class="sm">not in this surface — choose another expiry, or All Expirations</div></div>';
       return;
     }
     var measure = window.EdShell.getMeasure();

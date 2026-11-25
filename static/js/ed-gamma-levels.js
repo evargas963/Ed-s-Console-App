@@ -99,16 +99,15 @@
       });
     }
     if (!body) {
-      var degraded = d && d.degraded != null ? d.degraded : null;
-      var note =
-        degraded && degraded.length
-          ? degraded.join(", ")
-          : "the levels snapshot is empty for this symbol";
+      // no level to list: the levels panel's own words for it (none_said, Right Now's too), with
+      // the snapshot's served degradations
+      var degraded = d.degraded != null && d.degraded.length ? d.degraded.join(", ") : null;
       host.innerHTML =
-        '<div class="placeholder"><div class="big">No canonical levels</div>' +
-        '<div class="sm">' +
-        esc(note) +
-        "</div></div>";
+        '<div class="placeholder"><div class="big">' +
+        esc(d.none_said) +
+        "</div>" +
+        (degraded ? '<div class="sm">' + esc(degraded) + "</div>" : "") +
+        "</div>";
       return;
     }
     // the price the levels' distances are from: the header's own row, painted by the shell (its
@@ -125,11 +124,9 @@
       "</tr></thead><tbody>" +
       body +
       "</tbody></table>";
-    // carried VWAP curve + honest absences/degradation, disclosed (never fabricated)
-    var vwapN = 0;
-    if (d.vwap_series != null) vwapN = d.vwap_series.length;
+    // the carried VWAP curve as served (vwap_said), and the served absences and degradations
     var foot = '<div class="lv-foot">';
-    foot += "<span>VWAP curve: " + (vwapN ? vwapN + " pts carried" : "not available") + "</span>";
+    foot += "<span>VWAP curve: " + esc(d.vwap_said) + "</span>";
     var absentSrc = d.families_absent != null ? d.families_absent : null;
     var absent = [];
     if (absentSrc != null) {

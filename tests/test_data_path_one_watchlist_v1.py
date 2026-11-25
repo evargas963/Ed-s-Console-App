@@ -608,6 +608,12 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
                 False,
                 "no chain is fetched for this ticker: it is not on the watchlist",
             )
+            # the heatmap's banner and heading for each, as the program says them
+            assert (d_on["banner_said"], d_off["banner_said"]) == (
+                "LIVE SURFACE WARMING · no live surface for this symbol",
+                "LIVE SURFACE REQUESTED · no live surface for this symbol",
+            )
+            assert d_on["none_said"] == d_off["none_said"] == "Gamma surface unavailable"
             server._on_chain(on, None, time_et.now(), "full chain returned HTTP 400", None, False)
             assert _surface(on)["reason"] == (
                 "no terrain snapshot has been computed yet — "
@@ -616,6 +622,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             mark_feed_down()
             silent = _surface(off)
             assert silent["warming"] is False
+            # a ticker no page shows: the banner without a state's word
+            assert _surface("ZZWLNONE")["banner_said"] == "no live surface for this symbol"
             assert silent["reason"].startswith(
                 "the capture daemon is not reporting (no current heartbeat)"
             )
