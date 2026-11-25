@@ -8,7 +8,8 @@ analytics read the same function -- so a price on screen and a price in a calcul
 never come from two different rules.
 
 Nothing here computes a market value: every number is a Schwab field or its receive time, with
-Schwab's own trade time; the only derivations are the trade age and its label. Whether the
+Schwab's own trade time; the only derivations are the trade age and its label, and the trade's
+state as every surface says it (`trade_said`, AGENTS.md rule 4). Whether the
 values are live now, the word for that (`feed_label`) and why not (`outage`) are stated beside
 them; the last values Schwab sent stay (docs/DATA_FLOW.md §2 D5).
 """
@@ -23,6 +24,8 @@ from numeric_contract import change_percent_text, count_text, price_text
 from time_et import age_text, ct_label
 
 SPOT_SOURCE = "streaming_plane"
+#: what the trade's state reads when Schwab has sent no trade time (`trade_said`)
+NO_TRADE = "no trade sent"
 
 
 class BarChange(TypedDict):
@@ -71,6 +74,7 @@ class PriceRow(TypedDict):
     trade_ts: float | None
     trade_time_ct: str | None
     trade_age_text: str | None
+    trade_said: str
     ts_recv: float | None
 
 
@@ -118,6 +122,7 @@ def price_row(ticker: str, now: float) -> PriceRow:
     row = lmp.get_quote(tk)
     spot = row.spot
     trade_ts = row.trade_ts
+    trade_ct = ct_label(trade_ts) if trade_ts is not None else None
     quote_ts = row.exchange_quote_ts
     return {
         "ticker": tk,
@@ -154,7 +159,9 @@ def price_row(ticker: str, now: float) -> PriceRow:
         "high_price": row.high_price,
         "low_price": row.low_price,
         "trade_ts": trade_ts,  # Schwab TRADE_TIME (epoch s)
-        "trade_time_ct": ct_label(trade_ts) if trade_ts is not None else None,
+        "trade_time_ct": trade_ct,
         "trade_age_text": _trade_age_text(trade_ts, now),
+        # the trade's state as every surface says it, one whole phrase (AGENTS.md rule 4)
+        "trade_said": f"last trade {trade_ct}" if trade_ct is not None else NO_TRADE,
         "ts_recv": row.server_received_ts,
     }

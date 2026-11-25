@@ -598,7 +598,13 @@
       // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
       state(
         c,
-        S.pushDown ? S.pushDown : !q ? "WAITING" : q.feed_live ? "SESSION VOLUME" : q.feed_label,
+        S.pushDown
+          ? S.pushDown
+          : !q
+            ? window.EdShell.pageWords.waiting
+            : q.feed_live
+              ? "SESSION VOLUME"
+              : q.feed_label,
         q && q.feed_live && !S.pushDown ? "" : "warn",
       );
       c.querySelector(".tdm-hero").innerHTML =
@@ -607,14 +613,14 @@
           : "";
       // Schwab's trade time stands when the feed is down; OFFLINE is the card's state, and the
       // outage stays beside the time instead of replacing it.
-      var tradeWhen = q && q.trade_time_ct != null ? "last trade " + esc(q.trade_time_ct) : null;
+      var tradeWhen = q && q.trade_time_ct != null ? esc(q.trade_said) : null;
       var tradeWhy = !q
-        ? "no price row yet"
+        ? window.EdShell.pageWords.no_row_yet
         : q.outage
           ? esc(q.outage)
           : tradeWhen
             ? null
-            : "no trade sent";
+            : esc(q.trade_said);
       src(
         c,
         "Schwab LEVELONE · " +
@@ -1116,7 +1122,12 @@
       ? pill("PRICE", S.pushDown, "bad", "daemon price socket")
       : q
         ? pill("PRICE", q.feed_label, q.feed_live ? "ok" : "bad", "daemon price socket")
-        : pill("PRICE", "WAITING", "warn", "no price row yet for this symbol");
+        : pill(
+            "PRICE",
+            window.EdShell.pageWords.waiting,
+            "warn",
+            window.EdShell.pageWords.no_row_yet_symbol,
+          );
     h +=
       m === undefined
         ? pill("BOOK", "…", "")
@@ -1200,13 +1211,13 @@
   // its row is still waited for, why it is stopped, or its last trade's time. A value not
   // received reads "-".
   function idxTail(m) {
-    var when = m.mark ? m.mark.when : m.row.trade_time_ct;
-    return (m.mark ? " · " + m.mark.word : "") + (when != null ? " · last trade " + when : "");
+    var said = m.mark ? m.mark.said : m.row.trade_time_ct != null ? m.row.trade_said : null;
+    return (m.mark ? " · " + m.mark.word : "") + (said != null ? " · " + said : "");
   }
   function idxTitle(m, name) {
-    if (!m) return "waiting for the " + name + " stream";
+    if (!m) return window.EdShell.pageWords.waiting_stream.replace("{name}", name);
     if (m.mark) return m.mark.why;
-    return m.row.trade_time_ct != null ? "last trade " + m.row.trade_time_ct : "no trade sent";
+    return m.row.trade_said;
   }
   function vixText(m) {
     if (!m) return "-";

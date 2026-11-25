@@ -1399,6 +1399,21 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await expect(page.locator('.wl-chg[data-wlchg="AMD"]')).toHaveText("-1.25%");
   });
 
+  // AGENTS.md rule 5: a price never received reads "-", never a word of the page's own; its
+  // title is the producer's phrase for the trade's state (rule 4)
+  test("a watchlist symbol with no price sent reads - with the served trade state", async ({
+    page,
+  }) => {
+    await socketWith(page, [
+      priceRow("SPY", 601.23),
+      priceRow("AMD", 0, { spot: null, spot_disp: null }),
+    ]);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.EdShell.addSymbol("AMD"));
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveText("-");
+    await expect(page.locator('.wl-px[data-wlpx="AMD"]')).toHaveAttribute("title", "no trade sent");
+  });
+
   test("theme A/B: explicit dark and light selections persist across reload", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.evaluate(() => window.EdShell.setTheme("dark"));

@@ -279,6 +279,30 @@ test("a stopped index stands marked with its time and age; the push silent, the 
   expect(errs).toEqual([]);
 });
 
+// The page's own connection words are the list served with it (meta ed-page-words,
+// server.PAGE_WORDS), never its own. INDUCED: the served list words them otherwise, and the
+// header says what was served.
+test("the push's silence is said in the words served with the page", async ({ page }) => {
+  const errs = pageErrors(page);
+  await page.route(/\/$/, async (route) => {
+    const served = await route.fetch();
+    const html = (await served.text())
+      .replace("&quot;OFFLINE&quot;", "&quot;SERVED OFFLINE&quot;")
+      .replace("&quot;live push down&quot;", "&quot;served push down&quot;");
+    await route.fulfill({ response: served, body: html });
+  });
+  await holdClock(page);
+  const sock = await program(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect.poll(sock.asked).toBeGreaterThan(0);
+  sock.send(beat(FX.beat, [...FX.market_live, SPY]));
+  await expect(page.locator("#hFeed")).toHaveText(SPY.feed_label);
+  await page.clock.runFor(4500); // the push stops
+  await expect(page.locator("#hFeed")).toHaveText("SERVED OFFLINE");
+  expect(await lineItems(page)).toEqual([alert("Feed", "served push down")]);
+  expect(errs).toEqual([]);
+});
+
 test("what is wrong takes the news' place on row 2, each the program's own sentence: Schwab's connection, the recorder, the sign-in, and all at once", async ({
   page,
 }) => {

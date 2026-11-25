@@ -29,6 +29,7 @@
     "total_volume": null,
     "total_volume_text": null,
     "trade_age_text": "30m",
+    "trade_said": "last trade Mon 10/19 08:30 AM CT",
     "trade_time_ct": "Mon 10/19 08:30 AM CT",
     "trade_ts": 1792416601.067,
     "ts_recv": 1792416601.4951808
@@ -63,6 +64,7 @@
     "total_volume": 29113811.0,
     "total_volume_text": "29,113,811",
     "trade_age_text": "1s",
+    "trade_said": "last trade Fri 10/23 02:59 PM CT",
     "trade_time_ct": "Fri 10/23 02:59 PM CT",
     "trade_ts": 1792785544.258,
     "ts_recv": 1792785544.6394625

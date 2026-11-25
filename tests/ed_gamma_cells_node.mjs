@@ -29,11 +29,12 @@ const host = {
   querySelectorAll: () => [],
 };
 // the page's served metas: the scopes and market context the shell reads, and the
-// streaming-state words (none needed for the cell text)
+// streaming-state and connection words (none needed for the cell text)
 const METAS = {
   "ed-scopes": '[{"key": "all"}]',
   "ed-market-context": "[]",
   "ed-stream-words": '{"cell": {}, "column": {}}',
+  "ed-page-words": "{}",
 };
 const ctx = {
   document: {

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -641,6 +642,21 @@ def test_the_page_is_told_the_market_context_with_its_display_names():
         '{"key": "$NDX", "display": "NDX", "volatility": false}, '
         '{"key": "$VIX", "display": "VIX", "volatility": true}]' in html.replace("&quot;", '"')
     )
+
+
+def test_the_page_is_told_the_words_for_its_own_connection_states():
+    """The page's own connection words are served in the page, one list (AGENTS.md rule 4).
+
+    The page holds none of its own: it reads them from the meta (ed-core.js PAGE_WORDS), so every
+    surface says a state in this one wording.
+    """
+    page = Path(server.__file__).parent / "static" / "index.html"
+    html = server._with_page_settings(page.read_text(encoding="utf-8"))
+    served = re.search(r'<meta name="ed-page-words" content="([^"]*)" />', html)
+    assert served is not None
+    assert json.loads(served.group(1).replace("&quot;", '"')) == server.PAGE_WORDS
+    assert server.PAGE_WORDS["offline"] == "OFFLINE"
+    assert server.PAGE_WORDS["waiting_stream"].format(name="VIX") == "waiting for the VIX stream"
 
 
 def test_a_page_without_a_settings_meta_is_refused_not_served_empty():

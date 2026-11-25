@@ -1169,6 +1169,7 @@ test.describe("Trade Desk renders served values", () => {
               feed_label: "OFFLINE",
               trade_age_text: "1s",
               trade_time_ct: "14:00:01 CT",
+              trade_said: "last trade 14:00:01 CT",
               outage: "Schwab LEVELONE_EQUITIES feed down during RTH",
             },
           }),

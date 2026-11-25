@@ -123,6 +123,11 @@
   // The strike-window scopes, served in the page (meta ed-scopes, from calc.terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
   var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute("content"));
+  // The words for the page's own connection states, served in the page (meta ed-page-words,
+  // server.PAGE_WORDS): every surface says them in this one wording, and the page holds none.
+  var PAGE_WORDS = JSON.parse(
+    document.querySelector('meta[name="ed-page-words"]').getAttribute("content"),
+  );
   var SCOPE_MODES = SCOPES.map(function (s) {
     return s.key;
   });
@@ -1156,13 +1161,18 @@
       parts = m.cell.children,
       live = down == null && q.feed_live,
       // a stopped row's mark: the served word (the page's own while the push is silent), why,
-      // and the trade's time, with its served age while the push delivers one
+      // and the trade's time, with its served age while the push delivers one, as the cell shows
+      // it (`when`) and as the other surfaces say it (`said`)
       mark = live
         ? null
         : {
             word: down != null ? PUSH_OFFLINE : q.feed_label,
             why: down != null ? down : q.outage != null ? q.outage : "",
             when: tradeWhen(q, down == null),
+            said:
+              q.trade_time_ct != null
+                ? [q.trade_said, down == null ? q.trade_age_text : null].filter(Boolean).join(" · ")
+                : null,
           };
     m.cell.className = mark ? m.base + " stale" : m.base;
     m.cell.title = mark ? mark.why : "";
@@ -1175,10 +1185,10 @@
   // What is wrong, for row 2's line and the feed word's colour: the program's own sentences from
   // its last beat, in order (Schwab's connection, the recorder, the sign-in), or the page's own
   // words while the push is silent and no row is on its way; then what the program left out
-  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence. The page's
-  // own words while the push is silent: the feed's word, and why.
-  var PUSH_OFFLINE = "OFFLINE",
-    PUSH_DOWN = "live push down";
+  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence. The words
+  // while the push is silent, as served: the feed's word, and why.
+  var PUSH_OFFLINE = PAGE_WORDS.offline,
+    PUSH_DOWN = PAGE_WORDS.push_down;
   var _beatAlerts = [],
     _beatFeedDown = false,
     _pushDown = false,
@@ -1280,11 +1290,11 @@
   // Watchlist quotes: setWlRow is the ONE writer for every wl-px/wl-chg cell, called from the
   // quote_tick handler (and markWlDegraded). A null field CLEARS to "-" rather than leaving the previous
   // text: failure and recovery must not leave a stale-but-current-looking number on screen.
-  function setWlRow(sym, spotText, chgPct, chgPctText, tradeTime) {
+  function setWlRow(sym, spotText, chgPct, chgPctText, tradeSaid) {
     var pe = document.querySelector('.wl-px[data-wlpx="' + sym + '"]');
     if (pe) {
-      pe.textContent = spotText == null ? "UNAVAILABLE" : spotText; // served: "740.65"
-      pe.title = tradeTime ? "last trade " + tradeTime : "";
+      pe.textContent = orDash(spotText); // served: "740.65"; never received: "-"
+      pe.title = tradeSaid; // served: "last trade <CT>", or that none was sent
     }
     var ce = document.querySelector('.wl-chg[data-wlchg="' + sym + '"]');
     if (ce) {
@@ -1548,7 +1558,7 @@
       // trade time, or absent with the served outage reason; the feed state is stated beside it.
       _quoteShown = true;
       _tradeCell = tradeWhen(q, false);
-      _tradeShown = _tradeCell != null ? "last trade " + _tradeCell : null;
+      _tradeShown = _tradeCell != null ? q.trade_said : null;
       var trade = tradeWhen(q, true);
       paintQuote({
         spot_disp: q.spot_disp,
@@ -1561,14 +1571,14 @@
         quoteTime: q.quote_time_ct,
         feedCls: q.feed_live ? "" : "stale",
         feedLabel: q.feed_label,
-        ageLabel: trade || q.outage || "no trade sent",
+        ageLabel: trade || q.outage || q.trade_said,
         ageTitle: q.outage,
-        said: trade != null ? "last trade " + trade : null,
+        said: trade != null ? [q.trade_said, q.trade_age_text].filter(Boolean).join(" · ") : null,
       });
     }
     loadWL().forEach(function (wlSym) {
       if (!_served[wlSym] || _served[wlSym].key !== q.ticker) return;
-      setWlRow(wlSym, q.spot_disp, q.chg_pct, q.chg_pct_text, q.trade_time_ct);
+      setWlRow(wlSym, q.spot_disp, q.chg_pct, q.chg_pct_text, q.trade_said);
       markWlHealthy();
     });
     window.dispatchEvent(new CustomEvent("ed:quote_tick", { detail: q }));
@@ -1620,8 +1630,8 @@
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
     // last trade time and no age: the last served age is not the age now.
     var connecting = _priceConnecting;
-    var label = connecting ? "WAITING" : PUSH_OFFLINE;
-    var age = connecting ? "no push yet" : PUSH_DOWN;
+    var label = connecting ? PAGE_WORDS.waiting : PUSH_OFFLINE;
+    var age = connecting ? PAGE_WORDS.no_push_yet : PUSH_DOWN;
     if (_quoteShown)
       setFeed("stale", label, _tradeCell != null ? _tradeCell : age, null, _tradeShown);
     else
@@ -1874,6 +1884,7 @@
     emit: emit,
     esc: esc,
     orDash: orDash,
+    pageWords: PAGE_WORDS,
     request: request,
     classTag: classTag,
     rowsHtml: rowsHtml,
