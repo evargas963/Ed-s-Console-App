@@ -8,12 +8,12 @@ const { routeWatchlist, beatNow } = require("./fixtures/watchlist");
 const { watchRequests, holdClock } = require("./fixtures/settled");
 
 // one beat as the program sends it, the daemon's status reduced to its time, its watchlist and
-// the session (Unknown: Schwab's /markets answer not held) (null: no status); `ts` on the
-// program's clock, now unless given
-function feed(list, ts = Date.now() / 1000, session = "Unknown") {
+// the session, its code and its word (Unknown: Schwab's /markets answer not held;
+// time_et.SESSION_WORDS) (null: no status); `ts` on the program's clock, now unless given
+function feed(list, ts = Date.now() / 1000, session = "Unknown", word = "UNKNOWN") {
   return JSON.stringify({
     type: "feed",
-    feed: list === null ? null : { ts: ts, watchlist: list, session: session },
+    feed: list === null ? null : { ts: ts, watchlist: list, session: session, session_word: word },
   });
 }
 
@@ -46,16 +46,21 @@ test("the header session follows each beat, while quotes keep arriving between t
   let socket;
   await page.routeWebSocket(/\/ws$/, (ws) => {
     socket = ws;
-    ws.send(feed(["SPY"], 1000, "Closed"));
+    ws.send(feed(["SPY"], 1000, "Closed", "CLOSED"));
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#hSession")).toHaveText("CLOSED");
   for (let i = 0; i < 5; i++) socket.send(JSON.stringify({ type: "quotes", rows: [] }));
-  socket.send(feed(["SPY"], 1001, "Pre-Market")); // Schwab's pre-market window opened
+  // Schwab's pre-market window opened
+  socket.send(feed(["SPY"], 1001, "Pre-Market", "PRE-MARKET"));
   await expect(page.locator("#hSession")).toHaveText("PRE-MARKET");
   await expect(page.locator("#hSession")).toHaveClass(/pre/);
-  socket.send(feed(["SPY"], 1002, "RTH"));
+  socket.send(feed(["SPY"], 1002, "RTH", "REGULAR"));
   await expect(page.locator("#hSession")).toHaveText("REGULAR");
+  // the word is the program's, never the page's: INDUCED, the beat words it otherwise
+  socket.send(feed(["SPY"], 1003, "RTH", "SERVED REGULAR"));
+  await expect(page.locator("#hSession")).toHaveText("SERVED REGULAR");
+  await expect(page.locator("#hSession")).toHaveClass(/rth/);
 });
 
 test("the header clock is the beat time the program sends, drawn as sent", async ({ page }) => {
@@ -67,6 +72,7 @@ test("the header clock is the beat time the program sends, drawn as sent", async
     day_ct: "Fri, Sep 25",
     watchlist: ["SPY"],
     session: "Closed",
+    session_word: "CLOSED",
   };
   await page.routeWebSocket(/\/ws$/, (ws) => {
     socket = ws;
@@ -79,7 +85,7 @@ test("the header clock is the beat time the program sends, drawn as sent", async
   socket.send(
     JSON.stringify({
       type: "feed",
-      feed: { ts: 1790380804, watchlist: ["SPY"], session: "Closed" },
+      feed: { ts: 1790380804, watchlist: ["SPY"], session: "Closed", session_word: "CLOSED" },
     }),
   );
   await expect(page.locator("#hClock")).toHaveText("-");
@@ -202,6 +208,40 @@ test("the answer to an add stands when a beat then carries no status", async ({ 
   socket.send(feed(["SPY", "QQQ"])); // the daemon reports again
   await expect(page.locator("#wlFeed")).toHaveText("");
   await expect(page.locator("#wlMsg")).toHaveText(said);
+});
+
+// A ticker already listed is the daemon's to say (capture.ON_LIST, WATCHLIST_TEXT): the page asks,
+// draws the answer as sent and selects the ticker; it never words it itself. INDUCED: the
+// answer's sentence is worded otherwise, so a page word of its own would show.
+test("adding a ticker already listed draws the daemon's answer and selects it", async ({
+  page,
+}) => {
+  const asked = [];
+  const said = "QQQ is already on the watchlist (the daemon's sentence)";
+  await page.routeWebSocket(/\/ws$/, (ws) => ws.send(feed(["SPY", "QQQ"])));
+  await page.route("**/api/watchlist", (route) => {
+    asked.push(route.request().postDataJSON().ticker);
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        op: "already on the list",
+        ticker: "QQQ",
+        tickers: ["SPY", "QQQ"],
+        ts: Date.now() / 1000,
+        status: null,
+        answer: null,
+        text: said,
+      }),
+    });
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "QQQ"]);
+  await page.evaluate(() => window.EdShell.addSymbol("qqq"));
+  await expect(page.locator("#wlMsg")).toHaveText(said);
+  expect(asked).toEqual(["QQQ"]);
+  await expect.poll(() => page.evaluate(() => window.EdShell.getState().ticker)).toBe("QQQ");
 });
 
 // Each answer's served sentence is drawn as sent: the daemon's record (capture.WATCHLIST_TEXT) and

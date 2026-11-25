@@ -139,6 +139,14 @@ PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (
     "Closed",
     "Unknown",
 )
+#: each session as the header says it, the program's words (AGENTS.md rule 4)
+SESSION_WORDS = {
+    RTH: "REGULAR",
+    PRE_MARKET: "PRE-MARKET",
+    AFTER_HOURS: "POST-MARKET",
+    CLOSED: "CLOSED",
+    UNKNOWN: "UNKNOWN",
+}
 #: Schwab's option markets in /markets: stock and ETF options, index options
 EQUITY_OPTIONS, INDEX_OPTIONS = "EQO", "IND"
 #: Underlyings whose listed options run to the index close: the symbols the exchanges list as

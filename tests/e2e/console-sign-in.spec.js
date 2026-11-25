@@ -19,7 +19,13 @@ async function programSocket(page) {
     program.ws.send(
       JSON.stringify({
         type: "feed",
-        feed: { ts: Date.now() / 1000, watchlist: [], session: "Unknown", ...program.status },
+        feed: {
+          ts: Date.now() / 1000,
+          watchlist: [],
+          session: "Unknown",
+          session_word: "UNKNOWN",
+          ...program.status,
+        },
         rows: [],
       }),
     );
