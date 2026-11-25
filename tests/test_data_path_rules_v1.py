@@ -1600,9 +1600,12 @@ def test_after_a_server_error_an_endpoint_waits_and_its_first_good_answer_ends_t
     waited = [later[2] - earlier[3] for earlier, later in zip(quotes, quotes[1:], strict=False)]
     assert 0.5 <= waited[0] < 1.3, "after the first server error: between 0.5 and 1 s"
     assert 1.0 <= waited[1] < 2.3, "after the second: between 1 and 2 s, from its answer"
-    assert waited[2] < 0.3, "after a good answer: at once"
+    # at once: shorter than any hold a wait could put on it (after two errors in a row, at least
+    # half of 2 s), by cause, not by a stopwatch bound a loaded machine can miss
+    held = sc.SERVER_ERROR_FIRST_WAIT_SEC
+    assert waited[2] < held, "after a good answer: no wait"
     expiries = next(r for r in asked if r[0].endswith("/expirationchain"))
-    assert expiries[2] - quotes[1][3] < 0.3, "another endpoint: at once"
+    assert expiries[2] - quotes[1][3] < held, "another endpoint: no wait"
     told = [r.getMessage() for r in caplog.records if r.name == "feed.schwab_client"]
     waits = [m for m in told if "a server error" in m]
     assert [m.split(";")[0] for m in waits] == [
