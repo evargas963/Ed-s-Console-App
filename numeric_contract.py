@@ -1,7 +1,6 @@
 """Numeric parsing.
 
-Schwab fields: `schwab_number` / `schwab_count` only (AGENTS.md rule 2, enforced by
-tools/check_vendor_field_coercion.py).
+Schwab fields: `schwab_number`, `schwab_count` and `schwab_time_ms` only (AGENTS.md rule 2).
 """
 
 from __future__ import annotations
@@ -57,6 +56,17 @@ def schwab_count(value: Any) -> float | None:
     """
     v = schwab_number(value)
     return v if v is not None and v >= 0.0 else None
+
+
+def schwab_time_ms(value: Any) -> float | None:
+    """Return a Schwab time, milliseconds since the epoch, as sent.
+
+    schwab_number, and None at 0 or before. Each of Schwab's times is when an event occurred
+    (Streamer API §3.1, field 34: "Last time a bid or ask updated"), and Schwab sends 0 where none
+    has: an index, which has no bid or ask, is sent a quote time of 0. A time of 0 is not one.
+    """
+    v = schwab_number(value)
+    return v if v is not None and v > 0.0 else None
 
 
 def float_positive_or_none(value: Any) -> float | None:
