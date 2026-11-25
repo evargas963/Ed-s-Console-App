@@ -622,8 +622,8 @@ def test_a_viewed_ticker_warms_only_on_the_watchlist_and_a_silent_daemon_says_so
             mark_feed_down()
             silent = _surface(off)
             assert silent["warming"] is False
-            unasked = push_surface.gamma_surface(off, time_et.now(), _HEATMAP, requested=False)
-            assert unasked["banner_said"] == "no live surface for this symbol"  # no page shows it
+            # a ticker no page shows: the banner without a state's word
+            assert _surface("ZZWLNONE")["banner_said"] == "no live surface for this symbol"
             assert silent["reason"].startswith(
                 "the capture daemon is not reporting (no current heartbeat)"
             )
