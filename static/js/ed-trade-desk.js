@@ -284,8 +284,7 @@
     );
   }
 
-  // ---- Context Summary: plain-English arrangement of the SAME 4 responses. Classifies
-  // (inside a zone / between two zones), never invents a value. ----
+  // ---- Context Summary: the served sentences of the same responses, one line each ----
   function contextSummary(terrain, snap, levelsD) {
     var lines = [];
     if (terrain) {
@@ -293,78 +292,13 @@
       // the served headline, its served sources on hover
       if (terrain.headline) lines.push(["Read", terrain.headline, terrain.headline_source]);
     }
-    var sl = snap && snap.spot_location,
-      zones = sl && snap.zones; // served
-    var loc = sl
-      ? {
-          inside: sl.inside != null ? zones[sl.inside] : null,
-          above: sl.above != null ? zones[sl.above] : null,
-          below: sl.below != null ? zones[sl.below] : null,
-        }
-      : null;
-    if (loc && loc.inside) {
-      var z = loc.inside;
-      lines.push([
-        "Location",
-        esc(z.zone_label) +
-          " (" +
-          z.zone_low_text +
-          "–" +
-          z.zone_high_text +
-          ", levels in zone " +
-          z.confluence_score +
-          ")",
-      ]);
-    } else if (loc) {
-      var parts = [];
-      if (loc.above)
-        parts.push(
-          esc(loc.above.zone_label) +
-            " zone above at " +
-            loc.above.zone_low_text +
-            " (levels in zone " +
-            loc.above.confluence_score +
-            ")",
-        );
-      if (loc.below)
-        parts.push(
-          esc(loc.below.zone_label) +
-            " zone below at " +
-            loc.below.zone_high_text +
-            " (levels in zone " +
-            loc.below.confluence_score +
-            ")",
-        );
-      lines.push([
-        "Location",
-        parts.length ? "Between zones — " + parts.join(", ") : "No zone nearby",
-      ]);
-    }
-    var walls = {}; // served: the levels panel's own rows
-    if (levelsD && levelsD.levels)
-      levelsD.levels.forEach(function (r) {
-        walls[r.id] = r;
-      });
-    if (
-      walls.put_wall &&
-      walls.call_wall &&
-      walls.put_wall.from_spot_text &&
-      walls.call_wall.from_spot_text
-    ) {
-      // each by its served name (the levels panel's row label)
-      lines.push([
-        "Gamma strikes",
-        walls.put_wall.label +
-          " " +
-          walls.put_wall.from_spot_text +
-          ", " +
-          walls.call_wall.label +
-          " " +
-          walls.call_wall.from_spot_text,
-        null,
-        true, // from the live price: its mark
-      ]);
-    }
+    // where the price sits among the zones (push.liquidity location_said) and Gamma Put and Gamma
+    // Call from it (push.levels walls_said), each the program's sentence, from the live price and
+    // so with its mark; a sentence not served is left out
+    if (snap && snap.location_said != null)
+      lines.push(["Location", snap.location_said, null, true]);
+    if (levelsD && levelsD.walls_said != null)
+      lines.push(["Gamma strikes", levelsD.walls_said, null, true]);
     if (!lines.length) return "";
     return (
       '<div class="td-context"><h4>Context summary</h4>' +

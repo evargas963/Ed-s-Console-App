@@ -65,6 +65,12 @@ def float_positive_or_none(value: Any) -> float | None:
     return v if v is not None and v > 0.0 else None
 
 
+@overload
+def price_text(value: float) -> str: ...
+@overload
+def price_text(value: None) -> None: ...
+@overload
+def price_text(value: float | None) -> str | None: ...
 def price_text(value: float | None) -> str | None:
     """Return a price as the screen shows it: two decimals.
 

@@ -185,11 +185,14 @@ class LevelsPanel(LevelsVerdict, SessionFields):
     tf: str
     families_absent: list[AbsentFamily]
     none_said: str | None
+    walls_said: str | None
 
 
 #: what the screen says when no level can be shown nearest the price: none published, or none
 #: ordered by its distance (no live price) (AGENTS.md rule 4)
 NO_LEVELS, NO_PRICED_LEVELS = "No levels", "No priced levels"
+#: Gamma Put and Gamma Call, in the order the context summary says them
+WALLS = ("put_wall", "call_wall")
 #: the price-level snapshot's own fields with none published: each unknown
 NO_SNAPSHOT: SessionFields = {
     "snapshot_time_ct": None,
@@ -365,6 +368,22 @@ def _same_day_rows(published: PublishedLevels | None) -> list[SameDayRow]:
     ]
 
 
+def _walls_said(levels: list[SessionLevelRow | CarriedLevelRow]) -> str | None:
+    """Return where Gamma Put and Gamma Call sit from the price, as one sentence.
+
+    Each by its name and its distance in words ("Gamma Put 2.92 above spot, Gamma Call 17.92
+    above spot"). None unless both are placed against a live price: a sentence whose fact is not
+    known is left out (AGENTS.md rule 5).
+    """
+    said = [
+        f"{r['label']} {r['from_spot_text']}"
+        for wall in WALLS
+        for r in levels
+        if r["id"] == wall and r["from_spot_text"] is not None
+    ]
+    return ", ".join(said) if len(said) == len(WALLS) else None
+
+
 def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
     """Return the levels panel at `now`: the published price-level snapshot for the session.
 
@@ -404,6 +423,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
         "levels": levels,
         "by_distance": by_distance,
         "none_said": NO_LEVELS if not levels else NO_PRICED_LEVELS if not by_distance else None,
+        "walls_said": _walls_said(levels),
         "zero_dte": _same_day_rows(published),
         # The VWAP curve, CARRIED: the one VWAP of the session, which no page accumulates for
         # itself. [epoch_sec, vwap]

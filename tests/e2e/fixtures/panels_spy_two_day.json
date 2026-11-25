@@ -45970,11 +45970,7 @@
       "value_state_text": "lower",
       "vwap_relation_text": "inside value"
     },
-    "spot_location": {
-      "inside": 0,
-      "above": null,
-      "below": null
-    },
+    "location_said": "Price inside zone (757.00\u2013758.01, levels in zone 4)",
     "hold_rates": [
       {
         "level": "Prior day high",
@@ -46700,6 +46696,7 @@
         "call_delta_wall"
       ],
       "none_said": null,
+      "walls_said": "Gamma Put 2.92 above spot, Gamma Call 17.92 above spot",
       "zero_dte": [
         {
           "id": "call_wall",
@@ -48141,6 +48138,7 @@
         "call_delta_wall"
       ],
       "none_said": null,
+      "walls_said": "Gamma Put 2.92 above spot, Gamma Call 17.92 above spot",
       "zero_dte": [
         {
           "id": "call_wall",
@@ -49534,6 +49532,7 @@
         "call_delta_wall"
       ],
       "none_said": null,
+      "walls_said": "Gamma Put 2.92 above spot, Gamma Call 17.92 above spot",
       "zero_dte": [
         {
           "id": "call_wall",

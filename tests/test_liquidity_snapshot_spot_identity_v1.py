@@ -58,6 +58,7 @@ def test_missing_spot_produces_honest_null_distance_through_the_real_zone_path()
     assert body["no_zones_text"] is None  # a list with a zone has no words for none
     lows = [z["zone_low"] for z in body["zones"]]
     assert lows == sorted(lows), "with no spot the zones are listed by price, lowest first"
+    assert body["location_said"] is None  # where the price sits is not known: no sentence
     for z in body["zones"]:
         assert "distance_to_spot" not in z, "the order is served, not a distance no page reads"
         assert "tradeable_score" not in z, "a score no page reads is not served"
@@ -93,3 +94,53 @@ def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
         else "Price inside zone"
     )
     assert z["zone_label"] == side and "SPOT_LIVE" not in first  # typed by side; not a level
+
+
+def _at_price(price: float) -> dict:
+    """Return the panel with `price` as the LAST_PRICE Schwab sent at 15:00 ET (INDUCED)."""
+    at = FRIDAY.timestamp()
+    lmp.record_feed_heartbeat(
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
+    )
+    lmp.record_from_level_one_equity(TK, {"LAST_PRICE": price}, received_ts=at)
+    return push_liquidity.liquidity_snapshot(TK, FRIDAY)
+
+
+def _near(z: dict, side: str, edge: float) -> str:
+    return f"{z['zone_label']} zone {side} at {edge:.2f} (levels in zone {z['confluence_score']})"
+
+
+@pytest.mark.usefixtures("published")
+def test_where_the_price_sits_among_the_zones_is_one_sentence():
+    """INDUCED: the price put inside a zone, below every zone, above every zone and in a gap.
+
+    The real Friday zones, the sentence worked out from their numbers: inside one, its name, its
+    range and how many levels it holds; outside, the nearest zone on each side that has one,
+    each with its near edge.
+    """
+    zones = sorted(_at_price(friday_bars()[-1]["close"])["zones"], key=lambda z: z["zone_low"])
+    low, high = zones[0], zones[-1]
+    body = _at_price((low["zone_low"] + low["zone_high"]) / 2)
+    z = next(z for z in body["zones"] if z["zone_low"] == low["zone_low"])
+    assert body["location_said"] == (
+        f"Price inside zone ({low['zone_low']:.2f}–{low['zone_high']:.2f}, levels in zone "
+        f"{z['confluence_score']})"
+    )
+    body = _at_price(low["zone_low"] - 1.0)
+    z = next(z for z in body["zones"] if z["zone_low"] == low["zone_low"])
+    assert body["location_said"] == "Between zones — " + _near(z, "above", low["zone_low"])
+    body = _at_price(high["zone_high"] + 1.0)
+    z = next(z for z in body["zones"] if z["zone_low"] == high["zone_low"])
+    assert body["location_said"] == "Between zones — " + _near(z, "below", high["zone_high"])
+    gaps = [(a, b) for a, b in zip(zones, zones[1:]) if a["zone_high"] < b["zone_low"]]
+    assert gaps, "the Friday zones leave a gap between two of them"
+    a, b = gaps[0]
+    body = _at_price((a["zone_high"] + b["zone_low"]) / 2)
+    za = next(z for z in body["zones"] if z["zone_low"] == b["zone_low"])
+    zb = next(z for z in body["zones"] if z["zone_low"] == a["zone_low"])
+    assert body["location_said"] == (
+        "Between zones — "
+        + _near(za, "above", b["zone_low"])
+        + ", "
+        + _near(zb, "below", a["zone_high"])
+    )
