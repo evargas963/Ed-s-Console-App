@@ -35,6 +35,9 @@ from option_contract import OptionContract
 FAMILIES = ("positioning", "option trades", "volatility", "stock book")
 #: the one assumption every gamma reading rests on, said once beside it
 ASSUMPTION = "the convention: dealers long calls, short puts"
+#: the one assumption the hedging flow rests on, said once beside it: each trade's side is read,
+#: and the dealers are on the other side of it (docs/SOURCES.md garleanu-pedersen-poteshman-2009)
+FLOW_ASSUMPTION = "the convention: the dealers take the other side of each trade"
 
 
 @dataclass(frozen=True)
@@ -233,12 +236,55 @@ class FamilyVote:
     """One family's vote on the kind of move (family_votes).
 
     `vote`: +1 wider and continuing, -1 calmer and reverting, None not measured; `reading`: the
-    number it votes on.
+    number it votes on; `text`: what the family read, as its card says it: its reading and its
+    vote, or why it cast none.
     """
 
     family: str
     vote: int | None
     reading: float | None
+    text: str
+
+
+#: a vote in words: +1 wider and continuing, -1 calmer and reverting
+VOTE_WORDS = {1: "votes wider, continuing", -1: "votes calmer, reverting"}
+#: what the stock's book and tape card says: the matrix reads neither
+NOT_MEASURED = "not measured on the matrix yet"
+
+
+def _vote_sign(x: float | None) -> int | None:
+    """The sign a reading votes by: None when it is not known or 0, which cast no vote."""
+    return None if x is None or x == 0 else _sign(x)
+
+
+def _why_none(*readings: tuple[str, float | None]) -> str:
+    """Why a family cast no vote: its first reading not known, else its first of 0.
+
+    A reading of 0 is a value and is said as one, never as not known.
+    """
+    for name, x in readings:
+        if x is None:
+            return f"{name} is not known"
+    return next(f"{name} is 0" for name, x in readings if x == 0)
+
+
+def _voted_text(family: str, vote: int, reading: float | None) -> str:
+    """What a family that voted read, in words: its reading and its vote."""
+    words = VOTE_WORDS[vote]
+    if family == "positioning":
+        return f"{'Negative' if vote == 1 else 'Positive'} gamma at the price: {words}"
+    if family == "option trades":
+        side = "with" if vote == 1 else "against"
+        return f"Hedging flow {dollars_text(reading)} {side} the look-back's move: {words}"
+    return f"At-the-money IV {_signed(reading, 2)} in the look-back: {words}"
+
+
+def _family(
+    family: str, vote: int | None, reading: float | None, *readings: tuple[str, float | None]
+) -> FamilyVote:
+    """One family's vote, with its card's words: voted (_voted_text), or why not (_why_none)."""
+    text = _why_none(*readings) if vote is None else _voted_text(family, vote, reading)
+    return FamilyVote(family, vote, reading, text)
 
 
 def family_votes(
@@ -254,22 +300,34 @@ def family_votes(
     look-back's price move (`prices`: at its start and now; continuing) or against it
     (reverting). Volatility: the expiry's at-the-money volatility rising (wider) or falling
     (calmer) in the look-back. The stock's book and tape are not measured on the matrix: no
-    vote. A zero or unknown reading casts none.
+    vote. A zero or unknown reading casts none, and its card says which.
     """
-
-    def sign(x: float | None) -> int | None:
-        return None if x is None or x == 0 else (1 if x > 0 else -1)
-
     start, now = prices
     move = None if start is None or now is None else now - start
-    flow_sign, move_sign = sign(flow), sign(move)
+    flow_sign, move_sign = _vote_sign(flow), _vote_sign(move)
     trades = None if flow_sign is None or move_sign is None else flow_sign * move_sign
-    positioning = sign(gamma_at_price)
+    positioning = _vote_sign(gamma_at_price)
     return (
-        FamilyVote("positioning", None if positioning is None else -positioning, gamma_at_price),
-        FamilyVote("option trades", trades, flow),
-        FamilyVote("volatility", sign(atm_iv_change), atm_iv_change),
-        FamilyVote("stock book", None, None),
+        _family(
+            "positioning",
+            None if positioning is None else -positioning,
+            gamma_at_price,
+            ("the gamma at the price", gamma_at_price),
+        ),
+        _family(
+            "option trades",
+            trades,
+            flow,
+            ("the look-back's hedging flow", flow),
+            ("the look-back's price move", move),
+        ),
+        _family(
+            "volatility",
+            _vote_sign(atm_iv_change),
+            atm_iv_change,
+            ("the look-back's at-the-money volatility change", atm_iv_change),
+        ),
+        FamilyVote("stock book", None, None, NOT_MEASURED),
     )
 
 
@@ -681,7 +739,7 @@ def _look_cells(r: StrikeReadings) -> dict[str, Any]:
         else (
             "est.: the stock the look-back's option trades would have the dealers trade, bought "
             "less sold x Schwab's delta x the contract's multiplier x the stock's price "
-            f"({ASSUMPTION}); "
+            f"({FLOW_ASSUMPTION}); "
             f"{count_text(look.unpriced)} contracts with no side, delta or price left out."
         ),
         "pace_text": None,
