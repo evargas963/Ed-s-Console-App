@@ -628,6 +628,8 @@ PAGE_WORDS = {
     "waiting_stream": "waiting for the {name} stream",
     "choose_symbol": "CHOOSE A SYMBOL",
     "no_symbol": "NO SYMBOL",
+    "no_contract": "NONE",
+    "choose_contract": "Select a Call or Put contract in Chain.",
     "daemon_silent": "the capture daemon is not reporting",
     "session_no_status": "session unknown: the daemon sent no status",
     "session_push_down": "session unknown: the console push is down",

@@ -116,6 +116,10 @@ test.describe("D — Gamma Flow subview", () => {
     await expect(page.locator("#flowBody")).toContainText("Select a Call or Put contract");
     expect(ctx.posts).toEqual([]);
     expect(ctx.microGets).toBe(0);
+    // the page's own state in the served list's words (server.PAGE_WORDS), none of its own
+    const words = await page.evaluate(() => window.EdShell.pageWords);
+    await expect(page.locator("#flowBody .fl-badge")).toHaveText(words.no_contract);
+    await expect(page.locator("#flowBody .placeholder")).toHaveText(words.choose_contract);
   });
 
   test("the header shows the side Schwab sent: Call for the call, Put for the put, - when not sent", async ({
@@ -347,7 +351,7 @@ test.describe("D — Gamma Flow subview", () => {
     await expect(page.locator('[data-sub-pane="flow"] .panel-h .prov')).toHaveCount(0);
   });
 
-  test("changing a classification in the payload changes the tag; a missing classification reads UNKNOWN", async ({
+  test("changing a classification in the payload changes the tag; a missing classification reads -", async ({
     page,
   }) => {
     const ctx = makeContext();
@@ -366,8 +370,9 @@ test.describe("D — Gamma Flow subview", () => {
     await expect(rowTag(page, "flow.top_book_pressure")).toHaveText("PROXY");
     await expect(rowTag(page, "mark")).toHaveText("PROXY");
     await expect(rowTag(page, "top_of_book.bid")).toHaveText("DERIVED-HEURISTIC (test)");
-    await expect(rowTag(page, "flow.cum_delta_slope")).toHaveText("UNKNOWN");
-    await expect(rowTag(page, "flow.cum_delta_slope")).toHaveClass(/unknown/);
+    // served with no classification: not known, "-" (AGENTS.md rule 5), in no classified style
+    await expect(rowTag(page, "flow.cum_delta_slope")).toHaveText("-");
+    await expect(rowTag(page, "flow.cum_delta_slope")).not.toHaveClass(/native|derived|proxy/);
     await expect(rowV(page, "flow.cum_delta_slope")).toHaveText(
       fmt(FIXTURE.flow.cum_delta_slope, 3),
     ); // value still served

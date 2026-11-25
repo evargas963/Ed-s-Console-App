@@ -399,6 +399,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
       kind: "contract",
       sub: "flow",
       contract: CALL_K.symbol,
+      badge: "#flowBody .fl-badge", // FAILED, the served word every screen says for it
     },
   ];
   for (const p of PANELS) {
@@ -412,6 +413,10 @@ test.describe("Ed Console shell + gamma heatmap", () => {
       if (p.sub) await page.evaluate((sub) => window.EdShell.setSubview(sub), p.sub);
       if (p.contract) await page.evaluate((c) => window.EdFlow.select(c), p.contract);
       await expect(page.locator(p.host)).toContainText(words);
+      if (p.badge)
+        await expect(page.locator(p.badge)).toHaveText(
+          await page.evaluate(() => window.EdShell.pageWords.failed),
+        );
     });
   }
 

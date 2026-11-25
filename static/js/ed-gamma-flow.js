@@ -52,14 +52,16 @@
   function load() {
     var h = host();
     window.EdShell.showPanel("contract", isFlow() && _selected ? { contract: _selected } : null);
-    if (h && isFlow() && !_selected)
-      shell(h, null, "NONE", "Select a Call or Put contract in Chain.");
+    // no contract chosen: the page's own state, in the served words (server.PAGE_WORDS)
+    var W = window.EdShell.pageWords;
+    if (h && isFlow() && !_selected) shell(h, null, W.no_contract, W.choose_contract, "warn");
   }
   document.addEventListener("ed:panel", function (e) {
     var d = e.detail,
       h = host();
     if (d.type !== "contract" || !h || !isFlow() || !_selected) return;
-    if (d.failed != null) shell(h, _selected, "DEGRADED", d.failed);
+    // not produced: FAILED, as every screen says it, with the program's words
+    if (d.failed != null) shell(h, _selected, window.EdShell.pageWords.failed, d.failed, "stale");
     else if (d.contract === _selected) render(h, _selected, d);
   });
 
@@ -223,9 +225,8 @@
       "</span></div></div>"
     );
   }
-  function shell(h, desired, badge, msg) {
-    var cls =
-      badge === "NONE" ? "warn" : badge === "FAILED" || badge === "DEGRADED" ? "stale" : "warn";
+  // the header with no contract panel to draw: the state's word in its tone, and why
+  function shell(h, desired, badge, msg, cls) {
     h.innerHTML =
       '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Selected contract</span>' +
       '<span class="fl-sym">' +
@@ -242,10 +243,11 @@
   }
   // Classification tag: text is the backend string verbatim; the CSS hook is its leading token
   // (NATIVE/DERIVED/PROXY styled; anything else renders neutral). null => the backend served
-  // no classification for a classified metric => UNKNOWN. undefined => not a classified metric.
+  // no classification for a classified metric: not known, "-" (AGENTS.md rule 5). undefined =>
+  // not a classified metric.
   function tag(c) {
     if (c === undefined) return "";
-    var text = c === null ? "UNKNOWN" : c;
+    var text = orDash(c);
     var hook = (String(text)
       .toLowerCase()
       .match(/^[a-z0-9-]+/) || ["unknown"])[0];
