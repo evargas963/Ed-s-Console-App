@@ -43,7 +43,7 @@ from calc.terrain_read import (
     REGIME_TEXT,
     REGIME_UNAVAILABLE,
 )
-from numeric_contract import dollars_text, iv_text, price_text
+from numeric_contract import iv_text, price_text
 from option_contract import OptionContract
 from push.answers import unavailable
 from push.levels import pin_note
@@ -353,33 +353,8 @@ FAMILY_TITLES = {
     "volatility": "VOLATILITY · AT THE MONEY",
     "stock book": "STOCK BOOK AND TAPE",
 }
-#: a vote in words: +1 wider and continuing, -1 calmer and reverting
-VOTE_WORDS = {1: "votes wider, continuing", -1: "votes calmer, reverting"}
+#: a vote's tone: +1 wider and continuing, -1 calmer and reverting
 VOTE_TONE = {1: "neg", -1: "pos"}
-NOT_VOTED = {
-    "positioning": "the gamma at the price is not known",
-    "option trades": "the look-back's hedging flow or price move is not known, or is zero",
-    "volatility": "the look-back's at-the-money volatility change is not known, or is zero",
-    "stock book": "not measured on the matrix yet",
-}
-
-
-def _family_text(vote: FamilyVote) -> str:
-    """Return what one family read, in words: its reading and its vote."""
-    if vote.vote is None:
-        return NOT_VOTED[vote.family]
-    words = VOTE_WORDS[vote.vote]
-    if vote.family == "positioning":
-        sign = "Negative" if vote.vote == 1 else "Positive"
-        return f"{sign} gamma at the price: {words}"
-    if vote.family == "option trades":
-        side = "with" if vote.vote == 1 else "against"
-        return f"Hedging flow {dollars_text(vote.reading)} {side} the look-back's move: {words}"
-    return f"At-the-money IV {_signed_text(vote.reading)} in the look-back: {words}"
-
-
-def _signed_text(n: float | None) -> str | None:
-    return None if n is None else f"{n:+.2f}"
 
 
 def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str, Any]:
@@ -390,7 +365,7 @@ def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str,
     families = [
         {
             "title": FAMILY_TITLES[v.family],
-            "text": _family_text(v),
+            "text": v.text,
             "tone": None if v.vote is None else VOTE_TONE[v.vote],
         }
         for v in votes

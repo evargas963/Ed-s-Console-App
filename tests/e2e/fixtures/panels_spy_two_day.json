@@ -23019,12 +23019,12 @@
         },
         {
           "title": "OPTION TRADES \u00b7 HEDGING FLOW",
-          "text": "the look-back's hedging flow or price move is not known, or is zero",
+          "text": "the look-back's hedging flow is not known",
           "tone": null
         },
         {
           "title": "VOLATILITY \u00b7 AT THE MONEY",
-          "text": "the look-back's at-the-money volatility change is not known, or is zero",
+          "text": "the look-back's at-the-money volatility change is not known",
           "tone": null
         },
         {
@@ -24008,12 +24008,12 @@
         },
         {
           "title": "OPTION TRADES \u00b7 HEDGING FLOW",
-          "text": "the look-back's hedging flow or price move is not known, or is zero",
+          "text": "the look-back's hedging flow is not known",
           "tone": null
         },
         {
           "title": "VOLATILITY \u00b7 AT THE MONEY",
-          "text": "the look-back's at-the-money volatility change is not known, or is zero",
+          "text": "the look-back's at-the-money volatility change is not known",
           "tone": null
         },
         {

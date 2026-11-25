@@ -217,18 +217,23 @@ def test_the_flow_cell_says_why_it_is_not_known():
     """The 721 strike's flow cell over the window from 10:04 ET: its value, or why it is "-".
 
     Held over the window: the strike's flow; a contract whose multiplier the chain did not send
-    (INDUCED): that reason; a contract not held over the window: the look-back's.
+    (INDUCED): that reason; a contract not held over the window: the look-back's. Its hover
+    states the flow's own convention, the dealers on the other side of each trade (each trade's
+    side is read), not the open interest's (dealers long calls, short puts).
     """
     looks = _replayed().look_back(FX["symbols"], DAY, START)
     legs = [c for c in read_chain(FX["chain_rows"]) if c.strike == 721.0]
     now = datetime(2026, 11, 23, 10, 10, tzinfo=ET)
     book, _diagnostics = compute_exposures_by_strike(legs, now=now, sessions=sessions())
 
-    def flow_cell(look: StrikeLookBack) -> tuple[str, str | None]:
+    def row_of(look: StrikeLookBack) -> dict:
         matrix = build_matrix(
             book, {}, iv_by_strike(legs), _underlying(None), {}, None, {}, {721.0: look}
         )
-        row = window_rows(matrix, [721.0])[0]
+        return window_rows(matrix, [721.0])[0]
+
+    def flow_cell(look: StrikeLookBack) -> tuple[str, str | None]:
+        row = row_of(look)
         return row["flow_text"], row["flow_reason"]
 
     held = strike_look_back(legs, looks)
@@ -237,6 +242,9 @@ def test_the_flow_cell_says_why_it_is_not_known():
     assert flow_cell(held) == (dollars_text(held.flow), None)
     assert flow_cell(unsent) == (dollars_text(None), NO_MULTIPLIER)
     assert flow_cell(NOT_HELD) == (dollars_text(None), LOOK_REASON)
+    hover = row_of(held)["flow_hover"]
+    assert "the dealers take the other side of each trade" in hover
+    assert "dealers long calls" not in hover
 
 
 def _underlying(before_ts: float | None) -> float:
@@ -255,9 +263,10 @@ def test_each_family_votes_on_the_kind_of_move_by_its_definition():
     Option trades: the two strikes' hedging flow (worked out from the raw items) with the
     stock's move over the window (the price the items carried at its start and at its end)
     votes continuing, against it reverting; volatility: rising wider, falling calmer;
-    positioning: negative gamma wider. The stock's book casts no vote; a zero casts none. The
-    gamma at the price and the volatility change are INDUCED, each sign in turn (their own
-    producers are tested on captured chains), as is a zero flow.
+    positioning: negative gamma wider. The stock's book casts no vote; a zero casts none, and
+    its card says it is 0, apart from a reading not known. The gamma at the price and the
+    volatility change are INDUCED, each sign in turn and 0 (their own producers are tested on
+    captured chains), as are a zero flow and a window with no move.
     """
     expected = _worked_out(START * 60.0)
     chain = read_chain(FX["chain_rows"])
@@ -268,7 +277,30 @@ def test_each_family_votes_on_the_kind_of_move_by_its_definition():
     assert flow != 0 and end != start
     assert [v.vote for v in votes] == [1, (1 if flow > 0 else -1) * move_sign, 1, None]
     assert [v.family for v in votes] == ["positioning", "option trades", "volatility", "stock book"]
+    side = "with" if votes[1].vote == 1 else "against"
+    assert [v.text for v in votes][:3] == [
+        "Negative gamma at the price: votes wider, continuing",
+        f"Hedging flow {dollars_text(flow)} {side} the look-back's move: "
+        + ("votes wider, continuing" if votes[1].vote == 1 else "votes calmer, reverting"),
+        "At-the-money IV +0.50 in the look-back: votes wider, continuing",
+    ]
     calm = family_votes(2.0e9, 0.0, (start, end), -0.5)
     assert [v.vote for v in calm] == [-1, None, -1, None]
+    assert calm[0].text == "Positive gamma at the price: votes calmer, reverting"
+    assert calm[1].text == "the look-back's hedging flow is 0"
+    assert calm[2].text == "At-the-money IV -0.50 in the look-back: votes calmer, reverting"
     unknown = family_votes(None, flow, (None, end), None)
     assert [v.vote for v in unknown] == [None, None, None, None]
+    assert [v.text for v in unknown] == [
+        "the gamma at the price is not known",
+        "the look-back's price move is not known",
+        "the look-back's at-the-money volatility change is not known",
+        "not measured on the matrix yet",
+    ]
+    still = family_votes(0.0, flow, (start, start), 0.0)
+    assert [v.vote for v in still] == [None, None, None, None]
+    assert [v.text for v in still][:3] == [
+        "the gamma at the price is 0",
+        "the look-back's price move is 0",
+        "the look-back's at-the-money volatility change is 0",
+    ]
