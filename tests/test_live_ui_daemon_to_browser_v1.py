@@ -1357,6 +1357,8 @@ def test_before_the_tickers_chain_the_strikes_say_why_with_no_row():
             frame = await _next(ws, "strikes:gbs")
             assert frame["today"] == [] and frame["max_abs_row"] is None
             assert frame["levels_stale_reason"]  # why, never empty rows standing alone
+            # what the screen says of it, the program's whole sentence (AGENTS.md rule 4)
+            assert frame["none_said"] == "no per-strike rows — " + frame["levels_stale_reason"]
             await _select(ws, A, {"strikes:gbs": {**AUTO, "shift": "two"}})  # one it cannot draw
             assert await _next(ws, "strikes:gbs") == {
                 "type": "strikes:gbs",

@@ -186,7 +186,7 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> BookPanel:
         ),
         # the book's state as every screen says it when that state is why it has nothing to
         # show (STATE_WORDS); None while it has levels
-        "state_word": STATE_WORDS.get(micro["status"]),
+        "state_word": None if micro["status"] == "ok" else STATE_WORDS[micro["status"]],
         **book_times(micro["provenance"], micro["ages"]),
         "readout": liquidity_readout(t, now),
     }

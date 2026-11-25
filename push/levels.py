@@ -184,8 +184,12 @@ class LevelsPanel(LevelsVerdict, SessionFields):
     zero_dte: list[SameDayRow]
     tf: str
     families_absent: list[AbsentFamily]
+    none_said: str | None
 
 
+#: what the screen says when no level can be shown nearest the price: none published, or none
+#: ordered by its distance (no live price) (AGENTS.md rule 4)
+NO_LEVELS, NO_PRICED_LEVELS = "No levels", "No priced levels"
 #: the price-level snapshot's own fields with none published: each unknown
 NO_SNAPSHOT: SessionFields = {
     "snapshot_time_ct": None,
@@ -399,6 +403,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
         "bar_source": session["bar_source"],
         "levels": levels,
         "by_distance": by_distance,
+        "none_said": NO_LEVELS if not levels else NO_PRICED_LEVELS if not by_distance else None,
         "zero_dte": _same_day_rows(published),
         # The VWAP curve, CARRIED: the one VWAP of the session, which no page accumulates for
         # itself. [epoch_sec, vwap]

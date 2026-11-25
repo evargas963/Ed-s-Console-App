@@ -135,6 +135,7 @@ class StrikesPanel(LevelsVerdict):
     max_abs_row: ServedRow | None
     migration: ShownMigration
     level_moves: list[ShownLevelMove]
+    none_said: str | None
 
 
 class NotListed(LevelsVerdict):
@@ -244,6 +245,8 @@ NO_STRIKE_ON_BOTH_DAYS = "No strike has a net GEX on both days."
 #: what the migration says while it compares nothing, and when no strike's gamma grew
 WARMING_UP = "Migration view warming up"
 NO_STRIKE_GREW = "No strike grew"
+#: what the screen says with no per-strike row while the levels are not stale
+NO_PER_STRIKE_GAMMA = "no per-strike gamma for this symbol yet"
 #: what a session volume of 0 means, by the chain's verdict: a stale chain's rows are its snapshot
 ZERO_VOLUME_STALE = (
     "zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source "
@@ -403,6 +406,15 @@ def terrain_strikes_payload(
         # the call wall, put wall and gamma flip today against the prior day's own, each with its
         # texts as the screen shows them
         "level_moves": [served_level_move(v) for v in level_moves(snap, prior_day)],
+        # what the screen says with no row to show: why, as a whole sentence (AGENTS.md rule 4)
+        "none_said": None if gex[0] else _no_rows_said(verdict["levels_stale_reason"]),
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
         **verdict,
     }
+
+
+def _no_rows_said(stale: str | None) -> str:
+    """Return what the screen says with no per-strike row: why the levels are stale, if they are."""
+    if stale is not None:
+        return f"no per-strike rows — {stale}"
+    return NO_PER_STRIKE_GAMMA
