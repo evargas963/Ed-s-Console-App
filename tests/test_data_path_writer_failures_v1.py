@@ -620,6 +620,13 @@ def _last_record_start(path: Path, size: int) -> int:
     return last
 
 
+def _damage(path: Path, at: int, data: bytes) -> None:
+    """INDUCED CONDITION: write `data` over the file `path` at byte `at`, as a failing disk can."""
+    with open(path, "r+b") as f:
+        f.seek(at)
+        f.write(data)
+
+
 def _spill_record(content: dict, ts_recv: float) -> bytes:
     """One captured option quote as a spill file holds it (DATA_FLOW §2 D4's format)."""
     return json.dumps(
@@ -660,7 +667,7 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     async def go():
         stop = asyncio.Event()
         _bus, _health, daemon, task, during = await _spilled(writer, stop)
-        on_disk = Path(during["spill"]["path"]).stat().st_size
+        on_disk = (await asyncio.to_thread(Path(during["spill"]["path"]).stat)).st_size
         holder.execute("COMMIT")
         await until(
             lambda: (
@@ -1040,9 +1047,7 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
         bus, health, daemon, task, during = await _spilled(writer, stop)
         path = Path(during["spill"]["path"])
         last = _last_record_start(path, during["spill"]["bytes"])
-        with open(path, "r+b") as f:  # the last record's length
-            f.seek(last)
-            f.write(b"\xff\xff\xff\xff")
+        await asyncio.to_thread(_damage, path, last, b"\xff\xff\xff\xff")  # the last one's length
         holder.execute("COMMIT")
         await until(lambda: writer.status()["spill"] is None)
         _publish_options(bus, health, _EVENTS[:1])
@@ -1469,9 +1474,7 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
         stop = asyncio.Event()
         bus, health, daemon, task, during = await _spilled(writer, stop)
         path = Path(during["spill"]["path"])
-        with open(path, "r+b") as f:
-            f.seek(during["spill"]["bytes"] - 2)
-            f.write(b"\xff\xff")
+        await asyncio.to_thread(_damage, path, during["spill"]["bytes"] - 2, b"\xff\xff")
         last = _last_record_start(path, during["spill"]["bytes"])  # the lengths are not damaged
         _publish_options(bus, health, _EVENTS[:1])  # behind the damaged record
         await until(lambda: writer.status()["spill"]["messages"] == during["spill"]["messages"] + 1)

@@ -147,23 +147,23 @@ async def _run(body, feed=None):
         await asyncio.wait_for(asyncio.gather(server, follower, return_exceptions=True), 5)
 
 
-async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0, kind=None):
-    """Return the next frame carrying `sym`'s row that matches `pred`, and the row.
+async def _next_row(ws, sym, pred=lambda _r: True, kind=None):
+    """Return the next frame carrying `sym`'s row that matches `pred`, and the row, within 3 s.
 
     With `kind`, a frame of another type is passed over: the beat, which carries every row each
-    second, can come before or after a pushed frame.
+    second, can come before or after a pushed frame. A caller that needs it sooner bounds the wait
+    itself (asyncio.timeout).
     """
-    end = time_et.elapsed() + timeout
-    while time_et.elapsed() < end:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time_et.elapsed())))
-        if msg["type"] == "symbols":  # the one frame with no rows (live_ui's protocol)
-            continue
-        if kind is not None and msg["type"] != kind:
-            continue
-        for r in msg["rows"]:
-            if r["ticker"] == sym and pred(r):
-                return msg, r
-    raise AssertionError(f"no matching {sym} row within {timeout}s")
+    async with asyncio.timeout(3.0):
+        while True:
+            msg = json.loads(await ws.recv())
+            if msg["type"] == "symbols":  # the one frame with no rows (live_ui's protocol)
+                continue
+            if kind is not None and msg["type"] != kind:
+                continue
+            for r in msg["rows"]:
+                if r["ticker"] == sym and pred(r):
+                    return msg, r
 
 
 def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
@@ -352,9 +352,8 @@ def test_a_closed_schwab_socket_reads_feed_down_within_one_beat(start):
         _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.41)
         assert row["feed_label"] == ("LIVE" if start == _RTH else "NOT LIVE")
         feed.open = False
-        msg, row = await _next_row(
-            ws, "SPY", lambda r: r["feed_label"] == "OFFLINE", timeout=1.5 * live_ui.HEARTBEAT_SEC
-        )  # the next beat
+        async with asyncio.timeout(1.5 * live_ui.HEARTBEAT_SEC):  # the next beat
+            msg, row = await _next_row(ws, "SPY", lambda r: r["feed_label"] == "OFFLINE")
         assert msg["type"] == "feed" and msg["feed"]["schwab_socket_open"] is False
         assert row["spot"] == 583.41 and row["bid"] == pytest.approx(583.40)
         assert row["feed_live"] is False and row["outage"].startswith(
@@ -587,9 +586,11 @@ def test_a_page_that_goes_away_mid_send_ends_only_its_own_connection():
         while stats["clients"] != 1 and time_et.elapsed() < end:
             await asyncio.sleep(0.01)
         assert stats["clients"] == 1
-        msg, _ = await _next_row(ws, "SPY", timeout=2 * live_ui.HEARTBEAT_SEC)
+        async with asyncio.timeout(2 * live_ui.HEARTBEAT_SEC):
+            msg, _ = await _next_row(ws, "SPY")
         while msg["type"] != "feed":  # the beat goes on
-            msg, _ = await _next_row(ws, "SPY", timeout=2 * live_ui.HEARTBEAT_SEC)
+            async with asyncio.timeout(2 * live_ui.HEARTBEAT_SEC):
+                msg, _ = await _next_row(ws, "SPY")
 
     asyncio.run(_run(body))
 
@@ -780,15 +781,13 @@ async def _select(ws, ticker, panels=LIST) -> list[dict]:
     return await _frames_until(ws, lambda m: m["type"] == "symbols")
 
 
-async def _frames_until(ws, pred, timeout=5.0) -> list[dict]:
-    """Return every frame up to and including the first that `pred` accepts."""
-    seen, end = [], time_et.elapsed() + timeout
-    while time_et.elapsed() < end:
-        msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time_et.elapsed())))
-        seen.append(msg)
-        if pred(msg):
-            return seen
-    raise AssertionError(f"no matching frame within {timeout}s: {seen}")
+async def _frames_until(ws, pred) -> list[dict]:
+    """Return every frame up to and including the first that `pred` accepts, within 5 s."""
+    seen = []
+    async with asyncio.timeout(5.0):
+        while not seen or not pred(seen[-1]):
+            seen.append(json.loads(await ws.recv()))
+    return seen
 
 
 def _lists(frames) -> list[dict]:

@@ -11,6 +11,13 @@ import server
 from app.market_data.schwab.streaming.live_ui import LiveUiServer, _Client
 
 
+async def _marked(page: _Client) -> None:
+    """Return once `page` has a panel marked: each mark wakes it (`wake`, the pump's own wait)."""
+    while not page.panels:
+        page.wake.clear()
+        await page.wake.wait()
+
+
 class Pages:
     """The program's socket server (live_ui.LiveUiServer) and the pages a test opens on it.
 
@@ -55,10 +62,11 @@ class Pages:
         """
 
         async def marks() -> None:
-            end = self.loop.time() + within
-            await asyncio.sleep(0)
-            while not page.panels and self.loop.time() < end:
-                await asyncio.sleep(0.01)
+            await asyncio.sleep(0)  # the marks other threads have handed this loop
+            marked = asyncio.ensure_future(_marked(page))
+            await asyncio.wait({marked}, timeout=within)
+            marked.cancel()
+            await asyncio.wait({marked})
 
         self.loop.run_until_complete(marks())
         told = set(page.panels)
