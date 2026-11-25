@@ -140,7 +140,7 @@
     var pva = S.levels && S.levels.prior_value_area;
     var v = { vwap: S.levels && S.levels.vwap_text, prior_day: pva && pva.text };
     document.querySelectorAll("#tdmFamilies [data-famv]").forEach(function (b) {
-      b.textContent = v[b.getAttribute("data-famv")] || "";
+      b.textContent = orDash(v[b.getAttribute("data-famv")]); // not received: "-" (rule 5)
     });
     // the profile's basis, or why there is none (the value area's served reason)
     var vp = S.levels && S.levels.volume_profile,
@@ -450,7 +450,6 @@
     var P = S.chart.palette();
     // the served few (marker flag): each at its level's price and its time, numbered, named by its
     // served direction; the queue lists every event, and a marker and its entry are one served item
-    var word = { up: "Crossed above", down: "Crossed below" };
     S.chart.setMarkers(
       queueItems()
         .filter(function (q) {
@@ -462,7 +461,7 @@
             time: q.ts,
             price: q.price,
             num: q.n,
-            text: word[q.dir] || "",
+            text: q.marker_said, // served: the marker's words (push.desk)
             color: q.dir === "up" ? P.up : P.down,
             meta: q.key,
           };

@@ -61,8 +61,9 @@ class QueueItem(TypedDict):
 class CrossItem(TypedDict):
     """A level cross in the queue, numbered oldest first.
 
-    It carries its level's price and whether the chart marks it (the newest cross at each level,
-    for the newest DESK_MARKERS levels). Its keys are a QueueItem's, `time_ct` last.
+    It carries its level's price, whether the chart marks it (the newest cross at each level, for
+    the newest DESK_MARKERS levels) and the marker's words. Its keys are a QueueItem's, `time_ct`
+    last.
     """
 
     key: str
@@ -76,6 +77,7 @@ class CrossItem(TypedDict):
     n: int
     price: float
     marker: bool
+    marker_said: str
     time_ct: str
 
 
@@ -214,6 +216,7 @@ def _cross_items(in_window: list[MergedCross]) -> list[CrossItem]:
                 "n": i + 1,
                 "price": c.level_value,
                 "marker": False,
+                "marker_said": f"Crossed {_CROSS_WORD[c.direction]}",
                 "time_ct": ct_label(c.ts_utc),
             }
         )
