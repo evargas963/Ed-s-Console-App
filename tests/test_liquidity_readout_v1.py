@@ -581,28 +581,30 @@ def _steady(readout: dict, venue: str, view: str) -> dict:
 
 
 @pytest.mark.parametrize(
-    ("row", "venue", "view", "pct", "tilt"),
+    ("row", "venue", "view", "bid", "ask", "tilt"),
     [
-        (16, "NYSE_BOOK", "1", 0.0, "BALANCED"),
-        (14, "NYSE_BOOK", "5", -9.474, "BALANCED"),
-        (119, "COMPOSITE", "5", 9.860, "BALANCED"),
-        (8, "NYSE_BOOK", "5", 10.0, "BID_HEAVY"),
-        (2, "NYSE_BOOK", "5", -10.0, "OFFER_HEAVY"),
-        (69, "NASDAQ_BOOK", "1", 69.231, "BID_HEAVY"),
-        (123, "NASDAQ_BOOK", "1", -69.231, "OFFER_HEAVY"),
-        (82, "NYSE_BOOK", "1", 70.0, "BID_HEAVY"),
-        (18, "NYSE_BOOK", "1", -76.190, "OFFER_HEAVY"),
+        (16, "NYSE_BOOK", "1", 80, 80, "BALANCED"),
+        (14, "NYSE_BOOK", "5", 1720, 2080, "BALANCED"),
+        (119, "COMPOSITE", "5", 2401, 1970, "BALANCED"),
+        (8, "NYSE_BOOK", "5", 1760, 1440, "BID_HEAVY"),
+        (2, "NYSE_BOOK", "5", 1080, 1320, "OFFER_HEAVY"),
+        (69, "NASDAQ_BOOK", "1", 110, 20, "BID_HEAVY"),
+        (123, "NASDAQ_BOOK", "1", 40, 220, "OFFER_HEAVY"),
+        (82, "NYSE_BOOK", "1", 680, 120, "BID_HEAVY"),
+        (18, "NYSE_BOOK", "1", 200, 1480, "OFFER_HEAVY"),
     ],
 )
-def test_the_tilt_turns_at_10_percent(row, venue, view, pct, tilt):
+def test_the_tilt_turns_at_10_percent(row, venue, view, bid, ask, tilt):
     """Schwab's readouts of 2026-11-02 10:00-10:02:30 ET on each side of the 10% line.
 
     Held ten seconds: 10% exactly (NYSE_BOOK's 1,760 / 1,440 shares) is the side's tilt, and
     so is every value past it.
     """
     w = _steady(_replayed()[1][row][1], venue, view)
-    # each case is stated to three decimals: half the last one
-    assert w["pct"] == pytest.approx(pct, abs=5e-4)
+    # the shares summed by hand from Schwab's books (the composite: each contributor's newest
+    # copy, by its quote time), and their (bid - ask) / (bid + ask)
+    assert (w["bid_total"], w["ask_total"]) == (bid, ask)
+    assert w["pct"] == pytest.approx(100 * (bid - ask) / (bid + ask))
     assert (w["tilt"], w["side_word"]) == (tilt, e.TILT_WORDS[tilt])
     # the tilt as the headline says it and as running text says it, each served: the Desk's
     # strip and Right Now's unit draw the second and change no case
@@ -619,20 +621,21 @@ _LINES = json.loads((_FX / "real_spy_zone_line_books_2026_11_02.json").read_text
 
 
 @pytest.mark.parametrize(
-    ("case", "line", "pct", "tilt"),
-    [("under -10", -10.0, -9.989, "BALANCED")],
+    ("case", "line", "bid", "ask", "tilt"),
+    [("under -10", -10.0, 401, 490, "BALANCED")],
 )
-def test_the_tilts_on_the_books_nearest_the_line(case, line, pct, tilt):
+def test_the_tilts_on_the_books_nearest_the_line(case, line, bid, ask, tilt):
     """The two books held, over SPY's whole 2026-11-02 session, nearest the -10% line.
 
-    When a venue and view read nearest inside it (-9.989%, to three decimals as the other tilt
-    tests state them), held ten seconds: just inside the line is not past it. The +10% side
-    is the composite's top five at 9.860% (test_the_tilt_turns_at_10_percent).
+    When a venue and view read nearest inside it (NASDAQ_BOOK's top five, 401 / 490 shares,
+    -9.989%), held ten seconds: just inside the line is not past it. The +10% side is the
+    composite's top five at 9.860% (test_the_tilt_turns_at_10_percent).
     """
     c = _LINES[case]
     readout = _readout({svc: content for _ts, svc, content in c["books"]})
     w = _steady(readout, c["venue"], c["view"])
-    assert w["pct"] == pytest.approx(pct, abs=5e-4)
+    assert (w["bid_total"], w["ask_total"]) == (bid, ask)  # summed by hand from the book
+    assert w["pct"] == pytest.approx(100 * (bid - ask) / (bid + ask))
     assert abs(w["pct"]) < abs(line)
     assert (w["tilt"], w["side_word"]) == (tilt, e.TILT_WORDS[tilt])
 
