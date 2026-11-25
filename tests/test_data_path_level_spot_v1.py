@@ -47,5 +47,13 @@ def test_a_down_price_marks_the_levels_and_the_wall_stays():
     assert (live_row["feed_live"], live_row["feed_label"]) == (True, "LIVE")
     assert live_row["outage"] is None
     assert live["levels_state"] == "LIVE"
+    # each by-expiry series with an expiry: nothing said of none; a ticker with no levels yet:
+    # the program's sentence for each (AGENTS.md rule 4)
+    assert (live["pcr_none_said"], live["atm_iv_none_said"]) == (None, None)
+    none = push_terrain.terrain("ZZLVNONE", now)
+    assert (none["pcr_none_said"], none["atm_iv_none_said"]) == (
+        "no expiry carries open interest",
+        "no expiry has both ATM legs priced",
+    )
     copies = {"spot", "spot_text", "spot_time_ct", "spot_not_live_text", "levels_mark"}
     assert not copies & (down.keys() | live.keys())

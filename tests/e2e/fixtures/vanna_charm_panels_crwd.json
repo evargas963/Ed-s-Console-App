@@ -7124,7 +7124,9 @@
     "atr_weekly_text": null,
     "atr_monthly_text": null,
     "regime_text": "Positive gamma",
-    "total_gamma_change": null
+    "total_gamma_change": null,
+    "pcr_none_said": null,
+    "atm_iv_none_said": null
   },
   "surface": {
     "ticker": "CRWD",
