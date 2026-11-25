@@ -92,9 +92,8 @@ def test_where_the_busiest_strikes_sit_is_said_only_when_it_is_known(two_days):
     """The busiest strikes against the walls, on PCG's real rows; the walls are INDUCED around them.
 
     Above the call wall, below the put wall, inside both, and the two busiest strikes on both
-    sides of a wall: across it (the operator's decision; on 2026-11-21 SPY's 695 and 700 against
-    the put wall at 700 read "That is -."). When a wall the place depends on is not known: not
-    known (None), never "inside" by default.
+    sides of a wall: across it. When a wall the place depends on is not known: not known (None),
+    never "inside" by default.
     """
     (_prior, _), (today, _snap) = two_days
     rows = today["gex"]
