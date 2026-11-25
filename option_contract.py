@@ -273,7 +273,7 @@ def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
     sizes are None, never a price of 0 (live_market_plane reads an equity's the same way).
     """
     top = {name: read(content[field]) for field, name, read in STREAMED_TOP if field in content}
-    if "QUOTE_TIME_MILLIS" in content and top["quote_time_ms"] is None:
+    if "quote_time_ms" in top and top["quote_time_ms"] is None:
         top.update(bid=None, ask=None, bid_size=None, ask_size=None)
     return top
 
