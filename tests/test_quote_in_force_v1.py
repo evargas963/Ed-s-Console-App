@@ -41,7 +41,7 @@ from app.options.order_flow import state as ofls
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import OrderFlowState
 from feed.chain_sweep import chain_messages
-from option_contract import NO_TOP, StreamedTop
+from option_contract import NO_TOP, StreamedTop, streamed_top
 from stream_spine import LATEST, MessageBus, quotes_at_trade
 from tests import feed_live_helper
 from tests.feed_live_helper import apply_record, on_the_bus
@@ -100,6 +100,25 @@ def _quote(items: list[dict]) -> StreamedTop:
         ask_size=held["ASK_SIZE"],
         quote_time_ms=held["QUOTE_TIME_MILLIS"],
     )
+
+
+def test_a_record_with_no_quote_time_holds_no_quote():
+    """The put's first record: its quote as Schwab sent it, and with no quote time no quote.
+
+    Schwab's quote time is the last time a bid or ask updated (Streamer API §3.1, field 34), so a
+    quote time of 0 says Schwab set no bid or ask: the bid, ask and sizes beside it are None,
+    never a price of 0. Schwab sends that for an index with no market ($VIX, $NDX); for an
+    option it is INDUCED here (none of its messages has sent it).
+    """
+    first = _PUT[0]["item"]
+    assert all(f in first for f in _QUOTE) and first["QUOTE_TIME_MILLIS"] > 0
+    top = streamed_top(first)
+    assert [top[k] for k in ("bid", "ask", "bid_size", "ask_size", "quote_time_ms")] == [
+        first[f] for f in _QUOTE
+    ]
+    none = streamed_top({**first, "QUOTE_TIME_MILLIS": 0})
+    assert [none[k] for k in ("bid", "ask", "bid_size", "ask_size", "quote_time_ms")] == [None] * 5
+    assert none["mark"] == top["mark"]
 
 
 # ── the bus keeps the quote the newest quote replaced ────────────────────────────────────────
