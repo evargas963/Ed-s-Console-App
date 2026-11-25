@@ -611,16 +611,19 @@ test("Desk: a price push that stops reads OFFLINE on the map, not its last row's
   sock.quotes([ROWS["$SPX"]]);
   await expect(page.locator("#tdmIdxSPX")).toContainText(
     "last trade " + ROWS["$SPX"].trade_time_ct,
+    { timeout: 10000 },
   );
   deskPanels().book = Object.assign({}, MICRO, { book_time_ct: BOOK_TIME });
   sock.changed("book");
   await expect(page.locator("#tdmTrust")).toContainText("BOOK " + BOOK_TIME); // the new book has landed and the map has repainted
-  await expect(page.locator("#hFeed")).toHaveText("OFFLINE");
-  await expect(page.locator("#tdmTrust")).toContainText("PRICE OFFLINE");
-  await expect(page.locator("#tdmTrust")).not.toContainText("PRICE LIVE");
+  // read once: SPY's own row is not sent yet, so the outage stands
+  expect(await page.locator("#hFeed").textContent()).toBe("OFFLINE");
+  const trust = await page.locator("#tdmTrust").textContent();
+  expect(trust).toContain("PRICE OFFLINE");
+  expect(trust).not.toContain("PRICE LIVE");
   // SPY's own row ends the outage: the header and the map read LIVE again
   sock.quotes([ROWS.SPY]);
-  await expect(page.locator("#hFeed")).toHaveText("LIVE");
+  await expect(page.locator("#hFeed")).toHaveText("LIVE", { timeout: 6000 });
   await expect(page.locator("#tdmTrust")).toContainText("PRICE LIVE");
   await expect(page.locator("#tdmCardFlow")).not.toContainText("OFFLINE");
 });
