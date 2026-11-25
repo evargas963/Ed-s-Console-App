@@ -21,13 +21,14 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   panel's `state_word`; Right Now's migration sentences, whole from `push.strikes`, and why its
   levels or per-strike rows are empty (`push.levels` and `push.strikes` `none_said`); a failed
   regime read named FAILED; the Desk cards' empty series (`push.bars` and `push.terrain`
-  `none_said`). Left, said by the value's producer as a whole phrase: the Desk's states of values
-  (`ed-trade-desk-map.js`, `ed-trade-desk.js`: the Desk's "no book" and "books", "No zone nearby",
-  the pills' NONE and DOWN, the context summary's sentences around the zones and the walls); the
-  Options pages (an empty chain, "no chain for this expiry" and "chain unavailable"; the surface's
-  banner; the levels' "VWAP curve: not available"; an empty book side, "no displayed asks", "no
-  displayed bids"); Confluence; the Flow pages; the chart. Then a machine check that the page
-  scripts hold no phrase of their own.
+  `none_said`); the Desk's pills (the book's `state_word`, the Options card's UNAVAILABLE) and its
+  options lean's books (`push.option_book` `book_state`, NO BOOK with none held, drawn as Options
+  Level II draws it). Left, said by the value's producer as a whole phrase: the Desk's states of
+  values (`ed-trade-desk-map.js`, `ed-trade-desk.js`: "No zone nearby", the context summary's
+  sentences around the zones and the walls); the Options pages (an empty chain, "no chain for this
+  expiry" and "chain unavailable"; the surface's banner; the levels' "VWAP curve: not available"; an
+  empty book side, "no displayed asks", "no displayed bids"); Confluence; the Flow pages; the chart.
+  Then a machine check that the page scripts hold no phrase of their own.
 - SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
   "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
   program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests

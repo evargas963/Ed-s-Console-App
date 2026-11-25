@@ -838,7 +838,15 @@ test.describe("Trade Desk renders served values", () => {
     await openView(page, "trade-desk", "desk");
     await expect(page.locator("#tdmCardOpt .tdm-plot-none")).toHaveText(words);
     await expect(page.locator("#tdmCardVol .tdm-plot-none")).toHaveText(words);
-    await expect(page.locator("#tdmTrust")).toContainText("GAMMA DOWN");
+    // the GAMMA pill says the word the Options card says in this state, and why on hover
+    const gamma = page.locator("#tdmTrust .tdm-pill", { hasText: "GAMMA" });
+    await expect(gamma).toHaveText(
+      "GAMMA " + (await page.evaluate(() => window.EdShell.pageWords.unavailable)),
+    );
+    await expect(gamma).toHaveAttribute("title", words);
+    await expect(page.locator("#tdmCardOpt .tdm-state")).toHaveText(
+      await page.evaluate(() => window.EdShell.pageWords.unavailable),
+    );
     await expect(page.locator("#tdmCardFlow .tdm-plot-none")).toHaveText(
       "the program could not produce the bars",
     );

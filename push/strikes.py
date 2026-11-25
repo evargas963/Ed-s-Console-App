@@ -341,11 +341,10 @@ def terrain_strikes_payload(
     of the same expiry. An expiry the published chain does not list is answered with why, never
     with another expiry's rows.
     """
-    # the published levels' own per-strike rows (calc.terrain_engine.per_strike_view), served
-    # as-is; with no levels published, that view of no book: no rows
+    # the published levels' own per-strike rows (calc.terrain_engine.per_strike_view), as-is; none
+    # published: no book's view, no rows, no walls; no prior day captured (it is set with every
+    # chain the levels are published from): no prior rows
     levels, verdict = terrain_cache_get(tk, now)
-    # no levels published for tk: no rows, no walls; no prior day captured: no prior rows. The
-    # prior day's levels are set with every chain the levels are published from.
     snap = None if levels is None else levels.snap
     prior_day = None if levels is None else levels.prior_day
     no_book = per_strike_view({}, {}, {}, {})
