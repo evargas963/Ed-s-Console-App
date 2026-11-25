@@ -23,6 +23,7 @@ from starlette.websockets import WebSocket
 from uvicorn.protocols.utils import ClientDisconnected
 
 from app.market_data.schwab.streaming import live_ui
+from tests.shared_helpers import until
 
 
 class _Connection:
@@ -101,9 +102,8 @@ def test_a_page_whose_connection_ends_while_the_beat_waits_is_not_sent_the_beat(
         assert gone_client not in srv.clients and stats["clients"] == 1
         # the beat goes on: the page it waited on gets it, and the page that is gone gets nothing
         waited.release.set()
-        while not any(f["type"] == "feed" for f in waited.frames):
-            await asyncio.sleep(0.01)
-        await asyncio.sleep(0.05)
+        # the next beat reached it too: the beat that waited has been through every page
+        await until(lambda: sum(f["type"] == "feed" for f in waited.frames) >= 2, 5)
         beats.cancel()
         waited.lose()
         await asyncio.gather(beats, *pages, return_exceptions=True)

@@ -6,12 +6,29 @@ import asyncio
 import json
 import math
 import subprocess
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+import time_et
 from time_et import ET
 
 _FX = Path(__file__).resolve().parent / "fixtures"
+
+
+async def until(ok: Callable[[], object], seconds: float = 30.0, state=lambda: None):
+    """Return `ok()`'s first true value, looked at every 0.02 s; fail after `seconds`.
+
+    The wait on state that announces no event (a thread's count, a row in a file): a poll with a
+    time-out, never a bare sleep (Fowler, "Eradicating Non-Determinism in Tests"). The failure
+    says `state()`. Where the code announces the moment (a task's end, a queue, an event), a test
+    awaits that instead.
+    """
+    end = time_et.elapsed() + seconds
+    while not (seen := ok()):
+        assert time_et.elapsed() < end, f"not reached in {seconds} s: {state()}"
+        await asyncio.sleep(0.02)
+    return seen
 
 
 class TimerCountingLoop(asyncio.SelectorEventLoop):

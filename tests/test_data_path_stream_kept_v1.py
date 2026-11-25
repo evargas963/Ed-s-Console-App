@@ -51,15 +51,8 @@ from stream_spine import (
 )
 from tests.real_chains import MRVL, SPY_0DTE
 from tests.schwab_rest_standin import SPY_QUOTES
-from tests.shared_helpers import et_ts
+from tests.shared_helpers import et_ts, until
 from time_et import ET
-
-
-async def _until(ok, seconds: float = 30.0) -> None:
-    deadline = asyncio.get_running_loop().time() + seconds
-    while not ok():
-        assert asyncio.get_running_loop().time() < deadline, "timed out"
-        await asyncio.sleep(0.02)
 
 
 def _rows(db, sql: str) -> list:
@@ -114,7 +107,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                     native={"key": rc.ticker, "LAST_PRICE": rc.spot},
                 ),
             )
-        await _until(lambda: daemon.saved_options == frozenset(spy_kept | mrvl_kept))
+        await until(lambda: daemon.saved_options == frozenset(spy_kept | mrvl_kept))
         daemon.console_frame({"op": "flow_contract", "contract": flow})
         for sym in every:
             bus.publish(
@@ -147,7 +140,7 @@ def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(
                 native={"key": "SPY", "LAST_PRICE": 776.62},
             ),
         )
-        await _until(
+        await until(
             lambda: writer.status()["rows_written"] == len(spy_kept | mrvl_kept) + 1 + 1 + 3
         )
         stop.set()
@@ -220,7 +213,7 @@ def _kept_at(tmp_path, clock: str, wait: float) -> str:
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         await asyncio.sleep(0)
         _recorded(bus)
-        await _until(lambda: writer.status()["rows_written"] == 8)
+        await until(lambda: writer.status()["rows_written"] == 8)
         keep = asyncio.create_task(capture.keep_sessions(writer, daemon.clock, stop))
         # the keep runs until its every part is done (removed and archived) or `wait` is out; a
         # keep that removes nothing runs out the wait, and the caller reads what is left
@@ -336,10 +329,10 @@ def _status_while_locked(db, writer: CaptureWriter, ready) -> tuple[dict, int]:
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
-        await _until(lambda: ready(sub, sent))
+        await until(lambda: ready(sub, sent))
         during = writer.status()
         holder.execute("COMMIT")
-        await _until(lambda: writer.status()["rows_written"] == sent)
+        await until(lambda: writer.status()["rows_written"] == sent)
         stop.set()
         await task
         return during
@@ -377,9 +370,9 @@ def test_every_message_arriving_during_the_keep_is_written_while_old_rows_are_st
         await asyncio.sleep(0)
         writer.prune(et_ts(_FIVE_SESSIONS))
         sent = _publish_mix(bus, {m["service"] for m in _MIX["messages"]})
-        await _until(lambda: writer.status()["rows_written"] >= sent)
+        await until(lambda: writer.status()["rows_written"] >= sent)
         old_left = _old_rows(db)
-        await _until(lambda: _old_rows(db) == 0, 60)
+        await until(lambda: _old_rows(db) == 0, 60)
         stop.set()
         await task
         return old_left
@@ -590,10 +583,10 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
-        await _until(lambda: writer.status()["waiting"] == 10)
+        await until(lambda: writer.status()["waiting"] == 10)
         writer.prune(et_ts(_FIVE_SESSIONS))
         holder.execute("COMMIT")
-        await _until(lambda: writer.status()["rows_written"] == 10)
+        await until(lambda: writer.status()["rows_written"] == 10)
         readers.append(_reading(db))  # while the keep's part runs
 
         def keep_refused() -> bool:
@@ -604,7 +597,7 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
                 and s["error"] == "OperationalError: database is locked"
             )
 
-        await _until(keep_refused)
+        await until(keep_refused)
         during = writer.status()
         stop.set()
         await task
@@ -663,14 +656,14 @@ def test_a_keep_part_that_fails_for_its_own_reason_is_kept_as_sent_and_the_write
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
         writer.prune(before)
-        await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 0)
+        await until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_feed_status")[0][0] == 0)
         assert _publish_mix(bus, {"LEVELONE_EQUITIES"}, limit=10) == 10
 
         def written() -> bool:
             states.append(writer.status()["state"])
             return writer.status()["rows_written"] == 10
 
-        await _until(written)
+        await until(written)
         stop.set()
         await task
 
@@ -723,9 +716,9 @@ def _dies_holding(db, cap: int, eleventh: dict, *, stop: bool) -> dict:
         ended = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=ended))
         if stop:
-            await _until(lambda: writer.status()["waiting"] == 11)
+            await until(lambda: writer.status()["waiting"] == 11)
             ended.set()
-        await _until(lambda: writer.status()["state"] == WRITER_DEAD)
+        await until(lambda: writer.status()["state"] == WRITER_DEAD)
         ended.set()
         await task
 
@@ -799,7 +792,7 @@ def test_a_writer_that_dies_holding_a_batch_whose_commit_was_refused_counts_all_
     async def go():
         ended = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=ended))
-        await _until(lambda: writer.status()["state"] == WRITER_DEAD)
+        await until(lambda: writer.status()["state"] == WRITER_DEAD)
         ended.set()
         await task
 
@@ -849,11 +842,11 @@ def test_a_refused_commit_holds_every_message_counted_once_and_writes_each_once_
             s = writer.status()
             return s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == sent
 
-        await _until(all_held)
+        await until(all_held)
         sampling.set()
         during = writer.status()
         reader.execute("COMMIT")
-        await _until(
+        await until(
             lambda: writer.status()["rows_written"] == sent and writer.status()["spill"] is None
         )
         after = writer.status()
@@ -916,7 +909,7 @@ def test_a_writer_that_dies_leaving_memory_on_disk_at_a_stop_counts_only_what_wa
     async def go():
         ended = asyncio.Event()
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=ended))
-        await _until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10)
+        await until(lambda: _rows(db, "SELECT COUNT(*) FROM stream_quotes_raw")[0][0] == 10)
         ended.set()
         await task
 
@@ -965,7 +958,7 @@ def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_the
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
         writer.prune(et_ts(_FIVE_SESSIONS))
-        await _until(
+        await until(
             lambda: all(_rows(db, f"SELECT COUNT(*) FROM {t}")[0][0] == 0 for t in ARCHIVED)
         )
         stop.set()

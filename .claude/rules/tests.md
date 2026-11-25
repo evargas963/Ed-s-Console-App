@@ -29,3 +29,10 @@ paths:
   `no-restricted-globals` (`setTimeout`) and `no-restricted-properties` (`waitForTimeout`) over
   `tests/e2e` (`tools/census/eslint.config.mjs`, a count in the census; a failing job with LINTERS);
   a stopwatch bound — no machine check, ENF-12.
+- A Python test waits on its cause: the task, queue or event the code announces, or, for state no
+  event announces, one poll with a deadline that fails saying what it waited for
+  (`tests.shared_helpers.until`); never a fixed sleep (`docs/SOURCES.md` fowler-non-determinism: a
+  callback or a poll with a time-out, never a bare sleep). A sleep stays only where its time is the
+  condition tested (an idle connection, a slow consumer), labeled INDUCED. Enforced by: the census's
+  count of fixed waits in tests, a sleep outside a poll's loop, read from the code
+  (`tools/census/census.py`); a new one — the builder's audit (rule 14), no machine check.

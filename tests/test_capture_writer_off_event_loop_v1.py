@@ -19,7 +19,7 @@ from pathlib import Path
 import time_et
 from feed import connection
 from stream_spine import LOG, CaptureWriter, KeptFailure, MessageBus, RowWritten, quote_msg
-from tests.shared_helpers import TimerCountingLoop
+from tests.shared_helpers import TimerCountingLoop, until
 
 #: production's stream of 2026-10-05 14:00:00-14:00:03 CT (RTH): every LEVELONE_EQUITIES and
 #: LEVELONE_OPTIONS item Schwab sent, in receive order, as stored
@@ -117,25 +117,27 @@ def test_a_slow_commit_does_not_stall_the_event_loop(tmp_path):
     release = threading.Event()
     holder = _hold_the_database(tmp_path / "cap.db", release)
 
+    def handed_over() -> bool:
+        """Every message is with the writer, none committed: its commit waits on the lock."""
+        now = writer.status()
+        return now["held"] == 40 and now["rows_written"] == 0
+
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(sub, stop=stop))
-        gaps = []
-        last = time_et.elapsed()
-        for i in range(40):  # the lock is held through every tick: each commit waits on it
+        for i in range(40):  # the lock is held through every one: each commit waits on it
             bus.publish("quote.SPY", _quote(i))
-            await asyncio.sleep(0.01)  # the loop's own tick, the gap measured
-            now = time_et.elapsed()
-            gaps.append(now - last)
-            last = now
+        # the loop runs on while the commit waits: a commit on the loop would hold this wait
+        # until the lock was let go, and every message would be written by then
+        handed = await until(handed_over, 5, writer.status)
         release.set()
         stop.set()
         await task
-        return max(gaps)
+        return handed
 
-    worst = asyncio.run(go())
+    handed = asyncio.run(go())
     holder.join(10)
-    assert worst < 0.25, f"the event loop stalled {worst:.2f}s behind a held commit"
+    assert handed, "the event loop stalled behind a held commit"
     n = (
         sqlite3.connect(str(tmp_path / "cap.db"))
         .execute("SELECT count(*) FROM stream_quotes_raw")

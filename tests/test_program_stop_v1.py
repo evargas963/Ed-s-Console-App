@@ -24,6 +24,17 @@ from app.market_data.schwab.streaming.program_lock import (
     release_owner_lock,
     stop_event_name,
 )
+from tests.shared_helpers import until
+
+
+async def _waiting(before: set[threading.Thread]) -> None:
+    """Return once the program's waiter is in its wait: a thread of its own ("stop request").
+
+    `before` is the threads that ran before the waiter started.
+    """
+    await until(
+        lambda: any(t.name.startswith("stop request") for t in set(threading.enumerate()) - before)
+    )
 
 
 def test_each_runtime_has_its_own_stop_and_a_stop_reaches_only_its_own(tmp_path):
@@ -103,16 +114,20 @@ def test_a_stop_is_taken_while_every_shared_worker_thread_is_busy(tmp_path):
     request = StopRequest(db)
     fd, lock = acquire_owner_lock(db)
     release = threading.Event()
+    held = threading.Barrier(3)  # the two shared threads and this test
+
+    def hold() -> None:
+        held.wait(10)
+        release.wait(60)
 
     async def go():
         loop = asyncio.get_running_loop()
         loop.set_default_executor(ThreadPoolExecutor(max_workers=2))
-        busy = [asyncio.to_thread(release.wait, 60) for _ in range(2)]
-        busy = [asyncio.ensure_future(b) for b in busy]
-        await asyncio.sleep(0.1)  # both shared threads are held
-        stop = asyncio.Event()
+        busy = [loop.run_in_executor(None, hold) for _ in range(2)]
+        held.wait(10)  # both shared threads are held
+        stop, before = asyncio.Event(), set(threading.enumerate())
         waiter = asyncio.create_task(capture.stop_on_request(stop, request))
-        await asyncio.sleep(0.1)
+        await _waiting(before)
         ask_to_stop(db)
         try:
             # taken within its wait, with a second to spare; later raises TimeoutError
@@ -140,9 +155,9 @@ def test_the_programs_own_stop_ends_the_waiter_at_once(tmp_path):
     request = StopRequest(tmp_path / "stream_capture.db")
 
     async def go():
-        stop = asyncio.Event()
+        stop, before = asyncio.Event(), set(threading.enumerate())
         waiter = asyncio.create_task(capture.stop_on_request(stop, request))
-        await asyncio.sleep(0.1)  # the waiter is waiting
+        await _waiting(before)
         stop.set()
         started = time_et.elapsed()
         await asyncio.wait_for(waiter, timeout=10)

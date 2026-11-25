@@ -54,6 +54,7 @@ from stream_spine import (
 )
 from tests.feed_live_helper import mark_feed_down
 from tests.schwab_rest_standin import LocalSchwab
+from tests.shared_helpers import until
 from tests.test_data_path_rules_v1 import _CONTRACT, _EVENTS, _frame
 
 _IN_WINDOW = 1790885705.0  # 2026-10-01 16:15:05 ET, after SPY's option close: its close capture
@@ -122,12 +123,6 @@ def _publish_options(bus, health, events) -> None:
     for e in events:  # each received at its recorded time
         h = connection._publisher("LEVELONE_OPTIONS", bus, health, lambda t=e["ts_recv"]: t)
         h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"]["QUOTE_TIME_MILLIS"]))
-
-
-async def _until(pred, limit: float = 10.0) -> None:
-    deadline = time_et.elapsed() + limit
-    while not pred() and time_et.elapsed() < deadline:
-        await asyncio.sleep(0.05)
 
 
 def _writable(db: Path) -> None:
@@ -249,9 +244,9 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         h = connection._publisher("LEVELONE_EQUITIES", bus, health, lambda: _TSLA["ts_recv"])
         h({"content": [big], "timestamp": 2**64})
-        await _until(lambda: writer.status()["failures"] >= 1)  # kept as sent
+        await until(lambda: writer.status()["failures"] >= 1)  # kept as sent
         h({"content": [_TSLA["native"]], "timestamp": 2})
-        await _until(lambda: writer.status()["rows_written"] >= 1)  # and the writer goes on
+        await until(lambda: writer.status()["rows_written"] >= 1)  # and the writer goes on
         stop.set()
         await task
 
@@ -283,9 +278,9 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         release.start()
         _publish_options(bus, health, _EVENTS)
-        await _until(lambda: writer.status()["state"] == "blocked")
+        await until(lambda: writer.status()["state"] == "blocked")
         during = _beat(daemon)["writer"]
-        await _until(lambda: writer.status()["rows_written"] == len(_EVENTS))
+        await until(lambda: writer.status()["rows_written"] == len(_EVENTS))
         after = _beat(daemon)["writer"]
         stop.set()
         await task
@@ -327,14 +322,14 @@ def test_a_database_read_only_when_the_writer_starts_is_written_once_it_accepts_
         daemon.writer = writer
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
-        await _until(  # refused, and every message handed over to the writer and waiting
+        await until(  # refused, and every message handed over to the writer and waiting
             lambda: (
                 writer.status()["state"] == "blocked" and writer.status()["waiting"] == len(_EVENTS)
             )
         )
         during = daemon.status(time_et.now()).get("writer")
         _writable(db)
-        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
+        await until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
         after = daemon.status(time_et.now()).get("writer")
         stop.set()
         await task
@@ -399,12 +394,13 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _tsla_quotes(bus, health, 3)
+        # refused: the 3 held, before the _Defect message comes (a round's rows are made before
+        # its write, so in the first round it would end the writer before any refusal)
+        await until(lambda: writer.status()["state"] == "blocked", state=writer.status)
         bus.publish("quote.TSLA", _defect())
-        await _until(  # refused, the 4 held
-            lambda: writer.status()["state"] == "blocked" and writer.status()["held"] == 4
-        )
+        await until(lambda: writer.status()["held"] == 4, state=writer.status)  # the 4 held
         _writable(db)
-        await _until(lambda: writer.status()["state"] == "dead")
+        await until(lambda: writer.status()["state"] == "dead", state=writer.status)
         dead = writer.status()
         stop.set()
         await task
@@ -436,10 +432,10 @@ def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp
         _tsla_quotes(bus, health, 3)
         bus.publish("quote.TSLA", _defect())
         _tsla_quotes(bus, health, 4)
-        await _until(lambda: writer.status()["state"] == "dead")
+        await until(lambda: writer.status()["state"] == "dead")
         dead = writer.status()
         _tsla_quotes(bus, health, 6)
-        await _until(sub.queue.empty)  # run() has handed the 6 over (each counted as it is)
+        await until(sub.queue.empty)  # run() has handed the 6 over (each counted as it is)
         later = writer.status()
         stop.set()
         await task
@@ -472,7 +468,7 @@ def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(t
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _tsla_quotes(bus, health, 1)
         _publish_options(bus, health, _EVENTS)
-        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS), limit=5.0)
+        await until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS), seconds=5.0)
         stop.set()
         await task
 
@@ -530,8 +526,8 @@ def test_a_chain_whose_history_write_fails_is_kept_as_sent_and_is_never_a_chain_
         worker = threading.Thread(target=sweep.work, args=(lambda: client, halt), daemon=True)
         try:
             worker.start()
-            await _until(
-                lambda: chains() >= 2 and daemon.writer.status()["failures"] >= 2, limit=4.0
+            await until(
+                lambda: chains() >= 2 and daemon.writer.status()["failures"] >= 2, seconds=4.0
             )
         finally:
             halt.set()
@@ -582,7 +578,7 @@ async def _held_past_the_cap(writer, bus, health, daemon) -> dict:
         s = writer.status()
         return s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == len(_EVENTS)
 
-    await _until(all_held)
+    await until(all_held)
     return _beat(daemon)["writer"]
 
 
@@ -666,7 +662,7 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
         _bus, _health, daemon, task, during = await _spilled(writer, stop)
         on_disk = Path(during["spill"]["path"]).stat().st_size
         holder.execute("COMMIT")
-        await _until(
+        await until(
             lambda: (
                 writer.status()["spill"] is None
                 and _count(db, "stream_options_quotes_raw") == len(_EVENTS)
@@ -714,7 +710,7 @@ def _run_until_no_spill(writer: CaptureWriter) -> dict:
     async def go():
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: writer.status()["spill"] is None)
+        await until(lambda: writer.status()["spill"] is None)
         stop.set()
         await task
 
@@ -783,9 +779,9 @@ def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_st
         release = _undeletable(Path(during["spill"]["path"]))
         try:
             holder.execute("COMMIT")
-            await _until(lambda: writer.status()["spill"] is None)
+            await until(lambda: writer.status()["spill"] is None)
             _publish_options(bus, health, _EVENTS[:1])  # arrives after the write-back
-            await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
+            await until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
             after = _beat(daemon)["writer"]
             stop.set()
             await task
@@ -895,9 +891,9 @@ def test_a_spill_progress_statement_that_fails_for_its_own_reason_is_kept_and_th
             states.append(writer.status()["state"])
             return writer.status()["spill"] is None
 
-        await _until(written_back)
+        await until(written_back)
         _publish_options(bus, health, _EVENTS[:1])  # arrives after the write-back
-        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
+        await until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
         stop.set()
         await task
         return writer.status()
@@ -944,14 +940,14 @@ def test_what_arrives_while_a_found_spill_waits_is_never_written_behind_its_cut_
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS[1:])
-        await _until(
+        await until(
             lambda: (
                 len(writer.status()["spills_after"]) == 1
                 and writer.status()["spills_after"][0]["messages"] == len(_EVENTS) - 1
             )
         )
         holder.execute("COMMIT")
-        await _until(lambda: writer.status()["spill"] is None)
+        await until(lambda: writer.status()["spill"] is None)
         stop.set()
         await task
         return writer.status()
@@ -1048,9 +1044,9 @@ def test_a_damaged_length_in_a_live_write_back_keeps_the_rest_and_the_spill_fini
             f.seek(last)
             f.write(b"\xff\xff\xff\xff")
         holder.execute("COMMIT")
-        await _until(lambda: writer.status()["spill"] is None)
+        await until(lambda: writer.status()["spill"] is None)
         _publish_options(bus, health, _EVENTS[:1])
-        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
+        await until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS))
         after = _beat(daemon)["writer"]
         stop.set()
         await task
@@ -1252,8 +1248,8 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         for service, frame, received in _mix_frames():
             connection._publisher(service, bus, health, lambda t=received: t)(json.loads(frame))
-        await _until(
-            lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), limit=60.0
+        await until(
+            lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), seconds=60.0
         )
         stop.set()
         await task
@@ -1319,9 +1315,9 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
         # that replace it during the hold count only their difference
         tracemalloc.start()
         await publish()
-        await _until(lambda: _mix_rows(db) == n, limit=30.0)
+        await until(lambda: _mix_rows(db) == n, seconds=30.0)
         # the writer's thread lets go of a round after its commit: the base is read once it has
-        await _until(lambda: writer.status()["rows_written"] == n and not writer._round, limit=30.0)
+        await until(lambda: writer.status()["rows_written"] == n and not writer._round, 30.0)
         holder.execute("BEGIN IMMEDIATE")
         base = tracemalloc.get_traced_memory()[0]
         for _ in range(3):
@@ -1335,13 +1331,13 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
                 and s["spill"]["messages"] + s["waiting"] == 3 * n
             )
 
-        await _until(all_held, limit=60.0)
+        await until(all_held, seconds=60.0)
         held_memory = tracemalloc.get_traced_memory()[0] - base
         tracemalloc.stop()
         during = writer.status()
         holder.execute("COMMIT")
-        await _until(
-            lambda: writer.status()["spill"] is None and _mix_rows(db) == 4 * n, limit=120.0
+        await until(
+            lambda: writer.status()["spill"] is None and _mix_rows(db) == 4 * n, seconds=120.0
         )
         stop.set()
         await task
@@ -1420,10 +1416,10 @@ def test_a_writer_that_dies_with_a_spill_file_lists_it_and_counts_its_messages(t
                 s["spill"] is not None and s["spill"]["messages"] + s["waiting"] == len(_EVENTS) + 1
             )
 
-        await _until(all_held)
+        await until(all_held)
         held = writer.status()
         armed.set()
-        await _until(lambda: writer.status()["state"] == "dead")
+        await until(lambda: writer.status()["state"] == "dead")
         dead = writer.status()
         stop.set()
         await task
@@ -1478,11 +1474,9 @@ def test_a_damaged_spill_record_is_kept_as_sent_and_every_record_after_it_is_wri
             f.write(b"\xff\xff")
         last = _last_record_start(path, during["spill"]["bytes"])  # the lengths are not damaged
         _publish_options(bus, health, _EVENTS[:1])  # behind the damaged record
-        await _until(
-            lambda: writer.status()["spill"]["messages"] == during["spill"]["messages"] + 1
-        )
+        await until(lambda: writer.status()["spill"]["messages"] == during["spill"]["messages"] + 1)
         holder.execute("COMMIT")
-        await _until(
+        await until(
             lambda: (
                 _count(db, "stream_options_quotes_raw") == len(_EVENTS)
                 and writer.status()["spill"] is None
@@ -1555,9 +1549,9 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         second = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(second.run(bus.subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: second.status()["spill"] is None)
+        await until(lambda: second.status()["spill"] is None)
         _publish_options(bus, health, _EVENTS[:1])  # arrives after the restart
-        await _until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
+        await until(lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) + 1)
         stop.set()
         await task
         return second.status()
