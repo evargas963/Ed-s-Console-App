@@ -72,8 +72,8 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
       ]) {
         await openDesk(page, body, false, rows);
         await expect(card(page).locator(".liq-body > *").first()).toBeVisible();
-        // the served readout drawn, not the card's "Loading…" before it arrives
-        await expect(card(page).locator(".liq-body")).not.toContainText("Loading…");
+        // the served readout drawn, not the served "loading…" said before it arrives
+        await expect(card(page).locator(".liq-body")).not.toContainText("loading…");
         if (rows)
           for (const row of rows)
             await expect(page.locator("#tdmIdx" + row.ticker.replace(/^\$/, ""))).toContainText(

@@ -101,7 +101,7 @@
         "",
         null,
         [],
-        "FAILED",
+        window.EdShell.pageWords.failed,
         "warn",
       );
     }
@@ -148,9 +148,9 @@
     var heroUnit =
       r5 && r5.tilt_text != null ? r5.tilt_text + " (" + esc(vr.name) + ", top 5)" : "";
     // the served words: the top of book's while it is not live, else the book's (book_feed_label);
-    // no book age served reads AGE UNKNOWN, never live
+    // no book age served reads "-" (AGENTS.md rule 5), never live
     var bs = d.ages.book_stale;
-    var badge = d.top_outage ? d.top_feed_label : bs == null ? "AGE UNKNOWN" : d.book_feed_label;
+    var badge = d.top_outage ? d.top_feed_label : bs == null ? "-" : d.book_feed_label;
     return stage(
       1,
       "td-accent-blue",
@@ -631,7 +631,7 @@
       draw();
     } catch (err) {
       // said, then reported
-      window.EdShell.placeholder(host(), "the page could not draw the answer of Right Now");
+      window.EdShell.placeholder(host(), window.EdShell.say("not_drawn", { what: "Right Now" }));
       throw err;
     }
   });
@@ -812,7 +812,10 @@
     var h = document.getElementById("xpBody");
     if (!h) return;
     if (d.failed != null) {
-      window.EdShell.placeholder(h, "the Experimental panel was not produced: " + d.failed);
+      window.EdShell.placeholder(
+        h,
+        window.EdShell.say("not_produced_why", { what: "Experimental panel", why: d.failed }),
+      );
       return;
     }
     // the approved mock-up: today's gap, how that direction was followed, today's result, the

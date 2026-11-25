@@ -614,7 +614,10 @@ STREAM_WORDS = {
 #: yet for a symbol the page shows; "{name}" is the symbol's served display name. No symbol
 #: chosen; the daemon's beat carrying no status; what the operator typed not a symbol's form
 #: ("{typed}"); a watchlist change on its way, or its request failing before any answer
-#: ("{ticker}", "{why}": the failure as the browser reports it).
+#: ("{ticker}", "{why}": the failure as the browser reports it). A panel the page has asked for
+#: and not yet received, one whose answer has nothing to draw, one the program could not produce
+#: ("{what}": the panel's name; "{why}": the program's reason, as served), and one the page
+#: could not draw.
 PAGE_WORDS = {
     "waiting": "WAITING",
     "no_push_yet": "no push yet",
@@ -633,6 +636,13 @@ PAGE_WORDS = {
     "checking": "Checking {ticker} with Schwab…",
     "not_added": "{ticker} is not added: {why}",
     "not_removed": "{ticker} is not removed: {why}",
+    "loading": "LOADING",
+    "loading_text": "loading…",
+    "unavailable": "UNAVAILABLE",
+    "failed": "FAILED",
+    "not_produced": "the program could not produce the {what}",
+    "not_produced_why": "the program could not produce the {what}: {why}",
+    "not_drawn": "the page could not draw the answer of {what}",
 }
 
 #: per ticker, the beat its open surface was last stamped from (_feed_stamp_key: the socket open,

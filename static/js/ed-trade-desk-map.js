@@ -517,7 +517,7 @@
           '<span class="tdm-q-m">' +
           esc(q.src) +
           " · " +
-          (q.time_ct == null ? "time not reported" : esc(q.time_ct)) +
+          esc(orDash(q.time_ct)) + // its time not known: "-" (AGENTS.md rule 5)
           "</span></span></button>"
         );
       })
@@ -641,9 +641,10 @@
     c = $("tdmCardOpt");
     if (c) {
       if (!t || why(t)) {
-        state(c, t === undefined ? "LOADING" : "UNAVAILABLE", t === undefined ? "" : "warn");
+        var W = window.EdShell.pageWords;
+        state(c, t === undefined ? W.loading : W.unavailable, t === undefined ? "" : "warn");
         c.querySelector(".tdm-hero").innerHTML = "";
-        src(c, "Schwab option chain · " + (t === undefined ? "loading…" : esc(why(t))));
+        src(c, "Schwab option chain · " + (t === undefined ? W.loading_text : esc(why(t))));
         c.querySelector(".tdm-rows").innerHTML = "";
       } else {
         // the regime in words as served, and its tone from the one regime table
@@ -674,7 +675,11 @@
     if (c) {
       state(
         c,
-        t === undefined ? "LOADING" : !t || why(t) ? "UNAVAILABLE" : "",
+        t === undefined
+          ? window.EdShell.pageWords.loading
+          : !t || why(t)
+            ? window.EdShell.pageWords.unavailable
+            : "",
         t === undefined || (t && !why(t)) ? "" : "warn",
       );
       src(c, "Schwab option chain · " + (!t || why(t) ? "-" : esc(chainAgeLabel(t))));
@@ -837,13 +842,15 @@
       r = rd && rd.venues[key];
     body.classList.toggle("stale", !!(r && !r.live && r.status !== "no_book"));
     if (!r) {
-      src(c, m === undefined ? "loading…" : "the program could not produce the book");
+      // nothing to draw: the panel not received yet, or the program could not produce it, each
+      // in the served words, one phrasing wherever it is said
+      var W = window.EdShell.pageWords,
+        failed = window.EdShell.say("not_produced", { what: "book" });
+      src(c, m === undefined ? W.loading_text : failed);
       body.innerHTML =
         depth +
         '<div class="liq-none">' +
-        (m === undefined
-          ? "Loading…"
-          : "UNAVAILABLE<p>The program could not produce the book</p>") +
+        (m === undefined ? W.loading_text : W.unavailable + "<p>" + esc(failed) + "</p>") +
         "</div>";
       return;
     }
@@ -973,8 +980,8 @@
   // what a card says with nothing to draw: not sent yet (undefined), not produced by the program
   // (null), the served error, or the served answer holding nothing
   function noneText(x, what, none) {
-    if (x === undefined) return "loading…";
-    if (x === null) return "the program could not produce the " + what;
+    if (x === undefined) return window.EdShell.pageWords.loading_text;
+    if (x === null) return window.EdShell.say("not_produced", { what: what });
     return why(x) || none;
   }
   function paintCardCharts() {
@@ -1132,7 +1139,7 @@
       m === undefined
         ? pill("BOOK", "…", "")
         : !m
-          ? pill("BOOK", "FAILED", "bad")
+          ? pill("BOOK", window.EdShell.pageWords.failed, "bad")
           : m.status === "no_book"
             ? pill("BOOK", "NONE", "warn", "no " + m.venue)
             : pill(
@@ -1143,7 +1150,7 @@
                     ? m.book_age_text
                     : m.ages.book_stale
                       ? m.book_feed_label
-                      : "AGE UNKNOWN",
+                      : "-", // its age not known (AGENTS.md rule 5)
                 ),
                 m.ages.book_stale === false ? "ok" : "bad",
               );
@@ -1155,7 +1162,7 @@
       L === undefined
         ? pill("LEVELS", "…", "")
         : !L
-          ? pill("LEVELS", "FAILED", "bad")
+          ? pill("LEVELS", window.EdShell.pageWords.failed, "bad")
           : pill(
               "LEVELS",
               levelShown,
