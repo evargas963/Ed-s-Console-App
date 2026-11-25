@@ -191,7 +191,7 @@ class LevelsPanel(LevelsVerdict, SessionFields):
 #: what the screen says when no level can be shown nearest the price: none published, or none
 #: ordered by its distance (no live price) (AGENTS.md rule 4)
 NO_LEVELS, NO_PRICED_LEVELS = "No levels", "No priced levels"
-#: the largest put and call gamma strikes, in the order the context summary says them
+#: Gamma Put and Gamma Call, in the order the context summary says them
 WALLS = ("put_wall", "call_wall")
 #: the price-level snapshot's own fields with none published: each unknown
 NO_SNAPSHOT: SessionFields = {
@@ -369,7 +369,7 @@ def _same_day_rows(published: PublishedLevels | None) -> list[SameDayRow]:
 
 
 def _walls_said(levels: list[SessionLevelRow | CarriedLevelRow]) -> str | None:
-    """Return where the largest put and call gamma strikes sit from the price, as one sentence.
+    """Return where Gamma Put and Gamma Call sit from the price, as one sentence.
 
     Each by its name and its distance in words ("Gamma Put 2.92 above spot, Gamma Call 17.92
     above spot"). None unless both are placed against a live price: a sentence whose fact is not

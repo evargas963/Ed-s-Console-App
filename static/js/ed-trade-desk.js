@@ -292,9 +292,9 @@
       // the served headline, its served sources on hover
       if (terrain.headline) lines.push(["Read", terrain.headline, terrain.headline_source]);
     }
-    // where the price sits among the zones (push.liquidity location_said) and the largest put and
-    // call gamma strikes from it (push.levels walls_said), each the program's sentence, from the
-    // live price and so with its mark; a sentence not served is left out
+    // where the price sits among the zones (push.liquidity location_said) and Gamma Put and Gamma
+    // Call from it (push.levels walls_said), each the program's sentence, from the live price and
+    // so with its mark; a sentence not served is left out
     if (snap && snap.location_said != null)
       lines.push(["Location", snap.location_said, null, true]);
     if (levelsD && levelsD.walls_said != null)
