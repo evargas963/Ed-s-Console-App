@@ -396,7 +396,7 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
 
 
 def _from_spot(level: float, spot: float) -> str:
-    """A level's distance from the price in words, worked out here: never at it in this set."""
+    """Return a level's distance from the price in words, worked out here (never at it here)."""
     assert level != spot
     return f"{abs(level - spot):.2f} {'above' if level > spot else 'below'} spot"
 

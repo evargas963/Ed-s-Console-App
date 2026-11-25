@@ -97,7 +97,7 @@ def test_with_a_live_spot_the_zones_are_measured_from_schwabs_last_price():
 
 
 def _at_price(price: float) -> dict:
-    """The panel with `price` as the LAST_PRICE Schwab sent at 15:00 ET (INDUCED)."""
+    """Return the panel with `price` as the LAST_PRICE Schwab sent at 15:00 ET (INDUCED)."""
     at = FRIDAY.timestamp()
     lmp.record_feed_heartbeat(
         daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [TK]})
