@@ -395,6 +395,30 @@ def test_levels_carry_the_gamma_family_into_the_one_distance_order(spy_levels):
     )
 
 
+def _from_spot(level: float, spot: float) -> str:
+    """A level's distance from the price in words, worked out here: never at it in this set."""
+    assert level != spot
+    return f"{abs(level - spot):.2f} {'above' if level > spot else 'below'} spot"
+
+
+def test_the_largest_gamma_strikes_are_said_from_the_price_in_one_sentence(spy_levels):
+    """Right Now's context summary line: the put's then the call's, each its distance.
+
+    With no live price neither is placed, and the sentence is left out.
+    """
+    spot, terrain, serve = spy_levels
+    body = serve()
+    put, call = terrain["put_wall"], terrain["call_wall"]
+    assert body["walls_said"] == (
+        f"Gamma Put {_from_spot(put, spot)}, Gamma Call {_from_spot(call, spot)}"
+    )
+    lmp._by_ticker.pop(DESK, None)  # INDUCED: no price message taken in
+    lmp._fields_by_ticker.pop(DESK, None)
+    body = push_levels.levels_payload(DESK, "1", FRIDAY_CLOSE)
+    assert {r["id"] for r in body["levels"]} >= {"put_wall", "call_wall"}
+    assert body["walls_said"] is None
+
+
 #: every key and word the implied one-day move and its ±1σ band were served under (operator
 #: 2026-11-20: the bands are removed from everywhere)
 ONE_DAY_MOVE = {

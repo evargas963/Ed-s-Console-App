@@ -80232,11 +80232,7 @@
       "value_state_text": "higher",
       "vwap_relation_text": "inside value"
     },
-    "spot_location": {
-      "inside": null,
-      "above": 0,
-      "below": 2
-    },
+    "location_said": "Between zones \u2014 Resistance zone above at 269.83 (levels in zone 6), Support zone below at 267.83 (levels in zone 2)",
     "hold_rates": [
       {
         "level": "Prior day high",
@@ -80984,6 +80980,7 @@
         "grc"
       ],
       "none_said": null,
+      "walls_said": "Gamma Put 0.57 above spot, Gamma Call 0.57 above spot",
       "zero_dte": [
         {
           "id": "call_wall",
@@ -82511,6 +82508,7 @@
         "grc"
       ],
       "none_said": null,
+      "walls_said": "Gamma Put 0.57 above spot, Gamma Call 0.57 above spot",
       "zero_dte": [
         {
           "id": "call_wall",
@@ -83983,6 +83981,7 @@
         "grc"
       ],
       "none_said": null,
+      "walls_said": "Gamma Put 0.57 above spot, Gamma Call 0.57 above spot",
       "zero_dte": [
         {
           "id": "call_wall",

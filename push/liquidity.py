@@ -53,8 +53,8 @@ class ZoneRow(TypedDict):
     zone_side: str
     zone_low: float
     zone_high: float
-    zone_low_text: str | None
-    zone_high_text: str | None
+    zone_low_text: str
+    zone_high_text: str
     anchor: float
     source_levels: list[ShownSourceLevel]
     confluence_score: int
@@ -71,14 +71,6 @@ class ValueSummary(TypedDict):
     vwap_relation: str | None
     value_state_text: str | None
     vwap_relation_text: str | None
-
-
-class SpotLocation(TypedDict):
-    """Where the price sits among the zones, by index: inside one, else the nearest each way."""
-
-    inside: int | None
-    above: int | None
-    below: int | None
 
 
 class HoldRate(TypedDict):
@@ -99,7 +91,7 @@ class LiquidityPanel(LevelsVerdict, SnapshotStamp):
     zones: list[ZoneRow]
     no_zones_text: str | None
     summary: ValueSummary | None
-    spot_location: SpotLocation | None
+    location_said: str | None
     hold_rates: list[HoldRate]
     hold_note: str
 
@@ -196,23 +188,37 @@ def hold_rates(tk: str, now: datetime) -> list[HoldRate]:
     ]
 
 
-def _spot_location(zones: list[ZoneRow], spot: float | None) -> SpotLocation | None:
-    """Where spot sits among the zones, by index into `zones`.
+def _location_said(zones: list[ZoneRow], spot: float | None) -> str | None:
+    """Where the price sits among the zones, as one sentence.
 
-    The zone it is inside, else the nearest zone above and below. None without a spot or a zone.
+    The zone it is inside, with its range and how many levels it holds; else between the nearest
+    zone above and the nearest below, each with its near edge. A price outside every zone has one
+    on at least one side. None without a price or a zone: the sentence is left out (AGENTS.md
+    rule 5).
     """
     if spot is None or not zones:
         return None
-    for i, z in enumerate(zones):
+    for z in zones:
         if within(z["zone_low"], z["zone_high"], spot):
-            return {"inside": i, "above": None, "below": None}
-    above = [i for i, z in enumerate(zones) if level_side(z["zone_low"], spot) == LEVEL_ABOVE]
-    below = [i for i, z in enumerate(zones) if level_side(z["zone_high"], spot) == LEVEL_BELOW]
-    return {
-        "inside": None,
-        "above": min(above, key=lambda i: zones[i]["zone_low"]) if above else None,
-        "below": max(below, key=lambda i: zones[i]["zone_high"]) if below else None,
-    }
+            return (
+                f"{z['zone_label']} ({z['zone_low_text']}–{z['zone_high_text']}, levels in zone "
+                f"{z['confluence_score']})"
+            )
+    above = [z for z in zones if level_side(z["zone_low"], spot) == LEVEL_ABOVE]
+    below = [z for z in zones if level_side(z["zone_high"], spot) == LEVEL_BELOW]
+    near: list[str] = []
+    if above:
+        z = min(above, key=lambda z: z["zone_low"])
+        near.append(_near_said(z, "above", z["zone_low_text"]))
+    if below:
+        z = max(below, key=lambda z: z["zone_high"])
+        near.append(_near_said(z, "below", z["zone_high_text"]))
+    return "Between zones — " + ", ".join(near)
+
+
+def _near_said(z: ZoneRow, side: str, edge: str) -> str:
+    """Return the nearest zone on one side of the price: its name, its near edge, its levels."""
+    return f"{z['zone_label']} zone {side} at {edge} (levels in zone {z['confluence_score']})"
 
 
 def _summary(summary: SnapshotSummary | None) -> ValueSummary | None:
@@ -293,7 +299,7 @@ def liquidity_snapshot(ticker: str, now: datetime) -> LiquidityPanel | NoLiquidi
         # the zone list's words when it lists none; with no levels published, `reason` says why
         "no_zones_text": None if zones_payload else NO_ZONES_TEXT,
         "summary": _summary(out.summary),
-        "spot_location": _spot_location(zones_payload, spot_for_zones),
+        "location_said": _location_said(zones_payload, spot_for_zones),
         "hold_rates": hold_rates(ticker_upper, now),
         "hold_note": HOLD_NOTE,
     }

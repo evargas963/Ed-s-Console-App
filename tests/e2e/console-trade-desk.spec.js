@@ -34,8 +34,15 @@ const {
 const COMP = MICRO.readout.venues.COMPOSITE;
 // a strikes window as GEX by Strike lists it: highest strike first
 const listed = (strikes) => strikes.today.map((r) => String(r.strike)).reverse();
-// the zone the price is inside (the liquidity panel's own spot_location)
-const INSIDE = LIQ.zones[LIQ.spot_location.inside];
+// the zone the price is inside (the liquidity panel types each zone by its side of the price)
+const INSIDE = LIQ.zones.find((z) => z.zone_label === "Price inside zone");
+// INDUCED: that zone's top moved, the panel as the program would send it
+const TOP_MOVED = Object.assign({}, LIQ, {
+  zones: LIQ.zones.map((z) =>
+    z === INSIDE ? Object.assign({}, z, { zone_high: 758.5, zone_high_text: "758.50" }) : z,
+  ),
+  location_said: "Price inside zone (757.00–758.50, levels in zone 4)",
+});
 // the marks a panel of the levels' values is served with, as the page draws them: the price-level
 // snapshot's time and age, and the levels verdict (its state word, time and age)
 const snapshotMark = (d) =>
@@ -257,7 +264,7 @@ test("Liquidity map: a list with no zone says the served words, words only the s
   // tests/test_liquidity_snapshot_spot_identity_v1.py). INDUCED: SPY's own answer with its zones
   // taken out and those words; then with words no page could hold
   const noZone = (words) =>
-    Object.assign({}, LIQ, { zones: [], summary: null, spot_location: null, no_zones_text: words });
+    Object.assign({}, LIQ, { zones: [], summary: null, location_said: null, no_zones_text: words });
   const errs = watchErrors(page);
   await intercept(page);
   deskPanels().liquidity = noZone("no zones for this session yet");
@@ -1499,6 +1506,34 @@ test.describe("Trade Desk renders served values", () => {
     expect(errs).toEqual([]);
   });
 
+  // AGENTS.md rule 4: where the price sits among the zones and the largest gamma strikes from it
+  // are the program's sentences (push.liquidity location_said, push.levels walls_said). INDUCED:
+  // each worded otherwise, then neither served, which leaves both lines out
+  test("Right Now: the context summary draws the program's sentences, and leaves out one not served", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    const sock = await intercept(page);
+    deskPanels().liquidity = Object.assign({}, LIQ, { location_said: "SERVED: where it sits" });
+    deskPanels().levels = levelsAt((key, params) =>
+      Object.assign({}, REAL.levels[params.tf], { walls_said: "SERVED: the gamma strikes" }),
+    );
+    await openView(page, "trade-desk", "right-now");
+    const summary = page.locator("#tdBody .td-context");
+    await expect(summary).toContainText("LocationSERVED: where it sits");
+    await expect(summary).toContainText("Gamma strikesSERVED: the gamma strikes");
+    deskPanels().liquidity = Object.assign({}, LIQ, { location_said: null });
+    deskPanels().levels = levelsAt((key, params) =>
+      Object.assign({}, REAL.levels[params.tf], { walls_said: null }),
+    );
+    sock.changed("liquidity");
+    sock.changed("levels");
+    await expect(summary).not.toContainText("Location");
+    await expect(summary).not.toContainText("Gamma strikes");
+    await expect(summary).toContainText("Regime"); // the served lines stand
+    expect(errs).toEqual([]);
+  });
+
   test("Right Now: each card of levels shows their marks as served, live and after they stopped arriving", async ({
     page,
   }) => {
@@ -1801,11 +1836,7 @@ test.describe("Trade Desk renders served values", () => {
     });
     sock.changed("book");
     await expect(body).toContainText("757.00 × 757.07"); // DETECT's book
-    deskPanels().liquidity = Object.assign({}, LIQ, {
-      zones: LIQ.zones.map((z) =>
-        z === INSIDE ? Object.assign({}, z, { zone_high: 758.5, zone_high_text: "758.50" }) : z,
-      ),
-    });
+    deskPanels().liquidity = TOP_MOVED;
     sock.changed("liquidity");
     await expect(body).toContainText("Price inside zone (757.00–758.50"); // FRAME's zones
     await expect(body).toContainText("Max Pain 757.00");
@@ -2084,12 +2115,7 @@ test.describe("Trade Desk renders served values", () => {
     });
     await page.evaluate(() => window.EdShell.setScope("wider")); // the scope changes ...
     await expect(page.locator("#tdMigration .gbs-k")).toHaveText(listed(REAL.strikes_wider));
-    // induced: the zone the price is inside, its top moved
-    deskPanels().liquidity = Object.assign({}, LIQ, {
-      zones: LIQ.zones.map((z) =>
-        z === INSIDE ? Object.assign({}, z, { zone_high: 758.5, zone_high_text: "758.50" }) : z,
-      ),
-    });
+    deskPanels().liquidity = TOP_MOVED;
     sock.changed("liquidity"); // ... and a panel of another kind lands after it
     await expect(page.locator("#tdBody")).toContainText("Price inside zone (757.00–758.50");
     // once the new window is drawn, every later draw is the new window: none goes back to the

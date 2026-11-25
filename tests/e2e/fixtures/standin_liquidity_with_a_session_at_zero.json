@@ -170,7 +170,7 @@
     "value_state_text": "lower",
     "vwap_relation_text": "above value"
   },
-  "spot_location": null,
+  "location_said": null,
   "hold_rates": [
     {
       "level": "Prior day high",
