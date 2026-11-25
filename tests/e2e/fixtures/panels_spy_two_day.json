@@ -50293,6 +50293,7 @@
           "n": 27,
           "price": 757.0,
           "marker": true,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:30 AM CT"
         },
         {
@@ -50318,6 +50319,7 @@
           "n": 26,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:30 AM CT"
         },
         {
@@ -50332,6 +50334,7 @@
           "n": 25,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:28 AM CT"
         },
         {
@@ -50346,6 +50349,7 @@
           "n": 24,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:27 AM CT"
         },
         {
@@ -50360,6 +50364,7 @@
           "n": 23,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:27 AM CT"
         },
         {
@@ -50374,6 +50379,7 @@
           "n": 22,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:25 AM CT"
         },
         {
@@ -50388,6 +50394,7 @@
           "n": 21,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:25 AM CT"
         },
         {
@@ -50402,6 +50409,7 @@
           "n": 20,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:22 AM CT"
         },
         {
@@ -50416,6 +50424,7 @@
           "n": 19,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:21 AM CT"
         },
         {
@@ -50430,6 +50439,7 @@
           "n": 18,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:20 AM CT"
         },
         {
@@ -50444,6 +50454,7 @@
           "n": 17,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:19 AM CT"
         },
         {
@@ -50458,6 +50469,7 @@
           "n": 16,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:16 AM CT"
         },
         {
@@ -50472,6 +50484,7 @@
           "n": 15,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:16 AM CT"
         },
         {
@@ -50486,6 +50499,7 @@
           "n": 14,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:11 AM CT"
         },
         {
@@ -50500,6 +50514,7 @@
           "n": 13,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:11 AM CT"
         },
         {
@@ -50514,6 +50529,7 @@
           "n": 12,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:01 AM CT"
         },
         {
@@ -50528,6 +50544,7 @@
           "n": 11,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:00 AM CT"
         },
         {
@@ -50542,6 +50559,7 @@
           "n": 10,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:45 AM CT"
         },
         {
@@ -50556,6 +50574,7 @@
           "n": 9,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:45 AM CT"
         },
         {
@@ -50570,6 +50589,7 @@
           "n": 8,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:40 AM CT"
         },
         {
@@ -50584,6 +50604,7 @@
           "n": 7,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:40 AM CT"
         },
         {
@@ -50598,6 +50619,7 @@
           "n": 6,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:39 AM CT"
         },
         {
@@ -50612,6 +50634,7 @@
           "n": 5,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:39 AM CT"
         },
         {
@@ -50626,6 +50649,7 @@
           "n": 4,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:38 AM CT"
         },
         {
@@ -50640,6 +50664,7 @@
           "n": 3,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:38 AM CT"
         },
         {
@@ -50654,6 +50679,7 @@
           "n": 2,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:37 AM CT"
         },
         {
@@ -50668,6 +50694,7 @@
           "n": 1,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:36 AM CT"
         }
       ],
@@ -50696,6 +50723,7 @@
           "n": 64,
           "price": 757.0,
           "marker": true,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:30 AM CT"
         },
         {
@@ -50721,6 +50749,7 @@
           "n": 63,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:30 AM CT"
         },
         {
@@ -50735,6 +50764,7 @@
           "n": 62,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:28 AM CT"
         },
         {
@@ -50749,6 +50779,7 @@
           "n": 61,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:27 AM CT"
         },
         {
@@ -50763,6 +50794,7 @@
           "n": 60,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:27 AM CT"
         },
         {
@@ -50777,6 +50809,7 @@
           "n": 59,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:25 AM CT"
         },
         {
@@ -50791,6 +50824,7 @@
           "n": 58,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:25 AM CT"
         },
         {
@@ -50805,6 +50839,7 @@
           "n": 57,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:22 AM CT"
         },
         {
@@ -50819,6 +50854,7 @@
           "n": 56,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:21 AM CT"
         },
         {
@@ -50833,6 +50869,7 @@
           "n": 55,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:20 AM CT"
         },
         {
@@ -50847,6 +50884,7 @@
           "n": 54,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:19 AM CT"
         },
         {
@@ -50861,6 +50899,7 @@
           "n": 53,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:16 AM CT"
         },
         {
@@ -50875,6 +50914,7 @@
           "n": 52,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:16 AM CT"
         },
         {
@@ -50889,6 +50929,7 @@
           "n": 51,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:11 AM CT"
         },
         {
@@ -50903,6 +50944,7 @@
           "n": 50,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:11 AM CT"
         },
         {
@@ -50917,6 +50959,7 @@
           "n": 49,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 09:01 AM CT"
         },
         {
@@ -50931,6 +50974,7 @@
           "n": 48,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 09:00 AM CT"
         },
         {
@@ -50945,6 +50989,7 @@
           "n": 47,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:45 AM CT"
         },
         {
@@ -50959,6 +51004,7 @@
           "n": 46,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:45 AM CT"
         },
         {
@@ -50973,6 +51019,7 @@
           "n": 45,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:40 AM CT"
         },
         {
@@ -50987,6 +51034,7 @@
           "n": 44,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:40 AM CT"
         },
         {
@@ -51001,6 +51049,7 @@
           "n": 43,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:39 AM CT"
         },
         {
@@ -51015,6 +51064,7 @@
           "n": 42,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:39 AM CT"
         },
         {
@@ -51029,6 +51079,7 @@
           "n": 41,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:38 AM CT"
         },
         {
@@ -51043,6 +51094,7 @@
           "n": 40,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:38 AM CT"
         },
         {
@@ -51057,6 +51109,7 @@
           "n": 39,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 08:37 AM CT"
         },
         {
@@ -51071,6 +51124,7 @@
           "n": 38,
           "price": 757.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 08:36 AM CT"
         },
         {
@@ -51085,6 +51139,7 @@
           "n": 37,
           "price": 756.2299737692855,
           "marker": true,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 07:07 AM CT"
         },
         {
@@ -51099,6 +51154,7 @@
           "n": 36,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 07:07 AM CT"
         },
         {
@@ -51113,6 +51169,7 @@
           "n": 35,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 07:04 AM CT"
         },
         {
@@ -51127,6 +51184,7 @@
           "n": 34,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 07:04 AM CT"
         },
         {
@@ -51141,6 +51199,7 @@
           "n": 33,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 07:02 AM CT"
         },
         {
@@ -51155,6 +51214,7 @@
           "n": 32,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 07:02 AM CT"
         },
         {
@@ -51169,6 +51229,7 @@
           "n": 31,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:58 AM CT"
         },
         {
@@ -51183,6 +51244,7 @@
           "n": 30,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:34 AM CT"
         },
         {
@@ -51197,6 +51259,7 @@
           "n": 29,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:34 AM CT"
         },
         {
@@ -51211,6 +51274,7 @@
           "n": 28,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:29 AM CT"
         },
         {
@@ -51225,6 +51289,7 @@
           "n": 27,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:29 AM CT"
         },
         {
@@ -51239,6 +51304,7 @@
           "n": 26,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:28 AM CT"
         },
         {
@@ -51253,6 +51319,7 @@
           "n": 25,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:28 AM CT"
         },
         {
@@ -51267,6 +51334,7 @@
           "n": 24,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:06 AM CT"
         },
         {
@@ -51281,6 +51349,7 @@
           "n": 23,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:06 AM CT"
         },
         {
@@ -51295,6 +51364,7 @@
           "n": 21,
           "price": 750.0,
           "marker": true,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:03 AM CT"
         },
         {
@@ -51309,6 +51379,7 @@
           "n": 22,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:03 AM CT"
         },
         {
@@ -51323,6 +51394,7 @@
           "n": 19,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:03 AM CT"
         },
         {
@@ -51337,6 +51409,7 @@
           "n": 20,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:03 AM CT"
         },
         {
@@ -51351,6 +51424,7 @@
           "n": 17,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:02 AM CT"
         },
         {
@@ -51365,6 +51439,7 @@
           "n": 18,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:02 AM CT"
         },
         {
@@ -51379,6 +51454,7 @@
           "n": 15,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:02 AM CT"
         },
         {
@@ -51393,6 +51469,7 @@
           "n": 16,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:02 AM CT"
         },
         {
@@ -51407,6 +51484,7 @@
           "n": 13,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:01 AM CT"
         },
         {
@@ -51421,6 +51499,7 @@
           "n": 14,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:01 AM CT"
         },
         {
@@ -51435,6 +51514,7 @@
           "n": 11,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:01 AM CT"
         },
         {
@@ -51449,6 +51529,7 @@
           "n": 12,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:01 AM CT"
         },
         {
@@ -51463,6 +51544,7 @@
           "n": 10,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:00 AM CT"
         },
         {
@@ -51477,6 +51559,7 @@
           "n": 9,
           "price": 750.0,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:00 AM CT"
         },
         {
@@ -51491,6 +51574,7 @@
           "n": 8,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 06:00 AM CT"
         },
         {
@@ -51505,6 +51589,7 @@
           "n": 7,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 06:00 AM CT"
         },
         {
@@ -51519,6 +51604,7 @@
           "n": 6,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 05:58 AM CT"
         },
         {
@@ -51533,6 +51619,7 @@
           "n": 5,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 05:57 AM CT"
         },
         {
@@ -51547,6 +51634,7 @@
           "n": 4,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 05:56 AM CT"
         },
         {
@@ -51561,6 +51649,7 @@
           "n": 3,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 05:56 AM CT"
         },
         {
@@ -51575,6 +51664,7 @@
           "n": 2,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed above",
           "time_ct": "Thu 11/12 05:55 AM CT"
         },
         {
@@ -51589,6 +51679,7 @@
           "n": 1,
           "price": 756.2299737692855,
           "marker": false,
+          "marker_said": "Crossed below",
           "time_ct": "Thu 11/12 05:55 AM CT"
         }
       ],
@@ -91844,6 +91935,7 @@
         "n": 64,
         "price": 757.0,
         "marker": true,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:30 AM CT"
       },
       {
@@ -91869,6 +91961,7 @@
         "n": 63,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:30 AM CT"
       },
       {
@@ -91883,6 +91976,7 @@
         "n": 62,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:28 AM CT"
       },
       {
@@ -91897,6 +91991,7 @@
         "n": 61,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:27 AM CT"
       },
       {
@@ -91911,6 +92006,7 @@
         "n": 60,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:27 AM CT"
       },
       {
@@ -91925,6 +92021,7 @@
         "n": 59,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:25 AM CT"
       },
       {
@@ -91939,6 +92036,7 @@
         "n": 58,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:25 AM CT"
       },
       {
@@ -91953,6 +92051,7 @@
         "n": 57,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:22 AM CT"
       },
       {
@@ -91967,6 +92066,7 @@
         "n": 56,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:21 AM CT"
       },
       {
@@ -91981,6 +92081,7 @@
         "n": 55,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:20 AM CT"
       },
       {
@@ -91995,6 +92096,7 @@
         "n": 54,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:19 AM CT"
       },
       {
@@ -92009,6 +92111,7 @@
         "n": 53,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:16 AM CT"
       },
       {
@@ -92023,6 +92126,7 @@
         "n": 52,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:16 AM CT"
       },
       {
@@ -92037,6 +92141,7 @@
         "n": 51,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:11 AM CT"
       },
       {
@@ -92051,6 +92156,7 @@
         "n": 50,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:11 AM CT"
       },
       {
@@ -92065,6 +92171,7 @@
         "n": 49,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 09:01 AM CT"
       },
       {
@@ -92079,6 +92186,7 @@
         "n": 48,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 09:00 AM CT"
       },
       {
@@ -92093,6 +92201,7 @@
         "n": 47,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 08:45 AM CT"
       },
       {
@@ -92107,6 +92216,7 @@
         "n": 46,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 08:45 AM CT"
       },
       {
@@ -92121,6 +92231,7 @@
         "n": 45,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 08:40 AM CT"
       },
       {
@@ -92135,6 +92246,7 @@
         "n": 44,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 08:40 AM CT"
       },
       {
@@ -92149,6 +92261,7 @@
         "n": 43,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 08:39 AM CT"
       },
       {
@@ -92163,6 +92276,7 @@
         "n": 42,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 08:39 AM CT"
       },
       {
@@ -92177,6 +92291,7 @@
         "n": 41,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 08:38 AM CT"
       },
       {
@@ -92191,6 +92306,7 @@
         "n": 40,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 08:38 AM CT"
       },
       {
@@ -92205,6 +92321,7 @@
         "n": 39,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 08:37 AM CT"
       },
       {
@@ -92219,6 +92336,7 @@
         "n": 38,
         "price": 757.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 08:36 AM CT"
       },
       {
@@ -92233,6 +92351,7 @@
         "n": 37,
         "price": 756.2299737692855,
         "marker": true,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 07:07 AM CT"
       },
       {
@@ -92247,6 +92366,7 @@
         "n": 36,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 07:07 AM CT"
       },
       {
@@ -92261,6 +92381,7 @@
         "n": 35,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 07:04 AM CT"
       },
       {
@@ -92275,6 +92396,7 @@
         "n": 34,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 07:04 AM CT"
       },
       {
@@ -92289,6 +92411,7 @@
         "n": 33,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 07:02 AM CT"
       },
       {
@@ -92303,6 +92426,7 @@
         "n": 32,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 07:02 AM CT"
       },
       {
@@ -92317,6 +92441,7 @@
         "n": 31,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:58 AM CT"
       },
       {
@@ -92331,6 +92456,7 @@
         "n": 30,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:34 AM CT"
       },
       {
@@ -92345,6 +92471,7 @@
         "n": 29,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:34 AM CT"
       },
       {
@@ -92359,6 +92486,7 @@
         "n": 28,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:29 AM CT"
       },
       {
@@ -92373,6 +92501,7 @@
         "n": 27,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:29 AM CT"
       },
       {
@@ -92387,6 +92516,7 @@
         "n": 26,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:28 AM CT"
       },
       {
@@ -92401,6 +92531,7 @@
         "n": 25,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:28 AM CT"
       },
       {
@@ -92415,6 +92546,7 @@
         "n": 24,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:06 AM CT"
       },
       {
@@ -92429,6 +92561,7 @@
         "n": 23,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:06 AM CT"
       },
       {
@@ -92443,6 +92576,7 @@
         "n": 21,
         "price": 750.0,
         "marker": true,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:03 AM CT"
       },
       {
@@ -92457,6 +92591,7 @@
         "n": 22,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:03 AM CT"
       },
       {
@@ -92471,6 +92606,7 @@
         "n": 19,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:03 AM CT"
       },
       {
@@ -92485,6 +92621,7 @@
         "n": 20,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:03 AM CT"
       },
       {
@@ -92499,6 +92636,7 @@
         "n": 17,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:02 AM CT"
       },
       {
@@ -92513,6 +92651,7 @@
         "n": 18,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:02 AM CT"
       },
       {
@@ -92527,6 +92666,7 @@
         "n": 15,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:02 AM CT"
       },
       {
@@ -92541,6 +92681,7 @@
         "n": 16,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:02 AM CT"
       },
       {
@@ -92555,6 +92696,7 @@
         "n": 13,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:01 AM CT"
       },
       {
@@ -92569,6 +92711,7 @@
         "n": 14,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:01 AM CT"
       },
       {
@@ -92583,6 +92726,7 @@
         "n": 11,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:01 AM CT"
       },
       {
@@ -92597,6 +92741,7 @@
         "n": 12,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:01 AM CT"
       },
       {
@@ -92611,6 +92756,7 @@
         "n": 10,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:00 AM CT"
       },
       {
@@ -92625,6 +92771,7 @@
         "n": 9,
         "price": 750.0,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:00 AM CT"
       },
       {
@@ -92639,6 +92786,7 @@
         "n": 8,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 06:00 AM CT"
       },
       {
@@ -92653,6 +92801,7 @@
         "n": 7,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 06:00 AM CT"
       },
       {
@@ -92667,6 +92816,7 @@
         "n": 6,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 05:58 AM CT"
       },
       {
@@ -92681,6 +92831,7 @@
         "n": 5,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 05:57 AM CT"
       },
       {
@@ -92695,6 +92846,7 @@
         "n": 4,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 05:56 AM CT"
       },
       {
@@ -92709,6 +92861,7 @@
         "n": 3,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 05:56 AM CT"
       },
       {
@@ -92723,6 +92876,7 @@
         "n": 2,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed above",
         "time_ct": "Thu 11/12 05:55 AM CT"
       },
       {
@@ -92737,6 +92891,7 @@
         "n": 1,
         "price": 756.2299737692855,
         "marker": false,
+        "marker_said": "Crossed below",
         "time_ct": "Thu 11/12 05:55 AM CT"
       }
     ],

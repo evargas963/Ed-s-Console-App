@@ -958,7 +958,8 @@ test.describe("Trade Desk renders served values", () => {
       null,
       null,
     ]);
-    await expect(page.locator('#tdmFamilies [data-famv="prior_day"]')).toHaveText("");
+    // not received: "-" beside its switch (AGENTS.md rule 5), never a blank
+    await expect(page.locator('#tdmFamilies [data-famv="prior_day"]')).toHaveText("-");
     expect(errs).toEqual([]);
   });
 

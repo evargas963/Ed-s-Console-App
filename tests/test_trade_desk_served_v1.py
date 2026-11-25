@@ -232,6 +232,10 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     assert ts == sorted(ts, reverse=True)  # newest first
     up = sum(1 for k in events if k[2] == "up")
     assert body["cross_counts"] == {"up": up, "down": len(events) - up}
+    # each chart marker's words, the program's (AGENTS.md rule 4): the way it crossed
+    said = {"up": "Crossed above", "down": "Crossed below"}
+    assert {it["dir"] for it in crosses} == {"up", "down"}
+    assert all(it["marker_said"] == said[it["dir"]] for it in crosses)
 
 
 def _spy_close_at(msg):
