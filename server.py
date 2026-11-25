@@ -405,9 +405,10 @@ def _with_page_settings(html: str) -> str:
     The market-context symbols it always asks for are live_push.MARKET_CONTEXT, each with its
     display name and whether it is the volatility index (live_push.VOLATILITY_INDEX), which the
     header draws first of them on every page and the Desk's Volatility card shows; the
-    scopes its strike windows take are calc.terrain_engine.SCOPES, each with its word; and the
-    words for each streaming state are STREAM_WORDS. A page without a setting's empty meta is
-    refused, never served without it.
+    scopes its strike windows take are calc.terrain_engine.SCOPES, each with its word; the
+    words for each streaming state are STREAM_WORDS; and the words for the states only the page
+    can see, its own connection to the program, are PAGE_WORDS. A page without a setting's empty
+    meta is refused, never served without it.
     """
     for name, value in (
         (
@@ -419,6 +420,7 @@ def _with_page_settings(html: str) -> str:
         ),
         ("ed-scopes", [{"key": s, "label": SCOPE_LABELS[s]} for s in SCOPES]),
         ("ed-stream-words", STREAM_WORDS),
+        ("ed-page-words", PAGE_WORDS),
     ):
         empty = f'<meta name="{name}" content="" />'
         if empty not in html:
@@ -604,6 +606,20 @@ STREAM_WORDS = {
         "pending": "streaming requested",
         "unavailable": "not streaming",
     },
+}
+
+#: The words for the states only the page can see, its own connection to the program, served in
+#: the page (meta ed-page-words): the page says them in this one wording and holds none of its
+#: own (AGENTS.md rule 4). A ticker just asked for, its row on its way; the push silent; no row
+#: yet for a symbol the page shows; "{name}" is the symbol's served display name.
+PAGE_WORDS = {
+    "waiting": "WAITING",
+    "no_push_yet": "no push yet",
+    "offline": "OFFLINE",
+    "push_down": "live push down",
+    "no_row_yet": "no price row yet",
+    "no_row_yet_symbol": "no price row yet for this symbol",
+    "waiting_stream": "waiting for the {name} stream",
 }
 
 #: per ticker, the beat its open surface was last stamped from (_feed_stamp_key: the socket open,

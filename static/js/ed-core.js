@@ -123,6 +123,11 @@
   // The strike-window scopes, served in the page (meta ed-scopes, from calc.terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
   var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute("content"));
+  // The words for the page's own connection states, served in the page (meta ed-page-words,
+  // server.PAGE_WORDS): every surface says them in this one wording, and the page holds none.
+  var PAGE_WORDS = JSON.parse(
+    document.querySelector('meta[name="ed-page-words"]').getAttribute("content"),
+  );
   var SCOPE_MODES = SCOPES.map(function (s) {
     return s.key;
   });
@@ -1175,10 +1180,10 @@
   // What is wrong, for row 2's line and the feed word's colour: the program's own sentences from
   // its last beat, in order (Schwab's connection, the recorder, the sign-in), or the page's own
   // words while the push is silent and no row is on its way; then what the program left out
-  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence. The page's
-  // own words while the push is silent: the feed's word, and why.
-  var PUSH_OFFLINE = "OFFLINE",
-    PUSH_DOWN = "live push down";
+  // (`_leftOut`, the beat's), where its cell in row 1 has no room for the sentence. The words
+  // while the push is silent, as served: the feed's word, and why.
+  var PUSH_OFFLINE = PAGE_WORDS.offline,
+    PUSH_DOWN = PAGE_WORDS.push_down;
   var _beatAlerts = [],
     _beatFeedDown = false,
     _pushDown = false,
@@ -1620,8 +1625,8 @@
     // (WAITING); otherwise the push itself is down (OFFLINE). A price already shown stays with its
     // last trade time and no age: the last served age is not the age now.
     var connecting = _priceConnecting;
-    var label = connecting ? "WAITING" : PUSH_OFFLINE;
-    var age = connecting ? "no push yet" : PUSH_DOWN;
+    var label = connecting ? PAGE_WORDS.waiting : PUSH_OFFLINE;
+    var age = connecting ? PAGE_WORDS.no_push_yet : PUSH_DOWN;
     if (_quoteShown)
       setFeed("stale", label, _tradeCell != null ? _tradeCell : age, null, _tradeShown);
     else
@@ -1874,6 +1879,7 @@
     emit: emit,
     esc: esc,
     orDash: orDash,
+    pageWords: PAGE_WORDS,
     request: request,
     classTag: classTag,
     rowsHtml: rowsHtml,

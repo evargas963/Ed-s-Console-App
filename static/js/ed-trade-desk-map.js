@@ -598,7 +598,13 @@
       // Schwab's values with Schwab's trade time; the outage stays beside that time, and the feed state beside them
       state(
         c,
-        S.pushDown ? S.pushDown : !q ? "WAITING" : q.feed_live ? "SESSION VOLUME" : q.feed_label,
+        S.pushDown
+          ? S.pushDown
+          : !q
+            ? window.EdShell.pageWords.waiting
+            : q.feed_live
+              ? "SESSION VOLUME"
+              : q.feed_label,
         q && q.feed_live && !S.pushDown ? "" : "warn",
       );
       c.querySelector(".tdm-hero").innerHTML =
@@ -609,7 +615,7 @@
       // outage stays beside the time instead of replacing it.
       var tradeWhen = q && q.trade_time_ct != null ? "last trade " + esc(q.trade_time_ct) : null;
       var tradeWhy = !q
-        ? "no price row yet"
+        ? window.EdShell.pageWords.no_row_yet
         : q.outage
           ? esc(q.outage)
           : tradeWhen
@@ -1116,7 +1122,12 @@
       ? pill("PRICE", S.pushDown, "bad", "daemon price socket")
       : q
         ? pill("PRICE", q.feed_label, q.feed_live ? "ok" : "bad", "daemon price socket")
-        : pill("PRICE", "WAITING", "warn", "no price row yet for this symbol");
+        : pill(
+            "PRICE",
+            window.EdShell.pageWords.waiting,
+            "warn",
+            window.EdShell.pageWords.no_row_yet_symbol,
+          );
     h +=
       m === undefined
         ? pill("BOOK", "…", "")
@@ -1204,7 +1215,7 @@
     return (m.mark ? " · " + m.mark.word : "") + (when != null ? " · last trade " + when : "");
   }
   function idxTitle(m, name) {
-    if (!m) return "waiting for the " + name + " stream";
+    if (!m) return window.EdShell.pageWords.waiting_stream.replace("{name}", name);
     if (m.mark) return m.mark.why;
     return m.row.trade_time_ct != null ? "last trade " + m.row.trade_time_ct : "no trade sent";
   }

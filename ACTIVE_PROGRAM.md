@@ -11,6 +11,16 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## In progress
 
+- PAGE-WORDS (IN PROGRESS): AGENTS.md rule 4's words, page by page. Said by the value's producer, as
+  a whole phrase: the trade's time or why none (`static/js/ed-core.js` `ingestPriceRow`, the Desk's
+  price card and index title, "no trade sent"), an empty book side ("no displayed asks", "no
+  displayed bids", the Desk's "no book"), an empty chain ("no chain for this expiry", "chain
+  unavailable"), the terrain's "no expiry carries open interest", the surface's banner ("no live
+  surface for this symbol", "LIVE SURFACE WARMING", "LIVE SURFACE REQUESTED"), the levels' "VWAP
+  curve: not available", the session's header words (CLOSED, POST-MARKET, UNKNOWN). From
+  `server.PAGE_WORDS`, served with the page: the page's own connection ("WAITING", "no push yet",
+  "OFFLINE", "live push down", "no price row yet", "waiting for the ... stream"). Then a machine
+  check that the page scripts hold no phrase of their own.
 - SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
   "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
   program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests
