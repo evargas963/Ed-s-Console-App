@@ -131,8 +131,14 @@ class PerStrikeView(StrikeRows):
 
 
 #: where the busiest strikes sit against the walls (PositioningMigration's busiest_vs_walls): all
-#: above the call wall, all below the put wall, or all between the two
+#: above the call wall, all below the put wall, all between the two, or on both sides of the put
+#: wall, of the call wall, or of both (_busiest_vs_walls)
 ABOVE_CALL_WALL, BELOW_PUT_WALL, INSIDE_WALLS = "ABOVE_CALL_WALL", "BELOW_PUT_WALL", "INSIDE_WALLS"
+ACROSS_PUT_WALL, ACROSS_CALL_WALL, ACROSS_WALLS = (
+    "ACROSS_PUT_WALL",
+    "ACROSS_CALL_WALL",
+    "ACROSS_WALLS",
+)
 
 
 class PositioningMigration(TypedDict):
@@ -591,30 +597,43 @@ def positioning_migration(
     shrank = [k for k, c in changes if c < 0][-2:]
     vols = [(r.strike, r.volume) for r in today if r.volume]
     busiest = sorted(k for k, _v in sorted(vols, key=lambda kv: kv[1], reverse=True)[:2])
-    # where the busiest strikes sit against the walls; None when that is not known: no busiest
-    # strike, a wall not known, or the busiest strikes on both sides of a wall
-    where = None
-    if busiest and call_wall is not None and min(busiest) > call_wall:
-        where = ABOVE_CALL_WALL
-    elif busiest and put_wall is not None and max(busiest) < put_wall:
-        where = BELOW_PUT_WALL
-    elif (
-        busiest
-        and call_wall is not None
-        and put_wall is not None
-        and put_wall <= min(busiest)
-        and max(busiest) <= call_wall
-    ):
-        where = INSIDE_WALLS
     return {
         "rows": rows,
         "compared": bool(changes),
         "grew": grew,
         "shrank": shrank,
         "busiest": busiest,
-        "busiest_vs_walls": where,
+        "busiest_vs_walls": _busiest_vs_walls(busiest, call_wall, put_wall),
         "volume_total": side_total([r[2] for r in today]),
     }
+
+
+def _busiest_vs_walls(
+    busiest: list[float], call_wall: float | None, put_wall: float | None
+) -> str | None:
+    """Return where the busiest strikes sit against the walls; None when that is not known.
+
+    Not known: no busiest strike, or a wall the place depends on not known. A strike on a wall
+    is inside it; the busiest strikes on both sides of a wall are across it.
+    """
+    if not busiest:
+        return None
+    lo, hi = min(busiest), max(busiest)
+    if call_wall is not None and lo > call_wall:
+        return ABOVE_CALL_WALL
+    if put_wall is not None and hi < put_wall:
+        return BELOW_PUT_WALL
+    across_put = put_wall is not None and lo < put_wall <= hi
+    across_call = call_wall is not None and lo <= call_wall < hi
+    if across_put and across_call:
+        return ACROSS_WALLS
+    if across_put and (call_wall is None or hi <= call_wall):
+        return ACROSS_PUT_WALL
+    if across_call and (put_wall is None or put_wall <= lo):
+        return ACROSS_CALL_WALL
+    if call_wall is not None and put_wall is not None and put_wall <= lo and hi <= call_wall:
+        return INSIDE_WALLS
+    return None
 
 
 def nearest_position(ascending: list[float], spot: float) -> int:

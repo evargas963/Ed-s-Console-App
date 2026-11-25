@@ -12,6 +12,9 @@ from typing import Any, Literal, TypedDict
 
 from calc.terrain_engine import (
     ABOVE_CALL_WALL,
+    ACROSS_CALL_WALL,
+    ACROSS_PUT_WALL,
+    ACROSS_WALLS,
     BELOW_PUT_WALL,
     INSIDE_WALLS,
     LEVELS_COMPARED,
@@ -152,6 +155,9 @@ BUSIEST_VS_WALLS_TEXT = {
     ABOVE_CALL_WALL: f"ABOVE {_NAMES['call_wall']}",
     BELOW_PUT_WALL: f"BELOW {_NAMES['put_wall']}",
     INSIDE_WALLS: f"between {_NAMES['put_wall']} and {_NAMES['call_wall']}",
+    ACROSS_PUT_WALL: f"across {_NAMES['put_wall']}",
+    ACROSS_CALL_WALL: f"across {_NAMES['call_wall']}",
+    ACROSS_WALLS: f"across {_NAMES['put_wall']} and {_NAMES['call_wall']}",
 }
 
 
