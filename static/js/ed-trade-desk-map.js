@@ -551,11 +551,18 @@
         "</div>";
       return;
     }
+    // the books' state badge as Options Level II draws it, the served word; on hover, why it is
+    // not live, else the oldest book's time and age (the compact card has no room for them)
     host.innerHTML =
       '<div class="tdm-lean-h"><span>Options lean</span><span>' +
       esc(b.expiry) +
-      " · " +
-      (b.book_state == null ? "no book" : "books " + esc(b.book_state)) +
+      " " +
+      window.EdShell.asOfBadge({
+        label: "books",
+        state: b.book_state,
+        reason: b.book_outage,
+        title: b.book_oldest_text,
+      }) +
       "</span></div>" +
       window.EdOptionLean.html(b, true);
   }
@@ -1143,7 +1150,7 @@
         : !m
           ? pill("BOOK", window.EdShell.pageWords.failed, "bad")
           : m.status === "no_book"
-            ? pill("BOOK", "NONE", "warn", "no " + m.venue)
+            ? pill("BOOK", m.state_word, "warn", m.no_book_text)
             : pill(
                 "BOOK",
                 bookAgeLabel(
@@ -1177,7 +1184,7 @@
       t === undefined
         ? pill("GAMMA", "…", "")
         : why(t)
-          ? pill("GAMMA", "DOWN", "bad", why(t))
+          ? pill("GAMMA", window.EdShell.pageWords.unavailable, "bad", why(t))
           : pill("GAMMA", gammaWhen, t.levels_state === "LIVE" ? "ok" : "warn", gammaWhy);
     host.innerHTML = h;
   }

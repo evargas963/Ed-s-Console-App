@@ -33,6 +33,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from calc.option_book import ZONES, lean, split
+from calc.order_flow import STATE_WORDS
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import read_chain
 from push import option_book as push_option_book
@@ -71,11 +72,14 @@ def _clear() -> None:
 
 
 @contextmanager
-def held(*, books_held: bool = True, priced: bool = True) -> Iterator[None]:
+def held(
+    *, books_held: bool = True, books_sent: bool = True, priced: bool = True
+) -> Iterator[None]:
     """SPY's chain published and its messages taken in, as the console holds them at AT.
 
     `books_held` False: the daemon's status holds no contract on OPTIONS_BOOK (the books stand,
-    not live). `priced` False: SPY's price message is not taken in (no live price is held).
+    not live). `books_sent` False: no OPTIONS_BOOK message is taken in (no book is held).
+    `priced` False: SPY's price message is not taken in (no live price is held).
     """
     sessions = time_et.HELD.sessions
     time_et.HELD.sessions = {}  # the day's own answer, whatever else a test run holds
@@ -98,7 +102,7 @@ def held(*, books_held: bool = True, priced: bool = True) -> Iterator[None]:
                 chain_round_sec=ROUND_SEC,
             )
         )
-        for b in REAL["books"]:
+        for b in REAL["books"] if books_sent else []:
             pushed(
                 f"book.{b['symbol']}",
                 book_msg(
@@ -139,8 +143,8 @@ def build_option_book_panels() -> dict:
 
     At AT in the Auto and the Wider window: the Options Book subview and the Trade Desk card ask
     it at the front expiry. INDUCED on the same captures: the Auto window read LATER seconds on
-    with no chain, book or heartbeat since (`stale`), and read at AT with no live price held
-    (`no_price`).
+    with no chain, book or heartbeat since (`stale`), read at AT with no live price held
+    (`no_price`), and read at AT with no book taken in (`no_book`).
     """
     with held():
         panels = {
@@ -150,6 +154,8 @@ def build_option_book_panels() -> dict:
         }
     with held(priced=False):
         panels["no_price"] = push_option_book.option_book(TK, AT, AUTO)
+    with held(books_sent=False):
+        panels["no_book"] = push_option_book.option_book(TK, AT, AUTO)
     return json.loads(json.dumps(panels))
 
 
@@ -267,6 +273,20 @@ def test_books_that_stopped_stand_marked_not_live():
         f"{x['symbol']} is not streamed on Schwab OPTIONS_BOOK" for x in legs
     }
     assert panel["book_oldest_text"].startswith("oldest book ")
+
+
+def test_with_no_book_taken_in_the_books_say_no_book_as_every_screen_does():
+    """INDUCED: no OPTIONS_BOOK message taken in, so no contract shown has a book.
+
+    The books' state is the word every screen says for a book not held (calc.order_flow
+    STATE_WORDS, the stock book's too), with no reason and no time; every leg shows no book.
+    """
+    panel = build_option_book_panels()["no_book"]
+    assert panel["book_state"] == STATE_WORDS["no_book"] == "NO BOOK"
+    assert (panel["book_outage"], panel["book_oldest_text"]) == (None, None)
+    legs = [x for r in panel["rows"] for x in (r["call"], r["put"]) if x is not None]
+    assert legs and all(x["book_live"] is None and x["bid"] is None for x in legs)
+    assert panel["books_held_text"] == f"0 of {len(legs)} contracts shown have a Schwab book"
 
 
 def test_a_chain_no_longer_delivered_stands_marked_stale_with_its_time_and_age():

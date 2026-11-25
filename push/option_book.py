@@ -27,7 +27,7 @@ from calc.option_book import (
     scales,
     summary,
 )
-from calc.order_flow import Book, book_age_sec
+from calc.order_flow import STATE_WORDS, Book, book_age_sec
 from calc.terrain_engine import nearest_strike
 from numeric_contract import count_text, strike_text
 from push.answers import NotAvailable, not_available
@@ -131,8 +131,8 @@ class OptionBookPanel(LevelsVerdict):
 
     The expiry answered, the levels' verdict, the window's view, the rows with their bars'
     scales, the summary, the lean with its zones' names, and the books' state: how many
-    contracts shown have one, whether they are live, why not, and the oldest one's time. The
-    live price is not served here: the row at it carries its mark.
+    contracts shown have one, whether they are live (or that none is held), why not, and the
+    oldest one's time. The live price is not served here: the row at it carries its mark.
     """
 
     ticker: str
@@ -145,7 +145,7 @@ class OptionBookPanel(LevelsVerdict):
     lean: ServedLean
     zones: list[str]
     books_held_text: str
-    book_state: str | None
+    book_state: str
     book_outage: str | None
     book_oldest_text: str | None
 
@@ -266,14 +266,15 @@ def _left_out_text(s: BookSummary) -> str | None:
 
 def _book_state(
     books: dict[str, Book], live: set[str], now: float
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[str, str | None, str | None]:
     """Return the shown books' state (LIVE while every one is), why not, and the oldest's time.
 
     The state of the first book that is not live by the one live rule, with its reason; the
-    oldest BOOK_TIME of them with its age. None for each with no book held.
+    oldest BOOK_TIME of them with its age. With no book held, the word every screen says for
+    that (calc.order_flow.STATE_WORDS), and no reason or time.
     """
     if not books:
-        return None, None, None
+        return STATE_WORDS["no_book"], None, None
     stopped = next((s for s in books if s not in live), None)
     label, outage = (
         (lmp.LIVE, None) if stopped is None else lmp.live_state(stopped, OPTIONS_BOOK, now)

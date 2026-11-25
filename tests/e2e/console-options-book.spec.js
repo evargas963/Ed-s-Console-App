@@ -5,8 +5,9 @@
  * against the served scales, the summary's split bars at the served shares, and the options lean's
  * gauge with its needle at the served angle and its served words. The panels are the producer's
  * own answers for SPY's front expiry at 2026-11-19 10:01:50 ET, Auto and Wider windows, and
- * (INDUCED on the same captures) the Auto window read ten minutes later with nothing renewed and
- * read with no live price held (fixtures/option_book_spy.json, held to the producer by
+ * (INDUCED on the same captures) the Auto window read ten minutes later with nothing renewed, read
+ * with no live price held and read with no book taken in (fixtures/option_book_spy.json, held to
+ * the producer by
  * tests/test_option_book_v1.py). The page computes nothing; the test works out each bar's length
  * from the served value and scale.
  * Offline. Each test saves its screen as an attachment (option-book.png, options-card.png).
@@ -193,6 +194,18 @@ test.describe("Options Level II: the panel on the page's socket", () => {
     expect(errs).toEqual([]);
   });
 
+  // AGENTS.md rule 4: a state is said in its producer's word, one word on every screen
+  test("with no book taken in, the Book says the program's word for it", async ({ page }) => {
+    const errs = watchErrors(page);
+    const panel = BOOK.no_book;
+    expect(panel.book_state).toBe("NO BOOK"); // the stock book's word too (push.book state_word)
+    await openBook(page, panel);
+    await expect.poll(() => drawn(page)).toEqual(expected(panel));
+    await expect(page.locator("#opbSrc .asof").first()).toHaveText("books · " + panel.book_state);
+    await expect(page.locator("#opbCtx")).toHaveText(panel.expiry + " · " + panel.books_held_text);
+    expect(errs).toEqual([]);
+  });
+
   test("with no live price the Book says why its rows are not around it, and marks no row", async ({
     page,
   }, testInfo) => {
@@ -267,8 +280,14 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
       "rotate(" + lean.needle_deg.toFixed(2) + " 100 100)",
     );
     await expect(card.locator(".olg-parts")).toContainText("Puts resting " + lean.puts_text);
+    // the books' badge as the Book tab draws it, the served state; the oldest book's time and age
+    // on hover
     await expect(card.locator(".tdm-lean-h")).toHaveText(
-      "Options lean" + OPTION_BOOK.expiry + " · books " + OPTION_BOOK.book_state,
+      "Options lean" + OPTION_BOOK.expiry + " books · " + OPTION_BOOK.book_state,
+    );
+    await expect(card.locator(".tdm-lean-h .asof")).toHaveAttribute(
+      "title",
+      OPTION_BOOK.book_oldest_text,
     );
     expect(sock.subscribes[sock.subscribes.length - 1].panels["option_book:desk"]).toEqual(AUTO);
     // the card follows the one expiry chosen, and All Expirations again (its front one)
@@ -311,5 +330,23 @@ test.describe("Trade Desk: the Options Positioning card's options lean", () => {
     );
     await expect(card.locator(".olg")).toHaveCount(0);
     await expect(card).toContainText("Gamma Call");
+  });
+
+  test("with no book taken in, the card's lean says the program's word, as the Book does", async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await intercept(page);
+    deskPanels().option_book = BOOK.no_book;
+    await page.addInitScript(() => {
+      localStorage.setItem("ed_ticker", "SPY");
+      localStorage.setItem("ed_ws", "trade-desk");
+      localStorage.setItem("ed_sub", "desk");
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#tdmCardOpt .tdm-lean-h")).toHaveText(
+      "Options lean" + BOOK.no_book.expiry + " books · " + BOOK.no_book.book_state,
+    );
+    expect(errs).toEqual([]);
   });
 });

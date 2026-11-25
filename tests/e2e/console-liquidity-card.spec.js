@@ -476,6 +476,12 @@ test.describe("Desk: the Liquidity card draws the served order-imbalance readout
     );
     await expect(card(page).locator(".tdm-src")).toContainText("no book for this symbol right now");
     await expect(card(page).locator(".liq-body")).not.toContainText("%");
+    // the header's BOOK pill says the book's state in the program's word, and why on hover
+    // (push.book state_word, no_book_text)
+    expect(READOUT_NO_BOOK.state_word).toBe("NO BOOK");
+    const pill = page.locator("#tdmTrust .tdm-pill", { hasText: "BOOK" });
+    await expect(pill).toHaveText("BOOK " + READOUT_NO_BOOK.state_word);
+    await expect(pill).toHaveAttribute("title", READOUT_NO_BOOK.no_book_text);
     expect(errs).toEqual([]);
   });
 
