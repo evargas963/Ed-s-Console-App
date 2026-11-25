@@ -394,12 +394,13 @@ def test_a_writer_that_dies_in_a_retry_counts_each_held_message_not_recorded_onc
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _tsla_quotes(bus, health, 3)
+        # refused: the 3 held, before the _Defect message comes (a round's rows are made before
+        # its write, so in the first round it would end the writer before any refusal)
+        await until(lambda: writer.status()["state"] == "blocked", state=writer.status)
         bus.publish("quote.TSLA", _defect())
-        await until(  # refused, the 4 held
-            lambda: writer.status()["state"] == "blocked" and writer.status()["held"] == 4
-        )
+        await until(lambda: writer.status()["held"] == 4, state=writer.status)  # the 4 held
         _writable(db)
-        await until(lambda: writer.status()["state"] == "dead")
+        await until(lambda: writer.status()["state"] == "dead", state=writer.status)
         dead = writer.status()
         stop.set()
         await task
