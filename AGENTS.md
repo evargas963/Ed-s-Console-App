@@ -203,15 +203,19 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
 2. **Schwab fields as sent** (serves 1, 3, 12). Not a number: absent, -999, text, NaN or infinity, a
    value Schwab's own field definition excludes (a negative volume or size; a time of 0, since each
    of Schwab's times is when an event occurred and 0 is sent where none has, as an index's quote
-   time). Everything else is taken as sent, a gamma included whatever its size; a reported 0 is 0 (a
-   price, a size, a count). No other bounds, no substitution. What Schwab sends or accepts is
-   settled by Schwab's own documentation, `docs/schwab/schwab_market_data_api_spec.pdf` (with
+   time; and so a bid, an ask and their sizes beside a quote time of 0, which says no bid or ask was
+   set, as an index with no market's 0s). Everything else is taken as sent, a gamma included
+   whatever its size; a reported 0 is 0 (a price, a size, a count). No other bounds, no
+   substitution. What Schwab sends or accepts is settled by Schwab's own documentation,
+   `docs/schwab/schwab_market_data_api_spec.pdf` (with
    `docs/schwab/schwab_market_data_parameters_chains_quotes.txt` for the expanded /chains and
    /quotes parameters) and `docs/schwab/schwab_streamer_api.pdf`, cited by section; a limit not
    stated there or in Schwab's own reply is our defect until shown otherwise. Enforced by:
    `tests/test_schwab_as_sent_v1.py`, `tests/test_absence_is_not_zero_v1.py`,
    `tests/test_gamma_as_sent_v1.py`, `tests/test_data_path_header_volatility_v1.py` (an index's
-   quote time of 0, `numeric_contract.schwab_time_ms`) (in force)
+   quote time of 0, `numeric_contract.schwab_time_ms`, and its bid and ask of 0 beside it,
+   `live_market_plane.record_from_level_one_equity`), `tests/test_quote_in_force_v1.py` (an option
+   record's, INDUCED, `option_contract.streamed_top`) (in force)
 3. **One producer** (serves 2). Each value served, stored or shown has one producer; consumers carry
    its result and never select, compute, repair or relabel it. A second authority for the same value
    is banned whatever it is called: helper, parser, resolver or cache. One module reads each Schwab
