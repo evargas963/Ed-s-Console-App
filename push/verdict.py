@@ -160,22 +160,32 @@ def _levels_state(
             lmp.NOT_LIVE,
             "this ticker's first chain since the daemon started has not arrived" + sep,
         )
-    if age <= stale_after:
+    # the option window `at` is inside: a chain from before it is not live however young, since
+    # no chain is asked for between two of Schwab's windows
+    window = option_window_began(at)
+    began = None if window is None else window.timestamp()
+    if age <= stale_after and (began is None or float(computed_ts_utc) >= began):
         return lmp.LIVE, ""
     if waiting:
         return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
-    return LEVELS_STALE, _overdue_why(computed_ts_utc, at, now, stale_after, failure)
+    return LEVELS_STALE, _overdue_why(computed_ts_utc, began, now, stale_after, failure)
 
 
 def _overdue_why(
-    computed_ts_utc: float, at: datetime, now: float, stale_after: float, failure: str | None
+    computed_ts_utc: float,
+    began: float | None,
+    now: float,
+    stale_after: float,
+    failure: str | None,
 ) -> str:
-    """Why levels past two of the daemon's rounds (`stale_after`) are overdue (_levels_state)."""
+    """Why levels are not live (_levels_state).
+
+    They are past two of the daemon's rounds (`stale_after`), or from before the option window
+    that began at `began`.
+    """
     age = now - float(computed_ts_utc)
     if failure:
         return f"levels are {age:.0f}s old and every chain since has failed — {failure}"
-    window = option_window_began(at)  # the window `at` is inside: overdue is judged only in one
-    began = None if window is None else window.timestamp()
     if began is not None and float(computed_ts_utc) < began and now - began <= stale_after:
         # no chain is asked for between two of Schwab's option windows: the first since is due
         return (

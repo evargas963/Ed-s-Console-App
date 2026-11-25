@@ -319,16 +319,18 @@ def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
 
     No chain is asked for between them, so at 09:30 the levels are from before the break. They
     stand, not live, with their age, and the reason is the break, until the first chain since
-    arrives. Past two of the sweep's rounds with none, the reason is the sweep's.
+    arrives. Past two of the sweep's rounds with none, the reason is the sweep's. A round of
+    150 s or more still names the break: the age at 09:30 is inside two rounds, yet the chain is
+    from before the window.
     """
     fx = json.loads((FX / "real_schwab_markets_2026_11_02.json").read_text(encoding="utf-8"))
     time_et.record_markets(fx["body"])
     before_break = _et("2026-11-02 09:23").timestamp()
 
-    def verdict(clock: str, chain: float) -> tuple[str, str, str]:
+    def verdict(clock: str, chain: float, round_sec: float = 137.0) -> tuple[str, str, str]:
         now = _et(f"2026-11-02 {clock}").timestamp()
         lmp.record_feed_heartbeat(
-            daemon_status(now, schwab_socket_open=True, chain_round_sec=137.0)
+            daemon_status(now, schwab_socket_open=True, chain_round_sec=round_sec)
         )
         v = push_verdict.terrain_staleness(chain, "SPY", now=now, levels_ts_utc=chain)
         return v["levels_state"], v["levels_stale_reason"], v["levels_age_text"]
@@ -347,6 +349,11 @@ def test_after_schwabs_break_the_levels_are_not_live_and_say_why():
         "levels are 780s old; the daemon's chain sweep has not delivered this ticker in two of "
         "its rounds (137s each)"
     )
+    # rounds of 150 s and 200 s: at the reopening the age is inside two rounds, the chain still
+    # from before the break
+    at_break = _et("2026-11-02 09:25").timestamp()
+    assert verdict("09:30", at_break, 150.0) == ("STALE", "levels are 300s old" + reopened, "5m")
+    assert verdict("09:31", at_break, 200.0) == ("STALE", "levels are 360s old" + reopened, "6m")
 
 
 def test_the_options_are_open_until_the_last_option_market_closes():
