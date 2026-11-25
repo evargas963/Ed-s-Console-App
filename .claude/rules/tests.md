@@ -23,6 +23,6 @@ paths:
   unchanged and evidence the timing can't occur in real use (the code that rules it out); loosened
   expectations, removed checks and retries are refused. Its report follows the `flaky-test-fix`
   skill. Enforced by: no machine check — ENF-12.
-- A test shows that something is sent at once by its cause, the frame the change itself sends,
-  never by a stopwatch bound a loaded machine can miss; how fast the screen is gets measured live
+- A test shows that something is sent at once by its cause, the frame the change itself sends, never
+  by a stopwatch bound a loaded machine can miss; how fast the screen is gets measured live
   (AGENTS.md rule 5) (operator 2026-11-25). Enforced by: no machine check — ENF-12.
