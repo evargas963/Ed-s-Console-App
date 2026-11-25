@@ -66,7 +66,7 @@ const cellOf = (page, i, head) =>
 test("the groups and columns read left to right by importance, the Composite first", async ({
   page,
 }) => {
-  await mockPriceSocket(page, [], [], undefined, { confluence: served(FRONT) });
+  await mockPriceSocket(page, [], undefined, { confluence: served(FRONT) });
   await openMatrix(page);
   await expect(page.locator("#cmFrame thead tr").first().locator("th")).toHaveText(GROUPS);
   const heads = page.locator("#cmFrame thead tr").nth(1).locator("th");
@@ -82,7 +82,7 @@ test("a cell shades by its value against its column peak, in the theme heat colo
   // the straight proportion: the theme's zero toward its negative colour by |value| / peak,
   // worked out here from the served numbers and the page's own colour tokens
   const body = served(FRONT);
-  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await mockPriceSocket(page, [], undefined, { confluence: body });
   await openMatrix(page);
   const i = body.rows.findIndex((r, n) => n > 0 && r.net_gex != null && r.net_gex < 0);
   expect(i).toBeGreaterThan(0);
@@ -116,7 +116,7 @@ test("the Composite cell says the served words and shades by its served strength
   const body = served(FRONT);
   const i = body.rows.findIndex((r) => r.composite_text != null);
   expect(i).toBeGreaterThanOrEqual(0);
-  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await mockPriceSocket(page, [], undefined, { confluence: body });
   await openMatrix(page);
   const cell = cellOf(page, i, "Read · strength");
   await expect(cell).toHaveText(body.rows[i].composite_text);
@@ -148,7 +148,7 @@ const STOPPED_ROW = priceRow("SPY", 773.1269, {
 async function openSpyMatrix(page, rows) {
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
-  const sock = await mockPriceSocket(page, rows, [], undefined, { confluence: STOPPED });
+  const sock = await mockPriceSocket(page, rows, undefined, { confluence: STOPPED });
   await page.addInitScript(() => {
     localStorage.setItem("ed_ticker", "SPY");
     localStorage.setItem("ed_ws", "trade-desk");
@@ -248,7 +248,7 @@ test("the matrix redraws its served tags and readings as the chain updates, keep
       errs.push(m.text());
   });
   // the expiry each confluence panel sent was asked with (none: the program's front one)
-  const sock = await mockPriceSocket(page, [], [], undefined, {
+  const sock = await mockPriceSocket(page, [], undefined, {
     confluence: (key, params) => {
       expiries.push(params.expiry);
       return served(params.expiry);
@@ -319,8 +319,14 @@ test("the matrix redraws its served tags and readings as the chain updates, keep
   const asks = confluenceAsks();
   expect(asks[asks.length - 1]).toBe(held(NEXT));
   await page.getByRole("button", { name: "Confluence Matrix" }).click();
-  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
-  expect(confluenceAsks()).toEqual(asks);
+  // then a marker the page sends on the same socket: a subscribe the click caused would arrive
+  // before it (one socket keeps its messages' order), so the marker's is the first after the
+  // click, by its cause and never a stopwatch (.claude/rules/tests.md)
+  await page.evaluate(() => window.EdShell.showPanel("marker", {}));
+  const marker = () => sock.subscribes.findIndex((s) => "marker" in s.panels);
+  await expect.poll(marker).toBeGreaterThan(-1);
+  expect(marker()).toBe(asks.length);
+  expect(confluenceAsks().at(-1)).toBe(asks[asks.length - 1]);
   expect(expiries.length).toBe(picked + 1);
   await expect(page.locator("#cmBody .cm-exp")).toHaveText("Expiry " + NEXT);
   expect(errs).toEqual([]);
@@ -329,7 +335,7 @@ test("the matrix redraws its served tags and readings as the chain updates, keep
 test("a chosen expiry that has passed is said, never another expiry's matrix", async ({ page }) => {
   const asked = [];
   let afterItPassed = false;
-  const sock = await mockPriceSocket(page, [], [], undefined, {
+  const sock = await mockPriceSocket(page, [], undefined, {
     confluence: (key, params) => {
       asked.push(params.expiry);
       return afterItPassed ? FX.front_passed : served(params.expiry);
@@ -359,7 +365,7 @@ test("the regime card says MRVL's regime in the served words and tone", async ({
   const body = served(FRONT);
   const card = body.cards.find((c) => c.label === "GAMMA REGIME");
   expect([card.value, card.tone]).toEqual(["Positive gamma", "pos"]);
-  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await mockPriceSocket(page, [], undefined, { confluence: body });
   await openMatrix(page);
   await expect(regimeCell(page)).toHaveText("Positive gamma");
   await expect(regimeCell(page)).toHaveClass(/pos/);
@@ -377,7 +383,7 @@ for (const [words, tone] of [
     const cards = body.cards.map((c) =>
       c.label === "GAMMA REGIME" ? Object.assign({}, c, { value: words, tone: tone }) : c,
     );
-    await mockPriceSocket(page, [], [], undefined, {
+    await mockPriceSocket(page, [], undefined, {
       confluence: Object.assign({}, body, { cards: cards }),
     });
     await openMatrix(page);
@@ -391,7 +397,7 @@ test("a look-back picked is asked for, and the served one is drawn on with its s
   const asked = [];
   // the program's answer at each look-back asked: the served body, its choice marked on as the
   // program marks it (push.confluence._lookback), its start as served
-  await mockPriceSocket(page, [], [], undefined, {
+  await mockPriceSocket(page, [], undefined, {
     confluence: (key, params) => {
       asked.push(params.lookback);
       const body = served(FRONT);
@@ -415,7 +421,7 @@ test("a look-back picked is asked for, and the served one is drawn on with its s
 
 test("the headline says the kind of move in the served words, untested", async ({ page }) => {
   const body = served(FRONT);
-  await mockPriceSocket(page, [], [], undefined, { confluence: body });
+  await mockPriceSocket(page, [], undefined, { confluence: body });
   await openMatrix(page);
   await expect(page.locator("#cmBody .cm-kind")).toContainText(body.headline.text);
   await expect(page.locator("#cmBody .cm-kind")).toHaveClass(new RegExp(body.headline.tone));

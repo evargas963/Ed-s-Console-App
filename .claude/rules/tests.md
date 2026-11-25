@@ -25,4 +25,7 @@ paths:
   skill. Enforced by: no machine check — ENF-12.
 - A test shows that something is sent at once by its cause, the frame the change itself sends, never
   by a stopwatch bound a loaded machine can miss; how fast the screen is gets measured live
-  (AGENTS.md rule 5) (operator 2026-11-25). Enforced by: no machine check — ENF-12.
+  (AGENTS.md rule 5) (operator 2026-11-25). Enforced by: a timer in a browser test — ESLint's
+  `no-restricted-globals` (`setTimeout`) and `no-restricted-properties` (`waitForTimeout`) over
+  `tests/e2e` (`tools/census/eslint.config.mjs`, a count in the census; a failing job with LINTERS);
+  a stopwatch bound — no machine check, ENF-12.

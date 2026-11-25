@@ -13,7 +13,7 @@ test("today's card, the record and the last 10 opens are drawn as served", async
   const errs = [];
   page.on("pageerror", (e) => errs.push(e.message));
   await routeWatchlist(page, ["TSLA"]);
-  await mockPriceSocket(page, [], [], undefined, { experimental: EXPERIMENTAL });
+  await mockPriceSocket(page, [], undefined, { experimental: EXPERIMENTAL });
   await page.addInitScript(() => {
     localStorage.setItem("ed_ticker", "TSLA");
     localStorage.setItem("ed_ws", "trade-desk");

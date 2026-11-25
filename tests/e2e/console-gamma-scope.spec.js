@@ -47,7 +47,7 @@ async function intercept(page, asked, panels) {
     asked.push(params.scope);
     return strikesFor(params.scope);
   };
-  return mockPriceSocket(page, [], [], undefined, panels);
+  return mockPriceSocket(page, [], undefined, panels);
 }
 
 test.describe("the Gamma presentation scope", () => {
@@ -158,20 +158,20 @@ test.describe("the Gamma presentation scope", () => {
     // a panel answered mid-drag must not reset the pan, or the window asked after it is the
     // earlier one and the drag snaps back
     const requests = watchRequests(page);
-    // a slow answer: a panned window's panel is sent 400 ms after it is asked, for the window
-    // the page then shows
+    // a slow answer: a panned window's panel is held, and sent when the test releases it, for the
+    // window the page then shows (the test picks the moment, never a timer)
     let late = false;
-    let unsent = 0; // slow answers asked and not yet sent
+    let held = 0; // slow answers asked and not yet sent
     panels.strikes = (key, params) => {
       if (params.centre == null || late) return strikesFor(params.scope);
-      unsent += 1;
-      setTimeout(() => {
-        late = true;
-        sock.changed("strikes");
-        late = false;
-        unsent -= 1;
-      }, 400);
+      held += 1;
       return undefined;
+    };
+    const release = () => {
+      late = true;
+      sock.changed("strikes");
+      late = false;
+      held = 0;
     };
     // the window GEX by Strike asks on each subscribe
     const asks = () =>
@@ -189,13 +189,21 @@ test.describe("the Gamma presentation scope", () => {
       .evaluate((el) => el.getBoundingClientRect().height);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
-    for (let i = 1; i <= 3; i++)
+    for (let i = 1; i <= 3; i++) {
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
+      if (i === 1) {
+        // the first panned window's answer lands mid-drag, once the page has asked it
+        await expect.poll(() => held).toBeGreaterThan(0);
+        release();
+      }
+    }
     await page.mouse.up();
     const centre = REAL.strikes.view.centre;
     await expect.poll(() => asks().pop(), { timeout: 5000 }).toEqual({ centre: centre, shift: 3 });
+    // the read in flight when the drag ended, answered after it
+    await expect.poll(() => held).toBeGreaterThan(0);
+    release();
     await requests.settled(); // every held read has run
-    await expect.poll(() => unsent).toBe(0); // and the slow panels have been sent
     // then a price row, drawn after them: once it is on screen, the page has read them
     sock.frame("quotes", "SPY", { rows: [priceRow("SPY", 601.11)] });
     await expect(page.locator("#hPx")).toContainText("601.11");

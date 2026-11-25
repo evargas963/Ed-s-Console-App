@@ -48,8 +48,8 @@ function deskPanels() {
   return panels;
 }
 // the page's socket sending those panels and the pushed price `rows` (mockPriceSocket)
-function deskSocket(page, rows = [], later = []) {
-  return mockPriceSocket(page, rows, later, undefined, panels);
+function deskSocket(page, rows = []) {
+  return mockPriceSocket(page, rows, undefined, panels);
 }
 
 // `rows`: the price rows the socket pushes after each subscribe (none unless a test gives them)

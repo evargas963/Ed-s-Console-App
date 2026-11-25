@@ -300,25 +300,25 @@ test("the served sentence of each answer is drawn; an answer that is not the pro
 test("the socket drops: the rail stands marked; it returns: the new connection's beat redraws it", async ({
   page,
 }) => {
-  let connections = 0;
+  // the program's side of each connection, driven by the test at the moment it means (never a
+  // timer): the first sends its list, then goes away; the second sends its first beat once the
+  // page is seen standing marked
+  const sockets = [];
   await page.routeWebSocket(/\/ws$/, (ws) => {
-    connections += 1;
-    if (connections === 1) {
-      ws.send(feed(["SPY", "QQQ"]));
-      setTimeout(() => ws.close(), 500); // the program goes away
-    } else {
-      setTimeout(() => ws.send(feed(["SPY", "IWM"])), 4000); // back, its first beat later
-    }
+    sockets.push(ws);
+    if (sockets.length === 1) ws.send(feed(["SPY", "QQQ"]));
   });
   await page.addInitScript(() => {
     localStorage.setItem("ed_ticker", "SPY");
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "QQQ"]);
-  await expect.poll(() => connections).toBe(2);
+  sockets[0].close(); // the program goes away
+  await expect.poll(() => sockets.length).toBe(2);
   await expect(page.locator("#watchlist")).toHaveClass(/wl-degraded/);
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "QQQ"]);
-  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "IWM"], { timeout: 6000 });
+  sockets[1].send(feed(["SPY", "IWM"])); // back: its first beat
+  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "IWM"]);
 });
 
 test("the same list on every beat leaves the rail as drawn (no redraw, no flicker)", async ({

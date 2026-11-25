@@ -22,7 +22,7 @@ test("the heatmap paints the served cells, and a click pins a readout, without a
       errs.push(m.text());
   });
   await routeWatchlist(page, ["TSLA"]);
-  await mockPriceSocket(page, [], [], undefined, { book_heatmap: HEAT });
+  await mockPriceSocket(page, [], undefined, { book_heatmap: HEAT });
   // the payload is the producer's for NASDAQ_BOOK: the page shows the venue it asked, so it asks that one
   await page.addInitScript(() => {
     localStorage.setItem("ed_ticker", "TSLA");
@@ -112,7 +112,7 @@ const OFFLINE_BOOK = require(
 // the Book view opened with `book` as the book panel the page's socket sends
 async function openBook(page, book) {
   await routeWatchlist(page, ["SPY"]);
-  await mockPriceSocket(page, [], [], undefined, { book: book });
+  await mockPriceSocket(page, [], undefined, { book: book });
   await page.addInitScript(() => {
     localStorage.setItem("ed_ticker", "SPY");
     localStorage.setItem("ed_ws", "order-flow");

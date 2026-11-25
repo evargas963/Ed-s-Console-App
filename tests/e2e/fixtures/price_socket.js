@@ -41,8 +41,8 @@ function expiriesFrame(ticker, body) {
 function panelFrame(name, ticker, body) {
   return JSON.stringify(Object.assign({}, body, { type: name, ticker: served(ticker).key }));
 }
-// `later`: [{ afterMs, row }], rows sent that long after the subscribe (a push that resumes);
-// `expiries`: the body sent for the selected ticker on each subscribe (none: no list is sent);
+// `rows`: the price rows sent, in order, on each subscribe; `expiries`: the body sent for the
+// selected ticker on each subscribe (none: no list is sent);
 // `panels`: the program's panel producers, stood in for (server.PAGE_PANELS): {kind: a body, or
 // (ticker key, the panel's parameters, its name) => a body (undefined: none sent)}, read at each
 // send. Each panel a subscribe names ("<kind>" or "<kind>:<reader>") whose kind is here is sent
@@ -50,7 +50,7 @@ function panelFrame(name, ticker, body) {
 // program marking a kind changed, each page showing it sent its panels again; `subscribes`,
 // every subscribe the page sent; `frame(name, ticker, body)`, one frame sent as it is; and
 // `quotes(rows)`, price rows pushed now ({type:'quotes'}), when the test says.
-async function mockPriceSocket(page, rows = [], later = [], expiries = undefined, panels = {}) {
+async function mockPriceSocket(page, rows = [], expiries = undefined, panels = {}) {
   socketed.add(page);
   const open = new Set(); // [ws, its last subscribe]
   const subscribes = [];
@@ -86,12 +86,7 @@ async function mockPriceSocket(page, rows = [], later = [], expiries = undefined
       ws.send(JSON.stringify({ type: "symbols", symbols: req.symbols.map(served) }));
       if (expiries && req.ticker) ws.send(expiriesFrame(req.ticker, expiries));
       sendPanels(ws, req, undefined, was);
-      rows.forEach((r, i) =>
-        setTimeout(() => ws.send(JSON.stringify({ type: "quotes", rows: [r] })), 300 * i),
-      );
-      later.forEach((l) =>
-        setTimeout(() => ws.send(JSON.stringify({ type: "quotes", rows: [l.row] })), l.afterMs),
-      );
+      rows.forEach((r) => ws.send(JSON.stringify({ type: "quotes", rows: [r] })));
     });
   });
   return {

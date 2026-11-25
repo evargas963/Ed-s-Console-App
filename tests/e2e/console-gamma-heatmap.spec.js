@@ -199,7 +199,7 @@ const STOPPED_MARK =
   " · OFFLINE: Schwab LEVELONE_EQUITIES feed down during RTH · last trade 14:00:01 CT · 4s";
 // the page's socket with these panels and the pushed price `rows`
 async function socketWith(page, rows) {
-  sock = await mockPriceSocket(page, rows, [], undefined, panels);
+  sock = await mockPriceSocket(page, rows, undefined, panels);
 }
 async function intercept(page) {
   // the console's answer to the contract the page names for the Flow panel
