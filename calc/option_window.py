@@ -42,8 +42,8 @@ def step_totals(
     sold; on it or with no quote, unknown, never the tick test (decision 64, O-4). Its hedging
     flow per share the contract is on is the signed step x Schwab's streamed `delta` x the stock
     price the message carried (`underlying`): the stock the dealers on the other side would
-    trade, on the convention (dealers long calls, short puts); a step with no side, no delta or no
-    price is counted apart (`unpriced`), never guessed.
+    trade, on the convention (confluence_composite.FLOW_ASSUMPTION); a step with no side, no delta
+    or no price is counted apart (`unpriced`), never guessed.
     """
     side = trade_sign(price, bid, ask, None)
     adds = [0.0] * len(TOTALS)
