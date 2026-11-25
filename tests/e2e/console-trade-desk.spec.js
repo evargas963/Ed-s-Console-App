@@ -1622,15 +1622,15 @@ test.describe("Trade Desk renders served values", () => {
     const sock = await intercept(page);
     await openView(page, "trade-desk", "right-now");
     const body = page.locator("#tdBody");
-    // SPY's real panel: its busiest strikes sit across the put wall, served in those words
-    expect(STRIKES.migration.busiest_vs_walls_text).toBe("across Gamma Put");
+    // SPY's real panel: its busiest strikes sit across the put wall, served as a whole sentence
+    expect(STRIKES.migration.busiest_where_said).toBe("That is across Gamma Put.");
     await expect(body).toContainText("Heaviest option trading at 757–760That is across Gamma Put.");
     // INDUCED: that panel with no place known (a wall not known): the sentence is left out, no
     // dash in it
     deskPanels().strikes = Object.assign({}, STRIKES, {
       migration: Object.assign({}, STRIKES.migration, {
         busiest_vs_walls: null,
-        busiest_vs_walls_text: null,
+        busiest_where_said: null,
       }),
     });
     sock.changed("strikes");
@@ -1651,7 +1651,7 @@ test.describe("Trade Desk renders served values", () => {
       deskPanels().strikes = Object.assign({}, STRIKES, {
         migration: Object.assign({}, STRIKES.migration, {
           busiest_vs_walls: place,
-          busiest_vs_walls_text: words,
+          busiest_where_said: "That is " + words + ".",
         }),
       });
       sock.changed("strikes");

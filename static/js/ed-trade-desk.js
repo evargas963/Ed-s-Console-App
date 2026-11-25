@@ -409,30 +409,27 @@
       (v.change_text == null ? "" : " (" + v.change_text + ")")
     );
   }
-  // m: the served positioning_migration of the expiry chosen; moves: the served level_moves
+  // m: the served positioning_migration of the expiry chosen; moves: the served level_moves. Each
+  // sentence is the program's, whole (push.strikes); one whose fact is not known is not sent.
   function migrationCoach(m, moves) {
     var out = "";
     if (!m.compared) {
       // served: why no strike is compared (no prior day yet, or the prior day lacks this expiry)
-      out += '<div class="mig-coach"><b>Migration view warming up</b>' + esc(m.note) + "</div>";
+      out += '<div class="mig-coach"><b>' + esc(m.warming_said) + "</b>" + esc(m.note) + "</div>";
     } else {
-      var grew = m.grew_text,
-        shrank = m.shrank_text;
       out +=
         '<div class="mig-coach"><b>Levels since the prior close: ' +
         esc(moves.map(levelMove).join(" · ")) +
         "</b>" +
-        (grew ? "Gamma grew most at " + esc(grew) : "No strike grew") +
-        (shrank ? "; shrank most at " + esc(shrank) + "." : ".") +
+        esc(m.moved_said) +
         "</div>";
     }
-    if (m && m.busiest && m.busiest.length) {
+    if (m.busiest_said != null) {
       out +=
-        '<div class="mig-coach"><b>Heaviest option trading at ' +
-        m.busiest_text +
+        '<div class="mig-coach"><b>' +
+        esc(m.busiest_said) +
         "</b>" +
-        // served: where they sit against the walls; with no place known, nothing is said
-        (m.busiest_vs_walls_text == null ? "" : "That is " + esc(m.busiest_vs_walls_text) + ".") +
+        (m.busiest_where_said == null ? "" : esc(m.busiest_where_said)) +
         "</div>";
     }
     return out;
