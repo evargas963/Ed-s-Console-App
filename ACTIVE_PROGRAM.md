@@ -17,15 +17,15 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   watchlist's answers, the program's own (`capture.WATCHLIST_TEXT`); the trade's state, the price
   row's `trade_said`; the session's header word, `time_et.SESSION_WORDS` on each beat; the Desk's
   and Right Now's states of their own panels (LOADING, "loading…", UNAVAILABLE, FAILED, the program
-  could not produce or the page could not draw), from `server.PAGE_WORDS`. Left, said by the value's
-  producer as a whole phrase: the Desk's states of values (`ed-trade-desk-map.js`,
-  `ed-trade-desk.js`: "no 1-minute bars for this symbol", "no expiry carries open interest", "no
-  expiry has both ATM legs priced", "no book", "No book yet", "No levels", "No regime", "No zone
-  nearby", "No strike grew", the pills' NONE and DOWN, the sentences built around a served strike);
-  the Options pages (an empty chain, "no chain for this expiry" and "chain unavailable"; the
-  surface's banner; the levels' "VWAP curve: not available"; an empty book side, "no displayed
-  asks", "no displayed bids", "NO BOOK YET"); Confluence and Right Now; the Flow pages; the chart.
-  Then a machine check that the page scripts hold no phrase of their own.
+  could not produce or the page could not draw), from `server.PAGE_WORDS`; a book's state, the book
+  panel's `state_word`. Left, said by the value's producer as a whole phrase: the Desk's states of
+  values (`ed-trade-desk-map.js`, `ed-trade-desk.js`: "no 1-minute bars for this symbol", "no expiry
+  carries open interest", "no expiry has both ATM legs priced", the Desk's "no book" and "books",
+  "No levels", "No priced levels", "No regime", "No zone nearby", "No strike grew", the pills' NONE
+  and DOWN, the sentences built around a served strike); the Options pages (an empty chain, "no
+  chain for this expiry" and "chain unavailable"; the surface's banner; the levels' "VWAP curve: not
+  available"; an empty book side, "no displayed asks", "no displayed bids"); Confluence; the Flow
+  pages; the chart. Then a machine check that the page scripts hold no phrase of their own.
 - SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
   "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
   program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests

@@ -106,15 +106,16 @@
       );
     }
     if (d.status === "no_book") {
+      // the book's state and why, as the program says them (push.book state_word, no_book_text)
       return stage(
         1,
         "td-accent-blue",
         "Detect — book microstructure",
-        "No book yet",
-        "",
+        d.state_word,
+        d.no_book_text,
         null,
         [],
-        "NO BOOK",
+        d.state_word,
         "warn",
       );
     }

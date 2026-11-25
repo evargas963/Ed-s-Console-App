@@ -102,7 +102,9 @@
         '<div class="fl-head"><div class="fl-c"><span class="fl-lab">Ticker</span><span class="fl-sym">' +
         esc(tk) +
         "</span></div>" +
-        '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">NO BOOK YET</span></div></div>' +
+        '<div class="fl-sub"><span class="fl-lab">Book</span><span class="fl-badge warn">' +
+        esc(d.state_word) + // served: the book's state (push.book), one phrasing everywhere
+        "</span></div></div>" +
         '<div class="placeholder"><div class="sm">' +
         esc(d.no_book_text) + // served: why no book of this venue is held (push.book)
         "</div></div>";

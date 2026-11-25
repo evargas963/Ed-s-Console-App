@@ -235,6 +235,9 @@ def test_with_no_book_held_the_panel_says_why_by_its_cause():
     down = build_book_closed_payload(feed_down=True, with_book=False)
     assert down["no_book_text"] == "Schwab NYSE_BOOK feed down during Closed"
     assert build_book_closed_payload()["no_book_text"] is None
+    # the book's state as every screen says it, the program's word (AGENTS.md rule 4)
+    assert (live["state_word"], down["state_word"]) == ("NO BOOK", "NO BOOK")
+    assert build_book_closed_payload()["state_word"] is None
 
 
 def test_the_book_serves_its_levels_and_no_size_outlier_label():
