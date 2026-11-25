@@ -215,6 +215,28 @@ test.describe("Options/Gamma Chart subview", () => {
     expect(errors).toEqual([]);
   });
 
+  // AGENTS.md rule 4: with nothing to draw the chart says the program's sentences, the bars'
+  // (push.bars none_said) and the per-strike rows' (push.strikes none_said). INDUCED: each panel
+  // holding nothing, its sentence worded otherwise
+  test("with no bar and no per-strike row the chart says the program's sentences", async ({
+    page,
+  }) => {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    const { panels } = await intercept(
+      page,
+      TERRAIN,
+      Object.assign({}, STRIKES, { today: [], none_said: "SERVED: no per-strike rows" }),
+    );
+    panels.bars = { bars: [], none_said: "SERVED: no bars" };
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.locator('.vtab[data-view="chart"]').click();
+    await expect(page.locator("#chartBody .gchart-empty")).toHaveText(
+      "SERVED: no bars · SERVED: no per-strike rows",
+    );
+    expect(errors).toEqual([]);
+  });
+
   test("a failed request is named on the chart, never drawn as an empty answer", async ({
     page,
   }) => {

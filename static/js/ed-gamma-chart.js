@@ -212,8 +212,14 @@
     c.setLivePrice(spot, _liveQuote && spot != null ? _liveQuote.trade_age_text : null, tradeTime);
     var empty = host.querySelector(".gchart-empty");
     empty.hidden = !words && !!(bars.length || win.length);
-    empty.textContent =
-      words || (empty.hidden ? "" : "no bars / per-strike " + prof.name + " for this symbol");
+    // nothing to draw: the served sentences of what holds nothing, the bars' (push.bars
+    // none_said) and the per-strike rows' (push.strikes none_said)
+    var none = [barsD.none_said, sd && sd.failed == null ? sd.none_said : null]
+      .filter(function (s) {
+        return s != null;
+      })
+      .join(" · ");
+    empty.textContent = words || (empty.hidden ? "" : none);
     paintHead(
       host.querySelector(".gchart-head"),
       okBars ? barsD.last_bar : null,

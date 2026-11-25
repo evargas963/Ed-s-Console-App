@@ -29,9 +29,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   heatmap's banner, heading and missing expiry (`push.surface` `banner_said`, `none_said`,
   `missing_said`), the Levels view's (`push.levels` `none_said`, `vwap_said`) and the Book's empty
   sides (`push.book` `asks_none_said`, `bids_none_said`); the Flow page's own states (no contract
-  chosen, `server.PAGE_WORDS`; not produced, FAILED) and an unclassified value's tag, "-".
-  Confluence draws only served words. Left, said by the value's producer as a whole phrase: the
-  chart's empty sentence. Then a machine check that the page scripts hold no phrase of their own.
+  chosen, `server.PAGE_WORDS`; not produced, FAILED) and an unclassified value's tag, "-"; the
+  chart's empty state, the bars' and the per-strike rows' own sentences. Confluence draws only
+  served words. Left: a machine check that the page scripts hold no phrase of their own.
 - SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
   "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
   program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests
