@@ -44,6 +44,8 @@ CHAIN_UNAVAILABLE: Final = "unavailable"
 #: from; and each as the chain's badge says it (`scope.kind_text`)
 COMPLETE_SINGLE_EXPIRY, SCOPE_UNAVAILABLE = "complete_single_expiry", "unavailable"
 SCOPE_TEXT = {COMPLETE_SINGLE_EXPIRY: "complete (ALL)", SCOPE_UNAVAILABLE: "unavailable"}
+#: what every chain screen says with no row to draw and no reason for it (AGENTS.md rule 4)
+NO_CHAIN_FOR_EXPIRY = "no chain for this expiry"
 
 
 class ChainLeg(ChainRow):
@@ -114,8 +116,9 @@ class ChainPanel(LevelsVerdict):
     """The `chain` panel (chain): one expiry of the ticker's chain, with the levels' verdict.
 
     The expiry answered, whether Schwab lists two contracts at one strike and side, the ladder
-    (its spot row at the live price) and how many strikes it holds. The price itself is the
-    price row's, which the page draws (one producer).
+    (its spot row at the live price), how many strikes it holds, and what the chain screens say
+    with no row to draw (None with rows). The price itself is the price row's, which the page
+    draws (one producer).
     """
 
     ticker: str
@@ -125,13 +128,14 @@ class ChainPanel(LevelsVerdict):
     ladder: list[ServedLadderRow]
     n_strikes: int
     scope: ChainScope
+    none_said: str | None
 
 
 class NoChain(LevelsVerdict):
     """The `chain` panel's answer with no chain to answer from: why, in its scope.
 
-    The expiry asked for (None with none asked and none listed) and a ladder of no rows: the page
-    draws the ladder it is sent.
+    The expiry asked for (None with none asked and none listed), a ladder of no rows (the page
+    draws the ladder it is sent), and what the chain screens say for it, its reason in it.
     """
 
     ticker: str
@@ -139,6 +143,7 @@ class NoChain(LevelsVerdict):
     ladder: list[ServedLadderRow]
     status: Literal["unavailable"]
     scope: NoChainScope
+    none_said: str
 
 
 def _net_gex_column(surf: GammaSurface | None, expiry: str) -> dict[float, float | None] | None:
@@ -337,6 +342,11 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> ChainPanel | NoCha
                 "reason": asked.reason,
                 "kind_text": SCOPE_TEXT[SCOPE_UNAVAILABLE],
             },
+            "none_said": (
+                NO_CHAIN_FOR_EXPIRY
+                if asked.reason is None
+                else f"chain unavailable — {asked.reason}"
+            ),
         }
     response_contracts = asked.contracts
     shown = _shown(response_contracts)
@@ -363,4 +373,5 @@ def chain(ticker: str, now: float, params: dict[str, Any]) -> ChainPanel | NoCha
             "kind": COMPLETE_SINGLE_EXPIRY,
             "kind_text": SCOPE_TEXT[COMPLETE_SINGLE_EXPIRY],
         },
+        "none_said": None if served else NO_CHAIN_FOR_EXPIRY,
     }

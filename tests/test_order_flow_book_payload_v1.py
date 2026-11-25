@@ -48,12 +48,13 @@ _CLOSED = datetime.fromisoformat("2026-10-23T22:00:00-04:00").timestamp()
 
 
 def build_book_closed_payload(
-    feed_down: bool = False, with_book: bool = True, at: float | None = None
+    feed_down: bool = False, with_book: bool = True, at: float | None = None, without: str = ""
 ) -> dict:
     """Build the route's NYSE_BOOK payload for SPY at `at` (_CLOSED when None), from real data.
 
     The daemon's connection is up (NOT LIVE, the market closed), or ended after its row arrived
-    (`feed_down`: OFFLINE). Without `with_book`, Schwab's NYSE_BOOK message is not sent.
+    (`feed_down`: OFFLINE). Without `with_book`, Schwab's NYSE_BOOK message is not sent; `without`
+    names a side ("BIDS", "ASKS") the message is sent without (INDUCED).
     """
     when = _CLOSED if at is None else at
     book = json.loads((_FX / "real_spy_nyse_nasdaq_books.json").read_text(encoding="utf-8"))[
@@ -83,7 +84,7 @@ def build_book_closed_payload(
                 book_msg(
                     symbol="SPY",
                     service="NYSE_BOOK",
-                    content=book["content"],
+                    content={k: v for k, v in book["content"].items() if k != without},
                     src="schwab_book",
                     ts_recv=book["ts_recv"],
                 ),
@@ -238,6 +239,21 @@ def test_with_no_book_held_the_panel_says_why_by_its_cause():
     # the book's state as every screen says it, the program's word (AGENTS.md rule 4)
     assert (live["state_word"], down["state_word"]) == ("NO BOOK", "NO BOOK")
     assert build_book_closed_payload()["state_word"] is None
+
+
+def test_a_side_with_no_displayed_level_is_said_by_the_panel():
+    """INDUCED: SPY's real NYSE_BOOK sent without its bids, then without its asks.
+
+    The side with no level is said in the words the Book's ladder draws (AGENTS.md rule 4), the
+    other side not; the real two-sided book says neither.
+    """
+    whole = build_book_closed_payload(at=_RTH)
+    assert (whole["asks_none_said"], whole["bids_none_said"]) == (None, None)
+    no_bids = build_book_closed_payload(at=_RTH, without="BIDS")
+    assert no_bids["depth_pressure"]["ask"] and not no_bids["depth_pressure"]["bid"]
+    assert (no_bids["asks_none_said"], no_bids["bids_none_said"]) == (None, "no displayed bids")
+    no_asks = build_book_closed_payload(at=_RTH, without="ASKS")
+    assert (no_asks["asks_none_said"], no_asks["bids_none_said"]) == ("no displayed asks", None)
 
 
 def test_the_book_serves_its_levels_and_no_size_outlier_label():

@@ -457,11 +457,8 @@
   }
   function renderStrike(host, d, strike, expiry) {
     setSdAsOf(d);
-    if (!d.ladder.length) {
-      host.innerHTML =
-        '<div class="placeholder"><div class="sm">' +
-        esc(window.EdShell.chainEmptyText(d)) +
-        "</div></div>";
+    if (d.none_said != null) {
+      window.EdShell.placeholder(host, d.none_said); // served: no row to draw, and why
       return;
     }
     // the served ladder's row at the selected strike (a strike Schwab sent, matched as sent)
@@ -601,12 +598,9 @@
   }
   function renderStructures(host, d) {
     setStructuresSrc(d);
-    // served: one row per strike, high to low; an 'unavailable' chain answer carries none
-    if (d.status !== "ok") {
-      host.innerHTML =
-        '<div class="placeholder"><div class="sm">' +
-        esc(window.EdShell.chainEmptyText(d)) +
-        "</div></div>";
+    // served: one row per strike, high to low; with none, what the chain screens say for it
+    if (d.none_said != null) {
+      window.EdShell.placeholder(host, d.none_said);
       return;
     }
     // every ladder row (a second listing at a strike has its own), its contract-level fields

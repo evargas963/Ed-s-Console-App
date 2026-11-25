@@ -77,8 +77,9 @@ class BookPanel(BookMicrostructure, BookTimes):
     """The `book` panel (order_flow_microstructure).
 
     The engine's microstructure of one Schwab book, then the page's words for the quote's and
-    the book's state, the ticker and venue, the two clocks as the screen shows them (BookTimes),
-    and the Liquidity card's readout.
+    the book's state, the ticker and venue, each side of the ladder that shows no level (None
+    while it shows one), the two clocks as the screen shows them (BookTimes), and the Liquidity
+    card's readout.
     """
 
     top_outage: str | None
@@ -88,7 +89,13 @@ class BookPanel(BookMicrostructure, BookTimes):
     venue: str
     no_book_text: str | None
     state_word: str | None
+    asks_none_said: str | None
+    bids_none_said: str | None
     readout: LiquidityCard
+
+
+#: what the Book's ladder says for a side with no displayed level (AGENTS.md rule 4)
+NO_ASKS, NO_BIDS = "no displayed asks", "no displayed bids"
 
 
 def book(ticker: str, now: float, params: dict[str, Any]) -> BookPanel:
@@ -187,6 +194,8 @@ def order_flow_microstructure(ticker: str, venue: str, now: float) -> BookPanel:
         # the book's state as every screen says it when that state is why it has nothing to
         # show (STATE_WORDS); None while it has levels
         "state_word": None if micro["status"] == "ok" else STATE_WORDS[micro["status"]],
+        "asks_none_said": None if micro["depth_pressure"]["ask"] else NO_ASKS,
+        "bids_none_said": None if micro["depth_pressure"]["bid"] else NO_BIDS,
         **book_times(micro["provenance"], micro["ages"]),
         "readout": liquidity_readout(t, now),
     }

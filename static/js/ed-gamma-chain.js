@@ -73,11 +73,8 @@
   function render(host, d) {
     setSrc(d);
     var rows = d.ladder; // served: strikes high to low, one row per listed contract
-    if (!rows.length) {
-      host.innerHTML =
-        '<div class="placeholder"><div class="sm">' +
-        esc(window.EdShell.chainEmptyText(d)) +
-        "</div></div>";
+    if (d.none_said != null) {
+      window.EdShell.placeholder(host, d.none_said); // served: no row to draw, and why
       return;
     }
     var dup = d.has_duplicate_contracts === true; // served

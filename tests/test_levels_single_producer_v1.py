@@ -243,6 +243,7 @@ def test_the_bar_writer_publishes_the_levels_and_the_route_only_serves_them():
         assert none_yet["levels"] == []
         # what the screen says of it, the program's sentence (AGENTS.md rule 4)
         assert none_yet["none_said"] == "No levels"
+        assert none_yet["vwap_said"] == "not available"  # no curve held
         assert {"family": "price_levels", "reason": push_levels.NO_PRICE_LEVELS_REASON} in none_yet[
             "families_absent"
         ]

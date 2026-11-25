@@ -542,6 +542,8 @@ def test_vwap_is_served_per_chart_bar(spy_levels):
     _spot, _terrain, serve = spy_levels
     one = serve("1")["vwap_series"]
     fifteen = serve("15")["vwap_series"]
+    # the Levels view's foot: how many points the curve carries, the program's words
+    assert serve("15")["vwap_said"] == f"{len(fifteen)} pts carried"
     buckets = {}
     for r in one:  # stamped with the bar's start, the last minute's value
         k = int(r[0] // 900)

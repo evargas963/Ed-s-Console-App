@@ -4,6 +4,8 @@
     "book_stale": null,
     "quote_age_sec": 846205.7660000324
   },
+  "asks_none_said": "no displayed asks",
+  "bids_none_said": "no displayed bids",
   "book_age_text": null,
   "book_feed_label": "LIVE",
   "book_time_ct": null,
