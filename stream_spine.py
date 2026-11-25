@@ -41,7 +41,7 @@ from calc.order_flow import Book, Exchanges, Json, Level
 from calibration.complete_chain_capture import ensure_schema, store_capture_message
 from db_authority import resolve_stream_db_path
 from json_blob_codec import decode_text_blob, encode_text_blob
-from numeric_contract import schwab_count, schwab_number
+from numeric_contract import schwab_count, schwab_number, schwab_time_ms
 from option_contract import (
     NO_GREEKS,
     NO_TOP,
@@ -547,7 +547,7 @@ def read_book(content_item: dict[str, Any], service: str) -> Book | None:
         return None
     return Book(
         service,
-        schwab_number(content_item.get("BOOK_TIME")),
+        schwab_time_ms(content_item.get("BOOK_TIME")),
         tuple(_side_levels(content_item, "BIDS")),
         tuple(_side_levels(content_item, "ASKS")),
     )

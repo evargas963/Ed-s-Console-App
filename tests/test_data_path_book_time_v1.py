@@ -75,13 +75,13 @@ def test_the_book_age_is_read_from_schwabs_book_time_as_sent():
 
     Its age is the seconds from its BOOK_TIME to now, the one age (engine.book_age_sec) the
     microstructure and the Liquidity card both serve. INDUCED CONDITION: the same message with
-    BOOK_TIME 0. Schwab's 0 is a value (rule 2), so the age is from 0; it was served as no age
-    here while the card served one.
+    BOOK_TIME 0. A Schwab time is when an event occurred, and 0 is none (rule 2,
+    numeric_contract.schwab_time_ms): no age is served, where one counted from 1970 was.
     """
     rows = json.loads((_FX / "real_spy_books_2026_11_02.json").read_text(encoding="utf-8"))
     ts_recv, service, sent = next(r for r in rows["rows"] if r[1] == "NYSE_BOOK")
     assert service == "NYSE_BOOK"
     assert _served_book_age(sent, ts_recv) == ts_recv - sent["BOOK_TIME"] / 1000.0
     assert book_age_sec(sent["BOOK_TIME"], ts_recv) == ts_recv - sent["BOOK_TIME"] / 1000.0
-    assert _served_book_age({**sent, "BOOK_TIME": 0}, ts_recv) == ts_recv
+    assert _served_book_age({**sent, "BOOK_TIME": 0}, ts_recv) is None
     assert book_age_sec(None, ts_recv) is None

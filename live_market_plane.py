@@ -22,7 +22,7 @@ from calc.l1_trade_observation import (
     last_print,
 )
 from instrument_identity import ticker_storage_key
-from numeric_contract import schwab_count, schwab_number
+from numeric_contract import schwab_count, schwab_number, schwab_time_ms
 from time_et import CLOSED, ET, UNKNOWN, options_open, record_trade, session_label
 
 if TYPE_CHECKING:
@@ -115,8 +115,10 @@ def _read_stream_field(name: str, raw: Any) -> float | str | None:
         return raw if isinstance(raw, str) and raw else None
     if name in _COUNT_FIELDS:
         return schwab_count(raw)
-    v = schwab_number(raw)
-    return v / 1000.0 if v is not None and name in _CLOCK_FIELDS else v
+    if name in _CLOCK_FIELDS:
+        t = schwab_time_ms(raw)
+        return None if t is None else t / 1000.0
+    return schwab_number(raw)
 
 
 def record_from_level_one_equity(

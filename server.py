@@ -64,6 +64,7 @@ from instrument_identity import display_symbol, ticker_storage_key, vendor_optio
 from numeric_contract import (
     schwab_count,
     schwab_number,
+    schwab_time_ms,
 )
 from open_gap import (
     open_gap_record,
@@ -143,10 +144,11 @@ def _schwab_bar(
     """One Schwab CHART_EQUITY bar as a Candle, each field as Schwab sent it.
 
     None when its start or a price is not a number (AGENTS.md rule 2: absent, -999, text, NaN or
-    infinity). A volume that is not a number, or negative, is absent.
+    infinity), or its start is no time (schwab_time_ms). A volume that is not a number, or
+    negative, is absent.
     """
     start, o, h, lo, c = (
-        schwab_number(start_ms),
+        schwab_time_ms(start_ms),
         schwab_number(o),
         schwab_number(h),
         schwab_number(lo),
@@ -211,7 +213,7 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     held_minutes = bar_store.held_minutes(tk)
     taken: dict[float, Candle] = {}
     for c in sent:
-        start = schwab_number(c.get("datetime"))
+        start = schwab_time_ms(c.get("datetime"))
         if start is None or start / 1000.0 in held_minutes:
             continue
         b = _schwab_bar(
