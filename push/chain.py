@@ -22,6 +22,7 @@ from numeric_contract import (
     greek_text,
     iv_text,
     price_text,
+    schwab_time_ms,
     strike_text,
 )
 from option_contract import ChainRow, OptionContract, chain_row
@@ -202,8 +203,8 @@ def _shown(contracts: list[OptionContract]) -> list[ChainLeg]:
 
 def _last_trading_day_et(leg: ChainLeg) -> str | None:
     """Return Schwab's lastTradingDay (epoch milliseconds) as its date in ET; None when not sent."""
-    ms = leg.get("lastTradingDay")
-    return et_date_str_from_ts_utc(ms / 1000.0) if isinstance(ms, float) else None
+    ms = schwab_time_ms(leg.get("lastTradingDay"))
+    return None if ms is None else et_date_str_from_ts_utc(ms / 1000.0)
 
 
 def _only[T](values: set[T]) -> T | None:

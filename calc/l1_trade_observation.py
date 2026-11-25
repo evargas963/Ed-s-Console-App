@@ -26,7 +26,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from numeric_contract import schwab_count, schwab_number
+from numeric_contract import schwab_count, schwab_number, schwab_time_ms
 from option_contract import NO_TOP, StreamedTop
 from time_et import et_date_str_from_ts_utc
 
@@ -47,8 +47,9 @@ VENDOR_LAST_PRICE = "LAST_PRICE"
 VENDOR_LAST_SIZE = "LAST_SIZE"
 
 
-def _schwab_int(val: Any) -> int | None:
-    v = schwab_number(val)
+def _time_millis(val: Any) -> int | None:
+    """Return a Schwab time as sent, in whole milliseconds since the epoch (schwab_time_ms)."""
+    v = schwab_time_ms(val)
     return int(v) if v is not None else None
 
 
@@ -56,7 +57,7 @@ def _schwab_int(val: Any) -> int | None:
 _PRINT_READERS = {
     VENDOR_LAST_PRICE: schwab_number,
     VENDOR_LAST_SIZE: schwab_count,
-    VENDOR_TRADE_TIME: _schwab_int,
+    VENDOR_TRADE_TIME: _time_millis,
 }
 #: a print's three fields: a new value of any makes a new print
 PRINT_FIELDS = frozenset(_PRINT_READERS)

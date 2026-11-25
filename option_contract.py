@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Literal, TypedDict
 
-from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number
+from numeric_contract import SCHWAB_NO_VALUE, schwab_count, schwab_number, schwab_time_ms
 
 log = logging.getLogger("option_contract")
 
@@ -154,7 +154,7 @@ STREAMED_TOP = (
     ("BID_SIZE", "bid_size", schwab_count),
     ("ASK_SIZE", "ask_size", schwab_count),
     ("MARK", "mark", schwab_number),
-    ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_number),
+    ("QUOTE_TIME_MILLIS", "quote_time_ms", schwab_time_ms),
     ("MONEY_INTRINSIC_VALUE", "money_intrinsic", schwab_number),
 )
 #: the quote among them: its bid and ask, their sizes and Schwab's time of it. A message that

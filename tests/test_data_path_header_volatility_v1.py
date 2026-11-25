@@ -236,6 +236,14 @@ def test_the_market_context_rows_are_schwabs_three_indexes_as_sent():
         "$VIX": ("29.43", "+3.48%"),
     }
     assert all(r["chg_pct"] == sent[k]["NET_CHANGE_PERCENT"] for k, r in live.items())
+    # Schwab's quote time is the last time a bid or ask updated (Streamer API §3.1, field 34). An
+    # index with neither, $VIX and $NDX here, is sent 0: no time, so none is served (the page draws
+    # "-"); $SPX's is its own, 08:33:38 CT
+    assert {k: (sent[k]["QUOTE_TIME_MILLIS"], r["quote_time_ct"]) for k, r in live.items()} == {
+        "$SPX": (1795185218043, "Fri 11/20 08:33 AM CT"),
+        "$NDX": (0, None),
+        "$VIX": (0, None),
+    }
     closed = {r["ticker"]: r for r in served["market_closed"]}
     shown = ("feed_label", "spot_disp", "chg_pct_text", "trade_time_ct", "trade_age_text")
     assert {k: tuple(r[f] for f in shown) for k, r in closed.items()} == {

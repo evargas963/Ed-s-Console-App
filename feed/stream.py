@@ -14,7 +14,7 @@ from typing import Any, override
 from schwab.client.base import BaseClient
 from schwab.streaming import StreamClient
 
-from numeric_contract import schwab_number
+from numeric_contract import schwab_time_ms
 
 #: schwab-py's field names of each service's items, as its add_*_handler names them (NEWS_HEADLINE
 #: has none: its items keep Schwab's field numbers, read by feed.connection.news_headline)
@@ -73,11 +73,11 @@ def schwab_time(msg: dict[str, Any]) -> float | None:
     sent = [
         e["timestamp"] for k in ("response", "data") if k in msg for e in msg[k] if "timestamp" in e
     ]
-    stamps = [v for v in map(schwab_number, sent) if v is not None]
+    stamps = [v for v in map(schwab_time_ms, sent) if v is not None]
     beats = (
         [str(n["heartbeat"]) for n in msg["notify"] if "heartbeat" in n] if "notify" in msg else []
     )
-    stamps.extend(float(b) for b in beats if b.isdigit())
+    stamps.extend(t for b in beats if b.isdigit() and (t := schwab_time_ms(int(b))) is not None)
     return max(stamps) / 1000 if stamps else None
 
 

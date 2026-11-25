@@ -236,12 +236,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   1920×950 window, the Readings row's track is 27 pixels under its 36-pixel panel, and with every
   line of the Liquidity card at once as well (INDUCED) the Desk needs 823 pixels of its 808 and
   scrolls 15, as it needed 847 of 832 before the header changed; without that line both fit.
-- INDEX-QUOTE-TIME (OPERATOR): Schwab sends `QUOTE_TIME_MILLIS` 0 for an index with no bid or ask
-  ($VIX, $NDX; Schwab Streamer API §3.1, field 34, "Last time a bid or ask updated"), and the price
-  row serves it as a time, "Wed 12/31 06:00 PM CT" (`live_price_rows.price_row` `quote_time_ct`, as
-  in `tests/e2e/fixtures/header_volatility.json`); the header's Bid × Ask title shows it when an
-  index is the selected ticker. Whether a time of 0 is Schwab's "none" and reads "-" is his
-  (AGENTS.md rule 2).
 - INDEX-CLOSED (OPERATOR): on 2026-11-20 Schwab sent `SECURITY_STATUS` Closed for $VIX at 16:00:03
   ET and 46 more last-price messages after it; the live rule (`live_market_plane.live_state`) reads
   NOT LIVE from that status, so the header's index cells say NOT LIVE while their numbers still
