@@ -250,13 +250,15 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    the page can see, its own connection, is said in a word from the one list served with the page
    (`server.PAGE_WORDS`, as web.dev's offline guidance asks: one wording wherever it applies), so
    the page holds no words of its own (operator 2026-11-25: best practice). It gets data only from
-   the one push. Enforced by: the served words — no machine check, PAGE-WORDS; ESLint's
-   `no-restricted-globals`: `fetch`, `XMLHttpRequest` and `EventSource` only in the transport
-   module, `static/js/ed-core.js`, and `Date` and `Intl` in every page script, every time it shows
-   served (`time_et.ct_label`, `ct_ticks`) (`tools/census/eslint.config.mjs`, a count in the census;
-   a failing job with LINTERS); and `Math`, `.sort(` and `.reduce(` outside the drawing module
-   (`static/js/ed-draw.js`) and the chart (`static/js/ed-tv-chart.js`) (the same config, a count in
-   the census)
+   the one push. Enforced by: the served words — the builder's audit (rule 14), no machine check,
+   ENF-12: the industry's lint for words in code judges a string by its content alone, so it holds
+   only a catalog of every word a screen shows, its fixed labels too (`docs/SOURCES.md`
+   i18next-no-literal-string); ESLint's `no-restricted-globals`: `fetch`, `XMLHttpRequest` and
+   `EventSource` only in the transport module, `static/js/ed-core.js`, and `Date` and `Intl` in
+   every page script, every time it shows served (`time_et.ct_label`, `ct_ticks`)
+   (`tools/census/eslint.config.mjs`, a count in the census; a failing job with LINTERS); and
+   `Math`, `.sort(` and `.reduce(` outside the drawing module (`static/js/ed-draw.js`) and the chart
+   (`static/js/ed-tv-chart.js`) (the same config, a count in the census)
 5. **The numbers** (serves 4, 5, 7). Every value comes from its one producer and matches what Schwab
    sent. Calculations keep every digit and use every contract; rounding happens only on screen.
    Every value is shown with its time. While it updates it is live; when it stops, for any reason,

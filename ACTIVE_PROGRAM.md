@@ -11,27 +11,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## In progress
 
-- PAGE-WORDS (IN PROGRESS): AGENTS.md rule 4's words, screen by screen; the page scripts' fixed
-  labels and titles stay in the view. Done: the page's own connection words and the shell's (no
-  symbol, the daemon silent, the watchlist's form check and requests), from `server.PAGE_WORDS`; the
-  watchlist's answers, the program's own (`capture.WATCHLIST_TEXT`); the trade's state, the price
-  row's `trade_said`; the session's header word, `time_et.SESSION_WORDS` on each beat; the Desk's
-  and Right Now's states of their own panels (LOADING, "loading…", UNAVAILABLE, FAILED, the program
-  could not produce or the page could not draw), from `server.PAGE_WORDS`; a book's state, the book
-  panel's `state_word`; Right Now's migration sentences, whole from `push.strikes`, and why its
-  levels or per-strike rows are empty (`push.levels` and `push.strikes` `none_said`); a failed
-  regime read named FAILED; the Desk cards' empty series (`push.bars` and `push.terrain`
-  `none_said`); the Desk's pills (the book's `state_word`, the Options card's UNAVAILABLE) and its
-  options lean's books (`push.option_book` `book_state`, NO BOOK with none held, drawn as Options
-  Level II draws it); Right Now's context summary, where the price sits among the zones
-  (`push.liquidity` `location_said`) and the largest gamma strikes from it (`push.levels`
-  `walls_said`); the Options pages' empty states, the chain's (`push.chain` `none_said`), the
-  heatmap's banner, heading and missing expiry (`push.surface` `banner_said`, `none_said`,
-  `missing_said`), the Levels view's (`push.levels` `none_said`, `vwap_said`) and the Book's empty
-  sides (`push.book` `asks_none_said`, `bids_none_said`); the Flow page's own states (no contract
-  chosen, `server.PAGE_WORDS`; not produced, FAILED) and an unclassified value's tag, "-"; the
-  chart's empty state, the bars' and the per-strike rows' own sentences. Confluence draws only
-  served words. Left: a machine check that the page scripts hold no phrase of their own.
 - SIZE (IN PROGRESS): the repository cut to what serves the app, as we go (operator 2026-11-19:
   "this is a ridiculous number of lines"). Measured 2026-11-19: tests 46,676 lines in 249 files,
   program 19,725 (Python), page 14,414, check tools 7,077, test data 71 MB in 114 files. Tests
@@ -196,7 +175,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   product module, Feed through `typings/`): a check that a value crossing a boundary is a dataclass.
 - ENF-12 (QUEUED): the practices no machine can see (claims cite output, proof reproducible, another
   agent's work read in full, deploy means restarted and checked, `&&` chains, every requirement
-  naming its enforcement), each held by the builder's audit until a check exists.
+  naming its enforcement, a screen's state said in its producer's words and not the page's), each
+  held by the builder's audit until a check exists.
 - ENF-16 (QUEUED): operator decisions 3, 6 and 8 in `docs/DATA_FLOW.md` §6, which name no test, each
   get one.
 - ENF-21 (QUEUED): a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by
