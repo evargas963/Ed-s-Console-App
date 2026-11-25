@@ -129,7 +129,9 @@ test("with no book held the panel says the program's served reason, not one of i
   page,
 }) => {
   await openBook(page, NO_BOOK);
-  await expect(page.locator("#obBody .fl-badge")).toHaveText("NO BOOK YET");
+  // the book's state in the program's word (push.book state_word), as every screen says it
+  expect(NO_BOOK.state_word).toBe("NO BOOK");
+  await expect(page.locator("#obBody .fl-badge")).toHaveText(NO_BOOK.state_word);
   await expect(page.locator("#obBody .placeholder")).toHaveText(NO_BOOK.no_book_text);
   await openBook(page, Object.assign({}, NO_BOOK, { no_book_text: OFFLINE_BOOK.top_outage }));
   await expect(page.locator("#obBody .placeholder")).toHaveText(OFFLINE_BOOK.top_outage);
