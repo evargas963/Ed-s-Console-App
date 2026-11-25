@@ -146,11 +146,18 @@ async def _run(body, feed=None):
         await asyncio.wait_for(asyncio.gather(server, follower, return_exceptions=True), 5)
 
 
-async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0):
+async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0, kind=None):
+    """Return the next frame carrying `sym`'s row that matches `pred`, and the row.
+
+    With `kind`, a frame of another type is passed over: the beat, which carries every row each
+    second, can come before or after a pushed frame.
+    """
     end = time_et.elapsed() + timeout
     while time_et.elapsed() < end:
         msg = json.loads(await asyncio.wait_for(ws.recv(), max(0.01, end - time_et.elapsed())))
         if msg["type"] == "symbols":  # the one frame with no rows (live_ui's protocol)
+            continue
+        if kind is not None and msg["type"] != kind:
             continue
         for r in msg["rows"]:
             if r["ticker"] == sym and pred(r):
@@ -159,7 +166,11 @@ async def _next_row(ws, sym, pred=lambda _r: True, timeout=3.0):
 
 
 def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
-    """In regular hours: the server's clock runs from _RTH."""
+    """In regular hours: the server's clock runs from _RTH.
+
+    The next trade is pushed in a frame of its own (the page socket's pump, woken by the trade),
+    whichever way the beat falls: the test waits for that frame, not on a clock.
+    """
     clock = clock_from(_RTH)
 
     async def body(bus, ws, _feed, _stats):
@@ -176,12 +187,12 @@ def test_a_schwab_trade_reaches_the_browser_as_a_finished_live_row():
         assert row["trade_ts"] == int(now * 1000) / 1000
         assert row["trade_age_text"] in ("0s", "1s")
         assert "forming_1m" not in row
-        # the next trade moves it, pushed on its own (not on the beat)
-        t0 = time_et.elapsed()
-        bus.publish("quote.SPY", _trade("SPY", 583.90, clock()))
-        msg, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90)
-        assert msg["type"] == "quotes"
-        assert time_et.elapsed() - t0 < 0.15, "a change must go out immediately, not on the beat"
+        # the next trade moves it, pushed on its own: a "quotes" frame, never left to the beat
+        then = clock()
+        bus.publish("quote.SPY", _trade("SPY", 583.90, then))
+        _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == 583.90, kind="quotes")
+        assert row["spot_disp"] == "583.90"
+        assert row["trade_ts"] == int(then * 1000) / 1000
 
     asyncio.run(_run(body, feed=_Feed(clock=clock)))
 
@@ -542,8 +553,8 @@ def test_a_page_before_the_first_schwab_quote_reads_no_price_until_one_comes():
     async def body(bus, ws, _feed, _stats):
         await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
         assert json.loads(await asyncio.wait_for(ws.recv(), 2))["type"] == "symbols"
-        msg, row = await _next_row(ws, "SPY")
-        assert msg["type"] == "quotes"
+        _, row = await _next_row(ws, "SPY", kind="quotes")  # the subscribe's own row
+        assert (row["trade_ts"], row["trade_time_ct"], row["trade_age_text"]) == (None, None, None)
         assert (row["spot"], row["spot_disp"], row["bid"], row["ask"]) == (None, None, None, None)
         assert (row["bid_text"], row["ask_text"]) == (None, None)  # nothing sent: no text
         bus.publish("quote.SPY", _trade("SPY", 583.41, time_et.now()))

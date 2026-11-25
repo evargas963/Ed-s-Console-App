@@ -789,7 +789,9 @@ def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
     assert sorted(m["op"] for m in got) == sorted([capture.ADDED, capture.ON_LIST])
     assert {m["request_id"] for m in got} == {"r1", "r2"}
     assert daemon.watchlist == ["SPY", "TSLA"]
-    assert [q["symbols"] for q in schwab.asked(QUOTES)] == ["TSLA", "TSLA"], "each add checked"
+    assert [q["symbols"] for q in schwab.asked(QUOTES)] == ["TSLA", "TSLA"], (
+        f"each add checked; the stand-in's requests: {schwab.requests}; the answers: {got}"
+    )
 
 
 def test_two_requests_the_daemon_answers_in_one_turn_each_get_their_own_answer():
