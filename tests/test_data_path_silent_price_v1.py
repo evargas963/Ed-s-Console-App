@@ -15,12 +15,12 @@ import live_price_rows
 import server
 import time_et
 from app.market_data.schwab.streaming import live_ui
+from tests.shared_helpers import until
 from tests.test_live_push_channel_v1 import (
     SPY_LAST,
     _daemon_heartbeat,
     _run,
     _spy_trade,
-    _until,
     listener,
     serve_page_socket,
 )
@@ -62,7 +62,7 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     async def go():
         stop, stats = asyncio.Event(), {}
         ui, url = _serving(stop, stats, beats)
-        assert await _until(lambda: "clients" in stats)  # serving
+        assert await until(lambda: "clients" in stats)  # serving
         ws = await connect(f"{url}/ws", max_size=None)
         try:
             for frame in (
@@ -72,15 +72,13 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
                 b"\xff not text",
             ):
                 await ws.send(frame)
-            await _until(
-                lambda: len([r for r in caplog.records if r.name.endswith("live_ui")]) >= 4
-            )
+            await until(lambda: len([r for r in caplog.records if r.name.endswith("live_ui")]) >= 4)
             # the socket still serves the page after them
             await ws.send(json.dumps({"op": "subscribe", "symbols": ["SPY"]}))
             assert json.loads(await asyncio.wait_for(ws.recv(), 5))["type"] == "symbols"
             assert stats["page_refused"] == 4, stats
             # the next beat carries the count
-            assert await _until(
+            assert await until(
                 lambda: bool(beats) and beats[-1]["page_socket"]["page_refused"] == 4
             ), beats[-1:]
             # and the header's line says so (left_out_line)
@@ -131,7 +129,7 @@ def test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the
     async def go():
         stop, stats = asyncio.Event(), {}
         ui, url = _serving(stop, stats)
-        assert await _until(lambda: "clients" in stats)  # serving
+        assert await until(lambda: "clients" in stats)  # serving
         ws = await connect(f"{url}/ws", max_size=None)
         try:
             for _ in range(2):
@@ -142,7 +140,7 @@ def test_a_page_selecting_a_ticker_queues_its_reprice_and_its_ticks_end_with_the
                 seen.append(waiting())
         finally:  # a failure still closes the socket: cancelling over an open one can hang
             await ws.close()
-        assert await _until(lambda: "SPY" not in live_ui.selected(server.app.state))
+        assert await until(lambda: "SPY" not in live_ui.selected(server.app.state))
         with server._chains_waiting_lock:
             server._chains_waiting.pop("SPY")
         server._on_stream_tick("SPY")
@@ -175,10 +173,10 @@ def test_a_silent_daemon_keeps_the_last_price():
     async def body(bus, web):
         assert not web.server_state.connections  # the console reads the bus: no socket client
         bus.publish("quote.SPY", _spy_trade(SPY_LAST, time_et.now()))
-        assert await _until(
+        assert await until(
             lambda: live_price_rows.price_row("SPY", time_et.now())["spot"] == SPY_LAST
         )
-        assert await _until(lambda: lmp.daemon_status(time_et.now()) is not None)  # a beat taken
+        assert await until(lambda: lmp.daemon_status(time_et.now()) is not None)  # a beat taken
         now = time_et.now()
         for at in (now, now + lmp.FEED_HEARTBEAT_MAX_AGE_SEC + live_ui.HEARTBEAT_SEC):
             row = live_price_rows.price_row("SPY", at)
