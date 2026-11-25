@@ -41,8 +41,8 @@ def test_the_flip_reprices_with_schwabs_rate_and_dividend_yield(book):
     expected = gamma_flip_worked_out(book)
     assert expected is not None
     # the program's curve is computed again between the two strikes it changes sign between:
-    # its crossing is within a few hundred-thousandths of the price of the true one
-    assert snap.gamma_flip == pytest.approx(expected, rel=5e-5)
+    # its crossing is the true one's (measured within 1e-10 of the price on every book here)
+    assert snap.gamma_flip == pytest.approx(expected)
 
 
 def test_no_product_file_reads_the_stock_streams_dividend_yield():
