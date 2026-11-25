@@ -36,6 +36,8 @@ import time_et
 from app.market_data.schwab.streaming.program_lock import program_ports
 from tests.shared_helpers import git
 
+pytestmark = pytest.mark.rail
+
 windows_only = pytest.mark.skipif(
     sys.platform != "win32", reason="console windows and their Ctrl events are Windows'"
 )

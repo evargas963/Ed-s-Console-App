@@ -37,7 +37,7 @@ from pathlib import Path
 import db
 import time_et
 from tools import check_end_to_end as e2e
-from tools import check_integrity
+from tools import check_integrity, check_tests_serve_app
 from tools.census import copied_blocks, python_literals
 
 log = logging.getLogger("census")
@@ -1262,6 +1262,7 @@ for cat, rule, tool in (
     ),
     ("test functions with no assert of their own (check each)", "14", "ast"),
     ("tests of product code that use no captured Schwab data", "9", "ast"),
+    ("rails: production and credentials guarded, no Schwab data needed (reported)", "9", "ast"),
     ("fixtures no test names", "1", "regex"),
 ):
     add(S, cat, rule, tool)
@@ -1426,7 +1427,16 @@ for f in [
     hits = {
         m for m in imported if m in product_mods or any(m.startswith(p + ".") for p in product_mods)
     }
-    if hits:
+    if check_tests_serve_app.RAIL in TEXT[f]:
+        # a rail guards production or the credentials, not an app value (.claude/rules/tests.md)
+        add(
+            S,
+            "rails: production and credentials guarded, no Schwab data needed (reported)",
+            "9",
+            "ast",
+            f,
+        )
+    elif hits:
         add(
             S,
             "tests of product code that use no captured Schwab data",

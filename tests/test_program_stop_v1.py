@@ -26,6 +26,8 @@ from app.market_data.schwab.streaming.program_lock import (
 )
 from tests.shared_helpers import until
 
+pytestmark = pytest.mark.rail
+
 
 async def _waiting(before: set[threading.Thread]) -> None:
     """Return once the program's waiter is in its wait: a thread of its own ("stop request").

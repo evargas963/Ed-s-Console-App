@@ -14,7 +14,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from runtime_layout import _default_runtime_root
+
+pytestmark = pytest.mark.rail
 
 REPO = Path(__file__).resolve().parent.parent
 

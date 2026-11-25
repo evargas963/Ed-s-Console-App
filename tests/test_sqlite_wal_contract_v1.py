@@ -4,11 +4,15 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from db import (
     SQLITE_CACHE_SIZE_KIB,
     SQLITE_MMAP_SIZE_BYTES,
     configure_sqlite_connection,
 )
+
+pytestmark = pytest.mark.rail
 
 
 def test_configure_sqlite_connection_applies_access_tuning_rc50():
