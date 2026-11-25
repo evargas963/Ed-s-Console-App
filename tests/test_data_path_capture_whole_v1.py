@@ -40,7 +40,8 @@ from stream_spine import (
     StoredFirst,
     quote_msg,
 )
-from tests.test_data_path_writer_failures_v1 import _Defect, _until
+from tests.shared_helpers import until
+from tests.test_data_path_writer_failures_v1 import _Defect
 from time_et import ET, ct_label
 
 #: after MRVL's option close (16:00 ET): the day's close capture
@@ -327,7 +328,7 @@ def test_a_close_capture_held_past_its_wait_reaches_the_console_once_the_recorde
         try:
             await asyncio.sleep(0)  # the writer and the console's reader start
             await asyncio.to_thread(sweep_thread)
-            await _until(lambda: capture_store.captures(db, "MRVL") != [])
+            await until(lambda: capture_store.captures(db, "MRVL") != [])
             return capture_store.captures(db, "MRVL")
         finally:
             ofs.stop_order_flow_stream()
@@ -406,8 +407,7 @@ def test_a_dead_writer_refuses_the_capture_and_counts_it_not_recorded(tmp_path):
         bus, stop = MessageBus(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         bus.publish("quote.TSLA", _Defect(quote_msg(symbol="TSLA", src="t", ts_recv=1.0)))
-        while writer.status()["state"] != "dead":
-            await asyncio.sleep(0.01)
+        await until(lambda: writer.status()["state"] == "dead")
         before = writer.status()["unrecorded"]
         outcome = writer.store_capture(_capture()).outcome()  # told at once: nothing to wait for
         stop.set()
@@ -433,13 +433,13 @@ def test_a_capture_held_when_the_writer_dies_is_refused_and_counted_not_recorded
     async def go() -> tuple[str, int]:
         bus, stop = MessageBus(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: writer.status()["state"] == "recording")
+        await until(lambda: writer.status()["state"] == "recording")
         stored = writer.store_capture(_capture())
-        await _until(lambda: writer.status()["waiting"] == 1)
+        await until(lambda: writer.status()["waiting"] == 1)
         bus.publish("quote.TSLA", _Defect(quote_msg(symbol="TSLA", src="t", ts_recv=1.0)))
-        await _until(lambda: writer.status()["waiting"] == 2)
+        await until(lambda: writer.status()["waiting"] == 2)
         release.set()
-        await _until(lambda: writer.status()["state"] == "dead")
+        await until(lambda: writer.status()["state"] == "dead")
         stop.set()
         await task
         return stored.outcome(), writer.status()["unrecorded"]
@@ -516,11 +516,11 @@ def test_a_capture_handed_to_the_writer_after_its_stop_is_refused_and_counted_no
     async def go() -> tuple[str, str, int]:
         stop = asyncio.Event()
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
-        await _until(lambda: writer.status()["state"] == "recording")
+        await until(lambda: writer.status()["state"] == "recording")
         first = writer.store_capture(_capture())
-        await _until(lambda: writer.status()["waiting"] == 1)  # held; its retry waits 2 s
+        await until(lambda: writer.status()["waiting"] == 1)  # held; its retry waits 2 s
         stop.set()
-        await _until(lambda: writer.status()["queue_depth"] == 1)  # the stop, queued
+        await until(lambda: writer.status()["queue_depth"] == 1)  # the stop, queued
         after = writer.store_capture(_capture(_BEGUN + 60))
         await task
         return first.outcome(), after.outcome(), writer.status()["unrecorded"]

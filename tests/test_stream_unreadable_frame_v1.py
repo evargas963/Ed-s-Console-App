@@ -18,18 +18,10 @@ from app.market_data.schwab.streaming import capture
 from stream_spine import HealthRegistry, MessageBus, held_key
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
+from tests.shared_helpers import until
 
 #: what the streamer sends on NYSE_BOOK in place of a frame: text schwab-py cannot parse
 NOT_JSON = "<html>Service Unavailable</html>"
-
-
-async def _until(cond, tries: int = 750) -> None:
-    """Wait for `cond`, 0.02 s at a time, at most `tries` times (15 s)."""
-    for _ in range(tries):
-        if cond():
-            return
-        await asyncio.sleep(0.02)
-    raise AssertionError("not reached in time")
 
 
 def test_a_frame_that_cannot_be_parsed_is_skipped_and_the_connection_carries_on(tmp_path, caplog):
@@ -46,7 +38,7 @@ def test_a_frame_that_cannot_be_parsed_is_skipped_and_the_connection_carries_on(
         stop = asyncio.Event()
         run = asyncio.create_task(daemon.run(lambda: client, stop))
         # NASDAQ_BOOK is answered after NYSE_BOOK's frame, so it is held once that frame was read
-        await _until(lambda: daemon.connection.held["NASDAQ_BOOK"])
+        await until(lambda: daemon.connection.held["NASDAQ_BOOK"])
         stop.set()
         await asyncio.wait_for(run, 10)
 

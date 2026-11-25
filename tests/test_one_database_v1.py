@@ -27,8 +27,9 @@ from db import EdDB, LevelCrossEvent
 from state.cross_store import CROSSES_HELD_SEC
 from stream_spine import CAPTURE_STORED, LOG, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
+from tests.shared_helpers import until
 from tests.test_data_path_rules_v1 import _EVENTS
-from tests.test_data_path_writer_failures_v1 import _count, _publish_options, _until
+from tests.test_data_path_writer_failures_v1 import _count, _publish_options
 
 SPY = json.loads(
     (Path(__file__).parent / "fixtures" / "real_spy_2026_11_20_chain_and_quotes.json").read_text(
@@ -94,12 +95,18 @@ def test_a_chain_history_written_while_the_stream_records_holds_no_message_back(
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         other = threading.Thread(target=write_history)
         other.start()
-        for _ in range(20):
+
+        def written(rows: int) -> bool:
+            now = writer.status()
+            states.append(now["state"])  # read at every look, through every commit's wait
+            return now["rows_written"] >= rows
+
+        for n in range(1, 21):
             _publish_options(bus, health, _EVENTS)
-            states.append(writer.status()["state"])
-            await asyncio.sleep(0.01)
+            # the round written, as the chain's history is written on its own thread
+            await until(lambda n=n: written(n * len(_EVENTS)))
         # every option quote's row, and the cross's
-        await _until(lambda: writer.status()["rows_written"] == 20 * len(_EVENTS) + 1)
+        await until(lambda: writer.status()["rows_written"] == 20 * len(_EVENTS) + 1)
         other.join()
         stop.set()
         await task

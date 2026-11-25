@@ -40,7 +40,7 @@ from stream_spine import HealthRegistry, MessageBus, quote_msg
 from tests.real_chains import MRVL
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import FIELD_REPLIES, LocalStreamer
-from tests.shared_helpers import TimerCountingLoop
+from tests.shared_helpers import TimerCountingLoop, until
 
 _FX = Path(__file__).parent / "fixtures"
 SPY = json.loads((_FX / "real_spy_full_chain_2026_11_09.json").read_text(encoding="utf-8"))
@@ -142,7 +142,7 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
             )
             for topic, msg in delivered:
                 bus.publish(topic, msg)
-            await _until(
+            await until(
                 lambda: tk in daemon._ranked and level_store.published_levels(tk) is not None, 120
             )
             return [ct for _topic, msg in delivered for ct in msg["contracts"]]
@@ -190,7 +190,7 @@ def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
     async def go() -> tuple[int, float]:
         stop = asyncio.Event()
         run = asyncio.create_task(conn.run_connection(client, stop))
-        await _until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
+        await until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
         before, started = loop.timers, time_et.now()
         await time_et.set_within(stop, 2.0)  # this wait's own timer: one
         scheduled = loop.timers - before - 1
@@ -226,7 +226,7 @@ def test_the_status_says_why_schwab_is_down_only_while_it_is(tmp_path):
     async def go() -> dict:
         stop = asyncio.Event()
         run = asyncio.create_task(conn.run_connection(client, stop))
-        await _until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
+        await until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
         during = daemon.status(time_et.now())
         stop.set()
         await asyncio.wait_for(run, 30)
@@ -241,13 +241,6 @@ def test_the_status_says_why_schwab_is_down_only_while_it_is(tmp_path):
     assert before["schwab_down"] == connection.SCHWAB_CONNECTING
     assert during["schwab_socket_open"] is True
     assert during["schwab_down"] is None
-
-
-async def _until(cond, seconds: float, state=lambda: None) -> None:
-    deadline = time_et.elapsed() + seconds
-    while not cond():
-        assert time_et.elapsed() < deadline, f"not reached in time: {state()}"
-        await asyncio.sleep(0.05)
 
 
 def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path):
@@ -290,7 +283,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
         ]
         sampler = threading.Thread(target=sample, daemon=True)
         try:
-            await _until(lambda: conn.held["LEVELONE_EQUITIES"], 30)
+            await until(lambda: conn.held["LEVELONE_EQUITIES"], 30)
             sampler.start()
             bus.publish(
                 "quote.SPY",
@@ -316,7 +309,7 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                 loop.call_soon(bus.publish, topic, msg)
             # the rule picked from the read chain and Schwab holds it; the console priced it
             # and stamped its heatmap
-            await _until(
+            await until(
                 lambda: (
                     conn.held["LEVELONE_OPTIONS"]
                     and level_store.published_levels("SPY") is not None
@@ -330,9 +323,14 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
                     "why": level_store.chain_failure("SPY"),
                 },
             )
-            await asyncio.sleep(2 * ofs.HEARTBEAT_SEC)  # the beats that restamp it
+            # the beats that restamp it: every piece of the work has run
+            await until(
+                lambda: {name for name, _thread in calls} == set(work),
+                30,
+                lambda: sorted({name for name, _thread in calls}),
+            )
             # the sampler wakes by the computer's timer, not every 0.01 s: until it has sampled
-            await _until(lambda: len(behind) > 100, 30, lambda: len(behind))
+            await until(lambda: len(behind) > 100, 30, lambda: len(behind))
         finally:
             sampled.set()
             sampler.join(5)

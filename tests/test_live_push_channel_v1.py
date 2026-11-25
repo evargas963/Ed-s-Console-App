@@ -47,6 +47,7 @@ from stream_spine import (
     verbatim_msg,
 )
 from tests.feed_live_helper import RTH_INSTANT, clock_from
+from tests.shared_helpers import until
 
 _CONTRACT = "SPY   260918C00500000"
 
@@ -85,15 +86,6 @@ def _spy_trade(last: float, ts: float) -> dict:
         ts_recv=ts,
         native=native,
     )
-
-
-async def _until(pred, timeout=5.0):
-    end = time_et.elapsed() + timeout
-    while time_et.elapsed() < end:
-        if pred():
-            return True
-        await asyncio.sleep(0.01)
-    return False
 
 
 def listener() -> tuple[socket.socket, str]:
@@ -182,7 +174,7 @@ async def _run(body, heartbeat_fn=None, on_tick=None, on_chain=None):
         )
     )
     follower = asyncio.create_task(daemon.follow_market(stop))
-    assert await _until(lambda: web.started and "clients" in ui_stats)  # both serving
+    assert await until(lambda: web.started and "clients" in ui_stats)  # both serving
     ofs.bind_daemon(daemon)  # as capture.serve_console binds it
     assert ofs.start_order_flow_stream(on_tick_callback=on_tick, on_chain_callback=on_chain)
     try:
@@ -216,8 +208,8 @@ def test_the_daemon_heartbeat_decides_liveness_end_to_end():
         assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = clock()
         bus.publish("quote.SPY", _spy_trade(SPY_LAST, ts))
-        assert await _until(_received(ts))
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
+        assert await until(_received(ts))
+        assert await until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         now = clock()
         assert not lmp.feed_live_for("QQQ", "LEVELONE_EQUITIES", now)  # not held by the daemon
         assert not lmp.feed_live_for("SPY", "NYSE_BOOK", now)  # held on another service only
@@ -256,7 +248,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
             time.sleep(0.05)
 
     async def body(bus, _web):
-        assert await _until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
+        assert await until(lambda: lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", clock()))
         for i in range(300):
             for topic, msg in chain_messages(
                 f"ZZ{i:03d}", contracts, time_et.now(), None, None, False
@@ -270,7 +262,7 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
         _run(
             body,
             heartbeat_fn=_daemon_heartbeat(clock=clock),
-            on_chain=lambda *_chain: time.sleep(0.02),
+            on_chain=lambda *_chain: time.sleep(0.02),  # INDUCED: a slow reader of each chain
         )
     )
     assert samples and all(samples), (
@@ -284,9 +276,9 @@ def test_a_closed_schwab_socket_is_not_live():
         assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(SPY_LAST, ts))
-        assert await _until(_received(ts))
+        assert await until(_received(ts))
         # a heartbeat arrived: the daemon's status, its Schwab socket closed, is recorded
-        assert await _until(lambda: lmp.daemon_status(time_et.now()) is not None)
+        assert await until(lambda: lmp.daemon_status(time_et.now()) is not None)
         assert not lmp.feed_live_for("SPY", "LEVELONE_EQUITIES", time_et.now())
 
     asyncio.run(_run(body, heartbeat_fn=_daemon_heartbeat(socket_open=False)))
@@ -318,7 +310,7 @@ def test_a_non_schwab_message_on_the_same_topic_is_never_forwarded():
         )
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.01, ts))
-        assert await _until(_received(ts))
+        assert await until(_received(ts))
         assert not any(item.price in (1.0, 1.05) for item in ofls.prints("SPY")), (
             "the console applied a non-Schwab value"
         )
@@ -365,7 +357,7 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks():
                 content={"key": _CONTRACT, "BIDS": [], "ASKS": []},
             ),
         )
-        assert await _until(lambda: _CONTRACT in seen)
+        assert await until(lambda: _CONTRACT in seen)
         assert seen.count(_CONTRACT) == 1
         assert ofls.streamed_values([_CONTRACT])[_CONTRACT].greeks.total_volume.ts_recv == ts
         assert ofls.option_top(_CONTRACT) == StreamedTop(bid=1.2, ask=1.3)
@@ -390,7 +382,7 @@ def test_the_live_loop_never_opens_the_capture_database():
         assert not web.server_state.connections  # the console reads the bus: no copy over a socket
         ts = time_et.now()
         bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.02, ts))
-        assert await _until(_received(ts))
+        assert await until(_received(ts))
 
     _OPENED.clear()
     _AUDITING.set()
@@ -423,7 +415,7 @@ def test_no_daemon_serves_nothing_and_the_feed_starts_once_one_is_bound(caplog):
         try:
             ts = time_et.now()
             bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.04, ts))
-            assert await _until(_received(ts))
+            assert await until(_received(ts))
         finally:
             ofs.stop_order_flow_stream()
             ofs.bind_daemon(None)
@@ -459,7 +451,7 @@ def test_a_message_missing_its_receive_time_is_dropped_whole(caplog):
             bus.publish(f"quote.{sym}", msg)
         ts = clock()
         bus.publish("quote.SPY", _spy_trade(SPY_LAST, ts))
-        assert await _until(_received(ts))  # the loop went on past them
+        assert await until(_received(ts))  # the loop went on past them
 
     with caplog.at_level("WARNING", logger=ofs.log.name):
         asyncio.run(_run(body))
@@ -579,7 +571,7 @@ def test_a_late_console_gets_the_current_record_with_each_fields_own_time():
         )  # publish is synchronous: both are the bus's current record now
         assert ofs.start_order_flow_stream()
         try:
-            assert await _until(_received(t_trade))  # the trade, at its own receive time
+            assert await until(_received(t_trade))  # the trade, at its own receive time
             assert not _received(t_quote)(), "the trade was re-dated to the later bid/ask tick"
         finally:
             ofs.stop_order_flow_stream()

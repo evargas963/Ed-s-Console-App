@@ -47,6 +47,7 @@ from tests.feed_live_helper import on_the_bus
 from tests.real_chains import CRWD, MRVL, SPY_FULL, TSLA
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
+from tests.shared_helpers import until
 from time_et import ET
 
 _FX = Path(__file__).parent / "fixtures"
@@ -161,13 +162,6 @@ def _rule(
     return {svc: set(order[: limits[svc]]) for svc in (L1, BOOK)}
 
 
-async def _until(cond, seconds: float = 20.0) -> None:
-    deadline = time_et.elapsed() + seconds
-    while not cond():
-        assert time_et.elapsed() < deadline, "not reached in time"
-        await asyncio.sleep(0.02)
-
-
 class _Market:
     """Schwab's streamer (with its limits) and REST host played locally, the daemon on them.
 
@@ -225,7 +219,7 @@ class _Market:
         """
         self.marks += 1
         self.price(_MARK, self.marks)
-        await _until(lambda: live_price_rows.spot(_MARK) == self.marks)
+        await until(lambda: live_price_rows.spot(_MARK) == self.marks)
 
     def holds(self, want: dict[str, set[str]]) -> bool:
         return all(
@@ -275,7 +269,7 @@ def _both_arrive(want):
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
 
     return steps
 
@@ -289,7 +283,7 @@ async def _in_turn(m, alone: dict[str, set[str]], both: dict[str, set[str]]) -> 
     for tk, want in (("MRVL", alone), ("SPY", both)):
         m.chain(tk)
         m.price(tk, PRICES[tk])
-        await _until(lambda want=want: m.holds(want))
+        await until(lambda want=want: m.holds(want))
 
 
 @pytest.mark.parametrize("keeps_what_fits", [True, False])
@@ -334,7 +328,7 @@ def test_a_contract_without_gamma_streams_after_the_ones_with_it_that_are_equall
     async def steps(m):
         m.chain("SPY", ts, contracts)
         m.price("SPY", price)
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
 
     market.run(steps)
     strikes = sorted({c["strikePrice"] for c in contracts})
@@ -368,14 +362,14 @@ def test_a_price_tick_asks_schwab_for_nothing_and_the_next_chain_only_the_differ
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(before))
+        await until(lambda: m.holds(before))
         sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
         m.price("MRVL", MRVL_CLOSE)
         await m.taken()
         sent["after_tick"] = {s: len(m.streamer.asked(s)) for s in (L1, BOOK)}
         clock[0] = after
         m.chain("MRVL", after)
-        await _until(lambda: m.holds(then))
+        await until(lambda: m.holds(then))
 
     market.run(steps)
     assert sent["after_tick"] == {s: sent[s] for s in (L1, BOOK)}, (
@@ -407,12 +401,12 @@ def test_a_chain_that_arrives_later_is_fitted_within_the_limit_schwab_stated(tmp
     async def steps(m):
         m.chain("MRVL")
         m.price("MRVL", PRICES["MRVL"])
-        await _until(lambda: m.holds(alone))
+        await until(lambda: m.holds(alone))
         sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
         sent["answers"] = len(m.streamer.answers)
         m.chain("SPY")
         m.price("SPY", PRICES["SPY"])
-        await _until(lambda: m.holds(both))
+        await until(lambda: m.holds(both))
 
     market.run(steps)
     for svc in (L1, BOOK):
@@ -460,7 +454,7 @@ def test_a_new_connection_is_asked_within_the_limit_schwab_stated(tmp_path):
         sent.update({s: len(m.streamer.asked(s)) for s in (L1, BOOK)})
         sent["answers"] = len(m.streamer.answers)
         await m.daemon.connection.stream._socket.close()  # the socket is gone
-        await _until(lambda: _logins(m) == 2 and m.holds(want))
+        await until(lambda: _logins(m) == 2 and m.holds(want))
 
     market.run(steps)
     again = {s: market.streamer.asked(s)[sent[s] :] for s in (L1, BOOK)}
@@ -490,7 +484,7 @@ def test_a_start_given_schwabs_limits_asks_within_them_and_holds_the_same_contra
         for tk in ("MRVL", "SPY"):
             m.chain(tk, now, chains[tk])
             m.price(tk, prices[tk])
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
         held.append({s: set(m.streamer.held[s]) for s in (L1, BOOK)})
 
     untold = _Market(tmp_path / "untold", ["MRVL", "SPY"], lambda: now)
@@ -555,14 +549,14 @@ def test_a_limit_schwab_states_anew_replaces_the_one_held_on_this_and_the_next_c
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
+        await until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
         m.streamer.limits[BOOK] = 60
         m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
         sent["asked"] = len(m.streamer.asked(BOOK))
         sent["answers"] = len(m.streamer.answers)
         await m.daemon.connection.stream._socket.close()  # the socket is gone
-        await _until(lambda: _logins(m) == 2 and m.holds(want))
+        await until(lambda: _logins(m) == 2 and m.holds(want))
 
     market.run(steps)
     before = market.streamer.asked(BOOK)[: sent["asked"]]
@@ -588,11 +582,11 @@ def test_a_connection_lost_before_schwabs_refusal_arrives_learns_the_limit_on_th
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.streamer.asked(BOOK))  # Schwab has the request past its limit
+        await until(lambda: m.streamer.asked(BOOK))  # Schwab has the request past its limit
         seen["limit"] = m.daemon.connection.limit[BOOK]  # and its refusal is still on its way
         seen["asked"] = len(m.streamer.asked(BOOK))
         await m.daemon.connection.stream._socket.close()  # the socket is gone
-        await _until(lambda: _logins(m) == 2 and m.holds(want))
+        await until(lambda: _logins(m) == 2 and m.holds(want))
 
     market.run(steps)
     assert seen["limit"] is None, "the first connection ended before Schwab's refusal arrived"
@@ -654,7 +648,7 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(before))
+        await until(lambda: m.holds(before))
         recorded = m.daemon.saved_options
         m.price("MRVL", -999)
         clock[0] = after
@@ -665,7 +659,7 @@ def test_the_rule_orders_a_chain_at_the_price_rows_price_and_waits_while_it_has_
             recorded=(recorded, m.daemon.saved_options),
         )
         m.price("MRVL", MRVL_CLOSE)
-        await _until(lambda: m.holds(then))
+        await until(lambda: m.holds(then))
         held["then_recorded"] = m.daemon.saved_options
 
     market.run(steps)
@@ -713,11 +707,11 @@ def test_a_chain_ordered_at_its_first_price_holds_no_price_row_back(tmp_path):
 
     async def steps(m):
         m.chain("MRVL")
-        await _until(lambda: "MRVL" in m.daemon._chains)  # it waits for its price
+        await until(lambda: "MRVL" in m.daemon._chains)  # it waits for its price
         pricing.append(server.chain_pricing.submit(gate.wait, 60))
         m.price("MRVL", PRICES["MRVL"])
         await m.taken()
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
 
     try:
         market.run(steps)
@@ -759,16 +753,16 @@ def test_a_tickers_newest_chain_is_ordered_last_and_its_order_stands(tmp_path):
 
     async def steps(m):
         m.chain("MRVL")
-        await _until(lambda: "MRVL" in m.daemon._chains)  # it waits for its price
+        await until(lambda: "MRVL" in m.daemon._chains)  # it waits for its price
         capture.chain_ordering.submit(gate.wait, 60)
         m.price("MRVL", PRICES["MRVL"])
-        await _until(lambda: "MRVL" not in m.daemon._chains)  # the price asked for its order
+        await until(lambda: "MRVL" not in m.daemon._chains)  # the price asked for its order
         at[0] = after
         m.chain("MRVL", after)
-        await _until(lambda: after in reads)  # the next chain is taken: its layout is asked
+        await until(lambda: after in reads)  # the next chain is taken: its layout is asked
         seen["held"] = {s: set(m.daemon.connection.held[s]) for s in (L1, BOOK)}
         gate.set()
-        await _until(lambda: m.holds(then))
+        await until(lambda: m.holds(then))
         await m.taken()
         seen["stands"] = m.holds(then)
 
@@ -796,11 +790,11 @@ def test_a_chain_delivered_twice_is_ordered_again_and_asks_schwab_for_nothing(tm
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
         first = m.daemon._ranked["MRVL"]
         seen["asked"] = {s: len(m.streamer.asked(s)) for s in (L1, BOOK)}
         m.chain("MRVL")
-        await _until(lambda: m.daemon._ranked["MRVL"] is not first)
+        await until(lambda: m.daemon._ranked["MRVL"] is not first)
         await m.taken()
         seen["again"] = (m.daemon._ranked["MRVL"] == first, m.holds(want))
         seen["asked_again"] = {s: len(m.streamer.asked(s)) for s in (L1, BOOK)}
@@ -829,7 +823,7 @@ def test_a_stop_while_a_chain_waits_to_be_ordered_ends_the_follower(tmp_path):
         capture.chain_ordering.submit(gate.wait, 60)
         at[0] = CAPTURED + 1
         m.chain("MRVL", CAPTURED + 1)
-        await _until(lambda: CAPTURED + 1 in reads)  # the chain is taken: its layout is asked
+        await until(lambda: CAPTURED + 1 in reads)  # the chain is taken: its layout is asked
         m.price("SPY", PRICES["SPY"])
         await m.taken()
 
@@ -855,9 +849,9 @@ def test_a_watchlist_change_splits_schwabs_limits_again(tmp_path):
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
+        await until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
         m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
 
     market.run(steps)
     assert len(want[L1]) == len(CHAINS["MRVL"]) and len(want[BOOK]) == 100
@@ -892,19 +886,19 @@ def test_a_released_contracts_record_stands_and_a_new_hold_takes_none_of_it(tmp_
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(both))
+        await until(lambda: m.holds(both))
         for e in _STREAMED["events"]:
             if e["kind"] == "l1":  # received now, in this hold, as the daemon's handler stamps it
                 sent = {**e["content"], "key": _HELD}
                 on_the_bus(m.bus, L1, sent, time_et.now(), int(e["ts_recv"] * 1000))
         seen["held"] = m.daemon.option_record(_HELD)
         m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
-        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL"])))
+        await until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL"])))
         seen["released"] = (m.bus.current.get(key), m.daemon.option_record(_HELD))
         m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2})
-        await _until(lambda: "SPY" in m.daemon.watchlist)
+        await until(lambda: "SPY" in m.daemon.watchlist)
         m.chain("SPY")
-        await _until(lambda: m.holds(both))
+        await until(lambda: m.holds(both))
         seen["held_again"] = (m.bus.current.get(key), m.daemon.option_record(_HELD))
 
     market.run(steps)
@@ -930,17 +924,17 @@ def test_a_ticker_removed_and_added_again_records_nothing_until_its_next_chain(t
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
+        await until(lambda: m.holds(_rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])))
         seen["before"] = m.daemon.saved_options & spy
         m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
-        await _until(lambda: "SPY" not in m.daemon.watchlist)
+        await until(lambda: "SPY" not in m.daemon.watchlist)
         m.daemon.console_frame({"op": "watchlist", "action": "add", "ticker": "SPY", "id": 2})
-        await _until(lambda: "SPY" in m.daemon.watchlist)
+        await until(lambda: "SPY" in m.daemon.watchlist)
         m.price("SPY", PRICES["SPY"])
         await m.taken()
         seen["re_added"] = m.daemon.saved_options & spy
         m.chain("SPY")
-        await _until(lambda: m.daemon.saved_options & spy)
+        await until(lambda: m.daemon.saved_options & spy)
         seen["next_chain"] = m.daemon.saved_options & spy
 
     market.run(steps)
@@ -961,9 +955,9 @@ def test_a_chain_that_arrives_after_its_ticker_is_removed_records_nothing(tmp_pa
         for tk in ("MRVL", "SPY"):
             m.chain(tk)
             m.price(tk, PRICES[tk])
-        await _until(lambda: m.daemon.saved_options & spy)
+        await until(lambda: m.daemon.saved_options & spy)
         m.daemon.console_frame({"op": "watchlist", "action": "remove", "ticker": "SPY", "id": 1})
-        await _until(lambda: "SPY" not in m.daemon.watchlist)
+        await until(lambda: "SPY" not in m.daemon.watchlist)
         m.chain("SPY")
         m.price("SPY", PRICES["SPY"])
         await m.taken()
@@ -1001,11 +995,11 @@ def test_the_flow_panels_contract_streams_on_both_services_on_top_of_the_rule(tm
             m.price(tk, PRICES[tk])
         ofs.bind_daemon(m.daemon)  # the console runs in this daemon's program
         answer = await server.post_flow_contract(server.FlowContract(contract=far))
-        await _until(lambda: m.holds(want))
+        await until(lambda: m.holds(want))
         held.update({s: set(m.daemon.connection.held[s]) for s in (L1, BOOK)})
         cleared = server.FlowContract(contract=None)  # Ed's selection cleared
         assert await server.post_flow_contract(cleared) == {"ok": True, "contract": None}
-        await _until(lambda: m.daemon.flow_contract is None and m.holds(rule_alone))
+        await until(lambda: m.daemon.flow_contract is None and m.holds(rule_alone))
         assert answer == {"ok": True, "contract": far}
 
     try:
@@ -1045,14 +1039,14 @@ def test_the_ticker_a_page_shows_takes_schwabs_slots_and_a_switch_moves_them(tmp
         for tk in both:
             m.chain(tk, now, chains[tk])
             m.price(tk, prices[tk])
-        await _until(lambda: m.holds(dealt))
+        await until(lambda: m.holds(dealt))
         on_page.add("SPY")
         m.daemon.page_selected("SPY")
-        await _until(lambda: m.holds(spy_shown))
+        await until(lambda: m.holds(spy_shown))
         on_page.clear()
         on_page.add("MRVL")
         m.daemon.page_selected("MRVL")
-        await _until(lambda: m.holds(mrvl_shown))
+        await until(lambda: m.holds(mrvl_shown))
 
     try:
         market.run(steps)

@@ -16,13 +16,7 @@ from app.market_data.schwab.streaming import capture
 from stream_spine import HealthRegistry, MessageBus
 from tests.schwab_rest_standin import LocalSchwab
 from tests.schwab_stream_standin import LocalStreamer
-
-
-async def _until(cond, seconds: float) -> None:
-    deadline = asyncio.get_running_loop().time() + seconds
-    while not cond():
-        assert asyncio.get_running_loop().time() < deadline, "not reached in time"
-        await asyncio.sleep(0.05)
+from tests.shared_helpers import until
 
 
 def _connection_ended(tmp_path, *, silent_on_logout: bool):
@@ -41,14 +35,15 @@ def _connection_ended(tmp_path, *, silent_on_logout: bool):
     async def go():
         stop = asyncio.Event()
         run = asyncio.create_task(conn.run_connection(client, stop))
-        await _until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
+        await until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
         stream = conn.stream
         stopped = asyncio.get_running_loop().time()
         stop.set()
         done, _pending = await asyncio.wait([run], timeout=30)
         assert run in done, "the connection did not end"
         took = asyncio.get_running_loop().time() - stopped
-        await asyncio.sleep(0.5)  # the daemon goes on: anything closing on its own has closed
+        # the daemon goes on: its end of the socket closes, as it would on its own
+        await until(lambda: stream._socket.closed, 5, lambda: "the websocket stayed open")
         return stream._socket.closed, took
 
     try:
