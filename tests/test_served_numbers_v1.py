@@ -309,8 +309,11 @@ def test_the_strikes_and_their_moves_are_served_as_listed():
             assert r["strike_text"] == listed(r["strike"])
         assert body["view"]["centre_text"] == listed(body["view"]["centre"])
         m = body["migration"]
-        assert m["grew_text"] == "/".join(map(listed, m["grew"]))
-        assert m["busiest_text"] == "–".join(map(listed, m["busiest"]))
+        # the migration's sentences name each strike as the screen lists it (AGENTS.md rule 4)
+        assert "/".join(map(listed, m["grew"])) in m["moved_said"]
+        assert m["busiest_said"] == "Heaviest option trading at " + "–".join(
+            map(listed, m["busiest"])
+        )
     # SPY's walls and flip, 2026-11-11 to 2026-11-12: the call wall moved up 15, the put wall
     # stood, the flip rose 0.45
     assert [

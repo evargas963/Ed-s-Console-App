@@ -118,9 +118,9 @@ def test_where_the_busiest_strikes_sit_is_said_only_when_it_is_known(two_days):
 def test_where_the_busiest_strikes_sit_is_served_in_the_screens_words(two_days):
     """The same INDUCED walls around PCG's real rows: each place is served as the screen says it.
 
-    The page draws `busiest_vs_walls_text` and picks no words itself: above the largest call
-    gamma strike, below the largest put gamma strike, between the two, across one or both, and no
-    words (None) where the place is not known, which the page leaves out.
+    The page draws the served sentence, `busiest_where_said`, and picks no words itself: above the
+    largest call gamma strike, below the largest put gamma strike, between the two, across one or
+    both, and no sentence (None) where the place is not known, which the page leaves out.
     """
     (_prior, _), (today, _snap) = two_days
     rows = today["gex"]
@@ -129,15 +129,15 @@ def test_where_the_busiest_strikes_sit_is_served_in_the_screens_words(two_days):
 
     def said(call: float | None, put: float | None) -> str | None:
         migration = positioning_migration(rows, [], call, put)
-        return push_strikes._shown_migration(migration, None, "LIVE")["busiest_vs_walls_text"]
+        return push_strikes._shown_migration(migration, None, "LIVE")["busiest_where_said"]
 
-    assert said(low - 1, None) == "ABOVE Gamma Call"
-    assert said(None, high + 1) == "BELOW Gamma Put"
-    assert said(high, low) == "between Gamma Put and Gamma Call"
+    assert said(low - 1, None) == "That is ABOVE Gamma Call."
+    assert said(None, high + 1) == "That is BELOW Gamma Put."
+    assert said(high, low) == "That is between Gamma Put and Gamma Call."
     assert said(high, None) is None
-    assert said(mid, low - 1) == "across Gamma Call"
-    assert said(high + 1, high) == "across Gamma Put"
-    assert said(mid + 0.01, mid - 0.01) == "across Gamma Put and Gamma Call"
+    assert said(mid, low - 1) == "That is across Gamma Call."
+    assert said(high + 1, high) == "That is across Gamma Put."
+    assert said(mid + 0.01, mid - 0.01) == "That is across Gamma Put and Gamma Call."
 
 
 def _prior_gex(body: dict) -> dict:

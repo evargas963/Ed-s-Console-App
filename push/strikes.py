@@ -77,10 +77,12 @@ class ShownLevelMove(TypedDict):
 class ShownMigration(TypedDict):
     """The day-over-day migration as the screen shows it (_shown_migration).
 
-    positioning_migration's answer with each row as the page draws it, then the strikes that
-    grew, shrank and traded most as the screen lists them, where the busiest sit against the
-    walls as the screen says it (BUSIEST_VS_WALLS_TEXT; None with no such place), why it compares
-    nothing (None when it compares) and what a session volume of 0 means (None unless 0).
+    positioning_migration's answer with each row as the page draws it, then each sentence the
+    screen says of it, whole (AGENTS.md rule 4): that it is warming up while it compares nothing
+    (`warming_said`, with why, `note`), where gamma grew and shrank most (`moved_said`), where the
+    option trading was heaviest (`busiest_said`) and where those strikes sit against the walls
+    (`busiest_where_said`, BUSIEST_VS_WALLS_TEXT); a sentence whose fact is not known is None.
+    Then what a session volume of 0 means (None unless 0).
     """
 
     rows: list[ShownMigrationRow]
@@ -90,10 +92,10 @@ class ShownMigration(TypedDict):
     busiest: list[float]
     busiest_vs_walls: str | None
     volume_total: float | None
-    grew_text: str
-    shrank_text: str
-    busiest_text: str
-    busiest_vs_walls_text: str | None
+    warming_said: str | None
+    moved_said: str | None
+    busiest_said: str | None
+    busiest_where_said: str | None
     note: str | None
     volume_zero_text: str | None
 
@@ -239,6 +241,9 @@ ALL_EXPIRATIONS = "All Expirations"
 NO_PRIOR_DAY = "The first day-over-day comparison lands after the next wide morning capture."
 #: why the migration compares nothing while both days are held but no strike is known on both
 NO_STRIKE_ON_BOTH_DAYS = "No strike has a net GEX on both days."
+#: what the migration says while it compares nothing, and when no strike's gamma grew
+WARMING_UP = "Migration view warming up"
+NO_STRIKE_GREW = "No strike grew"
 #: what a session volume of 0 means, by the chain's verdict: a stale chain's rows are its snapshot
 ZERO_VOLUME_STALE = (
     "zero volume here is the SNAPSHOT, not the session — this chain is stale; see the source "
@@ -263,6 +268,10 @@ def _shown_migration(
     if m["volume_total"] == 0:
         zero = ZERO_VOLUME_STALE if levels_state == LEVELS_STALE else ZERO_VOLUME
     where = m["busiest_vs_walls"]
+    grew, shrank = "/".join(map(strike_text, m["grew"])), "/".join(map(strike_text, m["shrank"]))
+    moved = f"Gamma grew most at {grew}" if m["grew"] else NO_STRIKE_GREW
+    moved += f"; shrank most at {shrank}." if m["shrank"] else "."
+    busiest = "–".join(map(strike_text, m["busiest"]))
     return {
         "rows": [_served_migration(r) for r in m["rows"]],
         "compared": m["compared"],
@@ -271,10 +280,12 @@ def _shown_migration(
         "busiest": m["busiest"],
         "busiest_vs_walls": m["busiest_vs_walls"],
         "volume_total": m["volume_total"],
-        "grew_text": "/".join(map(strike_text, m["grew"])),
-        "shrank_text": "/".join(map(strike_text, m["shrank"])),
-        "busiest_text": "–".join(map(strike_text, m["busiest"])),
-        "busiest_vs_walls_text": None if where is None else BUSIEST_VS_WALLS_TEXT[where],
+        "warming_said": None if m["compared"] else WARMING_UP,
+        "moved_said": moved if m["compared"] else None,
+        "busiest_said": f"Heaviest option trading at {busiest}" if m["busiest"] else None,
+        "busiest_where_said": (
+            None if where is None else f"That is {BUSIEST_VS_WALLS_TEXT[where]}."
+        ),
         "note": note,
         "volume_zero_text": zero,
     }

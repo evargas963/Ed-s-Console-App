@@ -256,12 +256,12 @@
    762.0,
    763.0
   ],
-  "busiest_text": "762\u2013763",
+  "busiest_said": "Heaviest option trading at 762\u2013763",
   "busiest_vs_walls": "BELOW_PUT_WALL",
-  "busiest_vs_walls_text": "BELOW Gamma Put",
+  "busiest_where_said": "That is BELOW Gamma Put.",
   "compared": false,
   "grew": [],
-  "grew_text": "",
+  "moved_said": null,
   "note": "The first day-over-day comparison lands after the next wide morning capture.",
   "rows": [
    {
@@ -1288,9 +1288,9 @@
    }
   ],
   "shrank": [],
-  "shrank_text": "",
   "volume_total": 9570957.0,
-  "volume_zero_text": null
+  "volume_zero_text": null,
+  "warming_said": "Migration view warming up"
  },
  "ticker": "SPY",
  "today": [
