@@ -14,6 +14,8 @@ import pytest
 
 from feed import stream
 
+pytestmark = pytest.mark.rail
+
 ROOT = Path(__file__).resolve().parent.parent
 
 

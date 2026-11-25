@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from feed.schwab_client import write_token_file_atomically
+
+pytestmark = pytest.mark.rail
 
 
 def test_token_write_is_atomic_temp_replace(tmp_path):

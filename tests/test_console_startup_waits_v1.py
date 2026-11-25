@@ -18,10 +18,14 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
+
 import launch
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.program_lock import Ports, program_ports
+
+pytestmark = pytest.mark.rail
 
 REPO = Path(__file__).resolve().parent.parent
 WINDOWS = sys.platform == "win32"

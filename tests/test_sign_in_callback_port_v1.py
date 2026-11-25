@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import socket
 
+import pytest
+
 import time_et
 from feed import schwab_client as sc
+
+pytestmark = pytest.mark.rail
 
 
 def test_the_callback_port_is_ready_only_once_something_listens_on_it():

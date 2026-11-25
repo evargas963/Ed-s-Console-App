@@ -12,8 +12,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import server
 from tests.shared_helpers import git
+
+pytestmark = pytest.mark.rail
 
 
 def _repo(tmp_path: Path) -> Path:

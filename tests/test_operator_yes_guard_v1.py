@@ -23,6 +23,8 @@ import pytest
 import runtime_layout
 from tools import operator_yes_guard as guard
 
+pytestmark = pytest.mark.rail
+
 REPO = Path(__file__).resolve().parent.parent
 EXISTING = "tests/test_check_end_to_end_v1.py"  # a test that is on origin/main
 

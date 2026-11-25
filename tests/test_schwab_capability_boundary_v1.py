@@ -21,6 +21,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import live_market_plane as lmp
 import server
 import time_et
@@ -28,6 +30,8 @@ from app.market_data.schwab.streaming import capture
 from config import schwab_credentials
 from feed import schwab_client
 from stream_spine import HealthRegistry, MessageBus
+
+pytestmark = pytest.mark.rail
 
 REPO = Path(__file__).resolve().parent.parent
 

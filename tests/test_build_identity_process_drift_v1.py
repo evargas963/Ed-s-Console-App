@@ -11,9 +11,12 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import server as srv
+
+pytestmark = pytest.mark.rail
 
 
 def _git(repo: Path, *args: str) -> str:
