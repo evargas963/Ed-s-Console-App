@@ -1,6 +1,10 @@
 """json_blob_codec: what encode_json_blob stores, decode_json_blob reads back.
 
-And a row written before compression (plain JSON text) is read the same way.
+And a row written before compression (plain JSON text) is read the same way. The contracts are
+Schwab's: MRVL's full chain of 2026-10-07 as captured
+(tests/fixtures/real_mrvl_full_chain_2026_10_07.json), stored and read back as the complete chain
+capture does (calibration.complete_chain_capture: `[dict(c) for c in contracts]`, then
+option_contract.read_chain).
 """
 
 from __future__ import annotations
@@ -12,6 +16,8 @@ import json
 import pytest
 
 from json_blob_codec import decode_json_blob, encode_json_blob
+from option_contract import read_chain
+from tests.real_chains import MRVL
 
 
 def test_round_trip_a_dict():
@@ -20,8 +26,13 @@ def test_round_trip_a_dict():
 
 
 def test_round_trip_a_list_of_dicts_like_a_real_contract_list():
-    contracts = [{"symbol": "SPY_123", "strike": 500.0}, {"symbol": "SPY_124", "strike": 505.0}]
+    """Schwab's contracts as the capture stores them come back field for field, and read alike."""
+    contracts = [dict(c) for c in MRVL.chain]
+    assert len(contracts) > 1000
     assert decode_json_blob(encode_json_blob(contracts, default=str)) == contracts
+    assert read_chain(decode_json_blob(encode_json_blob(contracts, default=str))) == read_chain(
+        MRVL.chain
+    )
 
 
 def test_encoded_value_is_gzip_bytes_with_the_magic_header():
@@ -76,7 +87,9 @@ def test_a_table_can_hold_both_pre_and_post_migration_rows_at_once():
 
     Both must decode correctly with no per-row flag.
     """
-    legacy = json.dumps({"row": "legacy"})
-    migrated = encode_json_blob({"row": "migrated"}, default=str)
-    assert decode_json_blob(legacy) == {"row": "legacy"}
-    assert decode_json_blob(migrated) == {"row": "migrated"}
+    half = len(MRVL.chain) // 2
+    old, new = [dict(c) for c in MRVL.chain[:half]], [dict(c) for c in MRVL.chain[half:]]
+    legacy = json.dumps(old)
+    migrated = encode_json_blob(new, default=str)
+    assert decode_json_blob(legacy) == old
+    assert decode_json_blob(migrated) == new
