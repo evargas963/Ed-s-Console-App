@@ -41,7 +41,7 @@ const CHAIN = {
 function routes(over = {}) {
   return async (page) => {
     await routeWatchlist(page, ["SPY"]);
-    await mockPriceSocket(page, [], [], undefined, {
+    await mockPriceSocket(page, [], undefined, {
       bars: BARS,
       terrain: TERRAIN,
       strikes: over.strikes || STRIKES,

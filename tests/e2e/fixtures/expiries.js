@@ -20,6 +20,6 @@ function expiriesAnswer(expiries, dte = {}) {
 // The page's socket stood in for, sending that list for the selected ticker on each subscribe, and
 // the `panels` it names (mockPriceSocket)
 function pushExpiries(page, expiries, dte, panels) {
-  return mockPriceSocket(page, [], [], expiriesAnswer(expiries, dte), panels);
+  return mockPriceSocket(page, [], expiriesAnswer(expiries, dte), panels);
 }
 module.exports = { expiriesAnswer, pushExpiries };

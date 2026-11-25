@@ -20,6 +20,7 @@ const TIME = ["Date", "Intl"].map((name) => ({
 // (ed-tv-chart.js), and every other page script draws what is served
 const DRAWING = ["**/static/js/ed-draw.js", "**/static/js/ed-tv-chart.js"];
 const MATH = [{ name: "Math", message: "drawing math is ed-draw.js's; a shown number is served" }];
+const WAIT = "a test waits on its cause (the frame the change sends), never a timer";
 const ORDERS = ["sort", "reduce"].map((name) => ({
   selector: `CallExpression[callee.property.name='${name}']`,
   message: `.${name}( on the page: the program serves the rows in order and every total`,
@@ -61,6 +62,14 @@ export default [
       ecmaVersion: "latest",
       sourceType: "module",
       globals: { ...globals.node, ...globals.browser },
+    },
+  },
+  // .claude/rules/tests.md: a browser test shows a thing by its cause, never by a timer
+  {
+    files: ["**/tests/e2e/**/*.js"],
+    rules: {
+      "no-restricted-globals": ["error", { name: "setTimeout", message: WAIT }],
+      "no-restricted-properties": ["error", { property: "waitForTimeout", message: WAIT }],
     },
   },
   {

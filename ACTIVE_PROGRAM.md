@@ -181,9 +181,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   get one.
 - ENF-21 (QUEUED): a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by
   section or Schwab's own reply; no machine check yet.
-- P1-8 (QUEUED): CI clean-up: the browser tests' fixed waits
-  (`git grep -c -e waitForTimeout -e setTimeout -- tests/e2e`: 6 in 4 files) each replaced by a wait
-  on a condition, or shown to be the page's own timer.
 - LEVELS-SHOT (QUEUED): the Gamma Levels screenshot step (`tests/e2e/console-gamma-levels.spec.js`,
   `page.screenshot` after `setViewportSize`) failed once in CI and passed on a re-run; its cause
   first (`.claude/skills/flaky-test-fix/SKILL.md`), from the `playwright-failures` artifact.

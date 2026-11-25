@@ -597,15 +597,9 @@ test("Desk: a price push that stops reads OFFLINE on the map, not its last row's
   const ROWS = require(path.join(__dirname, "fixtures", "price_rows_live.json"));
   const BOOK_TIME = "Fri 09/25 06:59 PM CT";
   await intercept(page);
-  // SPY's row, nothing for 8 s (the push down), then the push resumes with $SPX's row, and SPY's at 12 s
-  const sock = await deskSocket(
-    page,
-    [ROWS.SPY],
-    [
-      { afterMs: 8000, row: ROWS["$SPX"] },
-      { afterMs: 12000, row: ROWS.SPY },
-    ],
-  );
+  // SPY's row, then nothing (the push down, said by the page's own silence watch); the test then
+  // resumes the push with $SPX's row, and later SPY's, each at the step it means (never a timer)
+  const sock = await deskSocket(page, [ROWS.SPY]);
   await openView(page, "trade-desk", "desk");
   await expect(page.locator("#tdmTrust")).toContainText("PRICE LIVE");
   await expect(page.locator("#hFeed")).toHaveText("OFFLINE", { timeout: 6000 }); // the socket sends nothing more
@@ -614,20 +608,19 @@ test("Desk: a price push that stops reads OFFLINE on the map, not its last row's
   await expect(page.locator("#tdmCardFlow")).toContainText("OFFLINE");
   // the push resumes with another symbol's row: SPY's last row is not SPY's state now, here or in
   // the header, even after the map repaints (a new book, sent on the socket, redraws it)
+  sock.quotes([ROWS["$SPX"]]);
   await expect(page.locator("#tdmIdxSPX")).toContainText(
     "last trade " + ROWS["$SPX"].trade_time_ct,
-    { timeout: 10000 },
   );
   deskPanels().book = Object.assign({}, MICRO, { book_time_ct: BOOK_TIME });
   sock.changed("book");
   await expect(page.locator("#tdmTrust")).toContainText("BOOK " + BOOK_TIME); // the new book has landed and the map has repainted
-  // read once, before SPY's row at 12 s ends the outage (no retrying: a retry would wait for it)
-  expect(await page.locator("#hFeed").textContent()).toBe("OFFLINE");
-  const trust = await page.locator("#tdmTrust").textContent();
-  expect(trust).toContain("PRICE OFFLINE");
-  expect(trust).not.toContain("PRICE LIVE");
+  await expect(page.locator("#hFeed")).toHaveText("OFFLINE");
+  await expect(page.locator("#tdmTrust")).toContainText("PRICE OFFLINE");
+  await expect(page.locator("#tdmTrust")).not.toContainText("PRICE LIVE");
   // SPY's own row ends the outage: the header and the map read LIVE again
-  await expect(page.locator("#hFeed")).toHaveText("LIVE", { timeout: 6000 });
+  sock.quotes([ROWS.SPY]);
+  await expect(page.locator("#hFeed")).toHaveText("LIVE");
   await expect(page.locator("#tdmTrust")).toContainText("PRICE LIVE");
   await expect(page.locator("#tdmCardFlow")).not.toContainText("OFFLINE");
 });
@@ -1155,7 +1148,7 @@ test.describe("Trade Desk renders served values", () => {
     page,
   }) => {
     await routeWatchlist(page, ["SPY", "MU"]);
-    await mockPriceSocket(page, [], [], undefined, {
+    await mockPriceSocket(page, [], undefined, {
       bars: (key, params) =>
         Object.assign({}, key === "SPY" ? BARS : { bars: [] }, { tf: params.tf }),
     });
@@ -2142,7 +2135,7 @@ test.describe("Trade Desk renders served values", () => {
       side: "ABOVE",
     };
     await routeWatchlist(page, ["SPY"]);
-    await mockPriceSocket(page, [], [], undefined, {
+    await mockPriceSocket(page, [], undefined, {
       desk: tfAt(EVENTS),
       book: MICRO,
       liquidity: LIQ,
@@ -2178,7 +2171,7 @@ test.describe("Trade Desk renders served values", () => {
     async function chartImage(terrain) {
       await page.unrouteAll({ behavior: "ignoreErrors" });
       await routeWatchlist(page, ["SPY"]);
-      await mockPriceSocket(page, [], [], undefined, {
+      await mockPriceSocket(page, [], undefined, {
         terrain: terrain,
         levels: levelsAt(LEVELS),
         desk: tfAt(EVENTS),

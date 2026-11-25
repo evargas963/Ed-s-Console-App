@@ -35,7 +35,7 @@ const CELLS = [
 // panel (`auto`: its answer for the Auto window) and sending none for another ticker
 async function openBook(page, auto = BOOK.auto) {
   await routeWatchlist(page, ["SPY", "QQQ"]);
-  const sock = await mockPriceSocket(page, [], [], undefined, {
+  const sock = await mockPriceSocket(page, [], undefined, {
     option_book: (key, params) => {
       if (key !== "SPY") return undefined;
       return params.scope === "wider" ? BOOK.wider : auto;
@@ -240,7 +240,7 @@ test.describe("Options Level II: the panel on the page's socket", () => {
     page,
   }) => {
     await routeWatchlist(page, ["SPY"]);
-    await mockPriceSocket(page, [], [], undefined, {
+    await mockPriceSocket(page, [], undefined, {
       option_book: {
         available: false,
         reason: "the daemon has not delivered this ticker's chain yet",
