@@ -32,6 +32,7 @@ import server
 import time_et
 from option_contract import read_chain
 from push import book as push_book
+from push import desk as push_desk
 from push import surface as push_surface
 from state import level_store
 from stream_spine import MessageBus
@@ -217,6 +218,29 @@ def test_a_streamed_cell_is_not_live_after_its_own_option_close():
     assert open_states == ["live"]
     assert closed_states and "live" not in closed_states
     assert body["levels_state"] == "STALE"
+
+
+def test_the_desks_stale_levels_item_carries_the_levels_time():
+    """At 16:20 ET SPY's levels are STALE (the chain fetched 2026-09-30, not after this close).
+
+    The Desk's queue says so at the levels' time: the newest Schwab option value they hold, their
+    producer's (state.level_store), the time the levels' verdict shows beside them
+    (`levels_time_ct`); never an item with no time.
+    """
+    assert _states_when_the_status_was_sent(-0.5) == ["live"]
+    at = datetime.fromisoformat("2026-10-05T16:20:00-04:00").timestamp()
+    _beat(at - 0.5, options=[SYM])
+    queue = push_desk.desk_events_payload(TK, "1", datetime.fromtimestamp(at, ET), 120)
+    (stale,) = [it for it in queue["items"] if it["key"] == "ls"]
+    published = level_store.published_levels(TK)
+    assert published is not None
+    assert stale["ts"] == published.levels_ts_utc
+    assert (
+        time_et.ct_label(stale["ts"])
+        == push_surface.gamma_surface_payload(
+            TK, "all", None, 0, None, None, datetime.fromtimestamp(at, ET), requested=False
+        )["levels_time_ct"]
+    )
 
 
 def test_a_status_sent_past_the_live_limit_is_not_current():
