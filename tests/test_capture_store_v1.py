@@ -33,7 +33,7 @@ def _stored(db, ts: float) -> None:
         completeness_basis=CAPTURE_BASIS,
         ts_utc=ts,
     )
-    assert out["status"] == "written", out
+    assert out.status == "written", out
 
 
 def test_the_store_reads_back_the_database_once_then_keeps_a_new_capture_without_reading_it(

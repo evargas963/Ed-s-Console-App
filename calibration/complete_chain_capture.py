@@ -15,7 +15,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob, encode_json_blob, encode_text_blob
@@ -65,6 +65,18 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(TABLE_SQL)
 
 
+#: what a capture write did: its row written, or nothing written (with why)
+WRITTEN, SKIPPED = "written", "skipped"
+
+
+@dataclass(frozen=True)
+class Persisted:
+    """What one expiry's capture write did: WRITTEN, or SKIPPED with why (`reason`)."""
+
+    status: str
+    reason: str | None = None
+
+
 def persist_complete_chain_capture(
     conn: sqlite3.Connection,
     *,
@@ -77,7 +89,7 @@ def persist_complete_chain_capture(
     chain_spot: float | None = None,
     chain_spot_ts: float | None = None,
     chains_answer: str | None = None,
-) -> dict[str, Any]:
+) -> Persisted:
     """Append one COMPLETE single-expiry capture.
 
     `spot` is that expiry's underlyingPrice as Schwab sent it; `chain_spot` / `chain_spot_ts`
@@ -93,14 +105,14 @@ def persist_complete_chain_capture(
     """
     tk = ticker_storage_key(ticker)
     if not tk:
-        return {"status": "skipped", "reason": "no_ticker"}
+        return Persisted(SKIPPED, "no_ticker")
     exp = expiry.strip()[:10]
     if not exp:
-        return {"status": "skipped", "reason": "no_expiry"}
+        return Persisted(SKIPPED, "no_expiry")
     if not completeness_basis:
-        return {"status": "skipped", "reason": "no_completeness_basis"}
+        return Persisted(SKIPPED, "no_completeness_basis")
     if not contracts:
-        return {"status": "skipped", "reason": "no_contracts", "ticker": tk, "expiry": exp}
+        return Persisted(SKIPPED, "no_contracts")
     conn.execute(
         INSERT_SQL,
         (
@@ -115,17 +127,35 @@ def persist_complete_chain_capture(
             None if chains_answer is None else encode_text_blob(chains_answer),
         ),
     )
-    return {
-        "status": "written",
-        "ticker": tk,
-        "expiry": exp,
-        "ts_utc": float(ts_utc),
-        "n_contracts": len(contracts),
-        "completeness_basis": completeness_basis,
-    }
+    return Persisted(WRITTEN)
 
 
-def store_capture_message(conn: sqlite3.Connection, msg: dict[str, Any]) -> int:
+class CaptureExpiry(TypedDict):
+    """One expiry of a capture: its underlyingPrice, contracts and /chains answer as received.
+
+    `chains_answer` None: not recorded.
+    """
+
+    expiry: str
+    spot: float | None
+    contracts: list[dict[str, Any]]
+    chains_answer: str | None
+
+
+class CaptureMessage(TypedDict):
+    """A capture as the Recorder takes it (topic `capture.<TICKER>`): every expiry of one chain.
+
+    `chain_spot` / `chain_spot_ts`: the chain's one spot and its trade time.
+    """
+
+    ticker: str
+    ts_utc: float
+    chain_spot: float | None
+    chain_spot_ts: float | None
+    expiries: list[CaptureExpiry]
+
+
+def store_capture_message(conn: sqlite3.Connection, msg: CaptureMessage) -> int:
     """Write a capture message (capture_message) in `conn`'s transaction: one row per expiry.
 
     How many rows were written; an expiry with no contracts is not a row. Every row is written
@@ -145,8 +175,8 @@ def store_capture_message(conn: sqlite3.Connection, msg: dict[str, Any]) -> int:
                 chain_spot=msg["chain_spot"],
                 chain_spot_ts=msg["chain_spot_ts"],
                 chains_answer=e["chains_answer"],
-            )["status"]
-            == "written"
+            ).status
+            == WRITTEN
             for e in msg["expiries"]
         ]
     except BaseException:
@@ -161,13 +191,12 @@ def capture_message(
     ticker: str,
     ts_utc: float,
     chain_spot: tuple[float | None, float | None],
-    expiries: list[dict[str, Any]],
-) -> dict[str, Any]:
+    expiries: list[CaptureExpiry],
+) -> CaptureMessage:
     """Return a capture as the Recorder takes it (topic `capture.<TICKER>`).
 
-    `expiries`: each {expiry, spot, contracts, chains_answer}, the expiry's underlyingPrice and
-    contracts and its /chains answer as received (None: not recorded); `chain_spot`: the chain's
-    one spot and its trade time.
+    `expiries`: each expiry's underlyingPrice, contracts and /chains answer as received;
+    `chain_spot`: the chain's one spot and its trade time.
     """
     return {
         "ticker": ticker_storage_key(ticker),

@@ -39,8 +39,8 @@ def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
         completeness_basis="",
         ts_utc=1000.0,
     )
-    assert result["status"] == "skipped"
-    assert result["reason"] == "no_completeness_basis"
+    assert result.status == "skipped"
+    assert result.reason == "no_completeness_basis"
 
 
 def test_persisted_chain_json_is_actually_gzip_compressed_on_disk(tmp_path):
