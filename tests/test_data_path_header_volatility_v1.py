@@ -244,6 +244,17 @@ def test_the_market_context_rows_are_schwabs_three_indexes_as_sent():
         "$NDX": (0, None),
         "$VIX": (0, None),
     }
+    # with no quote time Schwab has set no bid or ask: the 0s it sends beside it are no quote, so
+    # none is served (the header's Bid x Ask draws "-"), never 0.00 x 0.00; $SPX's are as sent
+    quote = ("bid", "ask", "bid_size", "ask_size")
+    assert {k: tuple(r[f] for f in quote) for k, r in live.items()} == {
+        "$SPX": tuple(
+            float(sent["$SPX"][f]) for f in ("BID_PRICE", "ASK_PRICE", "BID_SIZE", "ASK_SIZE")
+        ),
+        "$NDX": (None, None, None, None),
+        "$VIX": (None, None, None, None),
+    }
+    assert {sent[k][f] for k in ("$NDX", "$VIX") for f in ("BID_PRICE", "ASK_PRICE")} == {0}
     closed = {r["ticker"]: r for r in served["market_closed"]}
     shown = ("feed_label", "spot_disp", "chg_pct_text", "trade_time_ct", "trade_age_text")
     assert {k: tuple(r[f] for f in shown) for k, r in closed.items()} == {
