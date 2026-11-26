@@ -1114,6 +1114,18 @@ SAME_DAY_LEVELS = tuple(
 )
 
 
+class SameDayLevels(TypedDict):
+    """The levels on a 0DTE basis as the snapshot holds them (same_day_levels).
+
+    The levels, every one of SAME_DAY_LEVELS; the expiry they were re-priced from; and which
+    contracts their gamma curve could not price.
+    """
+
+    same_day: dict[str, float | None]
+    same_day_repriced_from: str | None
+    same_day_left_out: str | None
+
+
 def same_day_levels(
     expiry_rows: dict[str | None, list[OptionContract]],
     spot: float,
@@ -1123,29 +1135,31 @@ def same_day_levels(
     product: str,
     books: dict[ExpiryKey, Book],
     charm_by_expiry: dict[str | None, dict[float, CharmBucket]],
-) -> tuple[dict[str, float | None], str | None, str | None]:
+) -> SameDayLevels:
     """Return the whole book's levels on a 0DTE basis, read on the nearest listed expiry alone.
 
-    With the expiry they were re-priced from (None when an expiry listed today was read as held,
-    or when there are no levels): a re-priced set is a model, and the screen says so on hover.
-    And which contracts their gamma curve could not price (unpriced_note; None: none, or no
-    levels), said on hover too.
+    With the expiry re-priced from (a model, said on hover; None when read as held, or none) and
+    which contracts their gamma curve could not price (unpriced_note; None: none, or no levels).
 
     Every ticker, one function, the same producers as the whole book, over the book's contracts
     by expiry day (`expiry_rows`). An expiry listed today is read as the book holds it: its
     exposure books (`books`, from Schwab's gamma and delta as sent), its gamma profile and its
-    charm map (`charm_by_expiry`). With none listed today Schwab
-    sends no Greek at today's close, so the next listed expiry is priced as if it expired at
-    today's option close (calc.math_levels.repriced_to_close) and read the same way. Absent when the
-    chain lists no expiry from today on. A later expiry's are absent too when `now` is past
+    charm map (`charm_by_expiry`). With none listed today Schwab sends no Greek at today's
+    close, so the next listed expiry is priced as if it expired at today's option close
+    (calc.math_levels.repriced_to_close) and read the same way. Absent when the chain lists no
+    expiry from today on. A later expiry's are absent too when `now` is past
     today's close (a chain is valued at that close, time_et.valuation_instant, so they stand
     there) or no option window is held for today.
     """
-    blank = _no_same_day_levels()
+    blank: SameDayLevels = {
+        "same_day": _no_same_day_levels(),
+        "same_day_repriced_from": None,
+        "same_day_left_out": None,
+    }
     today = now.astimezone(ET).date().isoformat()
     front = min((e for e in expiry_rows if e is not None and e >= today), default=None)
     if front is None:
-        return blank, None, None
+        return blank
     rows = expiry_rows[front]
     repriced_from = None if front == today else front
     if front == today:
@@ -1155,7 +1169,7 @@ def same_day_levels(
     else:
         t_close = time_to_expiry_years(today, now, sessions=sessions, product=product)
         if not t_close:
-            return blank, None, None
+            return blank
         rows, parsed, unpriced = repriced_to_close(rows, spot, t_close)
         front_books = exposure_books(
             rows, spot=spot, now=now, sessions=sessions, product=product
@@ -1187,7 +1201,11 @@ def same_day_levels(
         "call_charm_wall": call_charm,
         "put_charm_wall": put_charm,
     }
-    return levels, repriced_from, unpriced_note(unpriced)
+    return {
+        "same_day": levels,
+        "same_day_repriced_from": repriced_from,
+        "same_day_left_out": unpriced_note(unpriced),
+    }
 
 
 def compute_terrain(
@@ -1225,7 +1243,7 @@ def compute_terrain(
     expiry_rows = _expiry_rows(contracts)
     by_expiry = _by_expiry(expiry_rows, spot, now, sessions, product)
     read = build_terrain_read(spot=spot, gamma_at_spot=gamma_at_spot)
-    same_day, same_day_repriced_from, same_day_left_out = same_day_levels(
+    same_day = same_day_levels(
         expiry_rows,
         spot,
         now=now,
@@ -1251,9 +1269,7 @@ def compute_terrain(
         pin_expected_moves=None if pin is None else pin.expected_moves,
         pin_strike_widths=None if pin is None else pin.strike_widths,
         pin_minutes_to_close=None if pin is None else pin.minutes_to_close,
-        same_day=same_day,
-        same_day_repriced_from=same_day_repriced_from,
-        same_day_left_out=same_day_left_out,
+        **same_day,
         **_front_max_pain(books),
         contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
