@@ -194,7 +194,7 @@ def _published_matrix(tk: str, fx_chain: list, ts_utc: float, spot: float, expir
         _forget(tk)
     live = published.snap
     book = next(b for (e, _d), (b, _x) in live.books.items() if e == expiry)
-    gamma = expiry_gamma(
+    gamma, _unpriced = expiry_gamma(
         [c for c in published.priced_chain if c.expiry == expiry],
         live.valued_at,
         sessions=sessions(),
@@ -231,6 +231,34 @@ def test_a_gamma_schwab_did_not_send_leaves_the_strike_with_no_composite():
         c = m.composites[s]
         assert c is not None and c.measured == ("positioning",)
         assert c.strength == pytest.approx(100.0 * abs(m.readings[s].net_gex) / peak, rel=1e-12)
+
+
+def test_the_matrix_says_which_contracts_its_gamma_could_not_price():
+    """NFLX's 2027-12-17 expiry (tests/real_chains.py NFLX, captured 2026-10-07).
+
+    Schwab sent -999 for the volatility of some of its contracts with open interest: the gamma
+    if the price were at each strike cannot price them, and the matrix's notes say how many it
+    left out and why (AGENTS.md rule 7), counted on the raw chain.
+    """
+    expiry = "2027-12-17"
+    sent_none = [
+        ct
+        for ct in NFLX.chain
+        if str(ct["expirationDate"])[:10] == expiry
+        and ct["volatility"] == -999
+        and ct["openInterest"] > 0
+    ]
+    at = NFLX.now
+    try:
+        publish_capture("NFLX", NFLX.chain, at.timestamp(), NFLX.spot, at.date().isoformat(), at)
+        body = push_confluence.confluence_payload("NFLX", expiry, at)
+    finally:
+        _forget("NFLX")
+    assert sent_none
+    assert (
+        f"The gamma curve leaves out {len(sent_none)} contracts it cannot price: "
+        f"{len(sent_none)} with no volatility."
+    ) in body["notes"], body["notes"]
 
 
 def test_an_am_settled_expiry_past_the_year_has_its_readings():
@@ -277,10 +305,11 @@ def test_each_strike_is_the_expirys_gamma_if_the_price_were_there():
         _forget("SPY")
     expected = gamma_here_worked_out(held)
     assert live.snap.valued_at == held.now
-    produced = expiry_gamma(
+    produced, unpriced = expiry_gamma(
         live.priced_chain, held.now, sessions=sessions(), product=option_close_product("SPY")
     )
     assert produced == pytest.approx(expected, rel=1e-9)
+    assert unpriced == {} and body["notes"] == [strike_rows.WINDOW_NO_PRICE]
     assert len(body["rows"]) == 11
     for row in body["rows"]:
         g = expected[row["strike"]]

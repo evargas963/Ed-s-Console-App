@@ -185,7 +185,9 @@
   "reason": null,
   "start_text": "since Thu 10/22 04:55 PM CT"
  },
- "notes": [],
+ "notes": [
+  "The gamma curve leaves out 219 contracts it cannot price: 219 settled."
+ ],
  "peaks": {
   "bought_sold": null,
   "charm": null,

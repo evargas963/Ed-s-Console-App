@@ -28,7 +28,7 @@
  "expiries": [
   "2026-10-22"
  ],
- "flip_note": null,
+ "flip_note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
  "flip_relation": null,
  "flip_relation_text": null,
  "gamma_flip": null,

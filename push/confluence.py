@@ -27,7 +27,7 @@ from calc.confluence_composite import (
 )
 from calc.liquidity_value_engine import bars_from_candles, visits
 from calc.math_exposure_core import Bucket, merge_exposure_books
-from calc.math_levels import expiry_gamma
+from calc.math_levels import expiry_gamma, unpriced_note
 from calc.option_window import strike_look_back
 from calc.terrain_engine import (
     OPTION_LEVELS,
@@ -259,7 +259,7 @@ def _matrix(
     chosen: str,
     now: datetime,
     start: int | None,
-) -> Matrix:
+) -> tuple[Matrix, str | None]:
     """Return the readings of one expiry of a priced chain: the one the matrix request shows.
 
     `priced`: the price and the instant the snapshot was priced at; `chosen` is an expiry of the
@@ -267,20 +267,20 @@ def _matrix(
     at that same instant (calc.math_levels.expiry_gamma, for this expiry alone); its book on the
     prior day (None, no prior day held; an expiry that day does not list: every strike new); the
     regular session's visits at each strike so far; each strike over the look-back from minute
-    `start` (_looks).
+    `start` (_looks). With which contracts the gamma could not price (unpriced_note; None: none).
     """
     snap, prior_day = published.snap, published.prior_day
     exposures = _book(snap, chosen)
     prior = None if prior_day is None else _book(prior_day, chosen)
     bars = bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT))
     contracts = [c for c in published.chain if c.expiry == chosen]
-    gamma = expiry_gamma(
+    gamma, unpriced = expiry_gamma(
         [c for c in published.priced_chain if c.expiry == chosen],
         priced[1],
         sessions=sessions(),
         product=option_close_product(tk),
     )
-    return build_matrix(
+    matrix = build_matrix(
         exposures,
         snap.charm_by_expiry[chosen],
         snap.iv_by_expiry[chosen],
@@ -290,6 +290,7 @@ def _matrix(
         visits(bars, sorted(exposures), now, sessions()),
         _looks(contracts, now, start),
     )
+    return matrix, unpriced_note(unpriced)
 
 
 def _sigma_root_t(published: PublishedLevels, tk: str, expiry: str, now: datetime) -> float | None:
@@ -562,7 +563,7 @@ def confluence_payload(
         )
         return unavailable(tk, reason, expiry=chosen, **NO_LEVELS)
     start = _window_start(lookback, now)
-    stored = _matrix(tk, published, (priced_at, valued_at), chosen, now, start)
+    stored, left_out = _matrix(tk, published, (priced_at, valued_at), chosen, now, start)
     fetched = published.computed_ts_utc
     live_spot, _src, _ts = resolve_spot(tk, now=now.timestamp())
     sigma_root_t = _sigma_root_t(published, tk, chosen, now)
@@ -572,7 +573,7 @@ def confluence_payload(
     lo, hi, view = _held_window(strikes, live_spot, centre)
     rows = at_price(window_rows(stored, strikes[lo : hi + 1]), strikes, live_spot, sigma_root_t)
     return {
-        "notes": [note for note in (view["note"],) if note is not None],
+        "notes": [note for note in (view["note"], left_out) if note is not None],
         "peaks": stored.peaks,
         "rows": rows,
         # the strike the rows are centred on: the page asks with it again, so they hold
