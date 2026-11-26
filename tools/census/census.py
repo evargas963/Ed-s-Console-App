@@ -2392,14 +2392,18 @@ runs = json.loads(
             "--limit",
             "1000",
             "--json",
-            "headSha,workflowName,conclusion,attempt,databaseId",
+            "headSha,workflowName,conclusion,attempt,databaseId,event",
         ],
         stdout_only=True,
     )
 )
+# A push's runs judge its commit alone. A pull request's judge GitHub's test merge of it with main
+# (Locks its description too), so two runs on one head judge two inputs once either moves; a
+# re-run repeats its own run's.
 seen_runs = collections.defaultdict(set)
 for r in runs:
-    seen_runs[(r["headSha"][:8], r["workflowName"])].add(r["conclusion"])
+    if r["event"] == "push":
+        seen_runs[(r["headSha"][:8], r["workflowName"])].add(r["conclusion"])
     if r["attempt"] > 1 and r["conclusion"] == "success":
         add(
             S,
