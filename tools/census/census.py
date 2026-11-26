@@ -957,7 +957,7 @@ for cat, rule, tool in (
     ("product functions over 80 lines", "1", "ast"),
     ("public functions returning a plain dict, not a typed record", "12", "ast"),
     ("global statements (module state changed at run time)", "11", "ast"),
-    ("a ticker typed into code (every ticker treated the same)", "7", "ast"),
+    ("a ticker typed into code (every ticker treated the same; check each)", "7", "ast"),
     ("product files over 1,000 lines", "1", "wc"),
     ("computing functions not in docs/derived_register.md (check each)", "First gate 2", "ast"),
     (ROUNDING, "5", "ast"),
@@ -1210,7 +1210,7 @@ for f in PRODUCT_PY:
         ):
             add(
                 S,
-                "a ticker typed into code (every ticker treated the same)",
+                "a ticker typed into code (every ticker treated the same; check each)",
                 "7",
                 "ast",
                 f"{f}:{node.lineno}: {node.value!r}",
@@ -1221,7 +1221,7 @@ lines_matching(
     [
         (
             r"""["'](?:\$?SPX|SPY|QQQ|IWM|NVDA|TSLA|AMD|META|AAPL|MSFT|AMZN|GOOGL?|NDX|VIX)["']""",
-            "a ticker typed into page code (every ticker treated the same)",
+            "a ticker typed into page code (every ticker treated the same; check each)",
         )
     ],
     S,
@@ -1398,7 +1398,8 @@ def captured_names(f):
     tops = {}
     found = set()
     for node in trees[f].body:
-        names = [node.name] if hasattr(node, "name") else []
+        named = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        names = [node.name] if isinstance(node, named) else []
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             names = [t.id for t in targets if isinstance(t, ast.Name)]
@@ -2274,17 +2275,20 @@ NAMED = re.compile(
 for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f in TEXT]:
     if "vendor" in f:
         continue
-    cat = f"workarounds: {lang(f)} {area(f)}"
+    # a pattern finds the shape, not whether the platform or a source requires it: each item is
+    # read by hand, with its line of code, so a verdict matches only the code it was given for
+    cat = f"workarounds: {lang(f)} {area(f)} (check each)"
     add(S, cat, "1", "regex")
     pats = WORK_PY if f.endswith(".py") else WORK_JS
     if area(f) == "tests":
         pats = [p for p in pats if "timing" not in p[1]]  # tests' sleeps: section E
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
+        code = ln.strip()[:120]
         for pat, kind in pats:
             if re.search(pat, ln):
-                add(S, cat, "1", "regex", f"{f}:{n}: {kind}")
+                add(S, cat, "1", "regex", f"{f}:{n}: {kind}: {code}")
         if NAMED.search(ln):
-            add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author")
+            add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author: {code}")
 by_line("workarounds: ", "; ")
 
 #: where Schwab's own dicts are read: Feed's folder (docs/ARCHITECTURE.md §1) and the two root
