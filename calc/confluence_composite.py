@@ -171,34 +171,39 @@ def readings(
 
 
 def iv_by_strike(contracts: list[OptionContract]) -> dict[float, float | None]:
-    """(open interest + volume)-weighted Schwab volatility, in vol points."""
+    """(open interest + volume)-weighted Schwab volatility, in vol points.
+
+    Each strike's blend of its contracts that carry a volatility (_blend).
+    """
     grouped: dict[float, list[OptionContract]] = {}
     for c in contracts:
         if c.strike is not None:
             grouped.setdefault(float(c.strike), []).append(c)
-    out: dict[float, float | None] = {}
-    for strike, rows in grouped.items():
-        weighted = 0.0
-        weight = 0.0
-        plain: list[float] = []
-        for c in rows:
-            iv = c.volatility
-            if iv is None:
-                continue
-            plain.append(iv)
-            oi, vol = c.open_interest, c.volume
-            if oi is None or vol is None:
-                continue
-            w = float(oi) + float(vol)
-            weighted += w * iv
-            weight += w
-        if plain and weight == 0:
-            out[strike] = sum(plain) / len(plain)
-        elif weight > 0:
-            out[strike] = weighted / weight
-        else:
-            out[strike] = None
-    return out
+    return {strike: _blend(rows) for strike, rows in grouped.items()}
+
+
+def _blend(rows: list[OptionContract]) -> float | None:
+    """Return one strike's volatility, weighted by each contract's open interest plus its volume.
+
+    Contracts that carry one volatility give it, whatever their weights. Where they differ, every
+    one needs both counts: one not known leaves the blend unknown (None), never the others' alone.
+    Weights that sum to 0 give the simple mean. None when no contract carries a volatility.
+    """
+    priced = [(c, c.volatility) for c in rows if c.volatility is not None]
+    ivs = [iv for _c, iv in priced]
+    if len(set(ivs)) <= 1:
+        return ivs[0] if ivs else None
+    weights = [
+        float(c.open_interest) + float(c.volume)
+        for c, _iv in priced
+        if c.open_interest is not None and c.volume is not None
+    ]
+    if len(weights) != len(priced):
+        return None
+    total = sum(weights)
+    if total == 0:
+        return sum(ivs) / len(ivs)
+    return sum(w * iv for w, iv in zip(weights, ivs, strict=True)) / total
 
 
 @dataclass(frozen=True)
