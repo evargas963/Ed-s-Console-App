@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from calc.math_exposure_core import (
     Bucket,
@@ -384,7 +384,7 @@ class Matrix:
     strikes: list[float]
 
 
-def _peak(values: Iterable[float | None]) -> float | None:
+def _peak(values: Iterable[object]) -> float | None:
     """Largest absolute value on this expiry: the column's scale."""
     peak = None
     for value in values:
@@ -396,34 +396,49 @@ def _peak(values: Iterable[float | None]) -> float | None:
     return peak
 
 
-#: each shaded column: the row's key for its number and the reading it carries
-SHADED = {
-    "gamma_here": "gamma_here",
-    "net_gex": "net_gex",
-    "oi": "oi",
-    "oi_change": "oi_change",
-    "dex": "dex",
-    "charm": "charm",
-    "vanna": "vanna",
-    "iv": "iv",
-    "volume": "look_volume",
-    "vol_oi": "vol_oi",
-    "visits": "touches",
-    "bought_sold": "bought_sold",
-}
+class Shades(TypedDict):
+    """The number each shaded column's cell is shaded by, against the column's peak."""
+
+    gamma_here: float | None
+    net_gex: float | None
+    oi: float | None
+    oi_change: float | None
+    dex: float | None
+    charm: float | None
+    vanna: float | None
+    iv: float | None
+    volume: float | None
+    vol_oi: float | None
+    visits: float | None
+    bought_sold: float | None
+    pc_vol_lean: float | None
+    iv_change: float | None
+    flow: float | None
 
 
-def _shades(r: StrikeReadings) -> dict[str, float | None]:
+def _shades(r: StrikeReadings) -> Shades:
     """Return the numbers the page shades each column's cell by, against the column's peak.
 
     The put/call volume shades by 1 - put/call: positive call-heavy, negative put-heavy; the
     look-back's volatility change and hedging flow by their own signed numbers.
     """
-    out: dict[str, float | None] = {key: getattr(r, name) for key, name in SHADED.items()}
-    out["pc_vol_lean"] = None if r.pc_vol is None else 1 - r.pc_vol
-    out["iv_change"] = r.look.iv_change
-    out["flow"] = r.look.flow
-    return out
+    return {
+        "gamma_here": r.gamma_here,
+        "net_gex": r.net_gex,
+        "oi": r.oi,
+        "oi_change": r.oi_change,
+        "dex": r.dex,
+        "charm": r.charm,
+        "vanna": r.vanna,
+        "iv": r.iv,
+        "volume": r.look_volume,
+        "vol_oi": r.vol_oi,
+        "visits": r.touches,
+        "bought_sold": r.bought_sold,
+        "pc_vol_lean": None if r.pc_vol is None else 1 - r.pc_vol,
+        "iv_change": r.look.iv_change,
+        "flow": r.look.flow,
+    }
 
 
 def build_matrix(
@@ -462,7 +477,7 @@ def build_matrix(
         )
         for s in strikes
     }
-    shades = [_shades(r) for r in by_strike.values()]
+    shades: list[Mapping[str, object]] = [_shades(r) for r in by_strike.values()]
     peaks = {key: _peak(s[key] for s in shades) for key in shades[0]} if shades else {}
     composites = {
         s: composite(
@@ -480,7 +495,7 @@ def build_matrix(
     return Matrix(readings=by_strike, composites=composites, peaks=peaks, strikes=strikes)
 
 
-def window_rows(matrix: Matrix, shown: list[float]) -> list[dict[str, Any]]:
+def window_rows(matrix: Matrix, shown: list[float]) -> list[MatrixRow]:
     """Return the rows of the strikes `shown`, highest strike first.
 
     Each cell shades against its whole expiry's peak (the matrix's `peaks`).
@@ -542,11 +557,11 @@ def distance(price: float, spot: float | None, sigma_root_t: float | None) -> Di
 
 
 def at_price(
-    rows: list[dict[str, Any]],
+    rows: list[MatrixRow],
     strikes: list[float],
     spot: float | None,
     sigma_root_t: float | None,
-) -> list[dict[str, Any]]:
+) -> list[ShownRow]:
     """Return the shown rows, each with its distance from the live price, spot line and heading.
 
     The spot line marks the strike the price sits under (the strike the matrix selects first).
@@ -556,19 +571,22 @@ def at_price(
     are not changed.
     """
     under = None if spot is None else under_strike(spot, strikes)
-    shown = [{**row, **distance(row["strike"], spot, sigma_root_t)} for row in rows]
-    return [
-        {
-            **row,
-            "spot_line": row["strike"] == under,
-            # the selected strike's heading, whole (AGENTS.md rule 4): its distance only when
-            # known, never a sentence with "-" in it (rule 5)
-            "heading_said": row["strike_text"]
-            if row["distance_text"] is None
-            else f"{row['strike_text']} · {row['distance_text']} points from the price",
-        }
-        for row in shown
-    ]
+    shown: list[ShownRow] = []
+    for row in rows:
+        away = distance(row["strike"], spot, sigma_root_t)
+        shown.append(
+            {
+                **row,
+                **away,
+                "spot_line": row["strike"] == under,
+                # the selected strike's heading, whole (AGENTS.md rule 4): its distance only when
+                # known, never a sentence with "-" in it (rule 5)
+                "heading_said": row["strike_text"]
+                if away["distance_text"] is None
+                else f"{row['strike_text']} · {away['distance_text']} points from the price",
+            }
+        )
+    return shown
 
 
 def _signed(n: float | None, digits: int) -> str | None:
@@ -643,7 +661,16 @@ def _composite_shown(c: Composite) -> tuple[float, str, str]:
     return sign * c.strength / 100.0, f"{GAMMA_SHORT[sign]} {c.strength:.0f}", hover
 
 
-def _composite_cells(c: Composite | None) -> dict[str, Any]:
+class CompositeCells(TypedDict):
+    """The Composite's cell: its number, its words, why it is "-", and its hover."""
+
+    composite: float | None
+    composite_text: str | None
+    composite_reason: str | None
+    composite_hover: str | None
+
+
+def _composite_cells(c: Composite | None) -> CompositeCells:
     """Return the Composite's cell; "-" with why when it is not known."""
     shown = None if c is None else _composite_shown(c)
     return {
@@ -654,7 +681,15 @@ def _composite_cells(c: Composite | None) -> dict[str, Any]:
     }
 
 
-def _gamma_cells(gamma: float | None) -> dict[str, Any]:
+class GammaCells(TypedDict):
+    """The gamma-if-here cell: the sign's words, why it is "-", and the model on hover."""
+
+    gamma_here_text: str | None
+    gamma_here_reason: str | None
+    gamma_here_hover: str | None
+
+
+def _gamma_cells(gamma: float | None) -> GammaCells:
     """Return the gamma-if-here cell: the sign's words, the model on hover; "-" with why without."""
     sign = None if gamma is None else _sign(gamma)
     return {
@@ -669,7 +704,72 @@ def _gamma_cells(gamma: float | None) -> dict[str, Any]:
     }
 
 
-def _row(strike: float, r: StrikeReadings, c: Composite | None) -> dict[str, Any]:
+class LookCells(TypedDict):
+    """The look-back's columns: volume, volatility change, bought less sold, flow and pace.
+
+    Each its words, why it is "-", and its hover.
+    """
+
+    volume_text: str | None
+    volume_reason: str | None
+    volume_hover: str | None
+    iv_change_text: str | None
+    iv_change_reason: str | None
+    iv_change_hover: str | None
+    bought_sold_text: str | None
+    bought_sold_reason: str | None
+    bought_sold_hover: str | None
+    flow_text: str | None
+    flow_reason: str | None
+    flow_hover: str | None
+    pace_text: str | None
+    pace_reason: str | None
+    pace_hover: str | None
+
+
+class VisitsCells(TypedDict):
+    """Today's hits and bounces at the strike: its words, why it is "-", and its hover."""
+
+    visits_text: str | None
+    visits_reason: str | None
+    visits_hover: str | None
+
+
+class MatrixRow(Shades, CompositeCells, GammaCells, LookCells, VisitsCells):
+    """One strike's row of the matrix: each column's words, why it is "-", and its hover."""
+
+    strike: float
+    strike_text: str
+    net_gex_text: str | None
+    net_reason: str | None
+    oi_text: str | None
+    oi_reason: str | None
+    oi_hover: str | None
+    oi_change_text: str | None
+    oi_change_reason: str | None
+    oi_change_hover: str | None
+    dex_text: str | None
+    dex_reason: str | None
+    charm_text: str | None
+    charm_reason: str | None
+    vanna_text: str | None
+    vanna_reason: str | None
+    iv_text: str | None
+    iv_reason: str | None
+    pc_vol_text: str | None
+    pc_vol_reason: str | None
+    vol_oi_text: str | None
+    vol_oi_reason: str | None
+
+
+class ShownRow(MatrixRow, Distance):
+    """A shown row: with its distance from the live price, its spot line and its heading."""
+
+    spot_line: bool
+    heading_said: str
+
+
+def _row(strike: float, r: StrikeReadings, c: Composite | None) -> MatrixRow:
     """One strike's row of the matrix.
 
     Each column's text and the number its cell shades by (_shades), against the expiry's peaks;
@@ -714,7 +814,7 @@ NO_MULTIPLIER = "Schwab's chain sent no multiplier for a contract at this strike
 PACE_REASON = "needs the same time of day over 20 sessions of the record; not held yet"
 
 
-def _look_cells(r: StrikeReadings) -> dict[str, Any]:
+def _look_cells(r: StrikeReadings) -> LookCells:
     """Return the look-back's columns: volume, volatility change, bought less sold, flow, pace."""
     look = r.look
     day = _legs_text(r.volume_legs, "Today")
@@ -761,7 +861,7 @@ def _look_cells(r: StrikeReadings) -> dict[str, Any]:
 VISITS_REASON = "the regular session has not opened"
 
 
-def _visits_cells(touches: int | None, holds: int | None) -> dict[str, Any]:
+def _visits_cells(touches: int | None, holds: int | None) -> VisitsCells:
     """Today's hits and bounces at the strike: "b of h", "none yet" with no hit."""
     if touches is None or holds is None:
         return {"visits_text": None, "visits_reason": VISITS_REASON, "visits_hover": None}

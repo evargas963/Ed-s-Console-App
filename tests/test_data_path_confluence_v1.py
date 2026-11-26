@@ -15,7 +15,7 @@ import live_price_rows
 import server
 from calc.confluence_composite import (
     NOT_HELD,
-    SHADED,
+    Shades,
     at_price,
     build_matrix,
     iv_by_strike,
@@ -845,7 +845,7 @@ def test_the_mrvl_answers_the_browser_draws_are_the_routes_own():
         "drifted from the route; regenerate with write_mrvl_e2e_fixture()"
     )
     front = served["by_expiry"]["2026-10-09"]
-    assert set(front["peaks"]) == {*SHADED, "pc_vol_lean", "iv_change", "flow"}
+    assert set(front["peaks"]) == Shades.__required_keys__
     # the regime on its card, as the screen says it: served, the page picks no words
     regime = next(c for c in front["cards"] if c["label"] == "GAMMA REGIME")
     assert (regime["value"], regime["tone"]) == ("Positive gamma", "pos")
