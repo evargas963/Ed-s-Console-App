@@ -783,8 +783,14 @@ test.describe("Trade Desk renders served values", () => {
     // every panel sent in its real shape, and the price live (the header's own row); after the
     // close, nothing crossed
     await intercept(page, [priceRow("SPY", SPOT)]);
+    // INDUCED: the empty window's sentence worded otherwise, so a sentence of the page's own shows
+    const NOTHING = "SERVED: nothing crossed in this window";
     deskPanels().desk = tfAt(
-      Object.assign({}, EVENTS, { items: [], cross_counts: { up: 0, down: 0 } }),
+      Object.assign({}, EVENTS, {
+        items: [],
+        cross_counts: { up: 0, down: 0 },
+        none_said: NOTHING,
+      }),
     );
     await openView(page, "trade-desk", "desk");
     expect(await page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe(
@@ -800,12 +806,10 @@ test.describe("Trade Desk renders served values", () => {
     await expect(page.locator("#tdmChart .tvc-edge-top")).toContainText(
       "Gamma Put · BREACHED — spot below 760.00",
     );
-    // the profile is drawn after the close too (the session's served profile) and names its basis
-    await expect(page.locator("#tdmProfNote")).toHaveText(LEVELS.volume_profile.basis);
-    // the empty queue names what the desk panel puts in it: level crosses and wall breaches
-    await expect(page.locator("#tdmQueue .tdm-empty")).toHaveText(
-      "Nothing in the " + EVENTS.window_label + ". Level crosses and wall breaches land here.",
-    );
+    // the profile is drawn after the close too (the session's served profile): its served note
+    await expect(page.locator("#tdmProfNote")).toHaveText(LEVELS.profile_note);
+    // the empty queue says the desk panel's own sentence for it
+    await expect(page.locator("#tdmQueue .tdm-empty")).toHaveText(NOTHING);
     expect(errs).toEqual([]);
   });
 
@@ -1042,7 +1046,7 @@ test.describe("Trade Desk renders served values", () => {
     await expect
       .poll(() => page.evaluate(() => window.EdTradeDeskMap.state().chart.volumeProfileBins))
       .toBe(LEVELS.volume_profile.bins.length);
-    await expect(page.locator("#tdmProfNote")).toHaveText(LEVELS.volume_profile.basis);
+    await expect(page.locator("#tdmProfNote")).toHaveText(LEVELS.profile_note);
     // each card draws its served series (2026-09-28): the Liquidity card's 2m and 5m lean lines,
     // volume bars, and lines for put/call OI and ATM IV by expiry (a null expiry breaks the line)
     await expect(page.locator("#tdmCardLiq .liq-lean svg path")).toHaveCount(2);
@@ -1152,15 +1156,20 @@ test.describe("Trade Desk renders served values", () => {
     page,
   }) => {
     await routeWatchlist(page, ["SPY", "MU"]);
+    // INDUCED: MU's panel with no bar says it in words other than the producer's (push.bars
+    // none_said), so a sentence of the page's own shows
+    const NO_BARS = "SERVED: no bars for this symbol";
     await mockPriceSocket(page, [], undefined, {
       bars: (key, params) =>
-        Object.assign({}, key === "SPY" ? BARS : { bars: [] }, { tf: params.tf }),
+        Object.assign({}, key === "SPY" ? BARS : { bars: [], none_said: NO_BARS }, {
+          tf: params.tf,
+        }),
     });
     await openView(page, "trade-desk", "desk");
     const bars = page.locator("#tdmFoot span", { hasText: "Bars:" }).locator("b");
     await expect(bars).toHaveText("streamed 1m bars");
     await page.evaluate(() => window.EdShell.setTicker("MU"));
-    await expect(page.locator("#tdmChartEmpty")).toContainText("No bars for MU");
+    await expect(page.locator("#tdmChartEmpty")).toHaveText(NO_BARS);
     await expect(bars).toHaveText("-");
   });
 

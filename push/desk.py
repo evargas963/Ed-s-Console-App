@@ -99,6 +99,7 @@ class DeskQueue(TypedDict):
     cross_counts: CrossCounts
     markers_off_chart: int
     markers_off_chart_text: str
+    none_said: str | None
 
 
 def _desk_window_start(tf: str, now: datetime) -> float:
@@ -154,6 +155,10 @@ def desk_events_payload(tk: str, tf: str, now: datetime, limit: object) -> DeskQ
         },
         "markers_off_chart": len(off_chart),
         "markers_off_chart_text": _off_chart_text(len(off_chart), len(marked), chart),
+        # what the queue says with nothing in the window, a whole sentence (AGENTS.md rule 4)
+        "none_said": None
+        if items
+        else f"Nothing in the {DESK_LOOKBACK[tf][1]}. Level crosses and wall breaches land here.",
     }
 
 

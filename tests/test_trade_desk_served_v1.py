@@ -236,6 +236,24 @@ def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     said = {"up": "Crossed above", "down": "Crossed below"}
     assert {it["dir"] for it in crosses} == {"up", "down"}
     assert all(it["marker_said"] == said[it["dir"]] for it in crosses)
+    assert body["none_said"] is None  # the queue has items: no sentence for an empty one
+
+
+@pytest.mark.usefixtures("spy_levels")
+def test_a_window_with_nothing_in_it_says_so_in_one_sentence():
+    """SPY's levels served at Friday's close, no level crossed in the last 15 minutes.
+
+    The real 0DTE chain priced and the price at the close (the spy_levels fixture): no wall
+    breached, the levels not stale, and no cross recorded for ZZDESK, so the queue is empty. Its
+    sentence names the window by the panel's own label and what lands in the queue, whole
+    (AGENTS.md rule 4); the page draws it as sent.
+    """
+    cross_store._crosses.pop(DESK, None)
+    body = push_desk.desk_events_payload(DESK, "1", FRIDAY_CLOSE, 12000)
+    assert body["items"] == []
+    assert body["none_said"] == (
+        f"Nothing in the {body['window_label']}. Level crosses and wall breaches land here."
+    )
 
 
 def _spy_close_at(msg):
@@ -618,6 +636,37 @@ def test_the_volume_profile_the_value_area_is_read_from_is_served(spy_levels):
         == (390, 0)
     )
     assert vp["basis"].startswith("Estimated volume by price")
+    # the chart foot's sentence for it, whole: its basis, every bar in it
+    assert body["profile_note"] == vp["basis"]
+
+
+def test_the_profile_note_counts_the_rth_bars_that_sent_no_volume():
+    """INDUCED: one of Friday's RTH bars (real SPY 1-minute bars) arrives with no volume.
+
+    The bar cannot be placed: the profile counts it, and the levels panel's note says the basis
+    and the bars left out, a whole sentence (AGENTS.md rule 4), as the chart's foot draws it.
+    """
+    bars = _spy_bars()
+    at = [datetime.fromtimestamp(b["timestamp"] / 1000, time_et.ET) for b in bars]
+    first_rth = next(
+        i
+        for i, d in enumerate(at)
+        if d.date().isoformat() == "2026-10-02" and time_et.session_label(d) == "RTH"
+    )
+    bars[first_rth] = {**bars[first_rth], "volume": None}
+    _forget(DESK)
+    keep_candles(DESK, bars)
+    server._publish_price_levels(DESK, FRIDAY_CLOSE)
+    try:
+        _live_price(DESK, bars[-1]["close"])
+        body = push_levels.levels_payload(DESK, "1", FRIDAY_CLOSE)
+    finally:
+        _forget(DESK)
+    vp = body["volume_profile"]
+    assert (vp["bars"], vp["bars_without_volume"]) == (390, 1)
+    assert body["profile_note"] == (
+        vp["basis"] + " · 1 of 390 RTH bars sent no volume and are not in it"
+    )
 
 
 def _price(value):
@@ -682,6 +731,8 @@ def test_no_prior_value_area_band_when_the_prior_session_has_none():
     assert {r["id"] for r in body["levels"]} >= {"PDH", "PDL", "PDC"}
     assert body["prior_value_area"] is None
     assert body["volume_profile"] is None and body["vwap_text"] is None
+    # the chart foot says why no profile is drawn, the value area's reason in one sentence
+    assert body["profile_note"] == "Volume profile (RTH) not drawn: " + absent["value_area"]
 
 
 @pytest.mark.usefixtures("spy_levels")

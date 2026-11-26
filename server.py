@@ -618,8 +618,9 @@ STREAM_WORDS = {
 #: ("{typed}"); a watchlist change on its way, or its request failing before any answer
 #: ("{ticker}", "{why}": the failure as the browser reports it). No expiry chosen: all of them,
 #: in the selector and, short, in the context line; on the Chain view, the expiry the program
-#: sends by default. A panel the page has asked for
-#: and not yet received, one whose answer has nothing to draw, one the program could not produce
+#: sends by default. A panel the page has asked for and not yet received (the chart's bars,
+#: "{name}" at "{tf}", its timeframe's label; the event queue's), one whose answer has nothing to
+#: draw, one the program could not produce
 #: ("{what}": the panel's name; "{why}": the program's reason, as served), and one the page
 #: could not draw.
 PAGE_WORDS = {
@@ -647,6 +648,8 @@ PAGE_WORDS = {
     "not_removed": "{ticker} is not removed: {why}",
     "loading": "LOADING",
     "loading_text": "loading…",
+    "loading_chart": "Loading {name} · {tf}…",
+    "loading_events": "Loading {name} events…",
     "unavailable": "UNAVAILABLE",
     "failed": "FAILED",
     "not_produced": "the program could not produce the {what}",
