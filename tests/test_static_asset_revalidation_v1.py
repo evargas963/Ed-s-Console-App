@@ -9,9 +9,13 @@ only removes the browser's ability to skip asking entirely.
 
 from __future__ import annotations
 
+import pytest
 from starlette.testclient import TestClient
 
 import server as srv
+
+#: the page's own files' cache headers: no Schwab value reaches them
+pytestmark = pytest.mark.no_schwab_value
 
 
 def test_static_js_response_forces_revalidation():

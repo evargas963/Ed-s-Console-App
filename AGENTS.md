@@ -299,8 +299,13 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
 9. **Real data** (serves 11). Tests run on captured Schwab data (`tests/fixtures/`) through the real
    code; a condition Schwab has not yet sent is induced, labeled INDUCED, until a capture replaces
    it; no patch of the code under test, by a patching tool or by assigning over its names
-   (`calc.spot = ...`). Enforced by: `tools/check_locks.py`: patching lines in tests may not rise
-   (locks); stand-ins left in the tests — STAND-INS
+   (`calc.spot = ...`). A test of product code no Schwab value reaches (a page's connection, the
+   operator's watchlist, the page's own files) takes none: it is marked
+   `pytestmark = pytest.mark.no_schwab_value` and listed by name (operator 2026-11-25: "Mark them").
+   Enforced by: `tools/check_locks.py`: patching lines in tests may not rise (locks); a test of
+   product code with no captured data and no mark — the census, an issue (in force); that no Schwab
+   value reaches a marked test's subject — the builder's audit (rule 14), no machine check;
+   stand-ins left in the tests — STAND-INS
 10. **Only Feed talks to Schwab** (serves 2). Enforced by: import-linter on `locks.imports.toml` for
     Schwab's clients (locks); `locks.ruff.toml` banned names, per product file, for `http.client`,
     `urllib.request` and `websockets` (locks); a call made through Feed's own client

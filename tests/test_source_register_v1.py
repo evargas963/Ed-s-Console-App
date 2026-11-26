@@ -10,8 +10,13 @@ the date it was read and the date it is read again by, and that date has not pas
 from datetime import date, datetime
 from pathlib import Path
 
+import pytest
+
 import time_et
 from time_et import ET
+
+#: the register of source documents and its dates: no Schwab value reaches it
+pytestmark = pytest.mark.no_schwab_value
 
 ROOT = Path(__file__).resolve().parent.parent
 REGISTER = ROOT / "docs" / "SOURCES.md"
