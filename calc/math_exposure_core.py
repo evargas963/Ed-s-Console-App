@@ -11,12 +11,18 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, TypedDict, get_args
+from typing import TYPE_CHECKING, Literal, TypedDict, get_args
 
 import numpy as np
 
 from numeric_contract import float_finite_or_none
-from option_contract import OptionContract, Streamed, streamed_greek_set, streamed_quote
+from option_contract import (
+    OptionContract,
+    QuoteValues,
+    Streamed,
+    streamed_greek_set,
+    streamed_quote,
+)
 from time_et import Session, time_to_expiry_years
 
 if TYPE_CHECKING:
@@ -751,7 +757,7 @@ def overlay_streamed_contract_fields(
     contracts: list[OptionContract],
     streamed_by_symbol: dict[str, Streamed],
     held: set[str],
-    quoted: dict[str, tuple[float, dict[str, Any]]],
+    quoted: dict[str, tuple[float, QuoteValues]],
 ) -> list[OptionContract]:
     """Give each contract its newest values: the stream's when it is held, else /quotes'.
 
@@ -778,10 +784,8 @@ def overlay_streamed_contract_fields(
         elif c.symbol in streamed_by_symbol:
             sent = streamed_by_symbol[c.symbol]
             pushed = streamed_quote(sent)
-            greeks = streamed_greek_set(sent.greeks.values())
-            if greeks is not None:
-                pushed.update(greeks)
-            out.append(replace(c, **pushed))
+            greeks = streamed_greek_set(sent.greeks)
+            out.append(replace(c, **pushed) if greeks is None else replace(c, **pushed, **greeks))
         else:
             out.append(replace(c, volume=None, bid=None, ask=None, money_intrinsic=None))
     return out

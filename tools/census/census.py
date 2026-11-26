@@ -540,20 +540,21 @@ SUPPRESSIONS = [
     (r"eslint-disable|@ts-ignore|stylelint-disable", "JS/CSS lint suppressions"),
     (r"#\s*pyright:\s*ignore", "pyright ignores"),
 ]
-# an exemption marker is an opt-out wherever a hand-built check reads it: comments, docstrings,
-# and the tool that honors it
-lines_matching(
-    [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML", "CSS") and "vendor" not in f],
-    [
-        (
-            r"(?:#|//)\s*[a-z]+(?:-[a-z]+)*-ok\b",
-            "exemption markers of hand-built checks (an opt-out the rules forbid)",
-        )
-    ],
-    S,
-    "locks",
-    "regex",
-)
+# an exemption marker is an opt-out wherever a hand-built check reads it: a marker a tool names is
+# counted in comments, docstrings and the tool that honors it; one no tool names opts nothing out
+# (a test's input that a guard refuses whatever text it carries)
+MARKER = r"(?:#|//)\s*([a-z]+(?:-[a-z]+)*-ok)\b"
+MARKERS = "exemption markers of hand-built checks (an opt-out the rules forbid)"
+READ_BY_TOOLS = "\n".join(TEXT[f] for f in FILES if f.startswith("tools/") and f in TEXT)
+add(S, MARKERS, "locks", "regex")
+for f in [
+    f
+    for f in FILES
+    if lang(f) in ("Python", "JavaScript", "HTML", "CSS") and "vendor" not in f and f in TEXT
+]:
+    for n, ln in enumerate(TEXT[f].splitlines(), 1):
+        if any(m.group(1) in READ_BY_TOOLS for m in re.finditer(MARKER, ln)):
+            add(S, MARKERS, "locks", "regex", f"{f}:{n}: {ln.strip()[:140]}")
 for _pat, cat in SUPPRESSIONS:
     add(S, cat, "locks", "tokenize")
 for f in [f for f in ALL_PY if "vendor" not in f]:
@@ -1173,15 +1174,20 @@ TICKER = re.compile(
     r"^\$?(?:SPX|SPY|QQQ|IWM|NVDA|TSLA|AMD|META|AAPL|MSFT|AMZN|GOOGL?|NDX|VIX|"
     r"DJI|COMPX|VXN|RVX|RUT|DJX|XSP|OEX)$"
 )
-#: a return annotation that is a record held as a plain dict: bare, or keyed by `str`, alone or in
-#: a list or tuple
-RECORD_AS_DICT = r"(?:(?:list|tuple)\[)?(?:dict|Dict)(?:\[str\b|$|\]| \|)"
+#: a return annotation that is a record held as a plain dict, alone or in a list or tuple: a bare
+#: dict, or one keyed by `str` whose values are anything (`Any`) or plain values of several kinds,
+#: the fixed field names a TypedDict types (PEP 589). A dict whose values are all of one named type
+#: or one container (dict[str, LookBack], dict[str, list[str]]), or whose key may be None, maps a
+#: ticker, a service or an expiry to its value (mypy: dict[K, V]), and is not a record.
+SCALAR = r"(?:float|int|str|bool|None)"
+RECORD_AS_DICT = (
+    rf"(?:(?:list|tuple)\[)?(?:dict|Dict)(?:\[str, (?:Any|{SCALAR}(?: \| {SCALAR})*)\]|$|\]| \|)"
+)
 for f in PRODUCT_PY:
     for node in ast.walk(trees[f]):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
             r = ast.unparse(node.returns)
-            # a record held as a dict is keyed by field names: a bare dict or one keyed by text.
-            # A map keyed by strike or expiry (dict[float, ...]) is a map, not a record.
+            # A map keyed by strike or expiry (dict[float, ...]) is a map too.
             if re.match(RECORD_AS_DICT, r) and not node.name.startswith("_"):
                 add(
                     S,

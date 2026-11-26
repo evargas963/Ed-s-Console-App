@@ -115,35 +115,71 @@ def _greek(raw: Mapping[str, Any], name: str, void: bool) -> float | None:
     return None if void else schwab_number(raw.get(name))
 
 
-def streamed_greeks(content: Mapping[str, Any]) -> dict[str, float | None]:
-    """Return the Greeks a contract's LEVELONE_OPTIONS record carries, under the contract's names.
+def _received(
+    content: Mapping[str, Any], stamps: Mapping[str, tuple[Any, Any]], name: str
+) -> Received:
+    value = content.get(name)
+    return NOT_SENT if value is None else Received(schwab_number(value), stamps[name][1])
+
+
+def streamed_greeks(
+    content: Mapping[str, Any], stamps: Mapping[str, tuple[Any, Any]]
+) -> StreamedGreeks:
+    """Return the Greeks a contract's LEVELONE_OPTIONS record carries, each with its time.
 
     The one reader of those stream fields (the chain sweep, the console's order-flow state and
-    its history). A field the record does not carry is left out (on Change delivery a message
+    its history). A field the record does not carry is NOT_SENT (on Change delivery a message
     carries only what changed); one it carries is as Schwab sent it (schwab_number), so Schwab's
-    -999 is None. The names are GREEK_FIELDS, each the stream field's name in lowercase.
+    -999 is no value, received at its `stamps` time. Its volume and the stock's price are read by
+    the record's reader (stream_spine.read_streamed).
     """
-    sent = {
-        "gamma": content.get("GAMMA"),
-        "delta": content.get("DELTA"),
-        "theta": content.get("THETA"),
-        "vega": content.get("VEGA"),
-        "rho": content.get("RHO"),
-        "volatility": content.get("VOLATILITY"),
-    }
-    return {name: schwab_number(value) for name, value in sent.items() if value is not None}
+    return StreamedGreeks(
+        gamma=_received(content, stamps, "GAMMA"),
+        delta=_received(content, stamps, "DELTA"),
+        theta=_received(content, stamps, "THETA"),
+        vega=_received(content, stamps, "VEGA"),
+        rho=_received(content, stamps, "RHO"),
+        volatility=_received(content, stamps, "VOLATILITY"),
+    )
 
 
-def streamed_greek_set(greeks: Mapping[str, Any]) -> dict[str, float] | None:
-    """Return all six Greeks of `greeks` (a contract's streamed Greeks) when each is a value.
+class GreekSet(TypedDict):
+    """A streamed contract's Greeks and volatility as one set, each a value."""
+
+    gamma: float
+    delta: float
+    theta: float
+    vega: float
+    rho: float
+    volatility: float
+
+
+def streamed_greek_set(greeks: StreamedGreeks) -> GreekSet | None:
+    """Return all six of a contract's streamed Greeks and volatility when each is a value.
 
     A contract Schwab streams takes its Greeks from the stream as one set, never some from the
-    stream and some from the quotes endpoint: None when any is missing or no value, and the
+    stream and some from the quotes endpoint: None when any is not sent or no value, and the
     contract's Greeks are then the quote's (the chain sweep).
     """
-    if any(greeks.get(name) is None for name in GREEK_FIELDS):
+    gamma, delta, theta = greeks.gamma.value, greeks.delta.value, greeks.theta.value
+    vega, rho, volatility = greeks.vega.value, greeks.rho.value, greeks.volatility.value
+    if (
+        gamma is None
+        or delta is None
+        or theta is None
+        or vega is None
+        or rho is None
+        or volatility is None
+    ):
         return None
-    return {name: greeks[name] for name in GREEK_FIELDS}
+    return {
+        "gamma": gamma,
+        "delta": delta,
+        "theta": theta,
+        "vega": vega,
+        "rho": rho,
+        "volatility": volatility,
+    }
 
 
 #: a streamed contract's top of book on LEVELONE_OPTIONS: each stream field, the record's name
@@ -223,19 +259,6 @@ class StreamedGreeks:
         ]
         return max(times) if times else None
 
-    def values(self) -> dict[str, float | None]:
-        """Return each field the stream sent, by its name, as a value (option_contract's names)."""
-        sent = {
-            "gamma": self.gamma,
-            "delta": self.delta,
-            "theta": self.theta,
-            "vega": self.vega,
-            "rho": self.rho,
-            "volatility": self.volatility,
-            "total_volume": self.total_volume,
-        }
-        return {name: f.value for name, f in sent.items() if f is not NOT_SENT}
-
 
 #: a contract with no Greeks streamed
 NO_GREEKS = StreamedGreeks()
@@ -249,7 +272,16 @@ class Streamed:
     greeks: StreamedGreeks
 
 
-def streamed_quote(sent: Streamed) -> dict[str, float | None]:
+class StreamedQuote(TypedDict):
+    """A streamed contract's volume, bid, ask and money intrinsic value: the stream's newest."""
+
+    volume: float | None
+    bid: float | None
+    ask: float | None
+    money_intrinsic: float | None
+
+
+def streamed_quote(sent: Streamed) -> StreamedQuote:
     """Return the quote a streamed contract's record takes: its volume, bid, ask and intrinsic.
 
     Each the stream's newest (`sent`), None until the stream sends it; the one builder of them
@@ -263,19 +295,19 @@ def streamed_quote(sent: Streamed) -> dict[str, float | None]:
     }
 
 
-def streamed_top(content: Mapping[str, Any]) -> dict[str, float | None]:
+def streamed_top(content: Mapping[str, Any]) -> StreamedTop:
     """Return the top of book a contract's LEVELONE_OPTIONS record carries, under our names.
 
     The one reader of those stream fields (the console's order-flow state and the chain sweep).
-    A field the record does not carry is left out; one it carries is as Schwab sent it, None
-    when it is not a number. A record whose quote time is no time (0: Schwab's quote time is the
+    A field the record does not carry is None; one it carries is as Schwab sent it, None when it
+    is not a number. A record whose quote time is no time (0: Schwab's quote time is the
     last time a bid or ask updated, Streamer API §3.1, field 34) holds no quote: its bid, ask and
     sizes are None, never a price of 0 (live_market_plane reads an equity's the same way).
     """
     top = {name: read(content[field]) for field, name, read in STREAMED_TOP if field in content}
     if "quote_time_ms" in top and top["quote_time_ms"] is None:
         top.update(bid=None, ask=None, bid_size=None, ask_size=None)
-    return top
+    return StreamedTop(**top)
 
 
 def _expires_at(raw: Any, symbol: Any) -> float | None:
@@ -297,7 +329,22 @@ def _shown(value: Any) -> Any:
     return value
 
 
-def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
+class QuoteValues(TypedDict):
+    """A contract record's values from Schwab's /quotes answer for it: quote, volume, Greeks."""
+
+    bid: float | None
+    ask: float | None
+    money_intrinsic: float | None
+    volume: float | None
+    volatility: float | None
+    gamma: float | None
+    delta: float | None
+    theta: float | None
+    vega: float | None
+    rho: float | None
+
+
+def quote_values(quote: Mapping[str, Any]) -> QuoteValues:
     """Return a contract record's values from Schwab's /quotes answer for it (its `quote`).
 
     Its bid and ask, volume, Greeks and volatility, each as sent (rule 2; a -999 volatility voids
@@ -311,8 +358,25 @@ def quote_values(quote: Mapping[str, Any]) -> dict[str, Any]:
         "money_intrinsic": schwab_number(quote.get("moneyIntrinsicValue")),
         "volume": schwab_count(quote.get("totalVolume")),
         "volatility": schwab_number(vol),
-        **{g: _greek(quote, g, void) for g in GREEKS},
+        "gamma": _greek(quote, "gamma", void),
+        "delta": _greek(quote, "delta", void),
+        "theta": _greek(quote, "theta", void),
+        "vega": _greek(quote, "vega", void),
+        "rho": _greek(quote, "rho", void),
     }
+
+
+def _quoted(raw: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a contract's quote values as the chain sweep delivered it, or none.
+
+    A contract Schwab streams: the stream's bid, ask and volume when its chain was complete, as
+    the sweep read them (ChainSweep.take_greeks); any other, its /quotes answer's (quote_values).
+    """
+    if isinstance(raw.get("streamed"), Mapping):
+        return raw["streamed"]
+    if isinstance(raw.get("quote"), Mapping):
+        return quote_values(raw["quote"])
+    return {}
 
 
 def read_contract(raw: Mapping[str, Any]) -> OptionContract:
@@ -323,11 +387,7 @@ def read_contract(raw: Mapping[str, Any]) -> OptionContract:
     vol_sent = raw.get("volatility")
     void = vol_sent is not None and vol_sent == SCHWAB_NO_VALUE
     multiplier = schwab_number(raw.get("multiplier"))
-    quoted = quote_values(raw["quote"]) if isinstance(raw.get("quote"), Mapping) else {}
-    if isinstance(raw.get("streamed"), Mapping):
-        # a contract Schwab streams: the stream's bid, ask and volume when its chain was
-        # complete, as the sweep read them (ChainSweep.take_greeks)
-        quoted = raw["streamed"]
+    quoted = _quoted(raw)
     listing: Listing = {}
     for name in LISTED:
         if name in raw:

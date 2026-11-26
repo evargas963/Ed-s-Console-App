@@ -29,7 +29,7 @@ import sys
 import threading
 from collections import Counter
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, TypedDict, cast, override
@@ -51,7 +51,6 @@ from option_contract import (
     QUOTE_FIELDS,
     Received,
     Streamed,
-    StreamedGreeks,
     StreamedTop,
     streamed_greeks,
     streamed_top,
@@ -494,16 +493,16 @@ def read_streamed(content: dict[str, Any], stamps: dict[str, tuple[Any, Any]]) -
     0, AGENTS.md rule 2). Read once per version of the record, on its first read
     (streamed_record).
     """
-    sent = {
-        name: Received(v, stamps[name.upper()][1]) for name, v in streamed_greeks(content).items()
-    }
+    greeks = streamed_greeks(content, stamps)
     volume = schwab_count(content.get("TOTAL_VOLUME"))
     if volume is not None:
-        sent["total_volume"] = Received(volume, stamps["TOTAL_VOLUME"][1])
+        greeks = replace(greeks, total_volume=Received(volume, stamps["TOTAL_VOLUME"][1]))
     if "UNDERLYING_PRICE" in content:
         underlying = schwab_number(content["UNDERLYING_PRICE"])
-        sent["underlying_price"] = Received(underlying, stamps["UNDERLYING_PRICE"][1])
-    return Streamed(StreamedTop(**streamed_top(content)), StreamedGreeks(**sent))
+        greeks = replace(
+            greeks, underlying_price=Received(underlying, stamps["UNDERLYING_PRICE"][1])
+        )
+    return Streamed(streamed_top(content), greeks)
 
 
 def streamed_record(record: tuple[str, dict[str, Any]] | None) -> Streamed:
@@ -536,8 +535,8 @@ def quotes_at_trade(record: tuple[str, dict[str, Any]]) -> tuple[StreamedTop, St
     topic, rec = record
     held = rec[FIELD_DELTA[topic.split(".", 1)[0]]]
     return (
-        StreamedTop(**streamed_top({q: held[q] for q in QUOTE_FIELDS if q in held})),
-        StreamedTop(**streamed_top(rec["quote_before"])),
+        streamed_top({q: held[q] for q in QUOTE_FIELDS if q in held}),
+        streamed_top(rec["quote_before"]),
     )
 
 
