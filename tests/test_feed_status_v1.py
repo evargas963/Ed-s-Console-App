@@ -16,27 +16,53 @@ import time_et
 from app.market_data.schwab.streaming import capture
 from feed import connection
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus
+from tests.schwab_rest_standin import LocalSchwab
+from tests.schwab_stream_standin import LocalStreamer
+from tests.shared_helpers import fixture_json, until
 
-
-class _Stream:
-    last_frame_ts = 1000.0
+#: Schwab's NEWS_HEADLINE frame for $SPX at the regular open of 2026-11-20, its items as stored
+_NEWS = fixture_json("real_schwab_news_one_frame_spx_2026_11_20.json")
 
 
 def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
+    """One round of the feed status, while the daemon's connection reads Schwab's frames.
+
+    Schwab's streamer (tests/schwab_stream_standin.py, through the real schwab-py client) sends
+    Schwab's recorded NEWS_HEADLINE frame
+    (tests/fixtures/real_schwab_news_one_frame_spx_2026_11_20.json) once the news SUBS is taken,
+    and no data on any other service. Every feed gets one row at the same time, each with the time
+    the stream last read a frame; the news feed's last data is when its items reached the bus,
+    every other feed's None: no data is None, not a time.
+    """
+    entry = {
+        "service": "NEWS_HEADLINE",
+        "timestamp": _NEWS["messages"][0]["schwab_ts"],
+        "command": "SUBS",
+        "content": [m["content"] for m in _NEWS["messages"]],
+    }
+    streamer = LocalStreamer({}, {"NEWS_HEADLINE": entry})
+    rest = LocalSchwab(streamer.url)
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db)
     bus, health = MessageBus(), HealthRegistry()
-    health.beat("NEWS_HEADLINE", 990.0)
-    daemon = capture.Daemon(bus, health)
-    daemon.connection.stream = _Stream()
+    daemon = capture.Daemon(bus, health, ["SPY"])
     log = bus.subscribe("", policy=LOG)  # as the database writer reads the bus
 
     async def go():
         stop = asyncio.Event()
-        stop.set()  # one round, then stop
-        await capture.record_feed_status(daemon, stop)
+        run = asyncio.create_task(daemon.connection.run_connection(rest.client(tmp_path), stop))
+        await until(lambda: run.done() or health.last("NEWS_HEADLINE"), state=lambda: run)
+        one = asyncio.Event()
+        one.set()  # one round, then stop
+        await capture.record_feed_status(daemon, one)
+        stop.set()
+        await asyncio.wait_for(run, 10)
 
-    asyncio.run(go())
+    try:
+        asyncio.run(go())
+    finally:
+        streamer.close()
+        rest.close()
 
     while not log.queue.empty():
         writer.insert(*log.queue.get_nowait())
@@ -45,11 +71,13 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
             "SELECT ts, service, schwab_last_frame_ts, last_data_ts "
             "FROM stream_feed_status ORDER BY service"
         ).fetchall()
+    news_at = health.last("NEWS_HEADLINE")
+    assert news_at is not None
     assert {r[1] for r in rows} == set(connection.SERVICES)
     assert len({r[0] for r in rows}) == 1, "every feed is checked at the same X"
-    assert all(r[2] == 1000.0 for r in rows)
+    assert len({r[2] for r in rows}) == 1 and rows[0][2] >= news_at, "the stream's last frame"
     news = [r for r in rows if r[1] == "NEWS_HEADLINE"][0]
-    assert news[3] == 990.0
+    assert news[3] == news_at
     assert all(r[3] is None for r in rows if r[1] != "NEWS_HEADLINE"), "no data is None, not a time"
 
 
