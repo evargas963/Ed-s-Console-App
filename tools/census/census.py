@@ -1666,7 +1666,7 @@ for ln in git(
 ).splitlines():
     if not ln.startswith("main "):
         add(S, "local branches", "housekeeping", "git branch", ln)
-for ln in git("branch", "-r", "--format=%(refname:short)").splitlines():
+for ln in git("branch", "-r", "--list", "origin/*", "--format=%(refname:short)").splitlines():
     if ln.strip() not in ("origin/main", "origin/HEAD", "origin"):
         add(S, "remote branches", "housekeeping", "git branch -r", ln)
 for ln in git("stash", "list").splitlines():
