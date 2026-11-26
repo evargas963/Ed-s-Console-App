@@ -8,13 +8,15 @@ look-back record (app.options.order_flow.state) and the live price.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal, NotRequired, TypedDict
 
 from app.options.order_flow.state import look_back
 from calc.confluence_composite import (
     ASSUMPTION,
+    Distance,
     FamilyVote,
     Matrix,
+    ShownRow,
     StrikeLookBack,
     at_price,
     atm_iv_change,
@@ -45,7 +47,7 @@ from calc.terrain_read import (
 )
 from numeric_contract import iv_text, price_text
 from option_contract import OptionContract
-from push.answers import unavailable
+from push.answers import NotAvailable, not_available
 from push.levels import pin_note
 from push.liquidity import hold_text
 from push.spot import resolve_spot
@@ -144,7 +146,45 @@ KEY_SESSION_LEVELS = ("VWAP", "PDC")
 HOLD_MEASURED = "PDC"
 NO_HOLD_RECORD = "hold rate: no record yet"
 #: an answer with no matrix places no level
-NO_LEVELS: dict[str, list[Any]] = {"levels_above": [], "levels_below": []}
+
+
+class Level(Distance):
+    """A key level at its own price: its lane, name, tag and hover, and its distance from it."""
+
+    lane: str
+    abbrev: str
+    price: float
+    price_text: str
+    title: str
+    text: str
+    hover: str
+
+
+class TaggedRow(ShownRow):
+    """A shown row with the key levels nearest its strike tagged on it."""
+
+    tags: list[Level]
+
+
+class Tags(TypedDict):
+    """The shown rows with their tags, and the key levels above and below them."""
+
+    rows: list[TaggedRow]
+    levels_above: list[Level]
+    levels_below: list[Level]
+
+
+class MatrixUnavailable(NotAvailable):
+    """The panel's answer when no matrix is held: why, no levels, and the expiry it was asked."""
+
+    levels_above: list[Level]
+    levels_below: list[Level]
+    expiry: NotRequired[str]
+
+
+def _unavailable(tk: str, reason: str) -> MatrixUnavailable:
+    """Return the panel's answer when no matrix is held for `tk`, saying why."""
+    return {**not_available(tk, reason), "levels_above": [], "levels_below": []}
 
 
 def _hold_rate(tk: str, now: datetime) -> str:
@@ -194,13 +234,13 @@ def _confluence_markers(
 
 def _screen_levels(
     markers: list[dict[str, Any]], spot: float | None, sigma_root_t: float | None
-) -> list[dict[str, Any]]:
+) -> list[Level]:
     """Each level at its own price, with its distance from the live price.
 
     The page does not move a level onto a strike: its tag says its own price (`text`), and its
     hover its name and hold rate.
     """
-    levels: list[dict[str, Any]] = []
+    levels: list[Level] = []
     for marker in markers:
         price = marker.get("price")
         if not isinstance(price, (int, float)):
@@ -222,7 +262,7 @@ def _screen_levels(
     return levels
 
 
-def _tags(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _tags(levels: list[Level], rows: list[ShownRow]) -> Tags:
     """Place each key level against the shown strike rows (highest strike first).
 
     A level inside the rows is a tag on the row of the strike nearest its price (the lower one on
@@ -231,10 +271,10 @@ def _tags(levels: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str,
     rows nothing is inside, above or below. Pure: the rows given are not changed.
     """
     if not rows:
-        return {"rows": [], **NO_LEVELS}
+        return {"rows": [], "levels_above": [], "levels_below": []}
     strikes = [r["strike"] for r in rows]
     top, bottom = strikes[0], strikes[-1]
-    tags: dict[float, list[dict[str, Any]]] = {s: [] for s in strikes}
+    tags: dict[float, list[Level]] = {s: [] for s in strikes}
     for lv in levels:
         at = nearest_strike(strikes, lv["price"]) if bottom <= lv["price"] <= top else None
         if at is not None:
@@ -358,12 +398,31 @@ FAMILY_TITLES = {
 VOTE_TONE = {1: "neg", -1: "pos"}
 
 
-def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> dict[str, Any]:
+class Family(TypedDict):
+    """One family's card under the headline: its title, what it read, and its vote's tone."""
+
+    title: str
+    text: str
+    tone: str | None
+
+
+class Headline(TypedDict):
+    """The Composite's headline: the kind of move, its tone and note, and the families' cards."""
+
+    text: str | None
+    tone: str | None
+    note: str
+    record: str
+    families: list[Family]
+    grade_text: str | None
+
+
+def _headline(live: TerrainSnapshot, votes: tuple[FamilyVote, ...]) -> Headline:
     """Return the Composite's headline: the kind of move the gamma at the price makes, est.
 
     With each family's card and how many of those measured agree with it, every one untested.
     """
-    families = [
+    families: list[Family] = [
         {
             "title": FAMILY_TITLES[v.family],
             "text": v.text,
@@ -401,12 +460,26 @@ def _kind_note(live: TerrainSnapshot, effect: str) -> str:
     return note if flip is None else f"{note} The price is {side} the Gamma Flip ({flip})."
 
 
+class Card(TypedDict):
+    """One summary card: its label, value, line beneath, tone and hover.
+
+    `live_price`: the SPOT card, where the page draws the price row.
+    """
+
+    label: str
+    value: str | None
+    sub: str | None
+    tone: str | None
+    hover: str | None
+    live_price: NotRequired[bool]
+
+
 def _cards(
     spot: float | None,
     live: TerrainSnapshot,
     chosen: str,
     sigma_root_t: float | None,
-) -> list[dict[str, Any]]:
+) -> list[Card]:
     """Return the summary's cards, each its label, value, line beneath, tone and hover.
 
     The SPOT card is the live price's place (`live_price`): the page draws the price row in it,
@@ -478,7 +551,7 @@ def _cards(
     ]
 
 
-def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]:
+def confluence(tk: str, now: datetime, params: dict[str, Any]) -> MatrixAnswer | MatrixUnavailable:
     """Return the `confluence` panel at the page's one expiry choice (`params["expiry"]`).
 
     Over the look-back the page chose (`params["lookback"]`, one of LOOKBACKS; none or another:
@@ -487,10 +560,10 @@ def confluence(tk: str, now: datetime, params: dict[str, Any]) -> dict[str, Any]
     """
     unreadable = expiry_unreadable(params)
     if unreadable is not None:
-        return unavailable(tk, unreadable, **NO_LEVELS)
+        return _unavailable(tk, unreadable)
     centre = centre_asked(params)
     if isinstance(centre, str):
-        return unavailable(tk, centre, **NO_LEVELS)
+        return _unavailable(tk, centre)
     chosen = params.get("lookback")
     lookback = chosen if isinstance(chosen, str) and chosen in LOOKBACKS else DEFAULT_LOOKBACK
     return confluence_payload(tk, params["expiry"], now, lookback, centre)
@@ -512,7 +585,46 @@ def _held_window(
     return lo, hi, view
 
 
-def _lookback(choice: str, start: int | None) -> dict[str, Any]:
+class LookbackChoice(TypedDict):
+    """One look-back the page offers: its key, its words, and whether it is the one chosen."""
+
+    key: str
+    text: str
+    on: bool
+
+
+class Lookback(TypedDict):
+    """The look-back as served: the choice, the choices, and the window's start in words."""
+
+    chosen: str
+    choices: list[LookbackChoice]
+    start_text: str | None
+    reason: str | None
+
+
+class Centre(TypedDict):
+    """The strike the rows are centred on, which the page asks with again so they hold."""
+
+    centre: float | None
+
+
+class MatrixAnswer(Tags):
+    """The `confluence` panel: one expiry's matrix rows, key levels, headline and cards."""
+
+    notes: list[str]
+    peaks: dict[str, float | None]
+    view: Centre
+    ticker: str
+    available: Literal[True]
+    reason: None
+    expiry: str
+    status_text: str
+    headline: Headline
+    lookback: Lookback
+    cards: list[Card]
+
+
+def _lookback(choice: str, start: int | None) -> Lookback:
     """Return the look-back as served: the choice, the choices and the window's start in words."""
     return {
         "chosen": choice,
@@ -528,7 +640,7 @@ def confluence_payload(
     now: datetime,
     lookback: str = DEFAULT_LOOKBACK,
     centre: float | None = None,
-) -> dict[str, Any]:
+) -> MatrixAnswer | MatrixUnavailable:
     """Return the matrix of the priced chain, for the expiry and look-back the operator picks.
 
     `expiry`: the page's one expiry choice. None (All Expirations) is the front expiry still open.
@@ -542,12 +654,12 @@ def confluence_payload(
     priced_at = None if published is None else published.snap.spot
     valued_at = None if published is None else published.snap.valued_at
     if published is None or not published.snap.books or priced_at is None or valued_at is None:
-        return unavailable(tk, "no priced chain is held for this ticker", **NO_LEVELS)
+        return _unavailable(tk, "no priced chain is held for this ticker")
     live = published.snap
     today = now.strftime("%Y-%m-%d")
     listed = [e for e in _confluence_expiries(live.books) if e["expiry"] >= today]
     if not listed:
-        return unavailable(tk, "no expiry on this chain is still open", **NO_LEVELS)
+        return _unavailable(tk, "no expiry on this chain is still open")
     chosen = expiry
     if chosen is None:
         # All Expirations: the matrix reads one expiry, the front one still open
@@ -561,7 +673,7 @@ def confluence_payload(
             if absent
             else "that expiry did not carry days to expiration"
         )
-        return unavailable(tk, reason, expiry=chosen, **NO_LEVELS)
+        return {**_unavailable(tk, reason), "expiry": chosen}
     start = _window_start(lookback, now)
     stored, left_out = _matrix(tk, published, (priced_at, valued_at), chosen, now, start)
     fetched = published.computed_ts_utc
@@ -575,7 +687,6 @@ def confluence_payload(
     return {
         "notes": [note for note in (view["note"], left_out) if note is not None],
         "peaks": stored.peaks,
-        "rows": rows,
         # the strike the rows are centred on: the page asks with it again, so they hold
         "view": {"centre": view["centre"]},
         "ticker": tk,
