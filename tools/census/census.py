@@ -428,11 +428,17 @@ for keys, where in answers.items():
         add(S, ANSWER, "3", "ast", f"{{{', '.join(keys)}}}: " + " = ".join(sorted(where)))
 
 
+#: where the program's math lives: the Calculators part, and the one formatter rounding a number
+#: as the screen shows it (AGENTS.md "The shape" and rule 13)
+MATH_HOMES = ("calc/", "numeric_contract.py")
+
+
 def computes(tree):
+    """Return whether a module does math: a pricing or computing function, or a math call."""
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.lstrip(
             "_"
-        ).startswith(("compute_", "bs_", "pick_")):
+        ).startswith(("compute_", "bs_")):
             return True
         if (
             isinstance(node, ast.Attribute)
@@ -444,7 +450,7 @@ def computes(tree):
     return False
 
 
-for f in [f for f in PRODUCT_PY if computes(trees[f])]:
+for f in [f for f in PRODUCT_PY if not f.startswith(MATH_HOMES) and computes(trees[f])]:
     add(S, "product modules doing math (target: one Calculators part)", "shape", "ast", f)
 
 # =============================================================================================
