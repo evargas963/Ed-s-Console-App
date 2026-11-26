@@ -1524,9 +1524,9 @@ def _gets(schwab: LocalSchwab) -> list:
 def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token(tmp_path):
     """The token inside its refresh window and 20 requests at once: one refresh goes out.
 
-    The token has 100 s left; the client refreshes inside 300 s. With 20 requests at once: one
-    refresh reaches the token endpoint, and every request carries the
-    token it returned. Live on 2026-10-03 one renewal went out as 8 POSTs in one second. INDUCED
+    The token has 100 s left; the client refreshes inside 300 s. With 20 requests at once, one
+    refresh reaches the token endpoint, and each request reaches the stand-in once, carrying the
+    token it returned: a request sent again would hide a connection lost on the way. INDUCED
     CONDITION: the token endpoint's answer is the stand-in.
     """
     schwab = LocalSchwab()
@@ -1539,6 +1539,7 @@ def test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_tok
         schwab.close()
     assert codes == [200] * 20
     assert len(_posts(schwab)) == 1, f"{len(_posts(schwab))} refreshes for one renewal"
+    assert len(_gets(schwab)) == 20, f"{len(_gets(schwab))} requests reached it for 20"
     assert {r[5] for r in _gets(schwab)} == {"Bearer new-access"}
 
 
