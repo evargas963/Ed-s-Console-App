@@ -909,6 +909,35 @@ def test_the_matrix_reads_the_expiry_volatility_blend_and_does_not_rebuild_it():
     assert differ and all(r["iv_text"] == f"{puts[r['strike']]:.2f}" for r in differ)
 
 
+def test_a_strike_whose_volatilities_differ_and_a_weight_is_not_known_has_no_blend():
+    """A strike's blend weighs every contract by its open interest plus its volume.
+
+    Contracts carrying one volatility give it whatever their weights. Where they differ, one
+    contract's open interest not known leaves the blend unknown ("-"), never the other contracts'
+    alone. INDUCED: SPY's captured 0DTE strike nearest the price, its put's open interest withheld,
+    the put's volatility first the call's, then a point below it.
+    """
+    chain = read_chain(SPY_0DTE.chain)
+    strike = min(
+        {c.strike for c in chain if c.strike is not None}, key=lambda k: abs(k - SPY_0DTE.spot)
+    )
+    call = next(c for c in chain if c.strike == strike and c.side == "CALL")
+    put = next(c for c in chain if c.strike == strike and c.side == "PUT")
+    assert call.volatility is not None and call.open_interest and put.open_interest
+    assert call.volume is not None and put.volume is not None
+    unweighted = replace(put, open_interest=None)
+    same = replace(unweighted, volatility=call.volatility)
+    lower = replace(unweighted, volatility=call.volatility - 1)
+    assert iv_by_strike([call, same])[strike] == call.volatility
+    assert iv_by_strike([call, lower])[strike] is None
+    weighted = replace(lower, open_interest=put.open_interest)
+    w_call = call.open_interest + call.volume
+    w_put = put.open_interest + put.volume
+    assert iv_by_strike([call, weighted])[strike] == (
+        w_call * call.volatility + w_put * (call.volatility - 1)
+    ) / (w_call + w_put)
+
+
 def _window_has(rows: list, key: str) -> bool:
     return any(row.get(key) is not None for row in rows)
 
