@@ -284,12 +284,6 @@
       "reason": "a page event's type, filtered; not a value"
     },
     {
-      "verdict": "issue",
-      "category": "page computes: compares values to choose",
-      "pattern": "^static/js/ed-core\\.js:\\d+: if \\(_wlTs !== null && ts < _wlTs\\) return;$",
-      "reason": "the page keeps the newer of two copies of the watchlist (the beat's and the add or removal's answer) by their times: one source, the push, would need no choice (rule 3, rule 4)"
-    },
-    {
       "verdict": "ok",
       "category": "page computes: compares values to choose",
       "pattern": "^static/js/ed-core\\.js:\\d+: sel && nv && sel\\.selectedIndex >= 0$",

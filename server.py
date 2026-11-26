@@ -1761,10 +1761,10 @@ def project_gamma_surface(
 async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
     """Ask the daemon for an add or a removal (streaming.watchlist_request).
 
-    Its record is the answer, stamped with the record's time (`ts`, the program's clock, as each
-    beat's status is): `ok` when it happened, else what happened (an invalid ticker with
+    Its record is the answer: `ok` when it happened, else what happened (an invalid ticker with
     Schwab's /quotes answer, one already on the list, ...), and the record's sentence for it
-    (`text`). With no answer, `text` says why.
+    (`text`). With no answer, `text` says why. The list itself reaches the page in its beat, its
+    one source, which a change sends at once (live_ui.watchlist_changed).
     """
     not_done = f"{ticker} is not {'added' if action == 'add' else 'removed'}"
     try:
@@ -1781,8 +1781,6 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
             "ok": rec["op"] in ("added", "removed"),
             "op": rec["op"],
             "ticker": rec["ticker"],
-            "tickers": rec["tickers"],
-            "ts": rec["ts_recv"],
             "status": rec["status"],
             "answer": rec["answer"],
             "text": rec["text"],

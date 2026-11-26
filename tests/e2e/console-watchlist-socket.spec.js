@@ -103,7 +103,7 @@ test('before a beat has carried a list, the rail reads "-", never an empty list'
   await expect(page.locator(".wl-row")).toHaveCount(0);
 });
 
-test("a change the daemon makes reaches the rail with the next beat; an add here draws from its answer", async ({
+test("a change the daemon makes reaches the rail with the next beat; an add here with the beat it sends at once", async ({
   page,
 }) => {
   const list = await routeWatchlist(page, ["SPY"]);
@@ -119,15 +119,17 @@ test("a change the daemon makes reaches the rail with the next beat; an add here
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["AMD", "MU"]);
 });
 
-test("a beat built before an add, arriving after its answer, does not take the added ticker away", async ({
+// The beat is the list's one source: a change sends it at once (live_ui.watchlist_changed), and
+// an add's answer says what happened. INDUCED: the answer carries a list, newer than the beat's,
+// as the program's answer once did; the page draws the beat's alone.
+test("an add draws the list from the beat its change sends, never from the answer", async ({
   page,
 }) => {
-  // the program's clock: the add's record at 1002; a beat built at 1001 still carries the old list
   let socket;
   await holdClock(page);
   await page.routeWebSocket(/\/ws$/, (ws) => {
     socket = ws;
-    ws.send(feed(["SPY"], 1000));
+    ws.send(feed(["SPY"]));
   });
   await page.route("**/api/watchlist", (route) =>
     route.fulfill({
@@ -137,8 +139,8 @@ test("a beat built before an add, arriving after its answer, does not take the a
         ok: true,
         op: "added",
         ticker: "AMD",
-        tickers: ["SPY", "AMD"],
-        ts: 1002,
+        tickers: ["SPY", "AMD", "ZZZ"],
+        ts: Date.now() / 1000 + 60,
         status: 200,
         answer: {},
         text: "AMD is added to the watchlist",
@@ -148,12 +150,11 @@ test("a beat built before an add, arriving after its answer, does not take the a
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY"]);
   await page.evaluate(() => window.EdShell.addSymbol("AMD"));
+  await expect(page.locator("#wlMsg")).toHaveText("AMD is added to the watchlist");
+  await taken(page, socket); // every frame before this one taken: the answer's list not drawn
+  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY"]);
+  socket.send(feed(["SPY", "AMD"])); // the beat the add sends at once
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "AMD"]);
-  socket.send(feed(["SPY"], 1001)); // late: built before the add
-  await taken(page, socket);
-  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "AMD"]);
-  socket.send(feed(["SPY", "AMD", "MU"], 1003)); // built after it: taken
-  await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "AMD", "MU"]);
 });
 
 test("a beat with no status keeps the list drawn and says the daemon is not reporting", async ({
@@ -189,8 +190,6 @@ test("the answer to an add stands when a beat then carries no status", async ({ 
         ok: false,
         op: "invalid",
         ticker: "ZQZQZ",
-        tickers: ["SPY", "QQQ"],
-        ts: Date.now() / 1000,
         status: 200,
         answer: { errors: { invalidSymbols: ["ZQZQZ"] } },
         text: 'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": ["ZQZQZ"]}})',
@@ -228,8 +227,6 @@ test("adding a ticker already listed draws the daemon's answer and selects it", 
         ok: false,
         op: "already on the list",
         ticker: "QQQ",
-        tickers: ["SPY", "QQQ"],
-        ts: Date.now() / 1000,
         status: null,
         answer: null,
         text: said,
@@ -252,8 +249,11 @@ test("the served sentence of each answer is drawn; an answer that is not the pro
   page,
 }) => {
   await holdClock(page); // nothing self-clears
-  // the program's clock: the beat at 1000, the removal's record at 1001
-  await page.routeWebSocket(/\/ws$/, (ws) => ws.send(feed(["SPY", "QQQ"], 1000)));
+  let socket;
+  await page.routeWebSocket(/\/ws$/, (ws) => {
+    socket = ws;
+    ws.send(feed(["SPY", "QQQ"]));
+  });
   const answers = [
     {
       status: 200,
@@ -262,8 +262,6 @@ test("the served sentence of each answer is drawn; an answer that is not the pro
         ok: true,
         op: "removed",
         ticker: "QQQ",
-        tickers: ["SPY"],
-        ts: 1001,
         status: null,
         answer: null,
         text: "QQQ is removed from the watchlist",
@@ -285,6 +283,7 @@ test("the served sentence of each answer is drawn; an answer that is not the pro
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY", "QQQ"]);
   await page.locator('[data-rm="QQQ"]').click();
   await expect(page.locator("#wlMsg")).toHaveText("QQQ is removed from the watchlist");
+  socket.send(feed(["SPY"])); // the beat the removal sends at once
   await expect(page.locator(".wl-row .wl-sym")).toHaveText(["SPY"]);
   await page.evaluate(() => window.EdShell.addSymbol("TSLA"));
   await expect(page.locator("#wlMsg")).toHaveText(
