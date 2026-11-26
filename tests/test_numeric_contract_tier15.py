@@ -14,6 +14,10 @@ from numeric_contract import (
     float_positive_or_none,
 )
 
+#: readers of the program's own computed numbers: Schwab's fields are schwab_number's and
+#: schwab_count's, tested on Schwab's data
+pytestmark = pytest.mark.no_schwab_value
+
 
 @pytest.mark.parametrize(
     "value,expected",

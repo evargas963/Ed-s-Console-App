@@ -1251,6 +1251,10 @@ for f, n, name, _length, _node in func_index:
 # =============================================================================================
 log.info("census: E")
 S = "E. Tests"
+#: a test of product code no Schwab value reaches (a page's connection, the operator's watchlist)
+#: is marked so (AGENTS.md rule 9, the operator's decision) and listed by name, reported
+NO_SCHWAB_VALUE = "pytestmark = pytest.mark.no_schwab_value"
+NO_SCHWAB_VALUE_ROW = "tests of product code no Schwab value reaches, marked so (reported)"
 TEST_FILES = [
     f for f in FILES if area(f) == "tests" and lang(f) in ("Python", "JavaScript") and f in TEXT
 ]
@@ -1263,6 +1267,7 @@ for cat, rule, tool in (
     ("test functions with no assert of their own (check each)", "14", "ast"),
     ("tests of product code that use no captured Schwab data", "9", "ast"),
     ("rails: production and credentials guarded, no Schwab data needed (reported)", "9", "ast"),
+    (NO_SCHWAB_VALUE_ROW, "9", "ast"),
     ("fixtures no test names", "1", "regex"),
 ):
     add(S, cat, rule, tool)
@@ -1442,6 +1447,8 @@ for f in [
             "ast",
             f,
         )
+    elif NO_SCHWAB_VALUE in TEXT[f]:
+        add(S, NO_SCHWAB_VALUE_ROW, "9", "ast", f)
     elif hits:
         add(
             S,

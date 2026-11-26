@@ -75,6 +75,7 @@ norecursedirs = ["node_modules", ".venv"]
 markers = [
   "alone: a limit on the wall clock, which CI runs with no test workers beside it",
   "rail: guards production or the credentials rather than an app value (tools/check_tests_serve_app.py)",
+  "no_schwab_value: tests product code no Schwab value reaches; the census lists it by name (AGENTS.md rule 9)",
 ]
 
 # Mutation testing (mutmut, https://github.com/boxed/mutmut): how many deliberate mistakes in the
