@@ -22165,6 +22165,7 @@
         "sigma": 1.1310085223318354,
         "sigma_text": "+1.1\u03c3",
         "spot_line": false,
+        "heading_said": "762.00 \u00b7 +4.92 points from the price",
         "tags": []
       },
       {
@@ -22177,7 +22178,7 @@
         "dex": -78614338.89051071,
         "charm": -174333.28143678984,
         "vanna": 2984874.122855869,
-        "iv": 20.973426660000005,
+        "iv": 20.97342666,
         "volume": null,
         "vol_oi": 9.202995752291526,
         "visits": 0,
@@ -22234,6 +22235,7 @@
         "sigma": 0.9019547247971345,
         "sigma_text": "+0.9\u03c3",
         "spot_line": false,
+        "heading_said": "761.00 \u00b7 +3.92 points from the price",
         "tags": [
           {
             "lane": "options",
@@ -22316,6 +22318,7 @@
         "sigma": 0.6725997387502729,
         "sigma_text": "+0.7\u03c3",
         "spot_line": false,
+        "heading_said": "760.00 \u00b7 +2.92 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -22434,6 +22437,7 @@
         "sigma": 0.4429427710678069,
         "sigma_text": "+0.4\u03c3",
         "spot_line": false,
+        "heading_said": "759.00 \u00b7 +1.92 points from the price",
         "tags": [
           {
             "lane": "options",
@@ -22516,6 +22520,7 @@
         "sigma": 0.21298302548923287,
         "sigma_text": "+0.2\u03c3",
         "spot_line": true,
+        "heading_said": "758.00 \u00b7 +0.92 points from the price",
         "tags": []
       },
       {
@@ -22585,6 +22590,7 @@
         "sigma": -0.017280297399345453,
         "sigma_text": "0.0\u03c3",
         "spot_line": false,
+        "heading_said": "757.00 \u00b7 -0.08 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -22667,6 +22673,7 @@
         "sigma": -0.24784800018202618,
         "sigma_text": "-0.2\u03c3",
         "spot_line": false,
+        "heading_said": "756.00 \u00b7 -1.08 points from the price",
         "tags": [
           {
             "lane": "options",
@@ -22773,6 +22780,7 @@
         "sigma": -0.4787208886299134,
         "sigma_text": "-0.5\u03c3",
         "spot_line": false,
+        "heading_said": "755.00 \u00b7 -2.08 points from the price",
         "tags": []
       },
       {
@@ -22842,6 +22850,7 @@
         "sigma": -0.7098997717179742,
         "sigma_text": "-0.7\u03c3",
         "spot_line": false,
+        "heading_said": "754.00 \u00b7 -3.08 points from the price",
         "tags": []
       },
       {
@@ -22854,7 +22863,7 @@
         "dex": -43521356.734894074,
         "charm": -283358.4803300536,
         "vanna": 4046816.108256634,
-        "iv": 25.539375720000002,
+        "iv": 25.53937572,
         "volume": null,
         "vol_oi": 9.061179395111173,
         "visits": 0,
@@ -22911,6 +22920,7 @@
         "sigma": -0.9413854616419889,
         "sigma_text": "-0.9\u03c3",
         "spot_line": false,
+        "heading_said": "753.00 \u00b7 -4.08 points from the price",
         "tags": []
       },
       {
@@ -22980,6 +22990,7 @@
         "sigma": -1.1731787738358066,
         "sigma_text": "-1.2\u03c3",
         "spot_line": false,
+        "heading_said": "752.00 \u00b7 -5.08 points from the price",
         "tags": []
       }
     ],
@@ -23203,6 +23214,7 @@
         "sigma": 0.6323693568877041,
         "sigma_text": "+0.6\u03c3",
         "spot_line": false,
+        "heading_said": "762.00 \u00b7 +4.92 points from the price",
         "tags": []
       },
       {
@@ -23272,6 +23284,7 @@
         "sigma": 0.5043008235568761,
         "sigma_text": "+0.5\u03c3",
         "spot_line": false,
+        "heading_said": "761.00 \u00b7 +3.92 points from the price",
         "tags": [
           {
             "lane": "options",
@@ -23354,6 +23367,7 @@
         "sigma": 0.37606388973924687,
         "sigma_text": "+0.4\u03c3",
         "spot_line": false,
+        "heading_said": "760.00 \u00b7 +2.92 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -23460,6 +23474,7 @@
         "sigma": 0.24765811198372642,
         "sigma_text": "+0.2\u03c3",
         "spot_line": false,
+        "heading_said": "759.00 \u00b7 +1.92 points from the price",
         "tags": []
       },
       {
@@ -23472,7 +23487,7 @@
         "dex": -74705902.41839737,
         "charm": 2343.227233733619,
         "vanna": -188008.0337566747,
-        "iv": 17.759076380000003,
+        "iv": 17.75907638,
         "volume": null,
         "vol_oi": 1.839423288575831,
         "visits": 3,
@@ -23529,6 +23544,7 @@
         "sigma": 0.11908304508523211,
         "sigma_text": "+0.1\u03c3",
         "spot_line": true,
+        "heading_said": "758.00 \u00b7 +0.92 points from the price",
         "tags": []
       },
       {
@@ -23598,6 +23614,7 @@
         "sigma": -0.009661757924443152,
         "sigma_text": "0.0\u03c3",
         "spot_line": false,
+        "heading_said": "757.00 \u00b7 -0.08 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -23680,6 +23697,7 @@
         "sigma": -0.13857674578602938,
         "sigma_text": "-0.1\u03c3",
         "spot_line": false,
+        "heading_said": "756.00 \u00b7 -1.08 points from the price",
         "tags": [
           {
             "lane": "options",
@@ -23762,6 +23780,7 @@
         "sigma": -0.26766236902217505,
         "sigma_text": "-0.3\u03c3",
         "spot_line": false,
+        "heading_said": "755.00 \u00b7 -2.08 points from the price",
         "tags": []
       },
       {
@@ -23774,7 +23793,7 @@
         "dex": 163023593.87233663,
         "charm": 11175.950516100896,
         "vanna": -1154070.1853349176,
-        "iv": 18.870560540000003,
+        "iv": 18.87056054,
         "volume": null,
         "vol_oi": 1.3198539736029204,
         "visits": 1,
@@ -23831,6 +23850,7 @@
         "sigma": -0.39691907994687203,
         "sigma_text": "-0.4\u03c3",
         "spot_line": false,
+        "heading_said": "754.00 \u00b7 -3.08 points from the price",
         "tags": []
       },
       {
@@ -23900,6 +23920,7 @@
         "sigma": -0.526347332674933,
         "sigma_text": "-0.5\u03c3",
         "spot_line": false,
+        "heading_said": "753.00 \u00b7 -4.08 points from the price",
         "tags": []
       },
       {
@@ -23969,6 +23990,7 @@
         "sigma": -0.6559475831316395,
         "sigma_text": "-0.7\u03c3",
         "spot_line": false,
+        "heading_said": "752.00 \u00b7 -5.08 points from the price",
         "tags": []
       }
     ],

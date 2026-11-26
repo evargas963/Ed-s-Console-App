@@ -237,6 +237,36 @@ test("a new price moves only its line; the rows hold, and a price past them hide
   expect(errs).toEqual([]);
 });
 
+// The matrix's own state, no strike chosen, is said in the words served with the page
+// (server.PAGE_WORDS choose_strike); a strike chosen, its heading is the row's served sentence
+// (heading_said). INDUCED: the served list words the prompt otherwise, and the first panel holds
+// no row, so none is chosen.
+test("with no strike chosen the served prompt; once chosen, the row's served heading", async ({
+  page,
+}) => {
+  await page.route(/\/$/, async (route) => {
+    const served = await route.fetch();
+    const html = (await served.text()).replace(
+      /&quot;choose_strike&quot;: &quot;.*?&quot;/,
+      "&quot;choose_strike&quot;: &quot;SERVED: choose a strike&quot;",
+    );
+    await route.fulfill({ response: served, body: html });
+  });
+  let rowsSent = false;
+  const sock = await mockPriceSocket(page, [], undefined, {
+    confluence: (key, params) =>
+      rowsSent ? served(params.expiry) : Object.assign({}, served(params.expiry), { rows: [] }),
+  });
+  await openMatrix(page);
+  await expect(page.locator("#cmDetail")).toContainText("SERVED: choose a strike");
+  rowsSent = true;
+  sock.changed("confluence");
+  const rows = served(FRONT).rows;
+  await expect(page.locator('#cmBody tbody tr[data-i="1"]')).toBeVisible();
+  await page.locator('#cmBody tbody tr[data-i="1"]').click();
+  await expect(page.locator("#cmDetail h2")).toHaveText(rows[1].heading_said);
+});
+
 test("the matrix redraws its served tags and readings as the chain updates, keeping the expiry", async ({
   page,
 }) => {

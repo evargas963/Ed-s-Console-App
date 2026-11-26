@@ -277,10 +277,11 @@
     var maxAbs = view.max_abs; // at least |v| for every v drawn
     var note =
       opts.top +
-      (pan.centre != null
-        ? '<div class="gbs-allexp">Panned to ' +
-          view.centre_text +
-          " · double-click a strike to follow the price</div>"
+      (pan.centre != null && view.centre_text != null
+        ? '<div class="gbs-allexp">' +
+          // the served centre strike panned to, in the page's served words for a pan
+          esc(window.EdShell.say("panned_to", { strike: view.centre_text })) +
+          "</div>"
         : "") +
       (view.note ? '<div class="gbs-allexp">' + esc(view.note) + "</div>" : ""); // why not around the price
     var bars = "";

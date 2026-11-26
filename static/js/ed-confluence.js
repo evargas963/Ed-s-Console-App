@@ -402,7 +402,9 @@
     if (!detail) return;
     if (!row) {
       detail.innerHTML =
-        '<div class="eyebrow">Selected strike</div><p>Click a strike for its readings.</p>';
+        '<div class="eyebrow">Selected strike</div><p>' +
+        esc(window.EdShell.pageWords.choose_strike) +
+        "</p>";
       return;
     }
     var lines = [
@@ -421,7 +423,7 @@
     });
     detail.innerHTML =
       '<div class="eyebrow">Selected strike</div><h2>' +
-      esc(orDash(row.strike_text) + " · " + orDash(row.distance_text) + " points from the price") +
+      esc(row.heading_said) +
       '</h2><dl class="cm-lines">' +
       lines
         .map(function (l) {
