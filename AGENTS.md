@@ -259,9 +259,9 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    the one push. Enforced by: the served words — the builder's audit (rule 14), no machine check,
    ENF-12: the industry's lint for words in code judges a string by its content alone, so it holds
    only a catalog of every word a screen shows, its fixed labels too (`docs/SOURCES.md`
-   i18next-no-literal-string); ESLint's `no-restricted-globals`: `fetch`, `XMLHttpRequest` and
-   `EventSource` only in the transport module, `static/js/ed-core.js`, and `Date` and `Intl` in
-   every page script, every time it shows served (`time_et.ct_label`, `ct_ticks`)
+   i18next-no-literal-string); ESLint's `no-restricted-globals`: `fetch`, `XMLHttpRequest`,
+   `EventSource` and `WebSocket` only in the transport module, `static/js/ed-core.js`, and `Date`
+   and `Intl` in every page script, every time it shows served (`time_et.ct_label`, `ct_ticks`)
    (`tools/census/eslint.config.mjs`, a count in the census; a failing job with LINTERS); and
    `Math`, `.sort(` and `.reduce(` outside the drawing module (`static/js/ed-draw.js`) and the chart
    (`static/js/ed-tv-chart.js`) (the same config, a count in the census)
