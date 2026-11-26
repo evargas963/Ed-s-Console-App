@@ -259,12 +259,11 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
 
 
 def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on_after(tmp_path):
-    """INDUCED CONDITION: another connection holds the stream database's write lock until the
-    writer reads blocked.
+    """INDUCED CONDITION: another connection holds the write lock until the writer reads blocked.
 
-    The lock is taken with BEGIN IMMEDIATE, for longer than the writer's lock wait (timeout_sec
-    0.2 s, an input). The writer reads blocked with SQLite's refusal, holds the captured quotes, and
-    writes every one of them once the lock is released.
+    The stream database's lock is taken with BEGIN IMMEDIATE, for longer than the writer's lock
+    wait (timeout_sec 0.2 s, an input). The writer reads blocked with SQLite's refusal, holds the
+    captured quotes, and writes every one of them once the lock is released.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
