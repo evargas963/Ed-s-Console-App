@@ -702,6 +702,13 @@ def test_a_price_on_a_listed_strike_puts_the_spot_line_on_that_strike():
     assert [r["distance_text"] for r in body["rows"]] == [
         "0.00" if r["strike"] == on else f"{r['strike'] - on:+.2f}" for r in body["rows"]
     ]
+    # each row's heading, whole: its strike and its distance (AGENTS.md rule 4)
+    assert [r["heading_said"] for r in body["rows"]] == [
+        f"{r['strike_text']} · {r['distance_text']} points from the price" for r in body["rows"]
+    ]
+    # INDUCED: no live price, so no distance: the heading is the strike alone, never "-" inside
+    unpriced = at_price(body["rows"], listed, None, None)
+    assert [r["heading_said"] for r in unpriced] == [r["strike_text"] for r in unpriced]
     above = on + 0.004  # INDUCED: a LAST_PRICE a rounding above the strike (four decimals sent)
     nudged = at_price(body["rows"], listed, above, None)
     assert [r["distance_text"] for r in nudged] == [

@@ -618,7 +618,9 @@ STREAM_WORDS = {
 #: ("{typed}"); a watchlist change on its way, or its request failing before any answer
 #: ("{ticker}", "{why}": the failure as the browser reports it). No expiry chosen: all of them,
 #: in the selector and, short, in the context line; on the Chain view, the expiry the program
-#: sends by default. A panel the page has asked for and not yet received (the chart's bars,
+#: sends by default. The expiry chosen not in the surface, and what the viewer can do; no strike
+#: chosen on the matrix; the strikes panned away from the price ("{strike}": the served centre
+#: strike). A panel the page has asked for and not yet received (the chart's bars,
 #: "{name}" at "{tf}", its timeframe's label; the event queue's), one whose answer has nothing to
 #: draw, one the program could not produce
 #: ("{what}": the panel's name; "{why}": the program's reason, as served), and one the page
@@ -638,6 +640,9 @@ PAGE_WORDS = {
     "all_expiries": "All Expirations",
     "all_expiries_short": "All",
     "default_expiry": "Default Expiry",
+    "missing_expiry_hint": "not in this surface — choose another expiry, or All Expirations",
+    "choose_strike": "Click a strike for its readings.",
+    "panned_to": "Panned to {strike} · double-click the strikes to follow the price",
     "daemon_silent": "the capture daemon is not reporting",
     "session_no_status": "session unknown: the daemon sent no status",
     "session_push_down": "session unknown: the console push is down",

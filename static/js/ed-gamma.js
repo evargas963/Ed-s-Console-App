@@ -124,7 +124,9 @@
       host.innerHTML =
         '<div class="placeholder"><div class="big">' +
         escapeHtml(surface.missing_said) +
-        '</div><div class="sm">not in this surface — choose another expiry, or All Expirations</div></div>';
+        '</div><div class="sm">' +
+        escapeHtml(window.EdShell.pageWords.missing_expiry_hint) +
+        "</div></div>";
       return;
     }
     var measure = window.EdShell.getMeasure();
@@ -224,9 +226,10 @@
     // a pan is never silent: the strikes stop following the price until a double-click
     var note =
       (_pan.centre != null
-        ? '<div class="heat-pan">Panned to ' +
-          escapeHtml(orDash(view.centre_text)) + // served: the centre strike panned to
-          " · double-click the strikes to follow the price</div>"
+        ? '<div class="heat-pan">' +
+          // the served centre strike panned to, in the page's served words for a pan
+          escapeHtml(window.EdShell.say("panned_to", { strike: orDash(view.centre_text) })) +
+          "</div>"
         : "") + (view.note ? '<div class="heat-pan">' + escapeHtml(view.note) + "</div>" : ""); // why not around the price
     var MEASURE_LEGEND = {
       gex: ["High<br>Call<br>GEX", "High<br>Put<br>GEX"],
@@ -363,7 +366,7 @@
       renderSurface(host, e.detail);
     } catch (err) {
       // said, then reported
-      window.EdShell.placeholder(host, "the page could not draw the surface the program sent");
+      window.EdShell.placeholder(host, window.EdShell.say("not_drawn", { what: "the surface" }));
       throw err;
     }
   });

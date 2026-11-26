@@ -542,7 +542,7 @@ def at_price(
     spot: float | None,
     sigma_root_t: float | None,
 ) -> list[dict[str, Any]]:
-    """Return the shown rows, each with its distance from the live price and its spot line.
+    """Return the shown rows, each with its distance from the live price, spot line and heading.
 
     The spot line marks the strike the price sits under (the strike the matrix selects first).
     The matrix is read at the book's price; each row's distance is from the live price
@@ -551,13 +551,18 @@ def at_price(
     are not changed.
     """
     under = None if spot is None else under_strike(spot, strikes)
+    shown = [{**row, **distance(row["strike"], spot, sigma_root_t)} for row in rows]
     return [
         {
             **row,
-            **distance(row["strike"], spot, sigma_root_t),
             "spot_line": row["strike"] == under,
+            # the selected strike's heading, whole (AGENTS.md rule 4): its distance only when
+            # known, never a sentence with "-" in it (rule 5)
+            "heading_said": row["strike_text"]
+            if row["distance_text"] is None
+            else f"{row['strike_text']} · {row['distance_text']} points from the price",
         }
-        for row in rows
+        for row in shown
     ]
 
 
