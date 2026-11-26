@@ -10,8 +10,11 @@ paths:
   Calculator's logic on captured Schwab data; the wiring, Schwab to program to page; the page
   drawing what it is served (Playwright, `tests/e2e/`); and the rails that guard production and the
   credentials, each such file marked `pytestmark = pytest.mark.rail`. A test file that is not a rail
-  runs app code of its own, beyond what every test file runs. Enforced by: coverage.py's per-test
-  record in `linux-pytest` (`.github/workflows/pytest.yml`) and its check there.
+  runs app code of its own, beyond what every test file runs. One whose subject no Schwab value
+  reaches takes no captured data and is marked `pytestmark = pytest.mark.no_schwab_value`, listed by
+  name in the census (AGENTS.md rule 9; one unmarked with no captured data is a census issue; that
+  no Schwab value reaches it — the builder's audit, no machine check). Enforced by: coverage.py's
+  per-test record in `linux-pytest` (`.github/workflows/pytest.yml`) and its check there.
 - A test exercises behavior through the real code. It never reads source text or pins a private
   helper; a test whose subject is deleted is deleted with it. Enforced by: no machine check —
   ENF-08.

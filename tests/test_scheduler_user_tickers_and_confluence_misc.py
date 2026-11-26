@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import pytest
+
 import live_market_plane as lmp
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.capture import stored_watchlist
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus
+
+#: the operator's watchlist: no Schwab value reaches it
+pytestmark = pytest.mark.no_schwab_value
 
 
 def test_the_console_and_the_daemon_hold_one_watchlist(tmp_path):

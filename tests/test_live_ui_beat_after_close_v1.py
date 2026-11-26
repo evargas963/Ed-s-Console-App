@@ -19,11 +19,15 @@ import asyncio
 import json
 import logging
 
+import pytest
 from starlette.websockets import WebSocket
 from uvicorn.protocols.utils import ClientDisconnected
 
 from app.market_data.schwab.streaming import live_ui
 from tests.shared_helpers import until
+
+#: a page's connection ending: no Schwab value reaches it
+pytestmark = pytest.mark.no_schwab_value
 
 
 class _Connection:
