@@ -91,6 +91,31 @@ test.describe("ticker / expiry / measure controls", () => {
     await expect(page.locator("#expSel")).toHaveValue(""); // defaults to All
   });
 
+  // The expiry choice's words are the list served with the page (meta ed-page-words,
+  // server.PAGE_WORDS), never its own. INDUCED: the served list words them otherwise.
+  test("the expiry choice is said in the words served with the page", async ({ page }) => {
+    await page.route(/\/$/, async (route) => {
+      const served = await route.fetch();
+      const word = (key, from, to) => [
+        `&quot;${key}&quot;: &quot;${from}&quot;`,
+        `&quot;${key}&quot;: &quot;${to}&quot;`,
+      ];
+      let html = await served.text();
+      for (const [from, to] of [
+        word("all_expiries", "All Expirations", "SERVED ALL"),
+        word("all_expiries_short", "All", "SERVED SHORT"),
+        word("default_expiry", "Default Expiry", "SERVED DEFAULT"),
+      ])
+        html = html.replace(from, to);
+      await route.fulfill({ response: served, body: html });
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#expSel option").first()).toHaveText("SERVED ALL");
+    await expect(page.locator("#aiCtxExp")).toHaveText("SERVED SHORT");
+    await page.locator("#subnav .tab", { hasText: "Chain" }).click();
+    await expect(page.locator("#expSel option").first()).toHaveText("SERVED DEFAULT");
+  });
+
   test("a new chain pushed for the ticker on screen replaces the expiry list (2026-10-08: yesterday's list stayed)", async ({
     page,
   }) => {

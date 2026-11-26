@@ -123,8 +123,9 @@
   // The strike-window scopes, served in the page (meta ed-scopes, from calc.terrain_engine.SCOPES):
   // [{key, label}], the first the default. The server picks each panel's strikes for the scope.
   var SCOPES = JSON.parse(document.querySelector('meta[name="ed-scopes"]').getAttribute("content"));
-  // The words for the page's own connection states, served in the page (meta ed-page-words,
-  // server.PAGE_WORDS): every surface says them in this one wording, and the page holds none.
+  // The words for the states only the page holds, its connection and the viewer's expiry choice,
+  // served in the page (meta ed-page-words, server.PAGE_WORDS): every surface says them in this
+  // one wording, and the page holds none.
   var PAGE_WORDS = JSON.parse(
     document.querySelector('meta[name="ed-page-words"]').getAttribute("content"),
   );
@@ -973,11 +974,11 @@
       if (state.expiryFilter !== null) _expiryPick = state.expiryFilter;
       state.expiryFilter = null;
       var ctx = document.getElementById("aiCtxExp");
-      if (ctx) ctx.textContent = "All";
+      if (ctx) ctx.textContent = PAGE_WORDS.all_expiries_short;
     }
     var sel = document.getElementById("expSel");
     if (!sel) return;
-    var opts = '<option value="">All Expirations</option>';
+    var opts = '<option value="">' + esc(PAGE_WORDS.all_expiries) + "</option>";
     // the date, then Schwab's days to expiration ('-' when Schwab sent none)
     if (exps !== null)
       exps.forEach(function (e) {
@@ -1010,7 +1011,9 @@
     var ctx = document.getElementById("aiCtxExp"); // the selected option's served label
     if (ctx)
       ctx.textContent =
-        sel && nv && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex].text : "All";
+        sel && nv && sel.selectedIndex >= 0
+          ? sel.options[sel.selectedIndex].text
+          : PAGE_WORDS.all_expiries_short;
     emit("ed:expiry", { expiry: nv });
   }
   // B: the chain panel is a COMPLETE SINGLE-EXPIRY surface, so the null option must NOT read
@@ -1023,8 +1026,8 @@
     if (first && first.value === "")
       first.textContent =
         state.workspace === "options" && state.subview === "chain"
-          ? "Default Expiry"
-          : "All Expirations";
+          ? PAGE_WORDS.default_expiry
+          : PAGE_WORDS.all_expiries;
   }
 
   // A: one selected strike shared across heatmap / profile / bubbles / GEX-by-strike / Strike Detail
@@ -1728,6 +1731,8 @@
       expSel.addEventListener("change", function () {
         setExpiry(expSel.value);
       });
+    var ctxExp = document.getElementById("aiCtxExp"); // no expiry chosen yet: all of them
+    if (ctxExp) ctxExp.textContent = PAGE_WORDS.all_expiries_short;
     // #8: maximize / restore the Gamma main panel
     var maxBtn = document.getElementById("maxBtn");
     if (maxBtn) maxBtn.addEventListener("click", toggleMaximize);
