@@ -2300,7 +2300,12 @@ for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f 
             add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author: {code}")
 by_line("workarounds: ", "; ")
 
-DICT_READ = "dict reads with .get outside the Feed (a dict whose keys nothing guarantees; rule 12)"
+#: each read is judged by its code (candidate_decisions.json): a record of ours whose keys nothing
+#: guarantees is an issue; a boundary's input read by name and checked there is not
+DICT_READ = (
+    "dict reads with .get by a field's name outside the Feed (check each: a dict whose keys "
+    "nothing guarantees, rule 12)"
+)
 
 
 def field_key(node: ast.Call) -> bool:
@@ -2334,7 +2339,7 @@ for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
             and id(node) not in routes
             and field_key(node)
         ):
-            add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}")
+            add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:120]}")
 
 out = run(
     [

@@ -281,10 +281,9 @@ def _service_feed(symbol: str, service: str, now: float) -> ServiceFeed:
     how long ago the daemon last received anything on that service (its own report).
     """
     status = _lmp.daemon_status(now)
-    reports = status.get("health") if status is not None else None
-    health = reports.get(service) if reports is not None else None
+    health = None if status is None else status["health"].get(service)
     state = _lmp.live_state(symbol, service, now)[0]
-    age = health.get("age_sec") if health is not None else None
+    age = None if health is None else health["age_sec"]
     return {
         "state": state,
         # as the page shows it: "LIVE · 3s", or the state alone with no report from the daemon

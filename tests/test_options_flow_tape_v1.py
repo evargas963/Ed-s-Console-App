@@ -37,7 +37,13 @@ from push import tape as push_tape
 from state import level_store
 from stream_spine import HealthRegistry, MessageBus
 from tests import feed_live_helper
-from tests.feed_live_helper import apply_record, forget_streamed, on_the_bus, publish_capture
+from tests.feed_live_helper import (
+    apply_record,
+    daemon_status,
+    forget_streamed,
+    on_the_bus,
+    publish_capture,
+)
 from tests.shared_helpers import fixture_json
 from time_et import ET
 
@@ -242,7 +248,7 @@ def test_the_tape_panel_and_the_flow_panel_show_the_chain_records_terms():
     state.clear_all_live_state()
     try:
         lmp.record_feed_heartbeat(
-            {"ts": at, "schwab_socket_open": True, "held": {"LEVELONE_OPTIONS": [CALL, PUT]}}
+            daemon_status(at, schwab_socket_open=True, held={"LEVELONE_OPTIONS": [CALL, PUT]})
         )
         for sym, rows in sent.items():
             for ts, item in rows:
@@ -456,7 +462,7 @@ def test_the_tape_panel_shows_its_newest_rows_and_a_print_with_no_trade_time_las
             captured,
         )
         lmp.record_feed_heartbeat(
-            {"ts": at, "schwab_socket_open": True, "held": {OPT: [fast, other]}}
+            daemon_status(at, schwab_socket_open=True, held={OPT: [fast, other]})
         )
         for r in rows:
             sent = {**r["item"], "key": fast}
