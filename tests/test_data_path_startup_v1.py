@@ -1020,6 +1020,35 @@ def test_a_stop_before_the_daemon_says_the_watchlist_ends_the_levels_loop_quietl
     The levels loop's wait ends with the stop, and the loop ends there, loading and publishing
     nothing for a watchlist it does not have.
     """
-    assert not server.SERVICES.levels_running and lmp.watchlist() is None
-    server._terrain_loop()
     assert lmp.watchlist() is None
+    stop = threading.Event()
+    stop.set()
+    server._terrain_loop(stop)
+    assert lmp.watchlist() is None
+
+
+def _levels_loops() -> set[threading.Thread]:
+    """Return the levels loops running now (start_terrain_loop names each thread)."""
+    return {t for t in threading.enumerate() if t.name == "terrain-loop" and t.is_alive()}
+
+
+def test_a_stop_then_a_start_ends_the_stopped_levels_loop():
+    """A stop followed at once by a start, as each console a test opens and closes does.
+
+    The stopped loop ends, waiting for no wake of its own, and the new start runs the one loop.
+    Through the real start and stop (start_services' and stop_services'), before the daemon says
+    what the watchlist is, so each loop waits for it.
+    """
+    assert lmp.watchlist() is None
+    before = _levels_loops()
+    server.start_terrain_loop()
+    stopped = _levels_loops() - before
+    server.stop_terrain_loop()
+    server.start_terrain_loop()
+    try:
+        for thread in stopped:
+            thread.join(timeout=10)
+        assert stopped and not any(t.is_alive() for t in stopped), "the stopped loop runs on"
+        assert len(_levels_loops() - before) == 1
+    finally:
+        server.stop_terrain_loop()

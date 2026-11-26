@@ -27,7 +27,6 @@ import queue
 import sqlite3
 import sys
 import threading
-import time
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -1724,6 +1723,7 @@ class CaptureWriter:
         self.clock = clock
         self._lock = threading.Lock()
         self._q: queue.SimpleQueue[Item | None] = queue.SimpleQueue()  # None: the stop
+        self._stop_asked = threading.Event()  # set with the stop: no wait to try again outlasts it
         self._batch: list[tuple[Item, Outcome]] = []  # (message, outcome) in the open transaction
         self._batch_spilled = False  # the open batch is spill records (they stay in the file)
         self._waiting: list[Item] = []  # messages held while the database refuses writes
@@ -2015,6 +2015,7 @@ class CaptureWriter:
             with self._lock:  # a dead thread takes no stop message (the thread sets it)
                 if cast(str, self.state) != WRITER_DEAD:
                     self._q.put(None)
+                    self._stop_asked.set()
             await asyncio.to_thread(thread.join)
 
     def _hand(self, item: tuple[str, Any]) -> None:
@@ -2270,7 +2271,7 @@ class CaptureWriter:
         if stopping:
             self._leave_on_disk()
             return
-        time.sleep(self.retry_sec)
+        self._stop_asked.wait(self.retry_sec)  # the stop, taken from the queue next, ends it
 
     def _admit(self, items: list[Item]) -> None:
         """Hold `items`, in order.

@@ -6,7 +6,6 @@ import json
 import logging
 import sqlite3
 import threading
-import time
 from collections.abc import AsyncGenerator, Callable, Collection, Iterable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -298,11 +297,12 @@ def _bar_writer() -> None:
 class Services:
     """The program's services beside its pages (start_services and stop_services own them).
 
-    The bar writer's thread, and whether the levels loop runs (its rounds read this).
+    The bar writer's thread, and the running levels loop's stop: its own for each start, so a
+    stopped loop never takes a later start for its own; None while no loop runs.
     """
 
     bar_writer: threading.Thread | None = None
-    levels_running: bool = False
+    levels_stop: threading.Event | None = None
 
 
 #: the program's one Services
@@ -1461,18 +1461,19 @@ def _status_line(now: float) -> str:
 WAITING_LOG_EVERY_SEC = 5.0
 
 
-def _wait_for(what: str, ready: Callable[[], bool]) -> None:
-    """Wait until `ready()` (or the loop stops), logging what for and for how long.
+def _wait_for(what: str, ready: Callable[[], bool], stop: threading.Event) -> None:
+    """Wait until `ready()` or `stop`, logging what for and for how long.
 
+    `ready()` is read every half second (no event announces it); the stop ends the wait at once.
     Then log how long it took once ready.
     """
     started = time_et.elapsed()
     next_log = started
-    while SERVICES.levels_running and not ready():
+    while not stop.is_set() and not ready():
         if time_et.elapsed() >= next_log:
             log.info("waiting for %s (%.0f s so far)", what, time_et.elapsed() - started)
             next_log += WAITING_LOG_EVERY_SEC
-        time.sleep(0.5)
+        stop.wait(0.5)
     if ready():
         log.info("done waiting for %s after %.1f s", what, time_et.elapsed() - started)
 
@@ -1492,8 +1493,8 @@ def refresh_not_live_pages(now: float) -> None:
             _levels_changed(tk)
 
 
-def _terrain_loop() -> None:
-    """Run the levels loop: the watchlist's stored levels, then the status every STATUS_EVERY_SEC.
+def _terrain_loop(stop: threading.Event) -> None:
+    """Run the levels loop until `stop`: the stored levels, then the status every STATUS_EVERY_SEC.
 
     The stored levels come once the daemon has said what the watchlist is (queued behind the
     delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged,
@@ -1505,6 +1506,7 @@ def _terrain_loop() -> None:
     _wait_for(
         "the capture daemon's heartbeat (it says what the watchlist is)",
         lambda: lmp.watchlist() is not None,
+        stop,
     )
     watchlist = lmp.watchlist()
     if watchlist is None:  # the stop came first: the daemon never said what the watchlist is
@@ -1521,8 +1523,7 @@ def _terrain_loop() -> None:
         session_label(started),
     )
     next_status = time_et.elapsed() + STATUS_EVERY_SEC
-    while SERVICES.levels_running:
-        time.sleep(1.0)
+    while not stop.wait(1.0):
         try:
             if time_et.elapsed() >= next_status:
                 next_status = time_et.elapsed() + STATUS_EVERY_SEC
@@ -1573,11 +1574,11 @@ def _load_stored_levels(watchlist: list[str]) -> int:
 
 
 def start_terrain_loop() -> None:
-    """Start the levels thread (start_services)."""
-    if SERVICES.levels_running:
+    """Start the levels thread (start_services), with its own stop."""
+    if SERVICES.levels_stop is not None:
         return
-    SERVICES.levels_running = True
-    threading.Thread(target=_terrain_loop, name="terrain-loop", daemon=True).start()
+    SERVICES.levels_stop = stop = threading.Event()
+    threading.Thread(target=_terrain_loop, args=(stop,), name="terrain-loop", daemon=True).start()
 
 
 def stop_terrain_loop() -> None:
@@ -1585,9 +1586,12 @@ def stop_terrain_loop() -> None:
 
     The program is stopping: what waits would be priced for pages that are closing, and the
     program's exit waits for the pricing thread, so only the pricing already running finishes.
-    The chains stay stored and are priced at the next start (_load_stored_levels).
+    The chains stay stored and are priced at the next start (_load_stored_levels). The loop ends
+    at once, in whatever wait it is.
     """
-    SERVICES.levels_running = False
+    stop, SERVICES.levels_stop = SERVICES.levels_stop, None
+    if stop is not None:  # None: no loop was started
+        stop.set()
     with _reprice_lock:  # a timer that fires after this queues nothing (_reprice_due)
         for timer in _reprice_timers.values():
             timer.cancel()
