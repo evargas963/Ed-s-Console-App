@@ -1,9 +1,10 @@
 // The console's watchlist routes (server.py post_watchlist, delete_watchlist) and the beat that
 // carries the list to the page, stood in for: the capture daemon keeps the one list, each add or
-// removal is answered with its record ({ok, op, ticker, tickers, ts, status, answer, text}: the
-// sentence capture.WATCHLIST_TEXT makes of it), and the
-// program's socket (/ws, live_ui.LiveUiServer.beat_loop) sends the daemon's status, its `ts` and
-// `watchlist`, every second as a `feed` frame; both are stamped on one clock. STAND-INS: Schwab quotes every ticker added except
+// removal is answered with its record ({ok, op, ticker, status, answer, text}: the sentence
+// capture.WATCHLIST_TEXT makes of it), and the program's socket (/ws,
+// live_ui.LiveUiServer.beat_loop) sends the daemon's status, its `ts` and `watchlist`, every
+// second as a `feed` frame, and at once when an add or a removal changes the list
+// (live_ui.watchlist_changed): the beat is the list's one source. STAND-INS: Schwab quotes every ticker added except
 // one in `invalid`, which is answered as Schwab answered ZQZQZ on 2026-10-07
 // (tests/fixtures/real_schwab_quotes_watchlist_check_2026_10_07.json: {"errors": {"invalidSymbols": [T]}});
 // the beat carries the watchlist alone and no rows, so a test's price silence stays its own, and
@@ -57,13 +58,10 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
   }
   await page.route("**/api/watchlist**", (route) => {
     const req = route.request();
-    // stamped as the daemon's record is, on the clock its beats are stamped by
     const answer = (body) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(Object.assign({ ts: Date.now() / 1000 }, body)),
-      });
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    // the beat a change of the list sends at once, as the program's
+    const changed = () => beatNow(page);
     if (req.method() === "POST") {
       const t = String(req.postDataJSON().ticker).toUpperCase();
       if (bad.has(t)) {
@@ -71,7 +69,6 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
           ok: false,
           op: "invalid",
           ticker: t,
-          tickers: list.slice(),
           status: 200,
           answer: { errors: { invalidSymbols: [t] } },
           text:
@@ -87,18 +84,17 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
           ok: false,
           op: "already on the list",
           ticker: t,
-          tickers: list.slice(),
           status: null,
           answer: null,
           text: t + " is already on the watchlist",
         });
       }
       list.push(t);
+      changed();
       return answer({
         ok: true,
         op: "added",
         ticker: t,
-        tickers: list.slice(),
         status: 200,
         answer: {},
         text: t + " is added to the watchlist",
@@ -114,11 +110,11 @@ async function routeWatchlist(page, tickers = [], invalid = []) {
     }
     const t = decodeURIComponent(req.url().split("/api/watchlist/")[1]).toUpperCase();
     list.splice(list.indexOf(t), 1);
+    changed();
     return answer({
       ok: true,
       op: "removed",
       ticker: t,
-      tickers: list.slice(),
       status: null,
       answer: null,
       text: t + " is removed from the watchlist",

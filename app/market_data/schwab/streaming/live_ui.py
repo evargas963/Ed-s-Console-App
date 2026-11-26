@@ -223,6 +223,9 @@ class LiveUiServer:
         #: last written on (beat_loop; None before the first beat)
         self.news_at = 0
         self.news_day: str | None = None
+        #: set by a change the pages are sent at once, not a beat later: the next beat goes now
+        #: (watchlist_changed)
+        self.beat_early = asyncio.Event()
         stats.update(clients=0, rows_sent=0, beat_send_failures=0, page_refused=0)
 
     # -- plane side -------------------------------------------------------------------
@@ -467,7 +470,10 @@ class LiveUiServer:
                     log.warning(
                         "live ui beat to one browser: %s: %s", type(e).__name__, e, exc_info=True
                     )
-            await asyncio.sleep(HEARTBEAT_SEC)
+            early = asyncio.ensure_future(self.beat_early.wait())
+            await asyncio.wait({early}, timeout=HEARTBEAT_SEC)
+            early.cancel()
+            self.beat_early.clear()
 
 
 def changed(state: State, ticker: str, *kinds: str) -> None:
@@ -487,6 +493,18 @@ def changed(state: State, ticker: str, *kinds: str) -> None:
         prices.mark_all(ticker, kinds)
     else:
         prices.loop.call_soon_threadsafe(prices.mark_all, ticker, kinds)
+
+
+def watchlist_changed(state: State) -> None:
+    """Send every page its beat at once, while the program serves the pages: the list changed.
+
+    The beat carries the daemon's watchlist (lmp.DaemonStatus), the page's one source of it.
+    Called on the program's loop, where the daemon acts on an add or a removal
+    (capture.Daemon.watchlist_request).
+    """
+    prices = state.prices
+    if prices is not None:
+        prices.beat_early.set()
 
 
 def news_changed(state: State) -> None:

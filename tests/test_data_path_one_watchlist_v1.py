@@ -424,7 +424,9 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
     TSLA added is checked with one
     /quotes request (Schwab quotes it), added, asked for on every equity service and by the
     chain sweep, and stored; ZQZQZ (Schwab names it in errors.invalidSymbols) is not added; TSLA
-    removed is asked for no more. The stored list is the daemon's after a restart.
+    removed is asked for no more. The stored list is the daemon's after a restart. Each change of
+    the list sends the pages their beat at once, the list's one source; the answers say what
+    happened, and carry no list.
     """
     schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     db = tmp_path / "stream_capture.db"
@@ -452,14 +454,19 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         ofs.bind_daemon(daemon)  # the console in the daemon's program (capture.serve_console)
         assert ofs.start_order_flow_stream()
         records = bus.subscribe("watchlist", policy=LOG)
+        early = served.server.beat_early  # the pages' beat sent now, not a beat later
         try:
             beats = [daemon.status(time_et.now())]  # a beat built before the add
             added = json.loads((await server.post_watchlist("tsla")).body)
+            beat_now = [early.is_set()]
+            early.clear()
             await until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY", "TSLA"})
             swept_after_add = list(daemon.chains.watchlist)
             beats.append(daemon.status(time_et.now()))
             invalid = json.loads((await server.post_watchlist("ZQZQZ")).body)
+            beat_now.append(early.is_set())
             removed = json.loads((await server.delete_watchlist("TSLA")).body)
+            beat_now.append(early.is_set())
             beats.append(daemon.status(time_et.now()))
             await until(lambda: daemon.connection.held["NASDAQ_BOOK"] == {"SPY"})
         finally:
@@ -468,25 +475,23 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
             stop.set()
             await asyncio.gather(*tasks)
         sent = [records.queue.get_nowait()[1] for _ in range(records.queue.qsize())]
-        return added, invalid, removed, swept_after_add, beats, sent
+        return added, invalid, removed, swept_after_add, beats, sent, beat_now
 
-    try:
-        added, invalid, removed, swept_after_add, beats, sent = asyncio.run(go())
-    finally:
-        schwab.close()
+    with pages() as served:
+        try:
+            added, invalid, removed, swept_after_add, beats, sent, beat_now = asyncio.run(go())
+        finally:
+            schwab.close()
     assert swept_after_add == ["SPY", "TSLA"], "the chain sweep fetches an added ticker"
-    # the page's next beat carries each change (live_ui beat: the daemon's status)
+    # the page's beat carries each change (live_ui beat: the daemon's status), sent at once by
+    # the add and the removal, and not by the add Schwab refused, which changed nothing
     assert [b["watchlist"] for b in beats] == [["SPY"], ["SPY", "TSLA"], ["SPY"]]
-    # each answer is stamped as its record was, on the clock each beat is stamped by: a beat built
-    # before the add is older than the add's answer, one built after it is not
+    assert beat_now == [True, False, True]
     assert [r["op"] for r in sent] == ["added", "invalid", "removed"]
-    assert beats[0]["ts"] < added["ts"] <= beats[1]["ts"]
     assert added == {
         "ok": True,
         "op": "added",
         "ticker": "TSLA",
-        "tickers": ["SPY", "TSLA"],
-        "ts": sent[0]["ts_recv"],
         "status": 200,
         "answer": CHECKS["TSLA"]["body"],
         "text": "TSLA is added to the watchlist",
@@ -495,8 +500,6 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "ok": False,
         "op": "invalid",
         "ticker": "ZQZQZ",
-        "tickers": ["SPY", "TSLA"],
-        "ts": sent[1]["ts_recv"],
         "status": 200,
         "answer": {"errors": {"invalidSymbols": ["ZQZQZ"]}},
         "text": 'ZQZQZ is not added: Schwab does not quote it ({"errors": {"invalidSymbols": '
@@ -506,8 +509,6 @@ def test_an_added_ticker_is_checked_once_asked_for_everywhere_and_a_removed_one_
         "ok": True,
         "op": "removed",
         "ticker": "TSLA",
-        "tickers": ["SPY"],
-        "ts": sent[2]["ts_recv"],
         "status": None,
         "answer": None,
         "text": "TSLA is removed from the watchlist",

@@ -726,13 +726,11 @@
   // ================= watchlist: the one list, kept by the capture daemon =================
   // The page holds the list as the program's socket last carried it: every beat's `feed` is the
   // daemon's status, its `watchlist` the list (null until the first beat carries one: unknown, not
-  // empty). An add or a removal is the daemon's (POST / DELETE /api/watchlist), and its answer
-  // carries the new list. Each list carries its time on the program's one clock (a beat's `ts`, an
-  // answer's `ts`): a list stamped before the one shown is older and is not drawn (a beat built
-  // before an add can arrive after the add's answer).
+  // empty). An add or a removal is the daemon's (POST / DELETE /api/watchlist): its answer says
+  // what happened, and the change sends the pages their beat at once, so the beat is the list's
+  // one source.
   var _wl = null,
-    _wlShown = null,
-    _wlTs = null;
+    _wlShown = null;
   function loadWL() {
     return _wl ? _wl.slice() : [];
   }
@@ -745,11 +743,8 @@
       });
     });
   }
-  // a list carried to the page at time `ts`: an older one is not taken, and one is drawn only
-  // when it is not the one already drawn
-  function setWL(list, ts) {
-    if (_wlTs !== null && ts < _wlTs) return;
-    _wlTs = ts;
+  // the list a beat carries, drawn only when it is not the one already drawn
+  function setWL(list) {
     var shown = JSON.stringify(list);
     if (shown === _wlShown) return;
     _wlShown = shown;
@@ -761,12 +756,11 @@
   // message line is the answer to the operator's add or removal alone)
   function ingestWatchlist(feed) {
     document.getElementById("wlFeed").textContent = feed ? "" : PAGE_WORDS.daemon_silent;
-    if (feed) setWL(feed.watchlist, feed.ts);
+    if (feed) setWL(feed.watchlist);
   }
-  // the daemon's answer to an add or a removal: the new list, and the served sentence of what
-  // happened
+  // the daemon's answer to an add or a removal: the served sentence of what happened (the list
+  // comes in the beat the change sends at once)
   function wlAnswer(j) {
-    if (j.tickers) setWL(j.tickers, j.ts);
     wlNotify(j.text);
     return j.ok;
   }
