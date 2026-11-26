@@ -25,7 +25,6 @@ from calc.l1_trade_observation import (
 from numeric_contract import (
     count_text,
     fixed_text,
-    float_finite_or_none,
     percent_text,
     price_text,
     schwab_count,
@@ -432,7 +431,7 @@ def compute_book_microstructure(data: FlowInput, *, now_ts: float) -> BookMicros
     microprice = _microprice(bid, ask, bid_size, ask_size)
     spread_pts = None if bid is None or ask is None else ask - bid
     mark = cb.mark
-    exch_ts = float_finite_or_none(data.exchange_quote_ts)
+    exch_ts = data.exchange_quote_ts
     age = book_age_sec(cb.book_time_ms, now)
     return {
         "status": "ok" if cb.has_book else "no_book",

@@ -48,9 +48,9 @@ def _at(strike: float) -> dict[str, dict]:
 def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
     """The exact law stated four lines above the defect, applied to the value as well.
 
-    `terrain_engine` already refuses to draw a NaN STRIKE ("a NaN strike must never become a
-    rendered bar"). An unknown GAMMA was drawn at 0.0 anyway -- visually identical to a strike
-    measured at flat gamma, on the surface used to read where dealers are short.
+    A strike is Schwab's strikePrice as read once (numeric_contract.schwab_number refuses NaN). An
+    unknown GAMMA was drawn at 0.0 -- visually identical to a strike measured at flat gamma, on the
+    surface used to read where dealers are short.
     """
     rows = TE._per_strike_rows({500.0: {}})
     assert rows == [], f"drew a bar for a strike with no gamma: {rows}"
