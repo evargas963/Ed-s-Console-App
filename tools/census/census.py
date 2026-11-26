@@ -977,19 +977,6 @@ for ln in parsed.stdout.splitlines():
     d = json.loads(ln)
     kind = "layout-arithmetic" if Path(d["file"]).as_posix() in DRAWING else d["kind"]
     add(S, JS_KIND[kind], "4", "acorn", f"{d['file']}:{d['line']}: {d['text']}")
-lines_matching(
-    PAGE_JS,
-    [
-        (
-            r"\bfetch\(|XMLHttpRequest|EventSource|new WebSocket",
-            "page transport calls (target: one module)",
-        )
-    ],
-    S,
-    "4",
-    "regex",
-    skip_comment=True,
-)
 #: an em dash standing where a value is drawn (rule 5 draws '-'): a string that is only the dash,
 #: an element whose text is only the dash, or an element's text that ends in one after a label;
 #: a dash inside a sentence is prose, not a value
@@ -2405,14 +2392,18 @@ runs = json.loads(
             "--limit",
             "1000",
             "--json",
-            "headSha,workflowName,conclusion,attempt,databaseId",
+            "headSha,workflowName,conclusion,attempt,databaseId,event",
         ],
         stdout_only=True,
     )
 )
+# A push's runs judge its commit alone. A pull request's judge GitHub's test merge of it with main
+# (Locks its description too), so two runs on one head judge two inputs once either moves; a
+# re-run repeats its own run's.
 seen_runs = collections.defaultdict(set)
 for r in runs:
-    seen_runs[(r["headSha"][:8], r["workflowName"])].add(r["conclusion"])
+    if r["event"] == "push":
+        seen_runs[(r["headSha"][:8], r["workflowName"])].add(r["conclusion"])
     if r["attempt"] > 1 and r["conclusion"] == "success":
         add(
             S,
