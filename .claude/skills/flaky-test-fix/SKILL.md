@@ -1,6 +1,9 @@
 ---
 name: flaky-test-fix
-description: Use when a test both passes and fails on the same commit. Finds every such test under load, then takes one at a time, each its own small pull request: forces its failure on demand, fixes it at its cause, and reports the four checks with their output.
+description:
+  Use when a test both passes and fails on the same commit. Finds every such test under load, then
+  for each one forces its failure on demand, fixes it at its cause, and reports the four checks with
+  their output; the fixes go in one pull request.
 ---
 
 # Flaky test fix
@@ -13,15 +16,17 @@ description: Use when a test both passes and fails on the same commit. Finds eve
    and
    `.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider -m alone --junitxml=<run>-alone.xml`;
    10 runs, with 4 CPU-bound processes beside each
-   (`.venv/Scripts/python.exe -m tools.cpu_load 4 <seconds>`). Show the per-test pass/fail counts,
-   and beside each test the operator's ruling on it in `ACTIVE_PROGRAM.md`, if one is recorded.
-2. Show Ed the list, then take one test at a time (CLAUDE.md item 3, read as one small pull request
-   at a time): a short plan for it, then Ed's yes (none for a test found during SIMPLIFY:
-   `ACTIVE_PROGRAM.md` SIMPLIFY, operator 2026-10-27). For that test, report four things, each with
-   its command and output:
+   (`.venv/Scripts/python.exe -m tools.cpu_load 4 <seconds>`), ended after each run with its whole
+   tree (`taskkill /PID <pid> /T /F`: on Windows the venv's `python.exe` starts the interpreter as a
+   child, so killing it leaves the interpreter and its four burners running into the next run). Show
+   the per-test pass/fail counts, and beside each test the operator's ruling on it in
+   `ACTIVE_PROGRAM.md`, if one is recorded.
+2. Show Ed the list, then take each test in turn with a short plan for it; changing a test needs no
+   approval (CLAUDE.md item 4). For each test, report four things, each with its command and output:
    1. The failure forced on demand before the fix: a command anyone can re-run that makes the timing
       happen every time (a pytest plugin passed with `-p`, a held port, Playwright's `page.clock`).
    2. The cause, as a sequence of events, down to the line of code or data (AGENTS.md First gate 4).
    3. The same forced command passing after the fix, and the test passing in many runs under load.
    4. What changed, judged by the flaky-test rule in `.claude/rules/tests.md`.
-3. The fix is its own pull request; run the `before-done` skill on it.
+3. The fixes are one pull request, the group of one search's findings (AGENTS.md, Authority: a pull
+   request is opened for a group); run the `before-done` skill on it.

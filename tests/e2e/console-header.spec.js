@@ -129,6 +129,7 @@ test('row 2 draws the market context from its served rows, the volatility index 
   page,
 }) => {
   const errs = pageErrors(page);
+  await holdClock(page); // no timer of the page runs, so the push never reads silent on the way
   const sock = await program(page);
   await page.addInitScript(() => {
     localStorage.setItem("ed_ws", "trade-desk");

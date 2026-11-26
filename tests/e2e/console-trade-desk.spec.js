@@ -1324,8 +1324,6 @@ test.describe("Trade Desk renders served values", () => {
   test("Price chart:a pinned bar shows its served change (the chart kept the bar without it)", async ({
     page,
   }) => {
-    // 2026-09-28 (ONE-16): the chart copied each served bar without chg/chg_pct, so the pinned
-    // readout's "Bar change" always read "—" while the legend recomputed close - open.
     const errs = watchErrors(page);
     await intercept(page);
     // induced: SPY's last 60 real 5-minute bars, each with its served change set to 0.25, so a
