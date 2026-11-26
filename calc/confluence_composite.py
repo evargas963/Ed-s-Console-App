@@ -253,7 +253,7 @@ NOT_MEASURED = "not measured on the matrix yet"
 
 
 def _vote_sign(x: float | None) -> int | None:
-    """The sign a reading votes by: None when it is not known or 0, which cast no vote."""
+    """Return the sign a reading votes by: None when it is not known or 0, which cast no vote."""
     return None if x is None or x == 0 else _sign(x)
 
 
@@ -269,7 +269,7 @@ def _why_none(*readings: tuple[str, float | None]) -> str:
 
 
 def _voted_text(family: str, vote: int, reading: float | None) -> str:
-    """What a family that voted read, in words: its reading and its vote."""
+    """Return what a family that voted read, in words: its reading and its vote."""
     words = VOTE_WORDS[vote]
     if family == "positioning":
         return f"{'Negative' if vote == 1 else 'Positive'} gamma at the price: {words}"
