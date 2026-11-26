@@ -61,7 +61,6 @@ from numeric_contract import (
     count_text,
     dollars_text,
     fixed_text,
-    float_finite_or_none,
     price_text,
 )
 from option_contract import OptionContract
@@ -469,12 +468,7 @@ def _per_strike_rows(exposures: dict[float, Bucket]) -> list[StrikeRow]:
         return []
     rows: list[StrikeRow] = []
     for k, b in exposures.items():
-        sk = float_finite_or_none(k)
-        if sk is None:  # a NaN strike must never become a rendered bar
-            continue
-        gf = float_finite_or_none(net_gex_dollars_at_strike(b))
-        vol = strike_total_volume(b)
-        rows.append(StrikeRow(sk, gf, vol))
+        rows.append(StrikeRow(k, net_gex_dollars_at_strike(b), strike_total_volume(b)))
     rows.sort(key=lambda r: r.strike)
     return rows
 
@@ -869,13 +863,10 @@ def _per_strike_measure_rows(exposures: dict[float, Bucket]) -> MeasureRows:
     vanna: list[StrikeValue] = []
     dollarized = bool(exposures) and exposures_have_dollar_gex(exposures)
     for k, b in exposures.items():
-        sk = float_finite_or_none(k)
-        if sk is None:
-            continue
         if dollarized:
-            dex.append(StrikeValue(sk, float_finite_or_none(bucket_metric(b, "net_dex_dollars"))))
-        oi.append(StrikeValue(sk, strike_total_oi(b)))
-        vanna.append(StrikeValue(sk, bucket_metric(b, "net_vanna")))
+            dex.append(StrikeValue(k, bucket_metric(b, "net_dex_dollars")))
+        oi.append(StrikeValue(k, strike_total_oi(b)))
+        vanna.append(StrikeValue(k, bucket_metric(b, "net_vanna")))
     for rows in (dex, oi, vanna):
         rows.sort(key=lambda r: r.strike)
     return {"dex": dex, "oi": oi, "vanna": vanna}
