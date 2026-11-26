@@ -108,6 +108,138 @@
       "category": "vulture: attribute set",
       "pattern": "'seconds_to_expiry'|'is_expiring_soon'",
       "reason": "set on the token report, read by nothing"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^app/market_data/schwab/streaming/capture\\.py:\\d+: a platform special case: INTERRUPTS = \\(signal\\.SIGINT, signal\\.SIGBREAK\\) if sys\\.platform == \"win32\" else \\(signal\\.SIGINT,\\)$",
+      "reason": "signal.SIGBREAK exists only on Windows (docs/SOURCES.md python-windows-signals)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^app/market_data/schwab/streaming/program_lock\\.py:\\d+: a platform special case: if sys\\.platform == \"win32\":$",
+      "reason": "the stop is asked by a named event on Windows, where os.kill with any signal but the console events kills the process with no clean stop (python-windows-signals); SIGTERM elsewhere"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^feed/schwab_client\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(0\\.05 \\* attempt\\)$",
+      "reason": "the token file's replace is tried again briefly when another process holds the file, as pip retries os.replace (pip-replace-retry)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^(feed/schwab_client\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(0\\.1\\)|launch\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(min\\(0\\.25, max\\(deadline - time_et\\.elapsed\\(\\), 0\\)\\)\\))$",
+      "reason": "waits for another process (the sign-in callback's port; the program's ports and pages): no event crosses processes, so a poll with a deadline (fowler-non-determinism)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^stream_spine\\.py:\\d+: a type guessed at run time \\(`hasattr`\\): return not hasattr\\(error, \"sqlite_errorcode\"\\) ",
+      "reason": "an error Python's sqlite3 raises itself carries no sqlite_errorcode (a closed connection's ProgrammingError: none; SQLite's own refusal: its code), so the attribute says whether SQLite refused"
+    },
+    {
+      "verdict": "issue",
+      "category": "workarounds: Python",
+      "pattern": "^(server\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\((0\\.5|1\\.0)\\)|stream_spine\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(self\\.retry_sec\\))$",
+      "reason": "a wait inside the program that sleeps past the stop: one the stop sets would end it at once"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/(test_console_startup_waits_v1\\.py:\\d+: a platform special case: WINDOWS = sys\\.platform == \"win32\"|test_data_path_startup_v1\\.py:\\d+: a platform special case: sys\\.platform != \"win32\", reason=\"the daemon's (window is a Windows console window|batch and its window are Windows')\"|test_launch_v1\\.py:\\d+: a platform special case: sys\\.platform != \"win32\", reason=\"console windows and their Ctrl events are Windows'\")$",
+      "reason": "the program's console window and its Ctrl-Break are Windows' (python-windows-signals)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/test_data_path_(capture_whole|writer_failures)_v1\\.py:\\d+: a platform special case: if sys\\.platform == \"win32\":$",
+      "reason": "the disk's refusal is induced per platform: on Windows os.chmod sets only the read-only flag, so a held name or an open handle stands in (python-os-chmod-windows)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/test_data_path_startup_v1\\.py:\\d+: a platform special case: if sys\\.platform != \"win32\":$",
+      "reason": "a process that waits is started with the platform's own shell: cmd on Windows, sh elsewhere"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/test_operating_process_lock_v1\\.py:\\d+: a platform special case: if sys\\.platform != \"win32\":$",
+      "reason": "a NUL byte in a path: the guard raises where Linux cannot place it and refuses where Windows does, each run on its own CI runner"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^(tests/test_operating_process_lock_v1\\.py:\\d+: a platform special case: devices = \\(\"echo x > NUL\", \"echo x > nul\"\\) if os\\.name == \"nt\" else \\(\\)|tools/pretooluse_guard\\.py:\\d+: a platform special case: device = os\\.name == \"nt\" and )",
+      "reason": "NUL and CON are devices only on Windows, where os.path.isreserved names them (python-os-path-isreserved)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/test_operator_yes_guard_v1\\.py:\\d+: a platform special case: unreadable = 4 if os\\.name == \"nt\" else 1",
+      "reason": "a process whose command line no user can read: Windows' System process (4), init (1) elsewhere"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/test_runtime_governance_decoupling_v1\\.py:\\d+: an import worked around: except ImportError:$",
+      "reason": "the test's own arming: its import hook must refuse tools for the test to prove the server starts without them"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/(test_data_path_pricehistory_v1\\.py:\\d+: a type guessed at run time \\(`hasattr`\\): assert not hasattr\\(atr, \"daily_reason\"\\)|test_live_market_plane_streaming\\.py:\\d+: a type guessed at run time \\(`hasattr`\\): assert not hasattr\\(lmp, \"record_quote\"\\), |test_schwab_client_import_boundary\\.py:\\d+: a type guessed at run time \\(`hasattr`\\): assert not hasattr\\(schwab_client, \"_client\"\\))",
+      "reason": "a test asserting a name is absent: no sentence on an absent ATR, the plane's one writer, the daemon's one client (rule 3)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tests/test_schwab_client_import_boundary\\.py:\\d+: a type guessed at run time \\(`hasattr`\\): assert hasattr\\(server, \"app\"\\)$",
+      "reason": "asserts the server module a test imports holds its app"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tools/bootstrap_worktree_venv\\.py:\\d+: a platform special case: if os\\.name == \"nt\":$",
+      "reason": "a virtual environment's interpreter is in Scripts on Windows, bin elsewhere (python-venv-layout)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tools/census/census\\.py:\\d+: named a workaround by its author: r\"\\(\\?i\\)",
+      "reason": "the census's own list of the words it looks for, not a comment"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tools/schwab_field_inventory\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(0\\.55\\)$",
+      "reason": "paces the tool's requests under Schwab's 120 a minute (schwab-support-2026-10-06)"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
+      "pattern": "^tools/shell_parse\\.py:\\d+: a platform special case: _WINDOWS = os\\.name == \"nt\"$",
+      "reason": "the Bash tool here is Git Bash, whose /c/ drive spellings are read where Windows runs"
+    },
+    {
+      "verdict": "ok",
+      "category": "a ticker typed into code",
+      "pattern": "^app/market_data/schwab/streaming/live_push\\.py:\\d+: ('\\$SPX', '\\$NDX', '\\$VIX'|'\\$VIX')$",
+      "reason": "the market context the operator chose for the header (#1262, #1266): what the screen shows is his"
+    },
+    {
+      "verdict": "ok",
+      "category": "a ticker typed into code",
+      "pattern": "^instrument_identity\\.py:\\d+: 'SPX', 'DJI', 'COMPX', 'VIX', 'VXN', 'RVX', 'NDX', 'RUT', 'DJX', 'XSP', 'OEX'$",
+      "reason": "index roots typed bare, mapped to Schwab's own $-name, each with Schwab's answer (tests/fixtures/real_schwab_index_identity_2026_09_28.json)"
+    },
+    {
+      "verdict": "ok",
+      "category": "a ticker typed into code",
+      "pattern": "^time_et\\.py:\\d+: ('IWM'|'NDX', 'QQQ', 'SPY')$",
+      "reason": "underlyings whose options trade to 4:15 p.m. ET, as the exchanges list them (cboe-rule-5-1, nasdaq-options-hours)"
     }
   ]
 }
