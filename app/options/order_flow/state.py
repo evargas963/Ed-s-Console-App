@@ -31,7 +31,7 @@ from calc.l1_trade_observation import (
 from calc.option_window import TOTALS, LookBack, step_totals
 from calc.order_flow import Book
 from instrument_identity import ticker_storage_key
-from option_contract import NO_TOP, Streamed, StreamedTop, quote_values
+from option_contract import NO_TOP, QuoteValues, Streamed, StreamedTop, quote_values
 from stream_spine import (
     FIELD_DELTA,
     NOT_STREAMED,
@@ -325,7 +325,7 @@ def bind_bus(current: dict[str, tuple[str, Any]]) -> None:
 #: each option contract's newest /quotes answer: symbol -> (the time it was received, its values
 #: as option_contract.quote_values reads them). Newest by the answer's receive time: Schwab's
 #: /quotes answer carries no time of its own.
-_REST_QUOTES: dict[str, tuple[float, dict[str, Any]]] = {}
+_REST_QUOTES: dict[str, tuple[float, QuoteValues]] = {}
 _rest_lock = threading.Lock()
 
 
@@ -346,7 +346,7 @@ def push_rest_quotes(answer: dict[str, Any], received: float) -> None:
         )
 
 
-def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, dict[str, Any]]]:
+def rest_quotes(symbols: Iterable[str], since: float) -> dict[str, tuple[float, QuoteValues]]:
     """Return each of `symbols`' newest /quotes answer received at or after `since`.
 
     Each as (its receive time, its values). An answer received before `since` is left out: the

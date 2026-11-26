@@ -794,7 +794,7 @@ class ChainSweep:
             ct["totalVolume"] = None  # the stream's or the quote's
             entry = self.streamed(ct["symbol"])
             sent = streamed_record(entry)
-            greeks = streamed_greek_set(sent.greeks.values())
+            greeks = streamed_greek_set(sent.greeks)
             if entry is not None and greeks is not None:
                 ct.update(greeks)
                 ct["greeksTime"] = {g: entry[1]["field_ts"][g.upper()][0] for g in GREEK_FIELDS}

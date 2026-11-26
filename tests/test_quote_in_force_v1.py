@@ -113,12 +113,12 @@ def test_a_record_with_no_quote_time_holds_no_quote():
     first = _PUT[0]["item"]
     assert all(f in first for f in _QUOTE) and first["QUOTE_TIME_MILLIS"] > 0
     top = streamed_top(first)
-    assert [top[k] for k in ("bid", "ask", "bid_size", "ask_size", "quote_time_ms")] == [
+    assert (top.bid, top.ask, top.bid_size, top.ask_size, top.quote_time_ms) == tuple(
         first[f] for f in _QUOTE
-    ]
+    )
     none = streamed_top({**first, "QUOTE_TIME_MILLIS": 0})
-    assert [none[k] for k in ("bid", "ask", "bid_size", "ask_size", "quote_time_ms")] == [None] * 5
-    assert none["mark"] == top["mark"]
+    assert (none.bid, none.ask, none.bid_size, none.ask_size, none.quote_time_ms) == (None,) * 5
+    assert none.mark == top.mark
 
 
 # ── the bus keeps the quote the newest quote replaced ────────────────────────────────────────
