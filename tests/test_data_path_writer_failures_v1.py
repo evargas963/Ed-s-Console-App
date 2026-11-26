@@ -1579,6 +1579,37 @@ def test_spill_files_left_beside_the_database_are_written_back_at_start(tmp_path
     assert (after["spill"], after["left_on_disk"], after["lost"]) == (None, [], 0)
 
 
+def test_a_stop_while_the_database_refuses_writes_ends_the_writer_without_waiting_to_retry(
+    tmp_path,
+):
+    """INDUCED CONDITION: another connection holds the write lock through the stop.
+
+    The writer tries a refused write again after retry_sec, here 60 s (an input). The stop, made
+    while it reads blocked, ends it with no wait for that try: every captured quote is left on
+    disk beside the database, for the next start.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=60.0)
+    holder = _locked(db)
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, _EVENTS)
+        await until(lambda: writer.status()["state"] == "blocked")
+        stop.set()
+        await asyncio.wait_for(task, timeout=10)
+
+    try:
+        asyncio.run(go())
+    finally:
+        holder.close()
+    left = writer.status()["left_on_disk"]
+    assert writer.status()["state"] == "stopped"
+    assert sum(k["messages"] for k in left) == len(_EVENTS)
+    assert all(Path(k["path"]).exists() and Path(k["path"]).parent == db.parent for k in left)
+
+
 def test_the_clean_stop_writes_what_the_daemon_holds_to_spill_files_before_it_ends(tmp_path):
     """The daemon's clean stop (launch.py stop) writes what it holds to spill files.
 

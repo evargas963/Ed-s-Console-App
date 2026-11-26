@@ -503,14 +503,15 @@ def test_a_capture_handed_to_the_writer_after_its_stop_is_refused_and_counted_no
 ):
     """The sweep waiting on it hears it refused; it is never left held.
 
-    INDUCED CONDITIONS: another connection holds the database's write lock and the writer's retry
-    is 2 s (an input), so the Recorder holds MRVL's capture and waits to try again; the stop is
-    asked then, and the window's next capture comes after the stop is queued. The writer ends
-    without it: the held capture is left on disk for the next start, still held, and the next
-    is not recorded.
+    INDUCED CONDITIONS: another connection holds the database's write lock; the writer writes
+    each message as it takes it and waits up to 2 s for the lock on each try (batch_rows 1,
+    timeout_sec 2.0, inputs), so the stop, asked while the Recorder waits on the lock with MRVL's
+    capture, is queued behind that try, and the window's next capture comes after it. The writer
+    ends without it: the held capture is left on disk for the next start, still held, and the
+    next is not recorded.
     """
     db = tmp_path / "ed.db"
-    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=2.0)
+    writer = CaptureWriter(db, batch_rows=1, timeout_sec=2.0)
     release, holder = _hold_write_lock(db)
 
     async def go() -> tuple[str, str, int]:
@@ -518,9 +519,9 @@ def test_a_capture_handed_to_the_writer_after_its_stop_is_refused_and_counted_no
         task = asyncio.create_task(writer.run(MessageBus().subscribe("", policy=LOG), stop=stop))
         await until(lambda: writer.status()["state"] == "recording")
         first = writer.store_capture(_capture())
-        await until(lambda: writer.status()["waiting"] == 1)  # held; its retry waits 2 s
+        await until(lambda: writer.status()["queue_depth"] == 0)  # taken: its try waits on the lock
         stop.set()
-        await until(lambda: writer.status()["queue_depth"] == 1)  # the stop, queued
+        await until(lambda: writer.status()["queue_depth"] == 1)  # the stop, queued behind it
         after = writer.store_capture(_capture(_BEGUN + 60))
         await task
         return first.outcome(), after.outcome(), writer.status()["unrecorded"]

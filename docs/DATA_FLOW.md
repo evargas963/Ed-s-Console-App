@@ -146,8 +146,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   clean stop (exit 5, `capture.EXIT_STOPPED`).
 - Stopped only by `python launch.py stop`, which sets the program's stop request
   (`program_lock.ask_to_stop`, a named event); the program's waiter (`capture.stop_on_request`)
-  stops it, and its writer writes what it holds. Enforced by: `tests/test_program_stop_v1.py`,
-  `tests/test_data_path_startup_v1.py`.
+  stops it, and its writer writes what it holds, with no wait to try a refused write again
+  outlasting the stop (`CaptureWriter._stop_asked`); the levels loop ends in whatever wait it is,
+  each start with a stop of its own (`server.start_terrain_loop`, `server.stop_terrain_loop`).
+  Enforced by: `tests/test_program_stop_v1.py`, `tests/test_data_path_startup_v1.py`,
+  `tests/test_data_path_writer_failures_v1.py`.
 - Its one socket (`capture.open_sockets`, port 8000 or `ED_CONSOLE_PORT`) serves the pages, the five
   `/api` routes and `/ws` (`capture.serve_console`, `server.app`); the port it holds is written to
   its lock (`program_lock.record_ports`).
