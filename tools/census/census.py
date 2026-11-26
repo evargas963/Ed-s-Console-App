@@ -2301,6 +2301,21 @@ for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f 
 by_line("workarounds: ", "; ")
 
 DICT_READ = "dict reads with .get outside the Feed (a dict whose keys nothing guarantees; rule 12)"
+
+
+def field_key(node: ast.Call) -> bool:
+    """Tell whether a `.get` reads a field by its name written in the code (text, or a constant).
+
+    That dict is used as a record whose keys nothing guarantees (PEP 589: a TypedDict's fixed
+    keys). A `.get` by any other key (a strike, a ticker, an id) looks it up in a map, where a key
+    not held is not known.
+    """
+    key = node.args[0]
+    if isinstance(key, ast.Constant):
+        return isinstance(key.value, str)
+    return isinstance(key, ast.Name) and key.id.isupper()
+
+
 add(S, DICT_READ, "12", "ast")
 for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
     #: a route's decorator (`@app.get(path)`) and a queue's `get()` read no dict
@@ -2317,6 +2332,7 @@ for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
             and isinstance(node.func, ast.Attribute)
             and node.args
             and id(node) not in routes
+            and field_key(node)
         ):
             add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}")
 
