@@ -98,9 +98,27 @@ class Feed:
 
 #: the console's one bus reader (Feed)
 FEED = Feed()
+
+
+@dataclass(frozen=True)
+class WatchlistAnswer:
+    """The daemon's answer to one watchlist request (capture.watchlist_message's record).
+
+    What happened to `ticker` (`op`), the request it answers, Schwab's /quotes answer to an add's
+    check with its HTTP status, as sent, and the sentence the screen shows for it.
+    """
+
+    op: str
+    ticker: str
+    request_id: int
+    status: int | None
+    answer: Any
+    text: str
+
+
 #: request id -> the future the daemon's watchlist record for it resolves
 #: (_answer_watchlist_request)
-_watchlist_answers: dict[int, asyncio.Future[dict[str, Any]]] = {}
+_watchlist_answers: dict[int, asyncio.Future[WatchlistAnswer]] = {}
 #: each watchlist request's id, unique in this process (an id, not a time)
 _request_ids = itertools.count(1)
 #: how long a watchlist request waits for the daemon's record (an add waits on Schwab's /quotes
@@ -108,7 +126,7 @@ _request_ids = itertools.count(1)
 WATCHLIST_ANSWER_SEC = 30.0
 
 
-async def watchlist_request(action: str, ticker: str) -> dict[str, Any]:
+async def watchlist_request(action: str, ticker: str) -> WatchlistAnswer:
     """Send an add or a removal ("add" | "remove") of `ticker` to the daemon.
 
     The daemon keeps the watchlist; this returns its record once the daemon has answered
@@ -352,7 +370,16 @@ def _answer_watchlist_request(msg: dict[str, Any]) -> None:
     """Resolve the watchlist request the daemon's record answers, while it still waits."""
     answer = _watchlist_answers.get(msg["request_id"])
     if answer is not None and not answer.done():
-        answer.set_result(msg)
+        answer.set_result(
+            WatchlistAnswer(
+                op=msg["op"],
+                ticker=msg["ticker"],
+                request_id=msg["request_id"],
+                status=msg["status"],
+                answer=msg["answer"],
+                text=msg["text"],
+            )
+        )
 
 
 def _apply_quote(topic: str, msg: dict[str, Any]) -> None:

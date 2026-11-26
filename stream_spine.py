@@ -37,7 +37,11 @@ from typing import IO, TYPE_CHECKING, Any, TypedDict, cast, override
 import time_et
 from calc.l1_trade_observation import PRINT_FIELDS
 from calc.order_flow import Book, Exchanges, Json, Level
-from calibration.complete_chain_capture import ensure_schema, store_capture_message
+from calibration.complete_chain_capture import (
+    CaptureMessage,
+    ensure_schema,
+    store_capture_message,
+)
 from db_authority import resolve_stream_db_path
 from json_blob_codec import decode_text_blob, encode_text_blob
 from numeric_contract import schwab_count, schwab_number, schwab_time_ms
@@ -1858,14 +1862,14 @@ class CaptureWriter:
         with self._lock:
             self._committed([(item, out)])
 
-    def store_capture(self, msg: dict[str, Any]) -> StoredFirst:
+    def store_capture(self, msg: CaptureMessage) -> StoredFirst:
         """Write a chain capture (capture_message); its StoredFirst is told once it is committed.
 
         Another thread: the chain sweep, which waits on it before it tells the console of the
         chain (store first), and keeps one its wait did not see committed until it is told
-        (chain_sweep.ChainSweep.publish_held).
+        (chain_sweep.ChainSweep.publish_held). The writer holds its own copy of the message.
         """
-        return self._stored_first(CAPTURE, msg)
+        return self._stored_first(CAPTURE, dict(msg))
 
     def store_crosses(self, msg: dict[str, Any]) -> StoredFirst:
         """Write a price's level crosses; its StoredFirst is told once they are committed.

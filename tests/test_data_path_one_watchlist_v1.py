@@ -839,15 +839,15 @@ def test_two_requests_the_daemon_answers_in_one_turn_each_get_their_own_answer()
             ofs.bind_daemon(None)
 
     listed, unlisted = asyncio.run(go())
-    assert (listed["op"], listed["ticker"], listed["text"]) == (
+    assert (listed.op, listed.ticker, listed.text) == (
         capture.ON_LIST,
         "SPY",
         "SPY is already on the watchlist",
     )
-    assert (unlisted["op"], unlisted["ticker"], unlisted["text"]) == (
+    assert (unlisted.op, unlisted.ticker, unlisted.text) == (
         capture.NOT_ON_LIST,
         "QQQ",
         "QQQ is not on the watchlist",
     )
-    assert listed["request_id"] != unlisted["request_id"]
+    assert listed.request_id != unlisted.request_id
     assert daemon.watchlist == ["SPY"]

@@ -1783,12 +1783,12 @@ async def _watchlist_change(action: str, ticker: str) -> JSONResponse:
         )
     return JSONResponse(
         {
-            "ok": rec["op"] in ("added", "removed"),
-            "op": rec["op"],
-            "ticker": rec["ticker"],
-            "status": rec["status"],
-            "answer": rec["answer"],
-            "text": rec["text"],
+            "ok": rec.op in ("added", "removed"),
+            "op": rec.op,
+            "ticker": rec.ticker,
+            "status": rec.status,
+            "answer": rec.answer,
+            "text": rec.text,
         }
     )
 
