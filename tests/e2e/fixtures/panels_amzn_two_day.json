@@ -81810,6 +81810,7 @@
         "vah": 273.44,
         "val": 269.83
       },
+      "profile_note": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
       "prior_value_area": {
         "low": 265.77,
         "high": 267.37,
@@ -83284,6 +83285,7 @@
         "vah": 273.44,
         "val": 269.83
       },
+      "profile_note": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
       "prior_value_area": {
         "low": 265.77,
         "high": 267.37,
@@ -84749,6 +84751,7 @@
         "vah": 273.44,
         "val": 269.83
       },
+      "profile_note": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
       "prior_value_area": {
         "low": 265.77,
         "high": 267.37,
@@ -84967,7 +84970,8 @@
         "down": 5
       },
       "markers_off_chart": 0,
-      "markers_off_chart_text": ""
+      "markers_off_chart_text": "",
+      "none_said": null
     },
     "15": {
       "ticker": "AMZN",
@@ -85547,7 +85551,8 @@
         "down": 18
       },
       "markers_off_chart": 0,
-      "markers_off_chart_text": ""
+      "markers_off_chart_text": "",
+      "none_said": null
     }
   },
   "bars": {
@@ -126678,7 +126683,8 @@
       "down": 18
     },
     "markers_off_chart": 1,
-    "markers_off_chart_text": "1 of 2 chart markers not drawn: their crosses are before the chart's first bar, Thu 11/12 08:45 AM CT"
+    "markers_off_chart_text": "1 of 2 chart markers not drawn: their crosses are before the chart's first bar, Thu 11/12 08:45 AM CT",
+    "none_said": null
   },
   "bars_newest_hour": {
     "bars": [

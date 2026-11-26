@@ -47463,6 +47463,7 @@
         "vah": 757.84,
         "val": 756.0
       },
+      "profile_note": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
       "prior_value_area": {
         "low": 758.01,
         "high": 761.62,
@@ -48858,6 +48859,7 @@
         "vah": 757.84,
         "val": 756.0
       },
+      "profile_note": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
       "prior_value_area": {
         "low": 758.01,
         "high": 761.62,
@@ -50245,6 +50247,7 @@
         "vah": 757.84,
         "val": 756.0
       },
+      "profile_note": "Estimated volume by price: each RTH 1-minute bar's volume spread evenly over its range (not trades observed at a price)",
       "prior_value_area": {
         "low": 758.01,
         "high": 761.62,
@@ -50703,7 +50706,8 @@
         "down": 13
       },
       "markers_off_chart": 0,
-      "markers_off_chart_text": ""
+      "markers_off_chart_text": "",
+      "none_said": null
     },
     "15": {
       "ticker": "SPY",
@@ -51688,7 +51692,8 @@
         "down": 32
       },
       "markers_off_chart": 0,
-      "markers_off_chart_text": ""
+      "markers_off_chart_text": "",
+      "none_said": null
     }
   },
   "bars": {
@@ -92900,7 +92905,8 @@
       "down": 32
     },
     "markers_off_chart": 2,
-    "markers_off_chart_text": "2 of 3 chart markers not drawn: their crosses are before the chart's first bar, Thu 11/12 08:30 AM CT"
+    "markers_off_chart_text": "2 of 3 chart markers not drawn: their crosses are before the chart's first bar, Thu 11/12 08:30 AM CT",
+    "none_said": null
   },
   "bars_newest_hour": {
     "bars": [

@@ -187,6 +187,7 @@ class LevelsPanel(LevelsVerdict, SessionFields):
     none_said: str | None
     walls_said: str | None
     vwap_said: str
+    profile_note: str
 
 
 #: what the screen says when no level can be shown nearest the price: none published, or none
@@ -237,6 +238,20 @@ def _placed(level: float, family: str, price: float | None) -> Placement:
         "price_text": price_text(level),
         "reference_line": family in REFERENCE_LINE_FAMILIES,
     }
+
+
+def _profile_note(vp: ProfileFields | None, absent: list[AbsentFamily]) -> str:
+    """Return the chart foot's sentence for the volume profile, whole (AGENTS.md rule 4).
+
+    Its basis, with the RTH bars that sent no volume and are not in it; or, with no profile, why
+    none is drawn (the value area's reason); empty with neither.
+    """
+    if vp is not None:
+        missing = vp["bars_without_volume"]
+        left_out = f" · {missing} of {vp['bars']} RTH bars sent no volume and are not in it"
+        return vp["basis"] + (left_out if missing else "")
+    why = [a["reason"] for a in absent if a["family"] == "value_area"]
+    return f"Volume profile (RTH) not drawn: {why[0]}" if why else ""
 
 
 def _profile(vp: VolumeProfile | None) -> ProfileFields | None:
@@ -440,6 +455,7 @@ def levels_payload(tk: str, tf: str, now: datetime) -> LevelsPanel:
         # the session's volume profile the value area is read from (absent: families_absent
         # names the value_area reason)
         "volume_profile": session["volume_profile"],
+        "profile_note": _profile_note(session["volume_profile"], families_absent),
         # the prior session's value area, the chart's band and the prior-day switch's words
         "prior_value_area": session["prior_value_area"],
         "tf": tf,

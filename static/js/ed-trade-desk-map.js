@@ -142,25 +142,9 @@
     document.querySelectorAll("#tdmFamilies [data-famv]").forEach(function (b) {
       b.textContent = orDash(v[b.getAttribute("data-famv")]); // not received: "-" (rule 5)
     });
-    // the profile's basis, or why there is none (the value area's served reason)
-    var vp = S.levels && S.levels.volume_profile,
-      pn = $("tdmProfNote");
-    var why = (S.levels ? S.levels.families_absent : []).filter(function (a) {
-      return a.family === "value_area";
-    })[0];
-    if (pn)
-      pn.textContent = vp
-        ? vp.basis +
-          (vp.bars_without_volume
-            ? " · " +
-              vp.bars_without_volume +
-              " of " +
-              vp.bars +
-              " RTH bars sent no volume and are not in it"
-            : "")
-        : why
-          ? "Volume profile (RTH) not drawn: " + why.reason
-          : "";
+    // the profile's basis, or why there is none: the levels panel's sentence
+    var pn = $("tdmProfNote");
+    if (pn) pn.textContent = S.levels ? S.levels.profile_note : "";
   }
   function paintTfButtons() {
     if (S.tb) S.tb.setTf(S.tf);
@@ -236,16 +220,14 @@
     S.chart.setVwap([]);
     S.chart.setValueArea(null, null);
     $("tdmChartEmpty").hidden = false;
-    $("tdmChartEmpty").textContent =
-      "Loading " +
-      shown() +
-      " · " +
-      (
+    $("tdmChartEmpty").textContent = window.EdShell.say("loading_chart", {
+      name: shown(),
+      tf: (
         TFS.filter(function (x) {
           return x.id === S.tf;
         })[0] || {}
-      ).lbl +
-      "…";
+      ).lbl,
+    });
   }
 
   // ------------------------------------------------------------------ data
@@ -256,13 +238,8 @@
     S.bars = bars;
     S.chart.setBars(bars, S.tf, shown(), d.last_bar && d.last_bar.label);
     $("tdmChartEmpty").hidden = bars.length > 0;
-    $("tdmChartEmpty").textContent = bars.length
-      ? ""
-      : d.failed != null
-        ? d.failed
-        : "No bars for " +
-          shown() +
-          (d.error ? " — " + d.error : " — nothing banked or streamed for this symbol yet.");
+    // with no bar to draw: the panel's words (it could not be produced) or its own sentence
+    $("tdmChartEmpty").textContent = bars.length ? "" : d.failed != null ? d.failed : d.none_said;
     paintChartOverlays();
     paintQueue();
     openView();
@@ -485,14 +462,14 @@
     // the chart's markers with no bar to stand on, counted and worded by the desk panel
     $("tdmQueueOff").textContent = S.events ? S.events.markers_off_chart_text : "";
     if (S.events === undefined) {
-      host.innerHTML = '<div class="tdm-empty">Loading ' + esc(shown()) + " events…</div>";
+      host.innerHTML =
+        '<div class="tdm-empty">' +
+        esc(window.EdShell.say("loading_events", { name: shown() })) +
+        "</div>";
       return;
     }
     if (!items.length) {
-      host.innerHTML =
-        '<div class="tdm-empty">Nothing in the ' +
-        esc(windowLabel()) +
-        ". Level crosses and wall breaches land here.</div>";
+      host.innerHTML = '<div class="tdm-empty">' + esc(S.events.none_said) + "</div>";
       return;
     }
     host.innerHTML = items
