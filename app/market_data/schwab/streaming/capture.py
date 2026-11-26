@@ -68,6 +68,7 @@ from app.market_data.schwab.streaming.live_ui import (
     news_changed,
     selected,
     serve_live_ui,
+    watchlist_changed,
 )
 from app.market_data.schwab.streaming.program_lock import (
     Ports,
@@ -653,7 +654,8 @@ class Daemon:
         watchlist record (watchlist_message), which the writer stores and the console receives.
         An added ticker is checked first with one /quotes request (check_ticker) and added only
         when Schwab quotes it; on the list, Schwab is asked for it at once on every service and
-        by the chain sweep, and a removed one is asked for no more.
+        by the chain sweep, and a removed one is asked for no more. A change of the list is sent
+        to every page at once, in its beat (live_ui.watchlist_changed).
         """
         ticker, rid = ticker_storage_key(str(req["ticker"])), req["id"]
         status = answer = None
@@ -711,6 +713,7 @@ class Daemon:
         self.pick_options()  # every ticker's share changes with the list
         self.connection.ask()
         told(op, status=status, answer=answer)
+        watchlist_changed(server.app.state)  # the pages' beat carries the list now
 
     def option_record(self, symbol: str) -> tuple[str, dict[str, Any]] | None:
         """Return `symbol`'s current LEVELONE_OPTIONS record on the bus, (topic, record).

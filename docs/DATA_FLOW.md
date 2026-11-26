@@ -592,7 +592,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `DELETE /api/watchlist/{ticker}`) goes to the daemon, which checks an added ticker with one
   `/quotes` request and answers each request with a `watchlist` record of its own (D3), stored by
   the Recorder. It takes effect at once on every stream service and REST request. The page draws the
-  list each beat carries.
+  list each beat carries, its one source: a change sends the pages their beat at once
+  (`live_ui.watchlist_changed`), and the answer to the request says what happened, with no list.
+  Enforced by: `tests/test_data_path_one_watchlist_v1.py`,
+  `tests/e2e/console-watchlist-socket.spec.js`.
 
 Not yet one State: the console part keeps its own parsed books and tape
 (`order_flow.state.OrderFlowState`) beside the bus's records; the work is `ACTIVE_PROGRAM.md`
