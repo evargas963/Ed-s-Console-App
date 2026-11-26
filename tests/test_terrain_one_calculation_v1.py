@@ -126,6 +126,21 @@ def _dex_unread(v):
     return v
 
 
+#: added since the record was written: each strike's count of its contracts and of those settled
+#: (a settled contract holds no vanna), and each book's count of settled contracts; asserted on
+#: their own in test_every_value_is_what_it_was
+COUNTS = ("contracts", "settled")
+
+
+def _counts_unread(v):
+    """Return a written-out value with every COUNTS field taken out of each dict it is in."""
+    if isinstance(v, list) and v and all(isinstance(e, list) and e[:1] == ["d"] for e in v):
+        return [[d, k, _counts_unread(x)] for d, k, x in v if k not in COUNTS]
+    if isinstance(v, list):
+        return [_counts_unread(x) for x in v]
+    return v
+
+
 def _field(record: list, key: str) -> list:
     """Return one field of a written-out terrain: its value as written."""
     return next(value for _d, k, value in record if k == key)
@@ -147,14 +162,23 @@ def test_every_value_is_what_it_was():
     since 2026-11-22 (DEX_KEYS: their places are what they were; their values are proved on the
     raw chain in tests/test_one_faucet_units_v1.py), and nothing else moved with them. The
     instant each chain was valued at (VALUED_AT, new) is the `now` it was computed at, and the
-    same-day curve's contracts left out (SAME_DAY_LEFT_OUT, new) are none.
+    same-day curve's contracts left out (SAME_DAY_LEFT_OUT, new) are none. Each strike's count of
+    its contracts and of those settled, and each book's settled count (COUNTS, new), are every
+    contract with a strike and a side, none settled at the chain's own capture.
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
+    chains = {c.ticker: read_chain(c.chain) for c in (CRWD, TSLA, MRVL)}
+    chains["SPY"] = read_chain(_SPY["chain"])
     for tk, snap in terrains.items():
+        buckets = [b for book, _diag in snap.books.values() for b in book.values()]
+        sided = [c for c in chains[tk] if c.strike is not None and c.side is not None]
+        assert sum(b["contracts"] for b in buckets) == len(sided), tk
+        assert sum(b["settled"] for b in buckets) == snap.per_strike["settled"] == 0, tk
         was = _as_said_now(_per_strike_keys(BEFORE[tk], {"all": "gex"}, {"near", "far"}))
         was = _dex_unread(was)
         now = _dex_unread(_per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"}))
+        now = _counts_unread(now)
         assert _field(now, VALUED_AT) == VALUED[tk], tk
         assert _field(now, SAME_DAY_LEFT_OUT) is None, tk
         now = [e for e in now if e[1] not in (VALUED_AT, SAME_DAY_LEFT_OUT)]
