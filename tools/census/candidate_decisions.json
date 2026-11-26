@@ -240,6 +240,60 @@
       "category": "a ticker typed into code",
       "pattern": "^time_et\\.py:\\d+: ('IWM'|'NDX', 'QQQ', 'SPY')$",
       "reason": "underlyings whose options trade to 4:15 p.m. ET, as the exchanges list them (cboe-rule-5-1, nasdaq-options-hours)"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: math on values",
+      "pattern": "^(static/js/ed-gamma-levels\\.js:\\d+: (body \\+= pairRow\\(r\\.label, r\\.(carried_text|price_text), |host\\.innerHTML = head \\+ asof \\+ table \\+ foot;$)|static/js/ed-gamma\\.js:\\d+: buildBanner\\(surface\\) \\+$|static/js/ed-trade-desk-map\\.js:\\d+: (row\\(\"(Last trade size|Gamma Call|ATR\\(14\\) daily)\", orDash\\(|h \\+=( S\\.pushDown)?$)|static/js/ed-trade-desk\\.js:\\d+: return h \\+ window\\.EdShell\\.rowsHtml\\(rows\\) \\+ \"</div>\";$)",
+      "reason": "served texts joined into a panel's HTML (each call returns markup), no value computed"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: math on values",
+      "pattern": "^static/js/ed-core\\.js:\\d+: var rows = window\\.EdDraw\\.rowsMoved\\(e\\.clientY - d\\.startY, d\\.rowPx\\);$",
+      "reason": "how far the pointer dragged a row, in pixels (layout, measured by the drawing module)"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: math on values",
+      "pattern": "^static/js/ed-gamma-book\\.js:\\d+: esc\\(d\\.zones\\[d\\.zones\\.length - 1\\]\\) \\+$",
+      "reason": "the served list's last item, by its index; no value computed"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: compares values to choose",
+      "pattern": "^static/js/ed-core\\.js:\\d+: var next = window\\.EdDraw\\.stepWithin\\(cur, e\\.deltaY > 0 \\? 1 : -1, SCOPE_MODES\\.length\\);$",
+      "reason": "the mouse wheel's direction (an input event), not a value"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: compares values to choose",
+      "pattern": "^static/js/ed-core\\.js:\\d+: _priceRetry < PRICE_RETRY_MS\\.length \\? PRICE_RETRY_MS\\[_priceRetry\\] : PRICE_RETRY_EVERY_MS;$",
+      "reason": "the page's own reconnect schedule: its connection, the one state only the page can see"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: compares values to choose",
+      "pattern": "^static/js/ed-trade-desk-map\\.js:\\d+: \\[\"1\", \"3\", \"5\"\\]\\.indexOf\\(sget\\(\"ed\\.desk\\.liqview\", \"\"\\)\\) >= 0 \\? ",
+      "reason": "the viewer's own depth-view setting, read back as one of the three views the card offers"
+    },
+    {
+      "verdict": "ok",
+      "category": "page computes: compares values to choose",
+      "pattern": "^static/js/ed-trade-desk\\.js:\\d+: if \\(NAMES\\.indexOf\\(e\\.detail\\.type\\) < 0\\) return;$",
+      "reason": "a page event's type, filtered; not a value"
+    },
+    {
+      "verdict": "issue",
+      "category": "page computes: compares values to choose",
+      "pattern": "^static/js/ed-core\\.js:\\d+: if \\(_wlTs !== null && ts < _wlTs\\) return;$",
+      "reason": "the page keeps the newer of two copies of the watchlist (the beat's and the add or removal's answer) by their times: one source, the push, would need no choice (rule 3, rule 4)"
+    },
+    {
+      "verdict": "issue",
+      "category": "page computes: compares values to choose",
+      "pattern": "^static/js/ed-core\\.js:\\d+: sel && nv && sel\\.selectedIndex >= 0 \\? sel\\.options\\[sel\\.selectedIndex\\]\\.text : \"All\";$",
+      "reason": "the page writes its own word, All, when no expiry is chosen: a word the program serves (rule 4, server.PAGE_WORDS)"
     }
   ]
 }
