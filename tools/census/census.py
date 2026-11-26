@@ -1174,6 +1174,10 @@ TICKER = re.compile(
     r"^\$?(?:SPX|SPY|QQQ|IWM|NVDA|TSLA|AMD|META|AAPL|MSFT|AMZN|GOOGL?|NDX|VIX|"
     r"DJI|COMPX|VXN|RVX|RUT|DJX|XSP|OEX)$"
 )
+#: where Schwab's own dicts are read: Feed's folder (docs/ARCHITECTURE.md §1) and the two root
+#: modules every part takes a Schwab field through. A frame or a contract there is Schwab's JSON
+#: as received, each shape checked where it is read (rule 2), not a record of ours
+FEED = ("feed/", "option_contract.py", "numeric_contract.py")
 #: a return annotation that is a record held as a plain dict, alone or in a list or tuple: a bare
 #: dict, or one keyed by `str` whose values are anything (`Any`) or plain values of several kinds,
 #: the fixed field names a TypedDict types (PEP 589). A dict whose values are all of one named type
@@ -1188,7 +1192,11 @@ for f in PRODUCT_PY:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.returns is not None:
             r = ast.unparse(node.returns)
             # A map keyed by strike or expiry (dict[float, ...]) is a map too.
-            if re.match(RECORD_AS_DICT, r) and not node.name.startswith("_"):
+            if (
+                re.match(RECORD_AS_DICT, r)
+                and not node.name.startswith("_")
+                and not f.startswith(FEED)
+            ):
                 add(
                     S,
                     "public functions returning a plain dict, not a typed record",
@@ -2292,10 +2300,22 @@ for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f 
             add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author: {code}")
 by_line("workarounds: ", "; ")
 
-#: where Schwab's own dicts are read: Feed's folder (docs/ARCHITECTURE.md §1) and the two root
-#: modules every part takes a Schwab field through
-FEED = ("feed/", "option_contract.py", "numeric_contract.py")
 DICT_READ = "dict reads with .get outside the Feed (a dict whose keys nothing guarantees; rule 12)"
+
+
+def field_key(node: ast.Call) -> bool:
+    """Tell whether a `.get` reads a field by its name written in the code (text, or a constant).
+
+    That dict is used as a record whose keys nothing guarantees (PEP 589: a TypedDict's fixed
+    keys). A `.get` by any other key (a strike, a ticker, an id) looks it up in a map, where a key
+    not held is not known.
+    """
+    key = node.args[0]
+    if isinstance(key, ast.Constant):
+        return isinstance(key.value, str)
+    return isinstance(key, ast.Name) and key.id.isupper()
+
+
 add(S, DICT_READ, "12", "ast")
 for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
     #: a route's decorator (`@app.get(path)`) and a queue's `get()` read no dict
@@ -2312,6 +2332,7 @@ for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
             and isinstance(node.func, ast.Attribute)
             and node.args
             and id(node) not in routes
+            and field_key(node)
         ):
             add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}")
 
