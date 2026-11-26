@@ -409,8 +409,8 @@ def _with_page_settings(html: str) -> str:
     header draws first of them on every page and the Desk's Volatility card shows; the
     scopes its strike windows take are calc.terrain_engine.SCOPES, each with its word; the
     words for each streaming state are STREAM_WORDS; and the words for the states only the page
-    can see, its own connection to the program, are PAGE_WORDS. A page without a setting's empty
-    meta is refused, never served without it.
+    can see, its own connection to the program and the viewer's expiry choice, are PAGE_WORDS. A
+    page without a setting's empty meta is refused, never served without it.
     """
     for name, value in (
         (
@@ -616,7 +616,9 @@ STREAM_WORDS = {
 #: yet for a symbol the page shows; "{name}" is the symbol's served display name. No symbol
 #: chosen; the daemon's beat carrying no status; what the operator typed not a symbol's form
 #: ("{typed}"); a watchlist change on its way, or its request failing before any answer
-#: ("{ticker}", "{why}": the failure as the browser reports it). A panel the page has asked for
+#: ("{ticker}", "{why}": the failure as the browser reports it). No expiry chosen: all of them,
+#: in the selector and, short, in the context line; on the Chain view, the expiry the program
+#: sends by default. A panel the page has asked for
 #: and not yet received, one whose answer has nothing to draw, one the program could not produce
 #: ("{what}": the panel's name; "{why}": the program's reason, as served), and one the page
 #: could not draw.
@@ -632,6 +634,9 @@ PAGE_WORDS = {
     "no_symbol": "NO SYMBOL",
     "no_contract": "NONE",
     "choose_contract": "Select a Call or Put contract in Chain.",
+    "all_expiries": "All Expirations",
+    "all_expiries_short": "All",
+    "default_expiry": "Default Expiry",
     "daemon_silent": "the capture daemon is not reporting",
     "session_no_status": "session unknown: the daemon sent no status",
     "session_push_down": "session unknown: the console push is down",
