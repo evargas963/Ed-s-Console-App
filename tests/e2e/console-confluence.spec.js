@@ -200,6 +200,31 @@ test("a price that has stopped marks the spot not live with its time and age", a
   expect(errs).toEqual([]);
 });
 
+// the price row as live_price_rows serves it while Schwab has sent this ticker no trade since the
+// program started (its sign-in refused): no price, no trade time, the feed's word and why
+const UNSENT_ROW = {
+  ticker: "SPY",
+  spot: null,
+  spot_disp: null,
+  spot_source: null,
+  feed_live: false,
+  feed_label: "OFFLINE",
+  outage: "Schwab LEVELONE_EQUITIES feed down during Closed",
+  trade_time_ct: null,
+  trade_age_text: null,
+  trade_said: "no trade sent",
+};
+
+test("a price never received says why once, and that no trade was sent", async ({ page }) => {
+  const { errs } = await openSpyMatrix(page, [UNSENT_ROW]);
+  const card = page.locator("#cmBody .stat").filter({ hasText: "SPOT" });
+  await expect(card.locator("strong")).toHaveText("-");
+  await expect(card.locator("small")).toHaveText(
+    "OFFLINE: Schwab LEVELONE_EQUITIES feed down during Closed · no trade sent",
+  );
+  expect(errs).toEqual([]);
+});
+
 test("a new price moves only its line; the rows hold, and a price past them hides it", async ({
   page,
 }) => {
