@@ -259,7 +259,8 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
 
 
 def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on_after(tmp_path):
-    """INDUCED CONDITION: another connection holds the stream database's write lock for 1.5 s.
+    """INDUCED CONDITION: another connection holds the stream database's write lock until the
+    writer reads blocked.
 
     The lock is taken with BEGIN IMMEDIATE, for longer than the writer's lock wait (timeout_sec
     0.2 s, an input). The writer reads blocked with SQLite's refusal, holds the captured quotes, and
@@ -267,19 +268,18 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
-    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    holder = sqlite3.connect(db, isolation_level=None)
     holder.execute("BEGIN IMMEDIATE")
-    release = threading.Timer(1.5, lambda: holder.execute("COMMIT"))
 
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         daemon = capture.Daemon(bus, health)
         daemon.writer = writer
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        release.start()
         _publish_options(bus, health, _EVENTS)
         await until(lambda: writer.status()["state"] == "blocked")
         during = _beat(daemon)["writer"]
+        holder.execute("COMMIT")
         await until(lambda: writer.status()["rows_written"] == len(_EVENTS))
         after = _beat(daemon)["writer"]
         stop.set()
@@ -289,7 +289,6 @@ def test_a_database_locked_by_another_connection_holds_the_writer_and_it_goes_on
     try:
         during, after = asyncio.run(go())
     finally:
-        release.join()
         holder.close()
 
     assert (
