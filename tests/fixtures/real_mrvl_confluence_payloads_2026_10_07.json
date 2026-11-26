@@ -90,6 +90,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "275.00",
      "tags": []
     },
     {
@@ -159,6 +160,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "272.50",
      "tags": []
     },
     {
@@ -228,6 +230,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "270.00",
      "tags": [
       {
        "lane": "options",
@@ -310,6 +313,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "267.50",
      "tags": []
     },
     {
@@ -379,6 +383,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "265.00",
      "tags": []
     },
     {
@@ -448,6 +453,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "262.50",
      "tags": []
     },
     {
@@ -517,6 +523,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "260.00",
      "tags": []
     },
     {
@@ -586,6 +593,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "257.50",
      "tags": []
     },
     {
@@ -655,6 +663,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "255.00",
      "tags": []
     },
     {
@@ -724,6 +733,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "252.50",
      "tags": []
     },
     {
@@ -793,6 +803,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "250.00",
      "tags": []
     }
    ],
@@ -1043,6 +1054,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "315.00",
      "tags": []
     },
     {
@@ -1112,6 +1124,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "312.50",
      "tags": []
     },
     {
@@ -1181,6 +1194,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "310.00",
      "tags": []
     },
     {
@@ -1250,6 +1264,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "307.50",
      "tags": []
     },
     {
@@ -1319,6 +1334,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "305.00",
      "tags": []
     },
     {
@@ -1388,6 +1404,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "302.50",
      "tags": []
     },
     {
@@ -1457,6 +1474,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "300.00",
      "tags": [
       {
        "lane": "options",
@@ -1551,6 +1569,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "297.50",
      "tags": []
     },
     {
@@ -1620,6 +1639,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "295.00",
      "tags": []
     },
     {
@@ -1689,6 +1709,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "292.50",
      "tags": []
     },
     {
@@ -1758,6 +1779,7 @@
      "sigma": null,
      "sigma_text": null,
      "spot_line": false,
+     "heading_said": "290.00",
      "tags": []
     }
    ],

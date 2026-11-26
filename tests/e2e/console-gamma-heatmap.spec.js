@@ -582,7 +582,7 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     const reported = page.waitForEvent("pageerror", (e) => /TypeError/.test(String(e)));
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#heatBody")).toContainText(
-      "the page could not draw the surface the program sent",
+      "the page could not draw the answer of the surface",
     );
     await reported; // and the error itself is reported
     await expect(page.locator("#heatBody .hcell")).toHaveCount(0);
@@ -1762,6 +1762,55 @@ test.describe("Ed Console shell + gamma heatmap", () => {
     await page.locator("#expSel").selectOption(MISSING);
     await expect(page.locator("#heatBody")).toContainText("Expiry " + MISSING + " unavailable");
     await expect(page.locator("#heatBody .hexp")).toHaveCount(0); // NOT a silent substitute grid
+  });
+
+  // The hint under a missing expiry and the note of a pan of the strikes are the page's states,
+  // said in the words served with it (server.PAGE_WORDS missing_expiry_hint, panned_to). INDUCED:
+  // the served list words them otherwise.
+  test("a pan of the strikes and a missing expiry's hint are said in the words served with the page", async ({
+    page,
+  }) => {
+    await page.route(/\/$/, async (route) => {
+      const served = await route.fetch();
+      const html = (await served.text())
+        .replace(
+          /&quot;missing_expiry_hint&quot;: &quot;.*?&quot;/,
+          "&quot;missing_expiry_hint&quot;: &quot;SERVED HINT&quot;",
+        )
+        .replace(
+          /&quot;panned_to&quot;: &quot;.*?&quot;/,
+          "&quot;panned_to&quot;: &quot;SERVED PAN {strike}&quot;",
+        );
+      await route.fulfill({ response: served, body: html });
+    });
+    // a pan is answered as the server answers it: the window around the strike panned to
+    const to = SURFACE.cells[SURFACE.cells.findIndex((c) => c.spot) + 3];
+    const panned = Object.assign({}, SURFACE, {
+      view: Object.assign({}, SURFACE.view, { centre: to.strike, centre_text: to.strike_text }),
+    });
+    panels.surface = (key, params) =>
+      params.expiry === MISSING ? MISSING_SURFACE : params.centre != null ? panned : SURFACE;
+    sock = await pushExpiries(page, EXPIRIES.concat(MISSING), undefined, panels);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const label = page.locator("#heatBody .hstrike").nth(3);
+    await expect(label).toBeVisible();
+    // the strike labels dragged three rows: the strikes panned from the served centre
+    const box = await label.boundingBox();
+    const rowH = await page
+      .locator("#heatBody tbody tr")
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().height);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 3; i++)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
+    await page.mouse.up();
+    await expect(page.locator("#heatBody .heat-pan").first()).toHaveText(
+      "SERVED PAN " + to.strike_text,
+    );
+    await page.locator("#expSel").selectOption(MISSING);
+    await expect(page.locator("#heatBody")).toContainText("Expiry " + MISSING + " unavailable");
+    await expect(page.locator("#heatBody .sm")).toHaveText("SERVED HINT");
   });
 
   test("recovers automatically once the requested expiry appears in a later surface poll", async ({

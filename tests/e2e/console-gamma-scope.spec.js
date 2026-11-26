@@ -210,6 +210,51 @@ test.describe("the Gamma presentation scope", () => {
     expect(asks().pop()).toEqual({ centre: centre, shift: 3 });
   });
 
+  // A pan of the strikes is the page's own state, said in the words served with it
+  // (server.PAGE_WORDS panned_to, "{strike}": the served centre strike); an answer whose centre is
+  // not known leaves the sentence out, never says it with a dash (AGENTS.md rule 5). INDUCED: the
+  // served list words the pan otherwise, and the later answer's centre is not known.
+  test("a pan of GEX by Strike is said in the served words, and left out with no centre", async ({
+    page,
+  }) => {
+    await page.route(/\/$/, async (route) => {
+      const served = await route.fetch();
+      const html = (await served.text()).replace(
+        /&quot;panned_to&quot;: &quot;.*?&quot;/,
+        "&quot;panned_to&quot;: &quot;SERVED PAN {strike}&quot;",
+      );
+      await route.fulfill({ response: served, body: html });
+    });
+    // a pan is answered as the server answers it: the window around the strike panned to
+    const today = REAL.strikes.today;
+    const to = today[today.findIndex((r) => r.strike === SPOT) + 3];
+    let centre = { centre: to.strike, centre_text: to.strike_text };
+    panels.strikes = (key, params) => {
+      const body = strikesFor(params.scope);
+      if (params.centre == null) return body;
+      return Object.assign({}, body, { view: Object.assign({}, body.view, centre) });
+    };
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const note = page.locator("#gbsBody .gbs-allexp");
+    const atPrice = page.locator("#gbsBody .gbs-row.mark-spot .gbs-k");
+    await expect(atPrice).toBeVisible();
+    await expect(note).toHaveCount(0);
+    const box = await atPrice.boundingBox();
+    const rowH = await page
+      .locator("#gbsBody .gbs-row")
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().height);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 3; i++)
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * rowH);
+    await page.mouse.up();
+    await expect(note).toHaveText("SERVED PAN " + to.strike_text);
+    centre = { centre: null, centre_text: null };
+    sock.changed("strikes");
+    await expect(note).toHaveCount(0);
+  });
+
   test("the scope choice persists across reloads (ed_scope)", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await page.locator("#scopeCtl .scbtn", { hasText: "All available" }).click();

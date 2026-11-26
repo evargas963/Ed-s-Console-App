@@ -435,10 +435,11 @@
     var win = today.slice().reverse(); // the served window, high strikes on top
     // a pan is never silent: the strikes stop following the price until a double-click
     var note =
-      (_migPan.centre != null
-        ? '<div class="gbs-allexp">Panned to ' +
-          view.centre_text +
-          " · double-click a strike to follow the price</div>"
+      (_migPan.centre != null && view.centre_text != null
+        ? '<div class="gbs-allexp">' +
+          // the served centre strike panned to, in the page's served words for a pan
+          esc(window.EdShell.say("panned_to", { strike: view.centre_text })) +
+          "</div>"
         : "") + (view.note ? '<div class="gbs-allexp">' + esc(view.note) + "</div>" : ""); // why not around the price
     var maxAbs = view.max_abs_with_prior; // served: today's and the prior day's bars, one scale
     var rows = "";

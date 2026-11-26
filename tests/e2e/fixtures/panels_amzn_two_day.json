@@ -68813,6 +68813,7 @@
         "sigma": 2.0227421154994802,
         "sigma_text": "+2.0\u03c3",
         "spot_line": false,
+        "heading_said": "282.50 \u00b7 +13.07 points from the price",
         "tags": []
       },
       {
@@ -68882,6 +68883,7 @@
         "sigma": 1.6433240858222276,
         "sigma_text": "+1.6\u03c3",
         "spot_line": false,
+        "heading_said": "280.00 \u00b7 +10.57 points from the price",
         "tags": []
       },
       {
@@ -68951,6 +68953,7 @@
         "sigma": 1.260503158444229,
         "sigma_text": "+1.3\u03c3",
         "spot_line": false,
+        "heading_said": "277.50 \u00b7 +8.07 points from the price",
         "tags": []
       },
       {
@@ -69020,6 +69023,7 @@
         "sigma": 0.8742177412070227,
         "sigma_text": "+0.9\u03c3",
         "spot_line": false,
+        "heading_said": "275.00 \u00b7 +5.57 points from the price",
         "tags": []
       },
       {
@@ -69089,6 +69093,7 @@
         "sigma": 0.48440455444949626,
         "sigma_text": "+0.5\u03c3",
         "spot_line": false,
+        "heading_said": "272.50 \u00b7 +3.07 points from the price",
         "tags": []
       },
       {
@@ -69158,6 +69163,7 @@
         "sigma": 0.09099856879361476,
         "sigma_text": "+0.1\u03c3",
         "spot_line": true,
+        "heading_said": "270.00 \u00b7 +0.57 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -69276,6 +69282,7 @@
         "sigma": -0.30606705996365785,
         "sigma_text": "-0.3\u03c3",
         "spot_line": false,
+        "heading_said": "267.50 \u00b7 -1.93 points from the price",
         "tags": []
       },
       {
@@ -69345,6 +69352,7 @@
         "sigma": -0.7068610590151962,
         "sigma_text": "-0.7\u03c3",
         "spot_line": false,
+        "heading_said": "265.00 \u00b7 -4.43 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -69427,6 +69435,7 @@
         "sigma": -1.11145410993937,
         "sigma_text": "-1.1\u03c3",
         "spot_line": false,
+        "heading_said": "262.50 \u00b7 -6.93 points from the price",
         "tags": []
       },
       {
@@ -69496,6 +69505,7 @@
         "sigma": -1.5199189235118398,
         "sigma_text": "-1.5\u03c3",
         "spot_line": false,
+        "heading_said": "260.00 \u00b7 -9.43 points from the price",
         "tags": []
       },
       {
@@ -69565,6 +69575,7 @@
         "sigma": -1.9323303181316187,
         "sigma_text": "-1.9\u03c3",
         "spot_line": false,
+        "heading_said": "257.50 \u00b7 -11.93 points from the price",
         "tags": []
       }
     ],
@@ -69788,6 +69799,7 @@
         "sigma": 1.476855128626476,
         "sigma_text": "+1.5\u03c3",
         "spot_line": false,
+        "heading_said": "282.50 \u00b7 +13.07 points from the price",
         "tags": []
       },
       {
@@ -69857,6 +69869,7 @@
         "sigma": 1.199832438127032,
         "sigma_text": "+1.2\u03c3",
         "spot_line": false,
+        "heading_said": "280.00 \u00b7 +10.57 points from the price",
         "tags": []
       },
       {
@@ -69926,6 +69939,7 @@
         "sigma": 0.9203252060327752,
         "sigma_text": "+0.9\u03c3",
         "spot_line": false,
+        "heading_said": "277.50 \u00b7 +8.07 points from the price",
         "tags": []
       },
       {
@@ -69995,6 +70009,7 @@
         "sigma": 0.638288462352519,
         "sigma_text": "+0.6\u03c3",
         "spot_line": false,
+        "heading_said": "275.00 \u00b7 +5.57 points from the price",
         "tags": []
       },
       {
@@ -70064,6 +70079,7 @@
         "sigma": 0.3536760050067516,
         "sigma_text": "+0.4\u03c3",
         "spot_line": false,
+        "heading_said": "272.50 \u00b7 +3.07 points from the price",
         "tags": []
       },
       {
@@ -70133,6 +70149,7 @@
         "sigma": 0.06644035440342502,
         "sigma_text": "+0.1\u03c3",
         "spot_line": true,
+        "heading_said": "270.00 \u00b7 +0.57 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -70251,6 +70268,7 @@
         "sigma": -0.2234672940990986,
         "sigma_text": "-0.2\u03c3",
         "spot_line": false,
+        "heading_said": "267.50 \u00b7 -1.93 points from the price",
         "tags": []
       },
       {
@@ -70320,6 +70338,7 @@
         "sigma": -0.5160971199609171,
         "sigma_text": "-0.5\u03c3",
         "spot_line": false,
+        "heading_said": "265.00 \u00b7 -4.43 points from the price",
         "tags": [
           {
             "lane": "session",
@@ -70402,6 +70421,7 @@
         "sigma": -0.8115007295883613,
         "sigma_text": "-0.8\u03c3",
         "spot_line": false,
+        "heading_said": "262.50 \u00b7 -6.93 points from the price",
         "tags": []
       },
       {
@@ -70471,6 +70491,7 @@
         "sigma": -1.109731210955977,
         "sigma_text": "-1.1\u03c3",
         "spot_line": false,
+        "heading_said": "260.00 \u00b7 -9.43 points from the price",
         "tags": []
       },
       {
@@ -70540,6 +70561,7 @@
         "sigma": -1.4108431908673749,
         "sigma_text": "-1.4\u03c3",
         "spot_line": false,
+        "heading_said": "257.50 \u00b7 -11.93 points from the price",
         "tags": []
       }
     ],
