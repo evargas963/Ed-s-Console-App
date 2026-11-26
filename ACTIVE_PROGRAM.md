@@ -186,12 +186,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   get one.
 - ENF-21 (QUEUED): a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by
   section or Schwab's own reply; no machine check yet.
-- LEVELS-SHOT (QUEUED): the Gamma Levels screenshot step (`tests/e2e/console-gamma-levels.spec.js`,
-  `page.screenshot` after `setViewportSize`) failed once in CI and passed on a re-run; its cause
-  first (`.claude/skills/flaky-test-fix/SKILL.md`), from the `playwright-failures` artifact.
-- PIN-TEST (QUEUED): "Price chart: a pinned bar shows its served change" in
-  `tests/e2e/console-trade-desk.spec.js` failed once in CI and passed in 20 local runs under load;
-  its cause first, the test unchanged until then.
 - LIVE-SESSION (QUEUED): checks only a live session can show, across the watchlist: the heatmap
   stays live; chains captured on schedule from Schwab's /markets windows; Schwab's zeros taken as
   sent; the price shows Schwab's last trade and its time in every session and stands marked not live
