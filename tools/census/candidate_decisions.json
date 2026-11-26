@@ -10,6 +10,12 @@
     {
       "verdict": "ok",
       "category": "a product function more than one route calls",
+      "pattern": "^_watchlist_change: DELETE /api/watchlist/\\{ticker\\}, POST /api/watchlist$",
+      "reason": "the one handler of a watchlist change: POST asks for an add, DELETE for a removal, each the daemon's one answer; one producer"
+    },
+    {
+      "verdict": "ok",
+      "category": "a product function more than one route calls",
       "pattern": "^ct_label:",
       "reason": "the one Central Time formatter (AGENTS.md rule 13), not a producer of a value"
     },
@@ -34,7 +40,7 @@
     {
       "verdict": "ok",
       "category": "clock taken",
-      "pattern": "in (_reprice_from_tick|_reprice_due|_price_waiting_chain|restamp_off_the_loop)\\b",
+      "pattern": "in (_reprice_from_tick|_reprice_due|_price_waiting_chain|_on_beat)\\b",
       "reason": "an entry point (rule 11): the stream handler's own once-a-second gate (called by _on_stream_tick alone), a timer's callback, a job the pricing thread runs, the feed's callback"
     },
     {
@@ -52,8 +58,8 @@
     {
       "verdict": "ok",
       "category": "clock taken",
-      "pattern": "(clock(: Callable\\[\\[\\], float\\])? ?= ?time_et\\.now,?|, time_et\\.now\\)) in __init__",
-      "reason": "passes the clock in (clock=time_et.now), the rule's own pattern"
+      "pattern": "(clock(: Callable\\[\\[\\], float\\])? ?= ?time_et\\.now,?|, time_et\\.now[,)].*) in __init__",
+      "reason": "passes the clock in (clock=time_et.now, or as a call's argument), the rule's own pattern"
     },
     {
       "verdict": "issue",
