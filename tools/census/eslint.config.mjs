@@ -5,7 +5,7 @@ import globals from "globals";
 
 // AGENTS.md rule 4: the page reaches the program only through its transport (ed-core.js: the
 // socket and EdShell.request)
-const TRANSPORT = ["fetch", "XMLHttpRequest", "EventSource"].map((name) => ({
+const TRANSPORT = ["fetch", "XMLHttpRequest", "EventSource", "WebSocket"].map((name) => ({
   name,
   message: "the page's one transport is ed-core.js (EdShell.request)",
 }));
