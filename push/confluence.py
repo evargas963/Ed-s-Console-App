@@ -187,6 +187,16 @@ def _unavailable(tk: str, reason: str) -> MatrixUnavailable:
     return {**not_available(tk, reason), "levels_above": [], "levels_below": []}
 
 
+class Marker(TypedDict):
+    """A key level before it is placed: its tag, name, lane, price and hold rate's words."""
+
+    short: str
+    title: str
+    lane: str
+    price: float | None
+    hold_text: str | None
+
+
 def _hold_rate(tk: str, now: datetime) -> str:
     """Return the prior close's hold rate at 15 and 30 minutes, as the Liquidity page words it."""
     counts = materialize_hold_counts(
@@ -200,13 +210,13 @@ def _hold_rate(tk: str, now: datetime) -> str:
 
 def _confluence_markers(
     live: TerrainSnapshot, tk: str, now: datetime, expiry_day: bool
-) -> list[dict[str, Any]]:
+) -> list[Marker]:
     """Return the key levels of this priced snapshot and of the session's published levels.
 
     Each with its hold rate's words (`hold_text`). `expiry_day`: the chosen expiry settles
     today, so the same-day levels are its own.
     """
-    markers: list[dict[str, Any]] = []
+    markers: list[Marker] = []
     snap = canonical_price_level_snapshot(tk, now)
     if snap is not None:
         for lid, value in snap.levels.items():
@@ -224,16 +234,16 @@ def _confluence_markers(
     named = [(label, live.level(gid)) for gid, label in KEY_OPTION_LEVELS]
     if expiry_day:
         named += [("0DTE " + label, live.same_day[gid]) for gid, label in KEY_SAME_DAY_LEVELS]
-    markers += [
+    markers.extend(
         {"short": label, "title": label, "lane": "options", "price": price, "hold_text": None}
         for label, price in named
         if price is not None
-    ]
+    )
     return markers
 
 
 def _screen_levels(
-    markers: list[dict[str, Any]], spot: float | None, sigma_root_t: float | None
+    markers: list[Marker], spot: float | None, sigma_root_t: float | None
 ) -> list[Level]:
     """Each level at its own price, with its distance from the live price.
 
@@ -242,8 +252,8 @@ def _screen_levels(
     """
     levels: list[Level] = []
     for marker in markers:
-        price = marker.get("price")
-        if not isinstance(price, (int, float)):
+        price = marker["price"]
+        if price is None:
             continue
         shown = price_text(price)
         hold = marker["hold_text"] or NO_HOLD_RECORD

@@ -294,6 +294,60 @@
       "category": "page computes: compares values to choose",
       "pattern": "^static/js/ed-core\\.js:\\d+: sel && nv && sel\\.selectedIndex >= 0$",
       "reason": "whether the viewer chose an expiry (a state only the page holds): the chosen option's served label, else the served word for all expiries"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^(config|db_authority|app/market_data/schwab/streaming/capture)\\.py:\\d+: os\\.environ\\.get\\('[A-Z_]+'(, '[^']*')?\\)$",
+      "reason": "the process environment, a setting read by its name: one not set is its written default or none"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^(app/market_data/schwab/streaming/live_ui\\.py:\\d+: req|push/[a-z_]+\\.py:\\d+: params|server\\.py:\\d+: a\\.params)\\.get\\('[a-z_]+'\\)$",
+      "reason": "the page's request over its socket, read by name and checked where it is read: a page may send any JSON"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^(app/options/order_flow/streaming|live_market_plane|server)\\.py:\\d+: [\\w.()]*held\\.get\\('LEVELONE_OPTIONS'(, frozenset\\(\\))?\\)$",
+      "reason": "a map by Schwab service (the symbols the daemon holds on each): a service not held has none"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^stream_spine\\.py:\\d+: (content|content_item|lv|row)\\.get\\('(TOTAL_VOLUME|BIDS|ASKS|BOOK_TIME|EXCHANGE|SEQUENCE)'\\)$",
+      "reason": "Schwab's LEVELONE or book message as received, each field read by its one reader and checked there (rule 2): a field Schwab did not send is none"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^(server\\.py:\\d+: c\\.get\\('(datetime|open|high|low|close|volume)'\\)|calc/liquidity_models\\.py:\\d+: b\\.get\\('(high|low|volume)'\\))$",
+      "reason": "Schwab's /pricehistory candle as received, each field checked by its reader (_schwab_bar, schwab_number): a field not sent is none"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^(stream_spine\\.py:\\d+: (msg|held\\[1\\]|rec|m)|app/market_data/schwab/streaming/live_push\\.py:\\d+: msg)\\.get\\('(schwab_ts|ts_recv|ts|src|service|content|schwab_last_frame_ts|last_data_ts)'\\)$",
+      "reason": "a bus message as any JSON value (stream_spine.Payload: one of the stream's kinds, or read back from a spill file), a field some kinds do not carry, checked where it is read"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^calc/l1_trade_observation\\.py:\\d+: sent\\.get\\(VENDOR_(LAST_PRICE|LAST_SIZE|TRADE_TIME)\\)$",
+      "reason": "the last print's fields as the message carried them (last_print; Schwab sends only changes): one not carried is none"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^push/chain\\.py:\\d+: leg\\.get\\('lastTradingDay'\\)$",
+      "reason": "a contract's listed terms as Schwab sent them (option_contract.Listing holds only the fields sent): one not sent is none"
+    },
+    {
+      "verdict": "ok",
+      "category": "dict reads with .get by a field's name",
+      "pattern": "^push/desk\\.py:\\d+: t\\.get\\('levels_ts_utc'\\)$",
+      "reason": "the terrain panel's two kinds: levels not yet published hold no levels time (push.terrain.TerrainNotReady); the stale item's time is tested (test_data_path_live_status_v1)"
     }
   ]
 }

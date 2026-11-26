@@ -86,11 +86,11 @@ def build_flow_e2e_fixture_response() -> dict:
     at = max(e["ts_recv"] for e in events)
     try:
         lmp.record_feed_heartbeat(
-            {
-                "ts": at,
-                "schwab_socket_open": True,
-                "held": {"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]},
-            }
+            daemon_status(
+                at,
+                schwab_socket_open=True,
+                held={"LEVELONE_OPTIONS": [FLOW_CONTRACT], "OPTIONS_BOOK": [FLOW_CONTRACT]},
+            )
         )
         for e in events:
             if e["kind"] == "book":

@@ -777,11 +777,12 @@ def test_an_add_asked_before_the_schwab_connection_starts_is_answered_not_checke
     assert daemon.watchlist == ["SPY"]
 
 
-def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
+def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path, caplog):
     """Two adds of TSLA in flight together (a request sent twice): the list holds TSLA once.
 
     Each is checked with Schwab's /quotes, the first answer adds it, and the other, finding it
-    added during its check, is answered ON_LIST.
+    added during its check, is answered ON_LIST. A failure prints each request the client says it
+    sent and what the daemon logged of the two adds.
     """
     schwab = LocalSchwab("ws://127.0.0.1:1")  # REST only: no stream connection is opened
     bus = MessageBus()
@@ -802,14 +803,17 @@ def test_the_same_ticker_added_twice_at_once_is_added_once(tmp_path):
         return [answers.queue.get_nowait()[1] for _ in range(answers.queue.qsize())]
 
     try:
-        got = asyncio.run(go())
+        with caplog.at_level("INFO"):
+            got = asyncio.run(go())
     finally:
         schwab.close()
+    logged = [m for r in caplog.records if re.search(r"REQUEST|watchlist", m := r.getMessage())]
     assert sorted(m["op"] for m in got) == sorted([capture.ADDED, capture.ON_LIST])
     assert {m["request_id"] for m in got} == {"r1", "r2"}
     assert daemon.watchlist == ["SPY", "TSLA"]
     assert [q["symbols"] for q in schwab.asked(QUOTES)] == ["TSLA", "TSLA"], (
-        f"each add checked; the stand-in's requests: {schwab.requests}; the answers: {got}"
+        f"each add checked; the stand-in's requests: {schwab.requests}; the answers: {got}; "
+        f"logged: {logged}"
     )
 
 
