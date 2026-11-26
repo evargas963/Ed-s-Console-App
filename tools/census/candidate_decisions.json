@@ -284,10 +284,10 @@
       "reason": "a page event's type, filtered; not a value"
     },
     {
-      "verdict": "issue",
+      "verdict": "ok",
       "category": "page computes: compares values to choose",
-      "pattern": "^static/js/ed-core\\.js:\\d+: sel && nv && sel\\.selectedIndex >= 0 \\? sel\\.options\\[sel\\.selectedIndex\\]\\.text : \"All\";$",
-      "reason": "the page writes its own word, All, when no expiry is chosen: a word the program serves (rule 4, server.PAGE_WORDS)"
+      "pattern": "^static/js/ed-core\\.js:\\d+: sel && nv && sel\\.selectedIndex >= 0$",
+      "reason": "whether the viewer chose an expiry (a state only the page holds): the chosen option's served label, else the served word for all expiries"
     }
   ]
 }
