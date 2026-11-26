@@ -974,6 +974,22 @@ def test_a_strike_whose_volatilities_differ_and_a_weight_is_not_known_has_no_ble
     ) / (w_call + w_put)
 
 
+def test_a_strike_where_every_weight_is_0_shows_the_mean_of_its_volatilities():
+    """A strike whose contracts hold no open interest and no volume: Schwab's volatilities' mean.
+
+    The operator's decision: the blend stands as it is there. NFLX's captured 2027-12-17 45 strike,
+    its call and its put with open interest 0 and volume 0, and Schwab's volatility 55.33169981 on
+    the call and 37.13971241 on the put.
+    """
+    legs = [c for c in read_chain(NFLX.chain) if c.expiry == "2027-12-17" and c.strike == 45.0]
+    assert sorted(c.side for c in legs) == ["CALL", "PUT"]
+    assert all(c.open_interest == 0 and c.volume == 0 for c in legs)
+    call = next(c for c in legs if c.side == "CALL")
+    put = next(c for c in legs if c.side == "PUT")
+    assert (call.volatility, put.volatility) == (55.33169981, 37.13971241)
+    assert iv_by_strike(legs)[45.0] == (55.33169981 + 37.13971241) / 2
+
+
 def _window_has(rows: list, key: str) -> bool:
     return any(row.get(key) is not None for row in rows)
 

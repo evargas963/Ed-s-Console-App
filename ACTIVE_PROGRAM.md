@@ -37,8 +37,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   nothing uses go to an archive beside the checkout; their deletion is the operator's.
 - REVIEW (IN PROGRESS): the repo-wide review's findings, each checked against the code and the
   sources and fixed with a test that fails on the old code. Next: a settled contract's vanna and
-  charm under one rule (charm leaves it out of its strike's sum, vanna makes its side unknown); the
-  volatility blend where every weight is 0 (its simple mean, 58 of 8,576 captured strikes), the
+  charm under one rule (charm leaves it out of its strike's sum, vanna makes its side unknown), the
   operator's choice of method. Then the support and resistance line, once a longer price history
   shows which levels hold, and the other screens that print key levels.
 - OPEN-5MIN (IN PROGRESS): a sense of direction for the first five minutes of trading. The

@@ -1564,7 +1564,7 @@
         feedLabel: q.feed_label,
         ageLabel: trade || q.outage || q.trade_said,
         ageTitle: q.outage,
-        said: trade != null ? [q.trade_said, q.trade_age_text].filter(Boolean).join(" · ") : null,
+        said: [q.trade_said, q.trade_age_text].filter(Boolean).join(" · "),
       });
     }
     loadWL().forEach(function (wlSym) {
