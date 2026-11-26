@@ -118,10 +118,14 @@ class MeasureRows(TypedDict):
 
 
 class StrikeRows(MeasureRows):
-    """One book's per-strike rows: its GEX rows beside its DEX, OI, net vanna and net charm rows."""
+    """One book's per-strike rows: its GEX rows beside its DEX, OI, net vanna and net charm rows.
+
+    `settled`: the book's settled contracts, which vanna's and charm's sums leave out.
+    """
 
     gex: list[StrikeRow]
     charm: list[StrikeValue]
+    settled: int
 
 
 class PerStrikeView(StrikeRows):
@@ -881,7 +885,8 @@ def _strike_rows(exposures: dict[float, Bucket], charm: dict[float, CharmBucket]
 
     A charm row is each strike's net charm exposure of `charm` (compute_charm_by_strike's map, the
     largest charm strikes' own), ascending; a strike whose net charm is not known keeps its row
-    with None.
+    with None. The book's settled contracts are counted from its buckets, the same contracts
+    charm's map was priced from.
     """
     return {
         "gex": _per_strike_rows(exposures),
@@ -889,6 +894,7 @@ def _strike_rows(exposures: dict[float, Bucket], charm: dict[float, CharmBucket]
         "charm": sorted(
             (StrikeValue(k, b["net_charm"]) for k, b in charm.items()), key=lambda r: r.strike
         ),
+        "settled": sum(b["settled"] for b in exposures.values()),
     }
 
 

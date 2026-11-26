@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from calc.terrain_engine import nearest_strike
+from numeric_contract import count_text
 from push.answers import NotAvailable, not_available
 from push.spot import resolve_spot
 from push.strike_rows import (
@@ -33,7 +34,8 @@ class StrikeBarPanel(LevelsVerdict):
 
     The levels' verdict (the rows are the published levels': their state, time, age and why), the
     window's rows as the page draws them with the window's view and scope, whether there is a bar
-    to draw and why not, and how the rows are made.
+    to draw and why not, how the rows are made, and the sentence saying the settled contracts the
+    sums leave out (`left_out`, _left_out).
     """
 
     ticker: str
@@ -44,6 +46,18 @@ class StrikeBarPanel(LevelsVerdict):
     scope: str
     reason: str | None
     method: str
+    left_out: str | None
+
+
+def _left_out(key: BarKey, settled: int) -> str | None:
+    """Return the sentence saying how many settled contracts the sums leave out; None: none.
+
+    A settled contract has no time left, so it holds no vanna or charm: left out of every sum,
+    counted and said (AGENTS.md rule 7: nothing left out is silent).
+    """
+    if settled == 0:
+        return None
+    return f"Leaves out {count_text(settled)} settled contracts: no time left, so no {key}."
 
 
 def strike_bar_payload(
@@ -83,6 +97,7 @@ def strike_bar_payload(
         "scope": scope,
         "reason": None if rows else "no usable strikes for this chain",
         "method": method,
+        "left_out": _left_out(key, book["settled"]),
     }
 
 

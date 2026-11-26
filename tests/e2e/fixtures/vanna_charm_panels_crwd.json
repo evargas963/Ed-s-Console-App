@@ -99,7 +99,8 @@
     },
     "scope": "auto",
     "reason": null,
-    "method": "the published levels' exposure book -> call_vanna - put_vanna"
+    "method": "the published levels' exposure book -> call_vanna - put_vanna",
+    "left_out": null
   },
   "charm": {
     "ticker": "CRWD",
@@ -201,7 +202,8 @@
     },
     "scope": "auto",
     "reason": null,
-    "method": "the published levels' charm map -> call_charm - put_charm"
+    "method": "the published levels' charm map -> call_charm - put_charm",
+    "left_out": null
   },
   "vanna_stale": {
     "ticker": "CRWD",
@@ -303,7 +305,8 @@
     },
     "scope": "auto",
     "reason": null,
-    "method": "the published levels' exposure book -> call_vanna - put_vanna"
+    "method": "the published levels' exposure book -> call_vanna - put_vanna",
+    "left_out": null
   },
   "charm_stale": {
     "ticker": "CRWD",
@@ -405,7 +408,8 @@
     },
     "scope": "auto",
     "reason": null,
-    "method": "the published levels' charm map -> call_charm - put_charm"
+    "method": "the published levels' charm map -> call_charm - put_charm",
+    "left_out": null
   },
   "strikes": {
     "ticker": "CRWD",
