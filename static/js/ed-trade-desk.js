@@ -435,7 +435,7 @@
     var win = today.slice().reverse(); // the served window, high strikes on top
     // a pan is never silent: the strikes stop following the price until a double-click
     var note =
-      (_migPan.centre != null
+      (_migPan.centre != null && view.centre_text != null
         ? '<div class="gbs-allexp">' +
           // the served centre strike panned to, in the page's served words for a pan
           esc(window.EdShell.say("panned_to", { strike: view.centre_text })) +

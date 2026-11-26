@@ -225,10 +225,10 @@
     tbl += "</tbody></table>";
     // a pan is never silent: the strikes stop following the price until a double-click
     var note =
-      (_pan.centre != null
+      (_pan.centre != null && view.centre_text != null
         ? '<div class="heat-pan">' +
           // the served centre strike panned to, in the page's served words for a pan
-          escapeHtml(window.EdShell.say("panned_to", { strike: orDash(view.centre_text) })) +
+          escapeHtml(window.EdShell.say("panned_to", { strike: view.centre_text })) +
           "</div>"
         : "") + (view.note ? '<div class="heat-pan">' + escapeHtml(view.note) + "</div>" : ""); // why not around the price
     var MEASURE_LEGEND = {
