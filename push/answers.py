@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 
 class NotAvailable(TypedDict):
@@ -16,11 +16,3 @@ class NotAvailable(TypedDict):
 def not_available(ticker: str, reason: str) -> NotAvailable:
     """Return a panel's answer when the value it serves is not held for `ticker`, saying why."""
     return {"ticker": ticker, "available": False, "reason": reason}
-
-
-def unavailable(ticker: str, reason: str, **fields: Any) -> dict[str, Any]:
-    """Return a panel's answer when the value it serves is not held for `ticker`.
-
-    It says why, with the panel's own `fields`.
-    """
-    return {"ticker": ticker, "available": False, **fields, "reason": reason}
