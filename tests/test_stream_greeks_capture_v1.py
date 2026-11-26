@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
+from dataclasses import fields
 from pathlib import Path
 
 import time_et
@@ -210,7 +211,9 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
     g = _greeks(bus)
     assert g.gamma.value == 0.0123, "gamma must survive a tick that does not mention it"
     assert g.delta.value == 0.45
-    assert "open_interest" not in g.values(), "a contract's open interest is the chain's"
+    assert "open_interest" not in {f.name for f in fields(g)}, (
+        "a contract's open interest is the chain's"
+    )
 
 
 def test_each_field_is_independently_updatable():
@@ -220,7 +223,9 @@ def test_each_field_is_independently_updatable():
     g = _greeks(bus)
     assert g.gamma.value == 0.02, "gamma updates independently"
     assert g.delta.value == 0.40, "delta from the earlier tick is untouched"
-    assert "open_interest" not in g.values(), "a contract's open interest is the chain's"
+    assert "open_interest" not in {f.name for f in fields(g)}, (
+        "a contract's open interest is the chain's"
+    )
 
 
 def test_a_negative_open_interest_is_rejected_not_stored():
