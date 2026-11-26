@@ -943,8 +943,10 @@ lines_matching(
     skip_comment=True,
 )
 JS_KIND = {
-    "value-arithmetic": "page computes: math on values (acorn parse)",
-    "value-compare": "page computes: compares values to choose (acorn parse)",
+    # a parse sees `+` and `<`, not whether a call returns text or what a comparison chooses:
+    # each item is read by hand
+    "value-arithmetic": "page computes: math on values (acorn parse; check each)",
+    "value-compare": "page computes: compares values to choose (acorn parse; check each)",
     "math-call": "page computes: Math.* calls (acorn parse)",
     "layout-arithmetic": "page layout arithmetic, pixels and positions (reported)",
 }
