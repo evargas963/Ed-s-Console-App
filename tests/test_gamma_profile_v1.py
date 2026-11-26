@@ -376,6 +376,12 @@ def test_the_flip_counts_the_contracts_it_could_not_price():
     held = time_et.sessions()
     priced, unpriced = contract_inputs(nflx_chain, now, sessions=held, product=nflx_close)
     assert (len(priced), unpriced) == (685, {"no_volatility": 8})
+    sent_none = [ct for ct in nflx["chain"] if ct["volatility"] == -999 and ct["openInterest"] > 0]
+    snap = compute_terrain("NFLX", nflx_chain, nflx["spot"], now=now, sessions=held)
+    assert snap.flip_note is not None and snap.flip_note.endswith(
+        f"The gamma curve leaves out {len(sent_none)} contracts it cannot price: "
+        f"{len(sent_none)} with no volatility."
+    ), snap.flip_note
     far = next(ct for ct in nflx["chain"] if ct["expirationDate"].startswith("2028-01-21"))
     assert (
         time_et.time_to_expiry_years(

@@ -44,6 +44,10 @@ ATM_IV = "atm_iv_pct_by_expiry"
 #: the one field added since the record was written: the instant each chain was valued at
 #: (compute_terrain's `now`), at which the matrix prices its gamma if here; asserted on its own
 VALUED_AT = "valued_at"
+#: added since too: which contracts the same-day levels' curve could not price (proved on a
+#: chain that leaves some out in tests/test_data_path_same_day_levels_v1.py); these chains' curves
+#: price every contract, so it is None, asserted on its own
+SAME_DAY_LEFT_OUT = "same_day_left_out"
 #: each real chain's valuation instant, as real_terrains values it
 VALUED = {c.ticker: c.now for c in (CRWD, TSLA, MRVL)} | {
     "SPY": datetime.fromtimestamp(_SPY["capture_ts_utc"], ET)
@@ -142,7 +146,8 @@ def test_every_value_is_what_it_was():
     tests/test_terrain_engine_v1.py). Net delta and net DEX are the signed sum of Schwab's deltas
     since 2026-11-22 (DEX_KEYS: their places are what they were; their values are proved on the
     raw chain in tests/test_one_faucet_units_v1.py), and nothing else moved with them. The
-    instant each chain was valued at (VALUED_AT, new) is the `now` it was computed at.
+    instant each chain was valued at (VALUED_AT, new) is the `now` it was computed at, and the
+    same-day curve's contracts left out (SAME_DAY_LEFT_OUT, new) are none.
     """
     terrains = real_terrains()
     assert sorted(terrains) == sorted(BEFORE)
@@ -151,7 +156,8 @@ def test_every_value_is_what_it_was():
         was = _dex_unread(was)
         now = _dex_unread(_per_strike_keys(canonical(snap), {}, {"by_expiry", "charm"}))
         assert _field(now, VALUED_AT) == VALUED[tk], tk
-        now = [e for e in now if e[1] != VALUED_AT]
+        assert _field(now, SAME_DAY_LEFT_OUT) is None, tk
+        now = [e for e in now if e[1] not in (VALUED_AT, SAME_DAY_LEFT_OUT)]
         _same([e for e in was if e[1] != ATM_IV], [e for e in now if e[1] != ATM_IV], tk)
         assert [e[1] for e in _field(was, ATM_IV)] == [e[1] for e in _field(now, ATM_IV)], tk
         # the whole book's charm rows (new) are its charm map's nets, the map the record holds:

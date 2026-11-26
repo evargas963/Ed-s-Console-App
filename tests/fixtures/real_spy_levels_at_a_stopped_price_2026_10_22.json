@@ -232,7 +232,7 @@
    "carried_text": "765.00",
    "id": "call_wall",
    "label": "Gamma Call",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 765.0,
    "price_text": "765.00",
    "staleness": {
@@ -244,7 +244,7 @@
    "carried_text": "764.00",
    "id": "put_wall",
    "label": "Gamma Put",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 764.0,
    "price_text": "764.00",
    "staleness": {
@@ -256,7 +256,7 @@
    "carried_text": null,
    "id": "gamma_flip",
    "label": "Gamma Flip",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": null,
    "price_text": null,
    "staleness": {
@@ -268,7 +268,7 @@
    "carried_text": "765.00",
    "id": "absolute_gamma_strike",
    "label": "Gamma Total",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 765.0,
    "price_text": "765.00",
    "staleness": {
@@ -280,7 +280,7 @@
    "carried_text": null,
    "id": "gsf",
    "label": "GSF",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": null,
    "price_text": null,
    "staleness": {
@@ -292,7 +292,7 @@
    "carried_text": null,
    "id": "grc",
    "label": "GRC",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": null,
    "price_text": null,
    "staleness": {
@@ -304,7 +304,7 @@
    "carried_text": "764.00",
    "id": "hvp",
    "label": "Gamma Net Negative",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 764.0,
    "price_text": "764.00",
    "staleness": {
@@ -316,7 +316,7 @@
    "carried_text": "776.00",
    "id": "lvp",
    "label": "Gamma Net Positive",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 776.0,
    "price_text": "776.00",
    "staleness": {
@@ -328,7 +328,7 @@
    "carried_text": "772.00",
    "id": "key_delta_strike",
    "label": "Delta Total",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 772.0,
    "price_text": "772.00",
    "staleness": {
@@ -340,7 +340,7 @@
    "carried_text": "763.00",
    "id": "call_delta_wall",
    "label": "Delta Call",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 763.0,
    "price_text": "763.00",
    "staleness": {
@@ -352,7 +352,7 @@
    "carried_text": "772.00",
    "id": "put_delta_wall",
    "label": "Delta Put",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": 772.0,
    "price_text": "772.00",
    "staleness": {
@@ -364,7 +364,7 @@
    "carried_text": null,
    "id": "call_charm_wall",
    "label": "Charm Call",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": null,
    "price_text": null,
    "staleness": {
@@ -376,7 +376,7 @@
    "carried_text": null,
    "id": "put_charm_wall",
    "label": "Charm Put",
-   "note": null,
+   "note": "The gamma curve leaves out 219 contracts it cannot price: 219 settled.",
    "price": null,
    "price_text": null,
    "staleness": {

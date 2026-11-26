@@ -39,16 +39,20 @@ REFERENCE_LINE_FAMILIES = frozenset({"prior_day", "extended_hours"})
 def same_day_note(snap: TerrainSnapshot) -> str | None:
     """Return the same-day levels' note, shown on hover: what they are when they are a model.
 
-    None when they are today's own expiry as Schwab sent it (or there are none); with no expiry
-    listed today, they are the next one re-priced to today's close
-    (calc.terrain_engine.same_day_levels, calc.math_levels.repriced_to_close), and the note says so.
+    With no expiry listed today, they are the next one re-priced to today's close
+    (calc.terrain_engine.same_day_levels, calc.math_levels.repriced_to_close), and the note says
+    so; then which contracts their gamma curve could not price (same_day_left_out). None when
+    neither is to be said.
     """
-    if snap.same_day_repriced_from is None:
-        return None
-    return (
-        f"Modeled: the {snap.same_day_repriced_from} expiry re-priced as if it expired at today's "
-        "close (Black-Scholes on Schwab's volatility, rate and dividend yield per contract)"
+    modeled = (
+        None
+        if snap.same_day_repriced_from is None
+        else f"Modeled: the {snap.same_day_repriced_from} expiry re-priced as if it expired at "
+        "today's close (Black-Scholes on Schwab's volatility, rate and dividend yield per "
+        "contract)."
     )
+    notes = [note for note in (modeled, snap.same_day_left_out) if note is not None]
+    return " ".join(notes) if notes else None
 
 
 def pin_note(snap: TerrainSnapshot) -> str | None:

@@ -25,6 +25,7 @@ from calc.math_exposure_core import (
     strike_of_largest,
     strike_oi_legs,
 )
+from numeric_contract import count_text
 from option_contract import OptionContract
 from time_et import Session
 
@@ -176,6 +177,46 @@ INVALID = "invalid"
 NO_VOLATILITY = "no_volatility"
 NO_EXPIRY = "no_expiry"
 NO_RATE = "no_rate"
+#: each reason a contract is not priced, as the screen says it after its count (unpriced_note)
+UNPRICED_WORDS = {
+    SETTLED: "settled",
+    NO_OPEN_INTEREST: "with open interest not known",
+    INVALID: "with no strike, multiplier or side",
+    NO_VOLATILITY: "with no volatility",
+    NO_EXPIRY: "with no time to expiry",
+    NO_RATE: "with no interest rate or dividend yield",
+}
+
+
+def unpriced_note(unpriced: Mapping[str, int]) -> str | None:
+    """Return the sentence saying which contracts a gamma curve left out; None when none.
+
+    `unpriced`: the contracts it could not price, counted by reason (contract_inputs,
+    repriced_to_close). Nothing left out disappears silently (AGENTS.md rule 7).
+    """
+    if not unpriced:
+        return None
+    reasons = ", ".join(
+        f"{count_text(n)} {UNPRICED_WORDS[why]}" for why, n in sorted(unpriced.items())
+    )
+    total = count_text(sum(unpriced.values()))
+    return f"The gamma curve leaves out {total} contracts it cannot price: {reasons}."
+
+
+def _counted(rows: Iterable[ProfileRow | str]) -> tuple[list[ProfileRow], dict[str, int]]:
+    """Return (priced, unpriced): the rows priced, and the others counted by reason.
+
+    A contract with open interest 0 adds nothing to a curve and is not counted.
+    """
+    priced: list[ProfileRow]
+    unpriced: dict[str, int]
+    priced, unpriced = [], {}
+    for row in rows:
+        if isinstance(row, tuple):
+            priced.append(row)
+        elif row != ZERO_OPEN_INTEREST:
+            unpriced[row] = unpriced.get(row, 0) + 1
+    return priced, unpriced
 
 
 def contract_inputs(
@@ -191,17 +232,8 @@ def contract_inputs(
     (compute_terrain); `unpriced` counts the contracts with open interest the profile could not
     price, by reason.
     """
-    priced: list[ProfileRow]
-    unpriced: dict[str, int]
-    priced, unpriced = [], {}
     tte = expiry_years(now, product, sessions)
-    for c in contracts:
-        row = _profile_row(c, tte(c.expiration, c.settlement))
-        if isinstance(row, tuple):
-            priced.append(row)
-        elif row != ZERO_OPEN_INTEREST:
-            unpriced[row] = unpriced.get(row, 0) + 1
-    return priced, unpriced
+    return _counted(_profile_row(c, tte(c.expiration, c.settlement)) for c in contracts)
 
 
 def _profile_row(c: OptionContract, t_years: float | None) -> ProfileRow | str:
@@ -221,13 +253,13 @@ def _profile_row(c: OptionContract, t_years: float | None) -> ProfileRow | str:
 
 def repriced_to_close(
     contracts: list[OptionContract], spot: float, t_close: float
-) -> tuple[list[OptionContract], list[ProfileRow]]:
-    """(contracts, priced): each contract as if it expired `t_close` years from the valuation.
+) -> tuple[list[OptionContract], list[ProfileRow], dict[str, int]]:
+    """(contracts, priced, unpriced): each contract as if it expired `t_close` years from now.
 
     Its gamma and delta are the Black-Scholes-Merton ones at that horizon (bsm_gamma_delta, on
     Schwab's volatility, rate and dividend yield as sent), from the row the gamma profile prices
-    it by (`priced`, as contract_inputs'). A contract with no row has neither: not known, never
-    Schwab's Greek at its own expiry.
+    it by (`priced` and `unpriced`, as contract_inputs'). A contract with no row has neither: not
+    known, never Schwab's Greek at its own expiry.
     """
     rows = [_profile_row(c, t_close) for c in contracts]
     greeks = (
@@ -235,7 +267,7 @@ def repriced_to_close(
     )
     return (
         [replace(c, gamma=g, delta=d) for c, (g, d) in zip(contracts, greeks, strict=True)],
-        [r for r in rows if isinstance(r, tuple)],
+        *_counted(rows),
     )
 
 
@@ -304,15 +336,16 @@ def expiry_gamma(
     *,
     sessions: Mapping[str, Session],
     product: str,
-) -> dict[float, float]:
+) -> tuple[dict[float, float], dict[str, int]]:
     """Return one expiry's net GEX if the price were at each of its listed strikes at `now`.
 
     Its contracts priced as the gamma profile prices them (contract_inputs), summed at every
     strike the expiry lists (gamma_at_strikes): the confluence matrix's gamma reading of the
     expiry it shows, at the levels snapshot's valuation instant. Empty with no priced contract.
+    With the contracts it could not price, counted by reason.
     """
-    parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
-    return gamma_at_strikes(parsed, (c.strike for c in contracts if c.strike is not None))
+    parsed, unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
+    return gamma_at_strikes(parsed, (c.strike for c in contracts if c.strike is not None)), unpriced
 
 
 def gamma_at_strikes(parsed: list[ProfileRow], strikes: Iterable[float]) -> dict[float, float]:

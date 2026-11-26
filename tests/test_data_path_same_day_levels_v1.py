@@ -19,7 +19,7 @@ from calc import terrain_engine
 from calc.terrain_engine import SAME_DAY_LEVELS, compute_terrain
 from option_contract import read_chain
 from push import levels as push_levels
-from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_FULL, TSLA, charm_walls
+from tests.real_chains import CRWD, MRVL, NFLX, SPY_0DTE, SPY_CLOSE, SPY_FULL, TSLA, charm_walls
 from time_et import (
     EQUITY_OPTIONS,
     ET,
@@ -247,6 +247,24 @@ def test_the_hover_says_modeled_exactly_when_the_levels_are_repriced(book, model
     front = min(c["expirationDate"][:10] for c in book.chain if c["expirationDate"][:10] > today)
     assert snap.same_day_repriced_from == front
     assert note.startswith(f"Modeled: the {front} expiry re-priced"), note
+
+
+def test_the_hover_says_which_contracts_the_same_day_curve_could_not_price():
+    """SPY's close capture of 2026-10-22, begun at 16:17 ET, past its 16:15 option close.
+
+    Today's expiry is read as held (no model note), and every one of its contracts with open
+    interest is settled: the same-day curve prices none of them, and the hover says how many it
+    left out and why (AGENTS.md rule 7), counted on the raw chain.
+    """
+    book = SPY_CLOSE
+    snap = compute_terrain(
+        book.ticker, read_chain(book.chain), book.spot, now=book.now, sessions=sessions()
+    )
+    held = [ct for ct in book.chain if ct["openInterest"] > 0]
+    assert snap.same_day_repriced_from is None and held
+    assert push_levels.same_day_note(snap) == (
+        f"The gamma curve leaves out {len(held)} contracts it cannot price: {len(held)} settled."
+    )
 
 
 def _with_a_call_at(strike: float, book) -> dict:

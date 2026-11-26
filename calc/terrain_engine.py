@@ -47,6 +47,7 @@ from calc.math_levels import (
     merge_charm_maps,
     pick_charm_wall_strikes,
     repriced_to_close,
+    unpriced_note,
 )
 from calc.terrain_read import (
     FLIP_RELATION_TEXT,
@@ -283,6 +284,9 @@ class TerrainSnapshot:
     #: the expiry the same-day levels were re-priced from to today's close (a model, said on
     #: hover); None when they are today's own expiry as held, or absent
     same_day_repriced_from: str | None = None
+    #: which contracts the same-day levels' gamma curve could not price (unpriced_note, said on
+    #: hover); None when it priced every one, or they are absent
+    same_day_left_out: str | None = None
 
     #: Delta walls owned by THIS producer — same wide chain,
     #: one book. Concepts terrain does not compute (OI/vanna walls, inflections) do not
@@ -1119,11 +1123,13 @@ def same_day_levels(
     product: str,
     books: dict[ExpiryKey, Book],
     charm_by_expiry: dict[str | None, dict[float, CharmBucket]],
-) -> tuple[dict[str, float | None], str | None]:
+) -> tuple[dict[str, float | None], str | None, str | None]:
     """Return the whole book's levels on a 0DTE basis, read on the nearest listed expiry alone.
 
     With the expiry they were re-priced from (None when an expiry listed today was read as held,
     or when there are no levels): a re-priced set is a model, and the screen says so on hover.
+    And which contracts their gamma curve could not price (unpriced_note; None: none, or no
+    levels), said on hover too.
 
     Every ticker, one function, the same producers as the whole book, over the book's contracts
     by expiry day (`expiry_rows`). An expiry listed today is read as the book holds it: its
@@ -1139,18 +1145,18 @@ def same_day_levels(
     today = now.astimezone(ET).date().isoformat()
     front = min((e for e in expiry_rows if e is not None and e >= today), default=None)
     if front is None:
-        return blank, None
+        return blank, None, None
     rows = expiry_rows[front]
     repriced_from = None if front == today else front
     if front == today:
         front_books = (b for (e, _d), b in books.items() if e == front)
-        parsed, _unpriced = contract_inputs(rows, now, sessions=sessions, product=product)
+        parsed, unpriced = contract_inputs(rows, now, sessions=sessions, product=product)
         charm = charm_by_expiry[front]
     else:
         t_close = time_to_expiry_years(today, now, sessions=sessions, product=product)
         if not t_close:
-            return blank, None
-        rows, parsed = repriced_to_close(rows, spot, t_close)
+            return blank, None, None
+        rows, parsed, unpriced = repriced_to_close(rows, spot, t_close)
         front_books = exposure_books(
             rows, spot=spot, now=now, sessions=sessions, product=product
         ).values()
@@ -1181,7 +1187,7 @@ def same_day_levels(
         "call_charm_wall": call_charm,
         "put_charm_wall": put_charm,
     }
-    return levels, repriced_from
+    return levels, repriced_from, unpriced_note(unpriced)
 
 
 def compute_terrain(
@@ -1219,7 +1225,7 @@ def compute_terrain(
     expiry_rows = _expiry_rows(contracts)
     by_expiry = _by_expiry(expiry_rows, spot, now, sessions, product)
     read = build_terrain_read(spot=spot, gamma_at_spot=gamma_at_spot)
-    same_day, same_day_repriced_from = same_day_levels(
+    same_day, same_day_repriced_from, same_day_left_out = same_day_levels(
         expiry_rows,
         spot,
         now=now,
@@ -1247,6 +1253,7 @@ def compute_terrain(
         pin_minutes_to_close=None if pin is None else pin.minutes_to_close,
         same_day=same_day,
         same_day_repriced_from=same_day_repriced_from,
+        same_day_left_out=same_day_left_out,
         **_front_max_pain(books),
         contracts_used=diag.contracts_used,
         strikes_used=len(exposures),
@@ -1356,17 +1363,25 @@ def _flip_fields(
     The model curve places the flip only (Schwab sends gamma at its own price, never at other
     prices): where it crosses zero over the strikes the chain lists, nearest the price, else
     None; where the curve's sign at spot disagrees with Schwab's (`gamma_at_spot`), the flip's
-    note says so.
+    note says so, and it says which contracts the curve could not price (unpriced_note).
     """
-    parsed, _unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
+    parsed, unpriced = contract_inputs(contracts, now, sessions=sessions, product=product)
     profile = compute_gamma_profile(parsed, spot)
     # GSF/GRC from the SAME materialized profile — no second materialization.
     gsl = compute_gamma_support_levels(profile, spot)
+    notes = [
+        note
+        for note in (
+            flip_note(gamma_at_spot, gamma_at_price(profile, spot)),
+            unpriced_note(unpriced),
+        )
+        if note is not None
+    ]
     return {
         "gamma_flip": gamma_flip_from_profile(profile, spot),
         "gsf": gsl["gsf"],
         "grc": gsl["grc"],
-        "flip_note": flip_note(gamma_at_spot, gamma_at_price(profile, spot)),
+        "flip_note": " ".join(notes) if notes else None,
         "profile": profile,
     }
 
