@@ -1288,13 +1288,18 @@ lines_matching(
 )
 # a test waits on its cause, or polls for it with a deadline (tests.shared_helpers.until): a sleep
 # outside a poll's loop, but a yield (sleep(0)), is a fixed wait (Fowler, "Eradicating
-# Non-Determinism in Tests"); a child program's own code, a string to the test, is not the test's
+# Non-Determinism in Tests"); a child program's own code, a string to the test, is not the test's.
+# A sleep whose time is the condition tested (an idle connection, a slow consumer) stays, labeled
+# INDUCED on its line (.claude/rules/tests.md): each is listed, reported, not a fixed wait
 FIXED_WAITS = "fixed waits in tests: a sleep that is not a poll's interval (timing that can flake)"
+INDUCED_WAITS = "sleeps labeled INDUCED, their time the condition tested (reported)"
 add(S, FIXED_WAITS, "9/15", "ast")
+add(S, INDUCED_WAITS, "9/15", "ast")
 for f, t in trees.items():
     if area(f) != "tests":
         continue
     polled = {id(c) for w in ast.walk(t) if isinstance(w, ast.While) for c in ast.walk(w)}
+    lines = TEXT[f].splitlines()
     for c in ast.walk(t):
         if (
             isinstance(c, ast.Call)
@@ -1302,7 +1307,8 @@ for f, t in trees.items():
             and id(c) not in polled
             and not (c.args and isinstance(c.args[0], ast.Constant) and c.args[0].value == 0)
         ):
-            add(S, FIXED_WAITS, "9/15", "ast", f"{f}:{c.lineno}: {ast.unparse(c)}")
+            row = INDUCED_WAITS if "INDUCED" in lines[c.lineno - 1] else FIXED_WAITS
+            add(S, row, "9/15", "ast", f"{f}:{c.lineno}: {ast.unparse(c)}")
 for f in [f for f in TEST_FILES if f.endswith(".py")]:
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
         if not re.search(r"pytest\.approx\(|\babs=\s*[\d.]|\brel=\s*[\d.]", ln):
