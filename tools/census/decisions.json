@@ -292,6 +292,12 @@
     {
       "verdict": "ok",
       "category": "workarounds: Python",
+      "pattern": "^tests/test_operator_yes_guard_v1\\.py:\\d+: a platform special case: windows = sys\\.platform == \"win32\"$",
+      "reason": "the test runs the system's own wait program under a name of its own, and each platform has its own: ping on Windows, sleep elsewhere"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
       "pattern": "^tests/test_operating_process_lock_v1\\.py:\\d+: a platform special case: if sys\\.platform != \"win32\":$",
       "reason": "a NUL byte in a path: the guard raises where Linux cannot place it and refuses where Windows does, each run on its own CI runner"
     },
