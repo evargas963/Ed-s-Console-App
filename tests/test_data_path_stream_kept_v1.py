@@ -55,9 +55,9 @@ from tests.shared_helpers import et_ts, until
 from time_et import ET
 
 
-def _rows(db, sql: str) -> list:
+def _rows(db, sql: str, *values: object) -> list:
     with closing(sqlite3.connect(db)) as conn, conn:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, values).fetchall()
 
 
 def test_only_the_option_contracts_traded_are_recorded_and_every_equity_message(tmp_path):
@@ -346,7 +346,7 @@ def _status_while_locked(db, writer: CaptureWriter, ready) -> tuple[dict, int]:
 
 def _old_rows(db) -> int:
     return _rows(
-        db, f"SELECT COUNT(*) FROM rest_quotes_raw WHERE ts_recv < {et_ts(_FIVE_SESSIONS)}"
+        db, "SELECT COUNT(*) FROM rest_quotes_raw WHERE ts_recv < ?", et_ts(_FIVE_SESSIONS)
     )[0][0]
 
 
