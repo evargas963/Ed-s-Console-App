@@ -251,7 +251,7 @@ def test_a_checkout_with_no_virtual_environment_says_how_to_make_one(tmp_path):
 
 
 def _program(runs: Path, *codes: int) -> list[str]:
-    """A program of the test's own (INDUCED): each run notes itself in `runs`, ends on `codes`.
+    """Return a program of the test's own (INDUCED): each run notes itself in `runs`, ends `codes`.
 
     Its n-th run ends on the n-th code, the last code on every run after.
     """
