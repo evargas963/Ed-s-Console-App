@@ -44,6 +44,12 @@ BASH_TOOLS = frozenset({"Bash", "PowerShell", "Shell", "Monitor"})
 #: no guard keeps a private copy.
 MUTATING_TOOLS = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit", "StrReplace", "Delete"})
 
+#: what the chain says of a payload it cannot read, with why: it judges nothing and refuses
+UNJUDGED = (
+    "HOOK CHAIN: the hook payload is not a readable JSON object ({}); the event cannot be judged "
+    "and is refused. Unreadable is not clean.\n"
+)
+
 
 def _git(*args: str) -> str:
     try:
@@ -51,7 +57,8 @@ def _git(*args: str) -> str:
             ["git", *args], cwd=str(REPO), capture_output=True, text=True, timeout=15, check=False
         )
         return r.stdout.strip()  # capture_output with text: always a string
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("HOOK CHAIN: git %s did not run: %s", " ".join(args), e)
         return ""
 
 
@@ -63,26 +70,28 @@ def judge_banner() -> str:
 
 
 def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
-    """Run every member on the same payload; the worst exit code wins (2 = block)."""
+    """Run every member on the same payload; the worst exit code wins (2 = block).
+
+    A member's main() returns its exit code; one that returns anything else, exits or raises is
+    a broken guard, and blocks.
+    """
     try:
         parsed = json.loads(raw_payload)
-    except (json.JSONDecodeError, ValueError, TypeError):
-        parsed = None
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        sys.stderr.write(UNJUDGED.format(e))
+        return 2
     if not isinstance(parsed, dict):
-        sys.stderr.write(
-            "HOOK CHAIN: the hook payload is not a readable JSON object; the event "
-            "cannot be judged and is refused. Unreadable is not clean.\n"
-        )
+        sys.stderr.write(UNJUDGED.format(f"a JSON {type(parsed).__name__}"))
         return 2
     worst = 0
     for name in members:
         try:
             mod = importlib.import_module(name)
             sys.stdin = io.StringIO(raw_payload)
-            rc = int(mod.main() or 0)
-        except SystemExit as exc:  # a guard that sys.exit()s inside main()
-            rc = int(exc.code or 0)
-        except Exception:  # a broken guard must scream, not wave through
+            rc = mod.main()
+            if not isinstance(rc, int):
+                raise TypeError(f"{name}.main() returned {rc!r}, not an exit code")
+        except (Exception, SystemExit):  # a broken guard must scream, not wave through
             log.exception("HOOK CHAIN: %s crashed", name)
             rc = 2
         worst = max(worst, rc)

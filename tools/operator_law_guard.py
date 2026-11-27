@@ -46,7 +46,7 @@ from tools.shell_parse import (  # the ONE shell reader
     Statement,
     git_parts,
     git_subcommand,
-    parse_python,
+    python_calls,
     python_code,
     read,
     reads_stdin,
@@ -111,12 +111,7 @@ def _python_violation(code: str) -> bool:
     The path is one inside a protected tree. Code that does not parse cannot run, so it removes
     nothing.
     """
-    tree = parse_python(code)
-    if tree is None:
-        return False
-    for n in ast.walk(tree):
-        if not isinstance(n, ast.Call):
-            continue
+    for n in python_calls(code):
         f = n.func
         name = f.attr if isinstance(f, ast.Attribute) else getattr(f, "id", "")
         strings = [

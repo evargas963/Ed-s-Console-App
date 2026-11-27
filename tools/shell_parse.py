@@ -43,12 +43,14 @@ Windows path (`C:\Git\cmd\git.exe`): such a statement is read both ways and both
 from __future__ import annotations
 
 import ast
+import logging
 import os
 import re
 import shlex
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 
+log = logging.getLogger("shell_parse")
 _WINDOWS = os.name == "nt"
 _ABS_RE = re.compile(r"^(?:[A-Za-z]:[/\\]|[/\\])")
 #: MSYS / Cygwin drive spellings: the Bash tool on this host is Git Bash, so `cd "/c/Users/..."` is
@@ -73,7 +75,10 @@ def normalize_repo(path) -> str:
     """
     try:
         p = Path(_msys_to_windows(str(path))).expanduser().resolve()
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, RuntimeError) as e:  # git cannot run in it either
+        log.warning(
+            "shell_parse: the path %r does not resolve, so it is no repository: %r", path, e
+        )
         return ""
     s = str(p).replace("\\", "/").rstrip("/")
     return s.casefold() if _WINDOWS else s
@@ -94,7 +99,10 @@ def repo_root_of(path) -> str:
         for cand in (p, *p.parents):
             if (cand / ".git").exists():
                 return normalize_repo(cand)
-    except (OSError, ValueError, RuntimeError):
+    except (OSError, ValueError, RuntimeError) as e:  # git cannot run in it either
+        log.warning(
+            "shell_parse: the path %r cannot be read, so it is in no repository: %r", path, e
+        )
         return ""
     return ""
 
@@ -912,11 +920,9 @@ def _scripts(st: Statement) -> list[tuple[str, bool]]:
         return [(" ".join(args) if args else st.stdin or "", True)]
     if PYTHON.fullmatch(name):
         return [(script, False) for c in python_code(st) for script in _python_shell_commands(c)]
-    if name == "cmd":
-        k = next(
-            (i for i, a in enumerate(args) if a.lower() in ("/c", "/k", "//c", "//k")), None
-        )  # // in Git Bash
-        return [(" ".join(args[k + 1 :]), False)] if k is not None else []
+    if name == "cmd":  # its command is what follows its first /c or /k (// in Git Bash), if any
+        flags = [i for i, a in enumerate(args) if a.lower() in ("/c", "/k", "//c", "//k")]
+        return [(" ".join(args[i + 1 :]), False) for i in flags[:1]]
     ps = name in PWSH
     if name in _SH:
         k = next((i for i, a in enumerate(args) if _SH_COMMAND.fullmatch(a)), None)
@@ -1097,16 +1103,19 @@ def unseen(st: Statement) -> str:
     return ""
 
 
-def parse_python(code: str) -> ast.Module | None:
-    """Return the syntax tree of python source, or None when Python could not compile it either.
+def python_calls(code: str) -> list[ast.Call]:
+    """Return every call python source makes; none when Python could not compile it either.
 
-    The causes are a syntax error, a null byte or an unencodable character (ValueError), or
-    nesting too deep for the parser (MemoryError, RecursionError).
+    Code that does not compile runs nothing. The causes are a syntax error, a null byte or an
+    unencodable character (ValueError), or nesting too deep for the parser (MemoryError,
+    RecursionError).
     """
     try:
-        return ast.parse(code)
-    except (SyntaxError, ValueError, MemoryError, RecursionError):
-        return None
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError, MemoryError, RecursionError) as e:
+        log.warning("shell_parse: python code that does not compile runs nothing: %r", e)
+        return []
+    return [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
 
 
 def _python_shell_commands(code: str) -> list[str]:
@@ -1115,12 +1124,9 @@ def _python_shell_commands(code: str) -> list[str]:
     For example `os.system('git reset --hard')` or `subprocess.run(['git', 'reset', '--hard'])`;
     code that does not parse runs nothing.
     """
-    tree = parse_python(code)
-    if tree is None:
-        return []
     out = []
-    for n in ast.walk(tree):
-        if not isinstance(n, ast.Call) or not n.args:
+    for n in python_calls(code):
+        if not n.args:
             continue
         f = n.func  # the name called: os.system -> system, run -> run; a call of a call has none
         called = (

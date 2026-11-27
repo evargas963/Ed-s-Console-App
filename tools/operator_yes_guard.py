@@ -96,7 +96,20 @@ def _kills(st: Statement) -> bool:
 LISTINGS = ("get-process", "gps", "ps", "get-ciminstance", "gcim", "get-wmiobject", "gwmi")
 
 
-def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[psutil.Process], bool]:
+#: what the guard reads of a process
+_READ = ["pid", "name", "cmdline", "cwd"]
+
+
+def _processes() -> list[dict]:
+    """Return every running process's _READ fields, as psutil lists them.
+
+    A process that ends while listed is left out, and a field Windows does not let this user read
+    is None (psutil.process_iter, ad_value).
+    """
+    return [p.info for p in psutil.process_iter(_READ, ad_value=None)]
+
+
+def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[dict], bool]:
     """Return the running processes a kill statement `st` reaches, and whether it reaches more.
 
     The processes are those it reaches by the ids and image names it names (a stopper's bare ids
@@ -122,10 +135,10 @@ def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[psutil.Pro
                 names.update(
                     [part.lower().removesuffix(".exe")] if part and not part.isdigit() else []
                 )
-    found = [psutil.Process(pid) for pid in pids if psutil.pid_exists(pid)]
-    for p in psutil.process_iter(["name"]):
-        image = (p.info["name"] or "").lower().removesuffix(".exe")
-        if any(
+    found = []
+    for p in _processes():
+        image = (p["name"] or "").lower().removesuffix(".exe")
+        if p["pid"] in pids or any(
             fnmatch(image, n) or (n.startswith("python") and image.startswith(n)) for n in names
         ):
             found.append(p)
@@ -136,26 +149,24 @@ def _production_running() -> bool:
     """Whether the daemon, the console or launch.py runs on this machine now."""
     return any(
         _production(p) is not False
-        for p in psutil.process_iter(["name"])
-        if (p.info["name"] or "").lower().startswith("python")
+        for p in _processes()
+        if (p["name"] or "").lower().startswith("python")
     )
 
 
-def _production(proc: psutil.Process) -> bool | None:
-    """Return whether `proc` is the daemon, the console or launch.py.
+def _production(proc: dict) -> bool | None:
+    """Return whether the process `proc` (its _READ fields) is the daemon, the console or launch.py.
 
     It is when its command line carries one of their marks and it runs in the production checkout
     (runtime_layout.runtime_root(), which every worktree resolves to; a worktree's test console is
     not production). None when either cannot be read.
     """
-    try:
-        line, cwd = " ".join(proc.cmdline()).lower(), Path(proc.cwd()).resolve()
-    except psutil.NoSuchProcess:
-        return False
-    except psutil.AccessDenied:
+    if proc["cmdline"] is None or proc["cwd"] is None:
         return None
+    line = " ".join(proc["cmdline"]).lower()
     return (
-        any(m in line for m in PRODUCTION_MARKS) and cwd == runtime_layout.runtime_root().resolve()
+        any(m in line for m in PRODUCTION_MARKS)
+        and Path(proc["cwd"]).resolve() == runtime_layout.runtime_root().resolve()
     )
 
 
