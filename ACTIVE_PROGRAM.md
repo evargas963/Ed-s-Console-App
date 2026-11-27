@@ -172,8 +172,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   agent's work read in full, deploy means restarted and checked, `&&` chains, every requirement
   naming its enforcement, a screen's state said in its producer's words and not the page's), each
   held by the builder's audit until a check exists.
-- ENF-16 (QUEUED): operator decisions 3, 6 and 8 in `docs/DATA_FLOW.md` §6, which name no test, each
-  get one.
 - ENF-21 (QUEUED): a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by
   section or Schwab's own reply; no machine check yet.
 - LIVE-SESSION (QUEUED): checks only a live session can show, across the watchlist: the heatmap
