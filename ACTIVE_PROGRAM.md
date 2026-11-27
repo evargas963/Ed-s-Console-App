@@ -54,11 +54,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - STREAM-ONE (NEXT): what Schwab streams comes only from the stream (AGENTS.md rule 3). Left: a
   streamed contract's open interest, volume and quote fields, which `/chains` still sends, read from
   the stream alone (open interest stays the chain's, rule 3's exception).
-- FIELDS-LIVE (NEXT): every field number Schwab accepts is asked for
-  (`feed.connection.HIGHEST_FIELD`; Schwab's replies in
-  `tests/fixtures/real_schwab_field_number_replies_2026_10_12.json`). Next: show from the daemon log
-  and `ed.db` that production's subscriptions answer code 0 at every number and that
-  LEVELONE_EQUITIES fields 52-56 arrive in `stream_quotes_raw.native_json`.
 - SPEED (NEXT; also LIVE-MEASURE): one regular session's numbers across the watchlist, from the
   daemon log and py-spy: requests per minute and every 429 or 502, the chain rotation time, the
   program's memory and CPU, the levels' age, and how far the push runs behind Schwab. Then the $SPX
