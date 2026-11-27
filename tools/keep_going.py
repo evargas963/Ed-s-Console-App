@@ -31,6 +31,7 @@ exits 2 with the reason, which also refuses the stop: "cannot judge" never reads
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import socket
@@ -41,6 +42,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 WAITING = "WAITING ON OPERATOR:"
+log = logging.getLogger("keep_going")
 
 
 #: how much of the transcript's end is read first (a long session's transcript runs past 100 MB)
@@ -48,11 +50,15 @@ TAIL_BYTES = 4 * 1024 * 1024
 
 
 def _last_assistant(text: str) -> dict | None:
+    """Return the agent's own last assistant entry; a damaged line is said and decides nothing."""
     last = None
-    for line in text.splitlines():
+    for n, line in enumerate(text.splitlines(), 1):
         try:
             entry = json.loads(line)
-        except ValueError:
+        except ValueError as e:
+            log.warning(
+                "keep_going: transcript line %d is not JSON, so it decides nothing: %s", n, e
+            )
             continue
         if (
             isinstance(entry, dict)
@@ -73,6 +79,8 @@ def last_message(transcript: Path) -> str:
     with transcript.open("rb") as f:
         size = f.seek(0, 2)
         f.seek(max(0, size - TAIL_BYTES))
+        if size > TAIL_BYTES:
+            f.readline()  # the tail begins inside a line: its first whole line follows
         tail = f.read().decode("utf-8", errors="replace")
     last = _last_assistant(tail)
     if last is None and size > TAIL_BYTES:

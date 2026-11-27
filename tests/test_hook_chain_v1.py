@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -195,6 +196,24 @@ def test_every_wired_executable_refuses_an_unreadable_payload():
         )
         assert r.returncode != 0, f"{rel} exits 0 on an unreadable payload — fails OPEN"
         assert "ModuleNotFoundError" not in r.stderr, f"{rel} never read the payload: {r.stderr}"
+
+
+def test_a_member_that_returns_no_exit_code_or_exits_blocks():
+    """A member's main() returns its exit code: one that returns none, or exits, is broken.
+
+    INDUCED: two members of the test's own, where import finds them (sys.modules).
+    """
+    silent, exiting = types.ModuleType("zz_returns_none"), types.ModuleType("zz_exits_0")
+    silent.main = lambda: None
+    exiting.main = lambda: sys.exit(0)
+    members = {m.__name__: m for m in (silent, exiting)}
+    sys.modules.update(members)
+    try:
+        for name in members:
+            assert run_chain(json.dumps({"tool_name": "Bash"}), (name,)) == 2, name
+    finally:
+        for name in members:
+            del sys.modules[name]
 
 
 def test_a_crashing_or_missing_member_blocks_and_the_chain_keeps_running():

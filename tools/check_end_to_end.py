@@ -59,6 +59,7 @@ import ast
 import difflib
 import functools
 import io
+import logging
 import re
 import subprocess
 import sys
@@ -90,8 +91,10 @@ JS_PATCH = re.compile(
     r"(null|undefined(?!\w)|0(?!\w)|''|\"\"|\[\]|\{\})\s*\)"
 )
 SCRIPT_BLOCK = re.compile(r"<script\b[^>]*>(.*?)</script\s*>", re.S | re.I)
-HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+#: a hunk's header, the PR's side's first line taken: the lines that follow say what it holds
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 DATA_REPAIR = {"fillna", "dropna", "interpolate", "bfill", "ffill"}
+log = logging.getLogger("check_end_to_end")
 
 
 class ToolError(Exception):
@@ -143,10 +146,12 @@ def _diff_path(header: str) -> str:
 def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
     """Return {path: the line numbers, in the PR's version, of the lines the PR adds}.
 
-    It is read from one diff; a moved file adds every line it holds.
+    It is read from one diff with no context lines: each hunk's `+` lines are the lines it adds,
+    numbered on from the PR's first line its header names; a moved file adds every line it holds.
     """
     out: dict[str, set[int]] = {}
     path: str | None = None
+    added = 0  # the PR's line number of the hunk's next added line
     header = (
         False  # between a file's `diff --git` and its first hunk: an added line is not a header
     )
@@ -175,9 +180,12 @@ def pr_added_lines(root: Path, base: str) -> dict[str, set[int]]:
         elif line.startswith("@@ "):
             header = False
             m = HUNK.match(line)
-            if m and path is not None:
-                start, count = int(m.group(1)), int(m.group(2) or 1)
-                out[path].update(range(start, start + count))
+            if m is None:
+                raise ToolError(f"git diff hunk header {line!r} could not be read")
+            added = int(m.group(1))
+        elif not header and path is not None and line.startswith("+"):
+            out[path].add(added)
+            added += 1
     return out
 
 
@@ -197,19 +205,19 @@ JS_CODE_TREE = Path(__file__).resolve().parent / "js_code_tree.js"
 CODE_TREE_SUFFIXES = (".py", ".js", ".mjs")
 
 
-def _python_code(source: str) -> str | None:
+def _python_code(source: str) -> str:
     """Return the module's code with its comments and docstrings set aside (its syntax tree).
 
-    None when it does not parse or declares an encoding other than UTF-8 (imported, its strings
-    would read otherwise than this tree).
+    ToolError when it does not parse or declares an encoding other than UTF-8 (imported, its
+    strings would read otherwise than this tree).
     """
     try:
         encoding, _ = tokenize.detect_encoding(io.BytesIO(source.encode("utf-8")).readline)
         tree = ast.parse(source)
-    except (SyntaxError, UnicodeError):
-        return None
+    except (SyntaxError, UnicodeError) as e:
+        raise ToolError(f"it does not parse: {e}") from e
     if encoding not in ("utf-8", "utf-8-sig"):
-        return None
+        raise ToolError(f"it declares the encoding {encoding}, not UTF-8")
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             first = node.body[0] if node.body else None
@@ -222,11 +230,11 @@ def _python_code(source: str) -> str | None:
     return ast.dump(tree)
 
 
-def _js_code(text: str, module: bool = False) -> str | None:
+def _js_code(text: str, module: bool = False) -> str:
     """Return page code's syntax tree, comments and positions set aside.
 
-    The tree is Babel's, through js_code_tree.js; None when it does not parse or Node cannot run
-    it, which counts as changed.
+    The tree is Babel's, through js_code_tree.js; ToolError when it does not parse or Node cannot
+    run it.
     """
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / ("code.mjs" if module else "code.js")
@@ -239,22 +247,24 @@ def _js_code(text: str, module: bool = False) -> str | None:
                 encoding="utf-8",
                 timeout=120,
             )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-    return run.stdout if run.returncode == 0 and run.stdout else None
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise ToolError(f"node could not run {JS_CODE_TREE.name}: {e}") from e
+    if run.returncode != 0 or not run.stdout:
+        raise ToolError(f"it does not parse (exit {run.returncode}): {run.stderr.strip()[-300:]}")
+    return run.stdout
 
 
-def code_tree(path: str, text: str) -> str | None:
+def code_tree(path: str, text: str) -> str:
     """Return `path`'s code, comments and docstrings set aside.
 
-    It is Python's syntax tree, or page code's syntax tree; None when it cannot be read or `path`
-    is not one of CODE_TREE_SUFFIXES.
+    It is Python's syntax tree, or page code's syntax tree; ToolError when it cannot be read or
+    `path` is not one of CODE_TREE_SUFFIXES.
     """
     if path.endswith(".py"):
         return _python_code(text)
     if path.endswith((".js", ".mjs")):
         return _js_code(text, module=path.endswith(".mjs"))
-    return None
+    raise ToolError(f"{path} is not one of {CODE_TREE_SUFFIXES}, whose code a tree reads")
 
 
 #: the lines of ruff's resolved settings (`ruff check --show-settings`, extended files included)
@@ -272,8 +282,8 @@ FIX_SAFETY = (
 )
 
 
-def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
-    """FIX_SAFETY's values as ruff resolves them from `config`; None when ruff cannot."""
+def fix_safety(root: Path, config: Path) -> dict[str, str]:
+    """FIX_SAFETY's values as ruff resolves them from `config`; ToolError when ruff cannot."""
     try:
         run = subprocess.run(
             [
@@ -291,11 +301,14 @@ def fix_safety(root: Path, config: Path) -> dict[str, str] | None:
             cwd=root,
             timeout=120,
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ToolError(f"ruff could not run on {config}: {e}") from e
     lines = (line.partition(" = ") for line in run.stdout.decode("utf-8", "replace").splitlines())
     found = {k: v for k, _, v in lines if k in FIX_SAFETY}
-    return found if run.returncode == 0 and len(found) == len(FIX_SAFETY) else None
+    if run.returncode != 0 or len(found) != len(FIX_SAFETY):
+        said = run.stderr.decode("utf-8", "replace").strip()[-300:]
+        raise ToolError(f"ruff could not resolve {config} (exit {run.returncode}): {said}")
+    return found
 
 
 def takes_unsafe(safety: dict[str, str]) -> bool:
@@ -317,13 +330,12 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
     try:
         _git(root, "diff", "--quiet", "HEAD", "--", "pyproject.toml")  # the tree is the commit's
         old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:pyproject.toml")
-    except ToolError:
-        return False
-    with tempfile.TemporaryDirectory() as tmp:
-        (Path(tmp) / "pyproject.toml").write_text(old, encoding="utf-8")
-        was = fix_safety(root, Path(tmp) / "pyproject.toml")
-    now = fix_safety(root, root / "pyproject.toml")
-    if was is None or now is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "pyproject.toml").write_text(old, encoding="utf-8")
+            was = fix_safety(root, Path(tmp) / "pyproject.toml")
+        now = fix_safety(root, root / "pyproject.toml")
+    except ToolError as e:
+        log.warning("check_end_to_end: the tools' own fix is not taken as safe: %s", e)
         return False
     return (
         not takes_unsafe(now)
@@ -333,12 +345,12 @@ def tools_fix_is_safe(root: Path, base: str) -> bool:
     )
 
 
-def tool_fixed(root: Path, path: str, text: str) -> str | None:
+def tool_fixed(root: Path, path: str, text: str) -> str:
     """Return `text` as the repository's standard tools leave it.
 
     The tools are ruff's safe fixes with the repository's pyproject.toml, then `ruff format`, as
-    the commit hook runs them; None when either cannot run on it (its callers first check that the
-    configuration takes only safe fixes: tools_fix_is_safe).
+    the commit hook runs them; ToolError when either cannot run on it (its callers first check
+    that the configuration takes only safe fixes: tools_fix_is_safe).
     """
     out = text.encode("utf-8")  # as bytes: no line ending translated on the way in or out
     for args in (
@@ -354,10 +366,11 @@ def tool_fixed(root: Path, path: str, text: str) -> str | None:
                 cwd=root,
                 timeout=120,
             )
-        except (OSError, subprocess.TimeoutExpired):
-            return None
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise ToolError(f"ruff {args[0]} could not run on {path}: {e}") from e
         if run.returncode != 0:
-            return None
+            said = run.stderr.decode("utf-8", "replace").strip()[-300:]
+            raise ToolError(f"ruff {args[0]} did not take {path} (exit {run.returncode}): {said}")
         out = run.stdout
     return out.decode("utf-8")
 
@@ -368,25 +381,34 @@ def code_identical(root: Path, base: str, path: str) -> bool:
     The code is compared once comments and docstrings are set aside; a change only as the
     repository's standard tools make it counts as the same (tool_fixed, with the PR's committed
     pyproject.toml when tools_fix_is_safe, reproduces the PR's file from the base's): such a
-    change has nothing for a test to fail on, so it needs none. A file new to the PR, renamed,
-    deleted, not one of CODE_TREE_SUFFIXES, or one either version of which cannot be read is not
-    that.
+    change has nothing for a test to fail on, so it needs none. A file new to the PR (a renamed
+    one is deleted and new), not one of CODE_TREE_SUFFIXES, or one either version of which cannot
+    be read is not that; one that cannot be read is said, with why.
     """
+    if not path.endswith(CODE_TREE_SUFFIXES):
+        return False
     try:
-        old = _git(root, "show", f"{_git(root, 'merge-base', base, 'HEAD').strip()}:{path}")
+        commit, held = base_tree(root, base)
+        if path not in held:
+            return False
+        old = _git(root, "show", f"{commit}:{path}")
         new = pr_source(root, path)
-    except ToolError:
+        return code_tree(path, old) == code_tree(path, new) or (
+            path.endswith(".py")
+            and tools_fix_is_safe(root, base)
+            and tool_fixed(root, path, old) == new
+        )
+    except ToolError as e:
+        log.warning("check_end_to_end: %s is judged a change of its code: %s", path, e)
         return False
-    before, after = code_tree(path, old), code_tree(path, new)
-    if before is None:
-        return False
-    if before == after:
-        return True
-    return (
-        path.endswith(".py")
-        and tools_fix_is_safe(root, base)
-        and tool_fixed(root, path, old) == new
-    )
+
+
+@functools.cache  # one merge-base and one listing per run
+def base_tree(root: Path, base: str) -> tuple[str, frozenset[str]]:
+    """Return the merge-base of `base` and HEAD, and every path it holds."""
+    commit = _git(root, "merge-base", base, "HEAD").strip()
+    paths = _git(root, "ls-tree", "-r", "-z", "--name-only", commit).split("\0")
+    return commit, frozenset(p for p in paths if p)
 
 
 def behavior_change(root: Path, base: str, path: str) -> bool:
@@ -618,8 +640,8 @@ def python_patches(source: str, added: set[int]) -> list[tuple[int, str]]:
     """Return the patch shapes the PR adds to a Python file."""
     try:
         tree = ast.parse(source)
-    except SyntaxError as e:
-        return [(e.lineno or 1, f"does not parse: {e.msg}")]
+    except SyntaxError as e:  # the parser's own error, which names its line
+        return [(e.lineno, f"does not parse: {e.msg}")]
     totals = _running_totals(tree) | _port_settings(tree)
     absences = _absence_reads(tree)
     found: list[tuple[int, str]] = []
@@ -784,12 +806,16 @@ def violations(root: Path, base: str) -> list[str]:
     for config in _git(root, "ls-tree", "-r", "-z", "--name-only", "HEAD").split("\0"):
         if config.rsplit("/", 1)[-1] not in RUFF_CONFIGS:
             continue
-        safety = fix_safety(root, root / config)
-        if safety is None or takes_unsafe(safety):
-            found.append(
-                f"{config}: ruff's settings take an unsafe fix, or ruff cannot read them; "
-                "no unsafe fix is taken, in any file"
+        try:
+            unsafe = takes_unsafe(fix_safety(root, root / config))
+            why = "ruff's settings take an unsafe fix"
+        except ToolError as e:
+            unsafe, why = (
+                True,
+                f"ruff cannot read its settings, so they may take an unsafe fix: {e}",
             )
+        if unsafe:
+            found.append(f"{config}: {why}; no unsafe fix is taken, in any file")
     return found
 
 
