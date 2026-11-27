@@ -513,7 +513,7 @@ def test_a_contract_never_recorded_and_a_blank_symbol_serve_no_prints():
     live = _fed(CALL, [(at, first)])
     bus = MessageBus()
     frame = {"timestamp": None, "content": [{**second, "key": ""}]}
-    connection._publisher(OPT, bus, HealthRegistry(), lambda: later)(frame)
+    connection._publisher(OPT, bus, HealthRegistry())(frame, later)
     assert bus.current == {}
     assert live.prints(PUT) == []
     assert live.prints("") == []

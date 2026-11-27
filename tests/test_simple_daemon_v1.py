@@ -50,8 +50,9 @@ def test_every_service_is_published_verbatim_and_only_delivered_data_counts_as_a
         "TOTAL_VOLUME": 9,
     }
 
-    def handler(service: str):  # the handler reads the connection's clock, here a fixed instant
-        return connection._publisher(service, bus, health, lambda: RTH_INSTANT)
+    def handler(service: str):  # each frame received at a fixed instant
+        publisher = connection._publisher(service, bus, health)
+        return lambda frame: publisher(frame, RTH_INSTANT)
 
     handler("LEVELONE_EQUITIES")({"content": [item]})
     topic, q = sub.queue.get_nowait()

@@ -308,8 +308,9 @@ def _publish_mix(bus: MessageBus, services: set, limit: int | None = None) -> in
     health = HealthRegistry()
     sent = [m for m in _MIX["messages"] if m["service"] in services][:limit]
     for m in sent:
-        connection._publisher(m["service"], bus, health, lambda t=m["ts_recv"]: t)(
-            json.loads(json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]}))
+        connection._publisher(m["service"], bus, health)(
+            json.loads(json.dumps({"content": [m["item"]], "timestamp": m["schwab_ts"]})),
+            m["ts_recv"],
         )
     return len(sent)
 
