@@ -16,7 +16,6 @@ import threading
 from contextlib import closing
 from pathlib import Path
 
-import time_et
 from feed import connection
 from stream_spine import LOG, CaptureWriter, KeptFailure, MessageBus, RowWritten, quote_msg
 from tests.shared_helpers import TimerCountingLoop, until
@@ -254,9 +253,8 @@ def test_writes_happen_on_the_writer_thread_not_the_loop(tmp_path):
         task = asyncio.create_task(writer.run(sub, stop=stop))
         for i in range(10):
             bus.publish("quote.SPY", _quote(i))
-        deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
-        while writer.status()["rows_written"] < 10 and time_et.elapsed() < deadline:
-            await asyncio.sleep(0.01)
+        # written while the writer runs, before any stop
+        await until(lambda: writer.status()["rows_written"] >= 10, seconds=10)
         stop.set()
         await task
 

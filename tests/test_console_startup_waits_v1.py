@@ -8,6 +8,7 @@ reached).
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import signal
@@ -15,7 +16,6 @@ import socket
 import subprocess
 import sys
 import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -24,6 +24,7 @@ import launch
 import time_et
 from app.market_data.schwab.streaming import capture
 from app.market_data.schwab.streaming.program_lock import Ports, program_ports
+from tests.shared_helpers import until
 
 pytestmark = pytest.mark.rail
 
@@ -84,11 +85,10 @@ def start(env: dict, own_group: bool = False) -> tuple[subprocess.Popen, list]:
 def run_until(env: dict, done) -> str:
     """Run the program until `done(window text)` (120 s at most), then stop it: its window."""
     program, lines = start(env)
+    window = lambda: "".join(list(lines))
     try:
-        end = time_et.elapsed() + 120
-        while not done("".join(list(lines))):
-            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
-            time.sleep(0.25)
+        asyncio.run(until(lambda: done(window()) or program.poll() is not None, 120, state=window))
+        assert done(window()), window()
     finally:
         program.kill()
         program.wait(30)
@@ -105,10 +105,9 @@ def test_an_interrupt_in_the_window_is_the_programs_clean_stop(tmp_path):
     """
     program, lines = start(program_env(tmp_path), own_group=True)
     try:
-        end = time_et.elapsed() + 120
-        while (ports := held_ports(tmp_path)) is None:
-            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
-            time.sleep(0.25)
+        up = lambda: held_ports(tmp_path) is not None or program.poll() is not None
+        asyncio.run(until(up, 120, state=lambda: "".join(lines)))
+        assert (ports := held_ports(tmp_path)) is not None, "".join(lines)
         answer = answered(tmp_path)  # a page request, as the browser makes
         assert answer == ports, (answer, "".join(lines))
         os.kill(program.pid, signal.CTRL_BREAK_EVENT if WINDOWS else signal.SIGINT)
@@ -133,10 +132,9 @@ def test_a_stop_with_a_page_open_ends_its_stream_and_does_not_wait_it_out(tmp_pa
     program, lines = start(program_env(tmp_path), own_group=True)
     page = socket.socket()
     try:
-        end = time_et.elapsed() + 120
-        while (ports := held_ports(tmp_path)) is None:
-            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
-            time.sleep(0.25)
+        up = lambda: held_ports(tmp_path) is not None or program.poll() is not None
+        asyncio.run(until(up, 120, state=lambda: "".join(lines)))
+        assert (ports := held_ports(tmp_path)) is not None, "".join(lines)
         pages = ports.console
         answer = answered(tmp_path)
         assert answer == ports, (answer, "".join(lines))
@@ -180,10 +178,9 @@ def test_the_waits_own_requests_leave_the_stop_nothing_to_wait_on(tmp_path):
     """
     program, lines = start(program_env(tmp_path), own_group=True)
     try:
-        end = time_et.elapsed() + 120
-        while (ports := held_ports(tmp_path)) is None:
-            assert program.poll() is None and time_et.elapsed() < end, "".join(lines)
-            time.sleep(0.25)
+        up = lambda: held_ports(tmp_path) is not None or program.poll() is not None
+        asyncio.run(until(up, 120, state=lambda: "".join(lines)))
+        assert (ports := held_ports(tmp_path)) is not None, "".join(lines)
         for _ in range(1000):
             answer = answered(tmp_path)
             assert answer == ports, (answer, "".join(lines))

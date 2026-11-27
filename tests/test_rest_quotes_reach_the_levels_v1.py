@@ -47,6 +47,7 @@ from stream_spine import MessageBus, verbatim_msg
 from tests.feed_live_helper import daemon_status, pushed
 from tests.page_on_socket import pages
 from tests.schwab_rest_standin import FX, SPY
+from tests.shared_helpers import until
 from time_et import ET
 
 TK = server.ticker_storage_key("SPY")
@@ -135,9 +136,7 @@ def _repriced(answer: dict, received: float) -> level_store.PublishedLevels:
         with pages() as served:
             served.open(TK)  # a page shows SPY, so its ticks reprice it
             _answered(answer, received)
-            deadline = time_et.elapsed() + 5 * server.REPRICE_EVERY_SEC
-            while TK not in server._chains_waiting and time_et.elapsed() < deadline:
-                gate.wait(0.01)
+            asyncio.run(until(lambda: TK in server._chains_waiting, 5 * server.REPRICE_EVERY_SEC))
         with server._chains_waiting_lock:
             job = server._chains_waiting.pop(TK)
     finally:

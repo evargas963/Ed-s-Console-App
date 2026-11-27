@@ -178,9 +178,6 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         )
 
     def opened_at() -> list[str]:
-        deadline = time_et.elapsed() + 30
-        while not opened.exists() and time_et.elapsed() < deadline:
-            time.sleep(0.1)
         return opened.read_text(encoding="utf-8").splitlines() if opened.exists() else []
 
     try:
@@ -192,6 +189,7 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert lines[-1].startswith("Ed Console: healthy "), lines
         console_port = launch.wait_for_pages(5.0, stream_db).console
         pages = f"http://127.0.0.1:{console_port}/"
+        asyncio.run(until(opened_at, 30))
         assert opened_at() == [pages]
         assert program_ports(stream_db).console == console_port
         assert launch.running(launch.DAEMON_START, home), "the program the batch started"
@@ -200,9 +198,7 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
             0,
             "Commit check: not run; Ed Console already runs from this checkout.",
         ), (again.stdout, again.stderr)
-        deadline = time_et.elapsed() + 30
-        while len(opened_at()) < 2 and time_et.elapsed() < deadline:
-            time.sleep(0.1)
+        asyncio.run(until(lambda: len(opened_at()) >= 2, 30, state=opened_at))
         assert opened_at() == [pages, pages]
         stopped = launcher("stop")
         assert (stopped.returncode, stopped.stdout) == (0, "Ed Console: stopped\n"), stopped.stderr
@@ -233,18 +229,17 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
         encoding="utf-8",
     )
     subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
-    deadline = time_et.elapsed() + 60.0
     # the file exists from its open, before its write: the pid is in it once its digits are
-    while not (window_pid.exists() and window_pid.read_text(encoding="utf-8").isdigit()):
-        assert time_et.elapsed() < deadline, "the batch never ran"
-        time.sleep(0.1)
+    ran = lambda: window_pid.exists() and window_pid.read_text(encoding="utf-8").isdigit()
+    asyncio.run(until(ran, 60.0))
+    assert ran(), "the batch never ran"
     window = int(window_pid.read_text(encoding="utf-8"))
-    deadline = time_et.elapsed() + 30.0
-    while psutil.pid_exists(window) and time_et.elapsed() < deadline:
-        time.sleep(0.1)
-    still_open = psutil.pid_exists(window)
-    if still_open:
-        psutil.Process(window).kill()
+    try:
+        asyncio.run(until(lambda: not psutil.pid_exists(window), 30.0))
+    finally:
+        still_open = psutil.pid_exists(window)
+        if still_open:
+            psutil.Process(window).kill()
     assert not still_open, "the daemon's window stayed open after its batch ended"
 
 
@@ -285,10 +280,9 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
     bat = home / "start_capture_daemon.cmd"
     subprocess.Popen(launch.daemon_window(bat), cwd=home, env=env)
     try:
-        end = time_et.elapsed() + 60
-        while program_ports(tmp_path / "data" / "stream_capture.db") is None:
-            assert time_et.elapsed() < end, "the batch's daemon never served its port"
-            time.sleep(0.1)
+        serving = lambda: program_ports(tmp_path / "data" / "stream_capture.db") is not None
+        asyncio.run(until(serving, 60))
+        assert serving(), "the batch's daemon never served its port"
         noted = [
             (notes / str(p.pid)).read_text(encoding="utf-8")
             for p in launch.running(launch.DAEMON_START, home)
