@@ -549,8 +549,11 @@
         return;
       }
       // vanna and charm are delta-shares (per vol point, per day), not dollars: no '$'
-      // the rows of the expiry served (null: every expiry's)
-      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: "", expiry: d.expiry });
+      // the rows of the expiry served (null: every expiry's), and the served sentence saying the
+      // settled contracts the sums leave out (none: nothing said)
+      var leftOut =
+        d.left_out != null ? '<div class="gbs-allexp">' + esc(d.left_out) + "</div>" : "";
+      drawStrikeBars(host, d.rows, d.view, pan, ask, { top: leftOut, expiry: d.expiry });
     }
     function ask() {
       if (!inSub()) {

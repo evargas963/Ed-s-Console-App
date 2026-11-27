@@ -200,7 +200,7 @@
   "oi": 18268.0,
   "oi_change": null,
   "pc_vol_lean": 969.5,
-  "vanna": 0.0,
+  "vanna": null,
   "visits": 0.0,
   "vol_oi": 258.3359489946052,
   "volume": null

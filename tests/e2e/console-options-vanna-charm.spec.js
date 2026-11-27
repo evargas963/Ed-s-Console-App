@@ -259,6 +259,33 @@ test.describe("Vanna and Charm by strike: the panels on the page's socket", () =
     await expect.poll(() => strikes(page, "#chmBody")).toEqual(sentStrikes("charm"));
   });
 
+  test("a panel says the settled contracts its sums leave out, and says nothing when none are", async ({
+    page,
+  }) => {
+    // INDUCED: CRWD's panels with the sentence the producer serves for SPY's 2026-11-12 chain at
+    // 18:00 ET, its 11-12 expiry settled (tests/test_vanna_charm_by_strike_v1.py)
+    const said = {
+      vanna: "Leaves out 258 settled contracts: no time left, so no vanna.",
+      charm: "Leaves out 258 settled contracts: no time left, so no charm.",
+    };
+    await open(page, "vanna", (ws, req) => {
+      ["vanna", "charm"].forEach((k) => {
+        if (req.panels[k])
+          ws.send(frame(k, "CRWD", Object.assign({}, PANELS[k], { left_out: said[k] })));
+      });
+    });
+    await expect(page.locator("#vnBody .gbs-allexp")).toHaveText(said.vanna);
+    await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));
+    await page.evaluate(() => window.EdShell.setSubview("charm"));
+    await expect(page.locator("#chmBody .gbs-allexp")).toHaveText(said.charm);
+  });
+
+  test("a panel with nothing left out draws no sentence above its bars", async ({ page }) => {
+    await open(page, "vanna", answerCrwd);
+    await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));
+    await expect(page.locator("#vnBody .gbs-allexp")).toHaveCount(0);
+  });
+
   test("leaving the tab drops the panel from the subscribe", async ({ page }) => {
     const s = await open(page, "vanna", answerCrwd);
     await expect.poll(() => strikes(page, "#vnBody")).toEqual(sentStrikes("vanna"));

@@ -36,10 +36,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   `tools/check_integrity.py`, `tools/check_one_reader.py`, `tools/hook_chain.py`). Untracked files
   nothing uses go to an archive beside the checkout; their deletion is the operator's.
 - REVIEW (IN PROGRESS): the repo-wide review's findings, each checked against the code and the
-  sources and fixed with a test that fails on the old code. Next: a settled contract's vanna and
-  charm under one rule (charm leaves it out of its strike's sum, vanna makes its side unknown), the
-  operator's choice of method. Then the support and resistance line, once a longer price history
-  shows which levels hold, and the other screens that print key levels.
+  sources and fixed with a test that fails on the old code. Next: the support and resistance line,
+  once a longer price history shows which levels hold, and the other screens that print key levels.
 - OPEN-5MIN (IN PROGRESS): a sense of direction for the first five minutes of trading. The
   EXPERIMENTAL open-gap record is on the Desk (`open_gap.py`, `docs/derived_register.md`); on
   Schwab's 5-minute bars no input yet separates the opens from chance. Next: test the kept

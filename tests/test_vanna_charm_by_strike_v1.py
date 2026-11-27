@@ -17,6 +17,7 @@ at its capture instant, and CRWD's LEVELONE_EQUITIES message the daemon received
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -36,7 +37,7 @@ from push import terrain as push_terrain
 from state import level_store
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_down, mark_feed_live
-from tests.real_chains import CRWD
+from tests.real_chains import CRWD, quoted
 
 _SPOT = CRWD.spot
 _CONTRACTS = read_chain(CRWD.chain)
@@ -310,3 +311,68 @@ def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     c_rows = push_strike_bars.strike_bars("charm", TK, time_et.now(), AUTO)["rows"]
     assert [r["strike"] for r in v_rows] == sorted(r["strike"] for r in v_rows)
     assert [r["strike"] for r in c_rows] == sorted(r["strike"] for r in c_rows)
+
+
+#: SPY's whole chain of 2026-11-12 10:30 ET, valued at 18:00 ET that day: its 2026-11-12 expiry
+#: has settled and Schwab still lists it
+SPY_BOOK = quoted("spy")
+SETTLED_DAY = "2026-11-12"
+AFTER_CLOSE = datetime(2026, 11, 12, 18, 0, tzinfo=time_et.ET)
+
+
+def test_a_settled_contract_leaves_the_vanna_of_every_live_one_known():
+    """A settled contract holds no vanna: every expiry's vanna is its live contracts' alone.
+
+    Charm's rule (compute_charm_by_strike leaves a settled contract out): a strike with a live
+    contract has the live contracts' vanna, as the book without the settled ones gives it; a
+    strike whose every contract has settled, as every strike of the settled expiry's own book,
+    is "-" (the operator's rule: a settled value is a dash). Each strike counts its contracts and
+    those settled.
+    """
+    chain = read_chain(SPY_BOOK.chain)
+    settled = [c for c in chain if c.expiry == SETTLED_DAY]
+    live = [c for c in chain if c.expiry != SETTLED_DAY]
+    assert settled and live
+    on_file = time_et.sessions()
+    whole, _ = compute_exposures_by_strike(
+        chain, spot=SPY_BOOK.spot, now=AFTER_CLOSE, sessions=on_file
+    )
+    alone, _ = compute_exposures_by_strike(
+        live, spot=SPY_BOOK.spot, now=AFTER_CLOSE, sessions=on_file
+    )
+    day, _ = compute_exposures_by_strike(
+        settled, spot=SPY_BOOK.spot, now=AFTER_CLOSE, sessions=on_file
+    )
+    near = [k for k in whole if abs(k / SPY_BOOK.spot - 1) < 0.05]
+    assert near and all(bucket_metric(whole[k], "net_vanna") is not None for k in near)
+    for k, b in whole.items():
+        want = bucket_metric(alone[k], "net_vanna") if k in alone else None
+        assert bucket_metric(b, "net_vanna") == want, k
+    assert all(bucket_metric(b, "net_vanna") is None for b in day.values())
+    assert sum(b["settled"] for b in whole.values()) == len(settled)
+    assert sum(b["contracts"] for b in whole.values()) == len(chain)
+
+
+def test_the_panels_say_how_many_settled_contracts_they_leave_out():
+    """The Vanna and Charm panels say the settled contracts their sums leave out, in one sentence.
+
+    Nothing left out is silent (AGENTS.md rule 7): every expiry's panel counts the 2026-11-12
+    contracts, settled at 18:00 ET; a live expiry's leaves none out and says nothing.
+    """
+    tk = server.ticker_storage_key("SPY")
+    chain = read_chain(SPY_BOOK.chain)
+    settled = sum(c.expiry == SETTLED_DAY for c in chain)
+    at = AFTER_CLOSE.timestamp()
+    try:
+        server._publish_levels(tk, chain, at, chain_spot=(SPY_BOOK.spot, at), now=AFTER_CLOSE)
+        for key in ("vanna", "charm"):
+            every = push_strike_bars.strike_bars(key, tk, at, ALL)
+            next_day = push_strike_bars.strike_bars(key, tk, at, {**ALL, "expiry": "2026-11-13"})
+            assert every["left_out"] == (
+                f"Leaves out {settled} settled contracts: no time left, so no {key}."
+            )
+            assert next_day["left_out"] is None
+    finally:
+        with level_store._lock:
+            level_store._levels.pop(tk, None)
+        server._gamma_surface_seq.pop(tk, None)

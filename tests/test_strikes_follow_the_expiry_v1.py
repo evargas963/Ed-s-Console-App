@@ -333,6 +333,7 @@ def test_an_expiry_with_no_value_known_has_no_bar_and_says_so():
                 "scope": "all",
                 "reason": None,
                 "method": method,
+                "left_out": None,
             }, key
             beside = push_strike_bars.strike_bars(key, TK, at, {**EVERY, "expiry": CHOSEN})
             assert beside["available"] and beside["reason"] is None, key
