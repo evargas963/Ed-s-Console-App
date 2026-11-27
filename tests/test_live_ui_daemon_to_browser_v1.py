@@ -76,17 +76,6 @@ from tests.shared_helpers import until
 from tests.test_live_push_channel_v1 import listener, serve_page_socket
 
 
-@pytest.fixture(autouse=True)
-def _fresh_plane():
-    """Each test starts from an empty quote plane, then the plane is put back."""
-    quotes, fields = lmp._by_ticker, lmp._fields_by_ticker
-    lmp._by_ticker = {}
-    lmp._fields_by_ticker = {}
-    yield
-    lmp._by_ticker = quotes
-    lmp._fields_by_ticker = fields
-
-
 def _trade(sym: str, last: float, ts: float, **extra) -> dict:
     native = {
         "key": sym,

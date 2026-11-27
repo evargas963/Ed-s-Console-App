@@ -20,8 +20,9 @@ paths:
   ENF-08.
 - A test never patches the code it tests (monkeypatch, mocker, mock.patch, or assigning over a
   product name such as `calc.spot = ...`); it passes the value in. Enforced by:
-  `tools/check_locks.py`, whose count of patching lines in tests may not rise (locks); what the
-  count does not see — no machine check, TEST-PATCHES.
+  `tools/check_locks.py`, whose count of patching lines in tests may not rise (locks); an assignment
+  over a product module's name, which that count does not see, by the census's count of tests that
+  assign over one (`tools/census/census.py`, an issue each).
 - A flaky test is fixed in app code with the test unchanged, or in the test with its assertions
   unchanged and evidence the timing can't occur in real use (the code that rules it out); loosened
   expectations, removed checks and retries are refused. Its report follows the `flaky-test-fix`

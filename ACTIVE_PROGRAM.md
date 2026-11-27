@@ -101,12 +101,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   its one producer, in two rows: the instrument and the system, then the market context's three
   indexes and the news line, which gives way to the alerts (`docs/DATA_FLOW.md` §6, decision 11,
   `tests/e2e/console-header.spec.js`).
-- STAND-INS (QUEUED; also TEST-PATCHES, ENF-07): every test runs captured Schwab data through the
-  real code. Left: each stand-in a test file names under STAND-INS replaced by a capture carrying
-  its condition, at its own instant, fixed in `tests/fixtures/`; the induced conditions the operator
-  allowed (a 0 price, a -999 delta) replaced once Schwab sends one; the last monkeypatch, in
-  `tests/conftest.py`; each test that assigns over a product name (`calc.spot = ...`), which is a
-  patch, made to pass the value in.
+- STAND-INS (QUEUED; also ENF-07): every test runs captured Schwab data through the real code. Left:
+  each stand-in a test file names under STAND-INS replaced by a capture carrying its condition, at
+  its own instant, fixed in `tests/fixtures/`; the induced conditions the operator allowed (a 0
+  price, a -999 delta) replaced once Schwab sends one.
 - ENF-23 (QUEUED; also ENF-02, ONE-02, ONE-21, ONE-25): one producer per value (rule 3), held by
   `tools/check_one_reader.py` in `hardening`. Left: plain-word fields (gamma, delta, volatility,
   multiplier, symbol), reads through a helper or a table of names, page code, and the derived half
