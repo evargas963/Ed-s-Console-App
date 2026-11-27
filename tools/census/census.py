@@ -1317,13 +1317,21 @@ for f in [f for f in TEST_FILES if f in trees]:
                 for a in node.names
                 if a.name.split(".")[0] in PRODUCT_TOPS
             }
-        elif isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] in PRODUCT_TOPS:
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None  # a relative import names no module
+            and node.module.split(".")[0] in PRODUCT_TOPS
+        ):
             bound |= {a.asname or a.name for a in node.names}
     for node in ast.walk(trees[f]):
         if isinstance(node, ast.Assign | ast.AugAssign | ast.AnnAssign):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             owners = [t.value for t in targets if isinstance(t, ast.Attribute)]
-        elif isinstance(node, ast.Call) and getattr(node.func, "id", None) == "setattr":
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "setattr"
+        ):
             owners = node.args[:1]
         else:
             continue
