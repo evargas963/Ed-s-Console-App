@@ -5,7 +5,7 @@
  * standard tool. The page is opened with no program behind its socket, so each panel draws its
  * empty state.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const AxeBuilder = require("@axe-core/playwright").default;
 const { eachPage } = require("./fixtures/pages");
 

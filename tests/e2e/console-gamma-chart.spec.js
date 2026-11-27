@@ -22,7 +22,7 @@
  * mark, and the CHAIN fixture carries native OSI-style symbols, so the whole path runs: Chart
  * click -> expiry carried through -> Strike Detail's chain panel -> that strike's call and put.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { pushExpiries } = require("./fixtures/expiries");
 const { routeWatchlist } = require("./fixtures/watchlist");
 

@@ -614,6 +614,24 @@ def test_the_reprice_a_push_queues_keeps_the_held_contracts_legs_live():
     assert repriced(level_store.published_levels(TK)) == [SYM]
 
 
+def test_levels_with_no_surface_are_passed_over_by_the_beats_restamp():
+    """SPY's chain priced with no spot held: its levels hold no heatmap surface (no price).
+
+    The beat's restamp leaves them as published, the same record, and keeps no stamp for SPY.
+    """
+    server._publish_levels(
+        TK,
+        read_chain(_CAPTURE["chain"]),
+        _CAPTURE["capture_ts_utc"],
+        now=datetime.fromtimestamp(_AT, ET),
+    )
+    levels = level_store.published_levels(TK)
+    assert levels is not None and levels.gamma_surface is None
+    server.restamp_open_surfaces(_AT)
+    assert level_store.published_levels(TK) is levels
+    assert TK not in server._last_feed_stamp
+
+
 def test_the_beat_after_a_new_surface_stamps_it_whatever_beat_stamped_the_last():
     """A newly priced surface is stamped by the next beat, even one like the last restamp's.
 

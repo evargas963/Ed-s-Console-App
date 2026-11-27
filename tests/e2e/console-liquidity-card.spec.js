@@ -3,7 +3,7 @@
  * the page's socket) for SPY's real 2026-11-02 books; it computes nothing. Any page error fails the test.
  * Its own spec file: Playwright runs spec files side by side and a file's tests in order.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const {
   READOUT_LIVE,
   READOUT_OFFLINE,

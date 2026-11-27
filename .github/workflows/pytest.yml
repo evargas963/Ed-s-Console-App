@@ -106,7 +106,19 @@ jobs:
           fi
 
       - name: Run the browser tests
+        # each worker writes the lines of the page's scripts its tests ran, which the census counts
+        # (tests/e2e/fixtures/test.js)
+        env:
+          ED_PAGE_COVERAGE: page-coverage
         run: npm run test:e2e
+
+      - name: Upload which lines of the page's scripts the browser tests run
+        if: success() || failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: page-coverage
+          path: page-coverage/
+          retention-days: 14
 
       - name: Upload Playwright failure traces and the E2E log
         if: failure()

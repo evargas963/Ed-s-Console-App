@@ -12,7 +12,7 @@
  * from the served value and scale.
  * Offline. Each test saves its screen as an attachment (option-book.png, options-card.png).
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { mockPriceSocket } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");
 const { intercept, deskPanels, OPTION_BOOK, watchErrors } = require("./fixtures/trade_desk");

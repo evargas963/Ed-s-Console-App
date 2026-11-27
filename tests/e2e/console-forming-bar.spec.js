@@ -6,7 +6,7 @@
  * 2026-11-19 10:00-10:05 ET at the 5-minute timeframe (forming_spy_2026_11_19.json, held to the
  * server by tests/test_forming_bar_v1.py). Any page error fails the test.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { REAL, intercept, openView, watchErrors, deskPanels } = require("./fixtures/trade_desk");
 const F = require("./fixtures/forming_spy_2026_11_19.json");
 

@@ -9,7 +9,7 @@
  * producer by tests/test_vanna_charm_by_strike_v1.py); the "no levels" answer is the producer's
  * own words for a ticker with none published. Offline.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { served, priceRow } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");
 const PANELS = require("./fixtures/vanna_charm_panels_crwd.json");

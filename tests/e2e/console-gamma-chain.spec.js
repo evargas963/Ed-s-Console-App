@@ -6,7 +6,7 @@
  * (D), and the centre strike selects only the shared strike. Symbols are the vendor's own, never
  * reconstructed.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { expiriesAnswer, pushExpiries } = require("./fixtures/expiries");
 const { expiriesFrame, priceRow, served: servedSymbol } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");

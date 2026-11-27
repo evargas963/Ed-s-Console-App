@@ -6,7 +6,7 @@
  * SPY at 2026-11-12 10:30:41 ET (tests/e2e/fixtures/trade_desk.js); a test's induced condition is
  * that answer with the named part changed. Any page error fails the test.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const path = require("path");
 const { mockPriceSocket, priceRow } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");
