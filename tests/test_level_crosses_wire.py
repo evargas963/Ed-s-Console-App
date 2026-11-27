@@ -50,6 +50,7 @@ from stream_spine import (
 )
 from tests.conftest import MARKETS_ANSWERS
 from tests.feed_live_helper import (
+    RTH_INSTANT,
     clock_from,
     daemon_status,
     mark_feed_down,
@@ -154,7 +155,7 @@ def _forget(tk: str = "SPY") -> None:
     server._last_tick_spot.pop(tk, None)
     lmp._by_ticker.pop(tk, None)
     lmp._fields_by_ticker.pop(tk, None)
-    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
+    lmp.record_feed_heartbeat(daemon_status(RTH_INSTANT, schwab_socket_open=True))
     mark_feed_down()
 
 

@@ -107,7 +107,7 @@ def test_vanna_by_strike_route_omits_unreported_oi_strikes():
     )
     try:
         asked = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
-        body = push_strike_bars.strike_bars("vanna", tk, time_et.now(), asked)
+        body = push_strike_bars.strike_bars("vanna", tk, CRWD.now.timestamp(), asked)
         rows = body["rows"]
         assert rows and all(r["value"] is None and r["text"] is None for r in rows), rows
         # no value anywhere: no bar to scale, and nothing drawn as a 0

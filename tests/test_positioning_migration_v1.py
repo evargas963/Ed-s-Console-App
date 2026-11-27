@@ -182,13 +182,9 @@ def test_on_a_closed_market_the_prior_day_is_the_day_before_the_chains_own(two_d
     try:
         # startup on a closed market (Sunday 2026-09-27): the levels producer prices the newest
         # capture (Friday) and, with it, the prior day's rows the route serves
-        assert (
-            server._publish_levels(
-                "PCG", captures=stored, now=datetime(2026, 9, 27, 12, 0, tzinfo=time_et.ET)
-            )
-            is not None
-        )
-        body = push_strikes.strikes("PCG", time_et.now(), _AUTO)
+        sunday = datetime(2026, 9, 27, 12, 0, tzinfo=time_et.ET)
+        assert server._publish_levels("PCG", captures=stored, now=sunday) is not None
+        body = push_strikes.strikes("PCG", sunday.timestamp(), _AUTO)
         # a new market day's first chain (Monday 2026-09-28 10:00 ET), before that day's first
         # capture: the prior day is recomputed against the new day
         monday = datetime(2026, 9, 28, 10, 0, tzinfo=time_et.ET)

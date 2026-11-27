@@ -12,7 +12,6 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import live_price_rows
-import time_et
 from tests.feed_live_helper import mark_feed_down, mark_feed_live
 
 _SENT = json.loads(
@@ -27,15 +26,15 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_trade_time():
 
     A feed that stops does not remove them.
     """
-    item = _SENT["item"]
-    mark_feed_live("SPY")
+    item, at = _SENT["item"], _SENT["ts_recv"]  # the row is read when the message was received
+    mark_feed_live("SPY", now=at)
     lmp._by_ticker.pop("SPY", None)
     lmp._fields_by_ticker.pop("SPY", None)
-    lmp.record_from_level_one_equity("SPY", item, received_ts=_SENT["ts_recv"])
+    lmp.record_from_level_one_equity("SPY", item, received_ts=at)
     try:
-        live = live_price_rows.price_row("SPY", time_et.now())
+        live = live_price_rows.price_row("SPY", at)
         mark_feed_down()
-        down = live_price_rows.price_row("SPY", time_et.now())
+        down = live_price_rows.price_row("SPY", at)
     finally:
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)

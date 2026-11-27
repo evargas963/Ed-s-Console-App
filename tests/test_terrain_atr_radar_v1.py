@@ -16,11 +16,11 @@ import json
 from pathlib import Path
 
 import server as srv
-import time_et
 from numeric_contract import count_text
 from push import bars as push_bars
 from push import strikes as push_strikes
 from state import bar_store
+from tests.feed_live_helper import RTH_INSTANT
 
 
 def test_the_bars_panel_serves_canonical_bars_shape():
@@ -72,7 +72,7 @@ def test_terrain_strikes_endpoint_shape_and_scopes():
     For today + prior capture, sorted by strike, read-only.
     """
     body = push_strikes.strikes(
-        "SPY", time_et.now(), {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
+        "SPY", RTH_INSTANT, {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
     )
     assert json.loads(json.dumps(body)) == body  # the socket's frame, as it is
     assert body["ticker"] == "SPY"

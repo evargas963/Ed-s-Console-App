@@ -12,7 +12,6 @@ from pathlib import Path
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
-import time_et
 from stream_spine import quote_msg
 from tests.feed_live_helper import daemon_status, pushed
 
@@ -39,12 +38,13 @@ def test_the_console_spot_is_the_daemons_price_row_and_the_console_keeps_no_copy
     """Measured 2026-09-28: the console's spot differed from the header's in 25 of 200 checks.
 
     Those were same-moment checks -- the console rebuilt LAST_PRICE from the forwarded messages.
-    Real TSLA quote as Schwab sent it (tests/fixtures/real_equity_book.json), received now.
+    Real TSLA quote as Schwab sent it (tests/fixtures/real_equity_book.json), read when it was
+    received.
     """
     fx = json.loads(
         (Path(__file__).parent / "fixtures" / "real_equity_book.json").read_text(encoding="utf-8")
     )
-    tk, native, now = fx["ticker"], fx["quote"]["native"], time_et.now()
+    tk, native, now = fx["ticker"], fx["quote"]["native"], fx["quote"]["ts_recv"]
     for kept in (lmp._by_ticker, lmp._fields_by_ticker):
         kept.pop(tk, None)
     lmp.record_feed_heartbeat(
