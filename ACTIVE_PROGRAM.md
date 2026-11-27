@@ -33,7 +33,16 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   audit) is reported with that rule (`tools/census/decisions.json`), so every issue left is work;
   each count is driven to 0, then becomes a failing `locks` check. Every language's standard checker
   (ESLint, Stylelint, html-validate, Prettier, markdownlint, taplo, yamllint, actionlint, Blinter,
-  `json.tool`) runs over every tracked file; Markdown's layout is Prettier's alone. Left: each
+  `json.tool`) runs over every tracked file; Markdown's layout is Prettier's alone. It counts the
+  statements no test runs (coverage.py, from pytest.yml's run of the same commit) and bandit's
+  security rules (ruff `S`); what only the working machine holds (its database, branches, stashes,
+  worktrees and the files git does not hold) is counted there (`--machine`), and a clone reports it
+  as not counted, never as 0 (operator 2026-11-27: the census reports every issue repo wide, every
+  file and every language, the scope never narrowed). Left: rows still to build: dependencies with a
+  known vulnerability (pip-audit, npm audit), a field read in Schwab's spelling that the field list
+  does not hold, the running program (the log's errors and warnings, Schwab's refusals, the stream's
+  silences, the screen's measured lag), the minutes of a session with no record for a ticker, text
+  contrast on the screen (axe-core in the browser tests) and the page's JavaScript coverage; each
   finding fixed; each checker made a failing check at 0; one shared git reader for the check tools
   (`_git` in `tools/check_end_to_end.py`, `tools/check_integrity.py`, `tools/check_one_reader.py`,
   `tools/hook_chain.py`). Untracked files nothing uses go to an archive beside the checkout; their
@@ -118,6 +127,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   each re-checked against the code before it is fixed.
 - ENF-11 (QUEUED; also P1-9): one formatter per format, on the server, and a machine check of it
   (`tests/test_served_numbers_v1.py` holds the number formatters; ruff `PLC0415` is already at 0).
+  The census counts each date, time or number formatted outside `time_et` and `numeric_contract`;
+  each is moved to its formatter, then the count becomes a failing check.
 - SIMPLIFY (ACTIVE; also ENF-04, TEST-CLEANUP, TEST-REVIEW, P2-6, P2-7): every line earns its place,
   one pull request per slice, each run through /simplify. Left: history notes in `static/index.html`
   (a comment-only HTML change counts as a behavior change, so it needs the operator's approval of
@@ -270,9 +281,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   of the operator's matrix plan) is built as one change and deployed when ready (operator
   2026-11-23); what it leaves for later, each needing sessions of the record: each reading's running
   record session by session, pace's 20-session baseline, and the stock book and tape's vote.
-- Review decisions (OPERATOR, from REVIEW): the zone-width cap (`config.max_zone_width`); compileall
-  at push; `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where
-  streamed option trades land against the bid and ask (tabled by him).
+- Review decisions (OPERATOR, from REVIEW): the zone-width cap
+  (`calc.liquidity_models.PlaybookConfig.max_zone_width`); compileall at push;
+  `tools/bootstrap_worktree_venv.py`; an estimate of who holds the contracts from where streamed
+  option trades land against the bid and ask (tabled by him).
 
 ## Designing (nothing is built until the operator decides)
 

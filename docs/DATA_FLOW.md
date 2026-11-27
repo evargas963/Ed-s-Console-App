@@ -464,23 +464,23 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   that follows the price (`push.strike_rows.window_asked`). Enforced by:
   `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_option_book_v1.py`.
 - **One expiry choice.** The strike views follow the expiry the operator picks in the one expiry
-  dropdown (`state.expiryFilter`, sent as `expiry` by `EdShell.windowAtExpiry`), shown on the
-  Options and the Trade Desk bars: the heatmap, GEX by Strike, the Chart's GEX, DEX and OI profiles,
-  Vanna and Charm by strike, Right Now's migration, and Options Level II and the Desk map's options
-  lean (an expiry each, so none chosen is the front one, as on the chain screens:
-  `push.chain.expiry_asked`), and the Confluence matrix (one expiry ranked by its days to
-  expiration, so none chosen is the front one still open: `push.confluence.confluence_payload`). A
-  listed expiry's rows are its contracts alone, by Schwab's expirationDate
-  (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the whole book, its
-  charm the expiry's own charm map); All Expirations (null) is the whole book; an expiry the chain
-  does not list is answered with why, never another expiry's rows (`push.strike_rows.rows_of`). One
-  rule reads the expiry a request asks for, for every panel that takes one
-  (`push.strike_rows.expiry_unreadable`): a request that names no expiry is answered with why, never
-  read as one whose expiry is null. The migration compares the same expiry on the prior day; where
-  that day did not list it, no strike is compared and the migration says why. No fixed DTE bucket of
-  ours stands in for the choice. The walls, the flip and their moves since the prior close stay the
-  whole book's: they are defined over every contract, and Key Levels says all-exp beside a chosen
-  expiry. Enforced by: `tests/test_strikes_follow_the_expiry_v1.py`,
+  dropdown (the page's `expiryFilter` in `static/js/ed-core.js`, sent as `expiry` by
+  `EdShell.windowAtExpiry`), shown on the Options and the Trade Desk bars: the heatmap, GEX by
+  Strike, the Chart's GEX, DEX and OI profiles, Vanna and Charm by strike, Right Now's migration,
+  and Options Level II and the Desk map's options lean (an expiry each, so none chosen is the front
+  one, as on the chain screens: `push.chain.expiry_asked`), and the Confluence matrix (one expiry
+  ranked by its days to expiration, so none chosen is the front one still open:
+  `push.confluence.confluence_payload`). A listed expiry's rows are its contracts alone, by Schwab's
+  expirationDate (`calc.terrain_engine.per_strike_view`'s `by_expiry`, one pricing pass with the
+  whole book, its charm the expiry's own charm map); All Expirations (null) is the whole book; an
+  expiry the chain does not list is answered with why, never another expiry's rows
+  (`push.strike_rows.rows_of`). One rule reads the expiry a request asks for, for every panel that
+  takes one (`push.strike_rows.expiry_unreadable`): a request that names no expiry is answered with
+  why, never read as one whose expiry is null. The migration compares the same expiry on the prior
+  day; where that day did not list it, no strike is compared and the migration says why. No fixed
+  DTE bucket of ours stands in for the choice. The walls, the flip and their moves since the prior
+  close stay the whole book's: they are defined over every contract, and Key Levels says all-exp
+  beside a chosen expiry. Enforced by: `tests/test_strikes_follow_the_expiry_v1.py`,
   `tests/test_vanna_charm_by_strike_v1.py`, `tests/test_data_path_confluence_v1.py`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`,
   `tests/e2e/console-options-vanna-charm.spec.js`, `tests/e2e/console-confluence.spec.js`.
@@ -526,21 +526,21 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   register, "A print on the tape"): a subscription's whole record restating the held trade is none.
   Each print is kept with the quote in force when it traded
   (`calc.l1_trade_observation.quote_in_force`, taken once, in
-  `state.OrderFlowState.push_level_one`): the newest bid and ask Schwab timed (QUOTE_TIME_MILLIS) at
-  or before the trade (TRADE_TIME_MILLIS) and on its ET date. Schwab's update carries a trade with
-  the quote that followed it ("quotes may be recorded ahead of trades that triggered them", Lee and
-  Ready 1991), so that quote is the update's own only when Schwab timed it no later than the trade;
-  otherwise it is the quote the update replaced. The trade's item holds both as they stood when it
-  came (D3), so a print the console takes after later quotes is read against them. A quote of an
-  earlier ET date is not in force: the market closed between them (no window Schwab's /markets sends
-  crosses midnight ET). A print with no such quote has no bid and ask: where it landed is unknown
-  and it is unsigned, never read against a later quote. Each print is signed by Lee and Ready
-  against that bid and ask (`calc.l1_trade_observation.trade_sign`), marked estimated; an unsigned
-  print is no value, with its share served beside each sum. The options tape (`push.tape.tape`)
-  lists the newest trade first by Schwab's trade time, each with that bid and ask and where its
-  price landed against them. Enforced by: `tests/test_tape_lee_ready_v1.py`,
-  `tests/test_options_flow_tape_v1.py`, `tests/test_quote_in_force_v1.py`,
-  `tests/test_l1_trade_observation_v1.py`.
+  `app.options.order_flow.state.OrderFlowState.push_level_one`): the newest bid and ask Schwab timed
+  (QUOTE_TIME_MILLIS) at or before the trade (TRADE_TIME_MILLIS) and on its ET date. Schwab's update
+  carries a trade with the quote that followed it ("quotes may be recorded ahead of trades that
+  triggered them", Lee and Ready 1991), so that quote is the update's own only when Schwab timed it
+  no later than the trade; otherwise it is the quote the update replaced. The trade's item holds
+  both as they stood when it came (D3), so a print the console takes after later quotes is read
+  against them. A quote of an earlier ET date is not in force: the market closed between them (no
+  window Schwab's /markets sends crosses midnight ET). A print with no such quote has no bid and
+  ask: where it landed is unknown and it is unsigned, never read against a later quote. Each print
+  is signed by Lee and Ready against that bid and ask (`calc.l1_trade_observation.trade_sign`),
+  marked estimated; an unsigned print is no value, with its share served beside each sum. The
+  options tape (`push.tape.tape`) lists the newest trade first by Schwab's trade time, each with
+  that bid and ask and where its price landed against them. Enforced by:
+  `tests/test_tape_lee_ready_v1.py`, `tests/test_options_flow_tape_v1.py`,
+  `tests/test_quote_in_force_v1.py`, `tests/test_l1_trade_observation_v1.py`.
 - **Level crosses.** On each streamed equity quote (`server._on_stream_tick`) the four levels of
   `server.CROSS_LEVELS` (Gamma Flip, Gamma Call, Gamma Put and Gamma Total) are checked for a cross
   between the previous and the new price (`calc.terrain_read.crossed`). Each price's crosses are

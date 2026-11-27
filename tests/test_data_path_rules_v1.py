@@ -651,7 +651,7 @@ def test_d5_the_quotes_of_the_ticker_a_page_shows_are_asked_two_requests_togethe
     finally:
         swept.close()
     assert chains == ["SPY"] and len(quotes) == 2
-    (_p, _q, first_started, first_answered, *_), (_p2, _q2, second_started, *_) = quotes
+    (_p, _q, _s, first_answered, *_), (_p2, _q2, second_started, *_) = quotes
     assert second_started < first_answered, "the second was sent before the first was answered"
     quoted = [c for t, m in published if t == "chain.SPY" for c in m["contracts"]]
     assert len(quoted) == 442 and all(

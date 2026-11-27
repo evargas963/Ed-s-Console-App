@@ -152,7 +152,10 @@ jobs:
 
       - name: The product lines no test runs
         if: success() || failure()
-        run: python -m coverage report --sort=cover --skip-covered --show-missing | tee coverage.txt
+        run: |
+          python -m coverage report --sort=cover --skip-covered --show-missing | tee coverage.txt
+          # every file's statements and those no test ran, which the census counts (census.yml)
+          python -m coverage json -o coverage.json
 
       - name: Every test file serves the app (.claude/rules/tests.md)
         run: python -m tools.check_tests_serve_app .coverage
@@ -165,6 +168,7 @@ jobs:
           path: |
             .coverage
             coverage.txt
+            coverage.json
           include-hidden-files: true
           retention-days: 14
 

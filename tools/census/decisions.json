@@ -474,6 +474,30 @@
       "category": "dict reads with .get by a field's name",
       "pattern": "^push/desk\\.py:\\d+: t\\.get\\('levels_ts_utc'\\)$",
       "reason": "the terrain panel's two kinds: levels not yet published hold no levels time (push.terrain.TerrainNotReady); the stale item's time is tested (test_data_path_live_status_v1)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff S101 (bandit",
+      "pattern": "^tests/[\\w/]+\\.py:\\d+: Use of `assert` detected",
+      "reason": "a test's own check: pytest asserts with Python's assert and reports each value it compared (pytest, assertion rewriting); bandit's rule is for product code, where python -O strips an assert"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff S10",
+      "pattern": "^tests/[\\w/]+\\.py:\\d+: Possible hardcoded password",
+      "reason": "a test's stand-in token or secret, made for the test and accepted by no service; gitleaks scans every commit for a real one (AGENTS.md, Authority)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff S107 (bandit",
+      "pattern": "^typings/authlib/[\\w/]+\\.pyi:\\d+: Possible hardcoded password assigned to function default: \"token_placement\"$",
+      "reason": "authlib's own parameter as its stub states it: where a token is placed ('header'), not a password (rule 12's stubs, checked by stubtest)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff S311 (bandit",
+      "pattern": "^feed/schwab_client\\.py:\\d+: Standard pseudo-random generators",
+      "reason": "a server-error wait's jitter, each wait between half of it and all of it (AGENTS.md rule 3; Amazon's Builders' Library), not a secret"
     }
   ]
 }

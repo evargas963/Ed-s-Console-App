@@ -1,13 +1,17 @@
 """The census of everything in the repository that must reach 0. Read-only on the repository.
 
-    python -m tools.census.census <out dir> [--data <dir>] [--repo <checkout>]
+    python -m tools.census.census <out dir> [--repo <checkout>] [--coverage <coverage.json>]
+        [--machine [--data <dir>]]
 
 Run from the checkout with the repository's Python, which also holds tools/census/requirements.txt;
 `npm ci --prefix tools/census` holds the other checkers. --repo is the checkout counted (default
 the one it runs from), so a pull request's base is counted by the head's census: one ruler before
-and after. --data holds the two databases (default <repo>/data); a checkout without them reports
-so. Writes <out>/census_<date>_<sha>.md (the report) and <out>/items_<date>_<sha>.txt (every
-item); `python -m tools.census.compare <before.md> <after.md>` prints what changed.
+and after. --coverage is coverage.py's JSON report of the commit's pytest run (pytest.yml), whose
+statements no test runs are counted. --machine counts what only the working machine holds: its
+database (--data, default <repo>/data), its branches, stashes and worktrees, and the files on its
+disk git does not hold; a clone (CI's) reports those rows as not counted, never as 0. Writes
+<out>/census_<date>_<sha>.md (the report) and <out>/items_<date>_<sha>.txt (every item);
+`python -m tools.census.compare <before.md> <after.md>` prints what changed.
 
 Every section names the AGENTS.md rule it checks and the tool that counts it, and each checker's
 own total is compared with what the census read. What no machine counts yet is a row of the work
@@ -46,10 +50,15 @@ ARGS = argparse.ArgumentParser(description="The census of everything that must r
 ARGS.add_argument("out", type=Path)
 ARGS.add_argument("--repo", type=Path, default=Path.cwd())
 ARGS.add_argument("--data", type=Path)
+ARGS.add_argument("--coverage", type=Path)
+ARGS.add_argument("--machine", action="store_true")
 _args = ARGS.parse_args()
 REPO = _args.repo.resolve()
 OUT = _args.out.resolve()
 DATA = (_args.data if _args.data else REPO / "data").resolve()
+MACHINE = _args.machine
+#: the rows only the working machine can count; a clone has none of them to see
+NOT_HERE = "counted on the working machine (--machine), not in a clone (reported)"
 CENSUS = Path(__file__).resolve().parent
 LINT = CENSUS / ".lint"  # the commit's tracked files, as locks.yml checks them out (`head`)
 HEAD = LINT / "head"
@@ -339,7 +348,9 @@ for f, tree in trees.items():
             body = body[1:]
         mod = ast.Module(body=body, type_ignores=[])
         if sum(1 for _ in ast.walk(mod)) >= 12:
-            key = hashlib.sha1(ast.dump(mod, annotate_fields=False).encode()).hexdigest()
+            key = hashlib.sha1(
+                ast.dump(mod, annotate_fields=False).encode(), usedforsecurity=False
+            ).hexdigest()
             bodies[(key, ast.dump(node.args, annotate_fields=False))].append(
                 f"{f}:{node.lineno} {node.name}"
             )
@@ -477,8 +488,10 @@ out = run(
     ],
     stdout_only=True,
 )
+locked = set()
 for d in json.loads(out):
     f = Path(d["filename"]).resolve().relative_to(REPO.resolve()).as_posix()
+    locked.add((f, d["location"]["row"], d["code"]))
     add(
         S,
         f"ruff {d['code']} (locks.ruff.toml, noqa ignored)",
@@ -486,6 +499,25 @@ for d in json.loads(out):
         "ruff",
         f"{f}:{d['location']['row']}: {d['message'][:120]}",
     )
+# bandit's security rules as ruff holds them (S), the bank's standard (Standard of care 11):
+# every one, over the files locks.ruff.toml reads; a finding locks counts already is counted there
+out = run(
+    [
+        *(PY, "-m", "ruff", "check", ".", "--config", "locks.ruff.toml", "--select", "S"),
+        *("--ignore-noqa", "--output-format", "json", "--no-cache", "--exit-zero"),
+    ],
+    stdout_only=True,
+)
+for d in json.loads(out):
+    f = Path(d["filename"]).resolve().relative_to(REPO.resolve()).as_posix()
+    if (f, d["location"]["row"], d["code"]) not in locked:
+        add(
+            S,
+            f"ruff {d['code']} (bandit's security rules, noqa ignored)",
+            "Standard of care 11",
+            "ruff S",
+            f"{f}:{d['location']['row']}: {d['message'][:120]}",
+        )
 stats = run(
     [
         PY,
@@ -654,7 +686,7 @@ for mode in ("basic", "strict"):
 # =============================================================================================
 log.info("census: C")
 S = "C. Dead code"
-for a in ("product", "tools"):
+for a in ("product", "tools", "tests"):
     add(S, f"vulture: unused code in {a}", "1", "vulture")
     add(
         S,
@@ -673,14 +705,14 @@ for cat, tool in (
     ("keys built that nothing reads: no page, no other code", "ast+regex"),
 ):
     add(S, cat, "1", tool)
-out = run(
+VULTURE = [PY, "-m", "vulture", "--min-confidence", "60"]
+# the tests apart, so a product function only a test calls is still unused; pytest calls a test,
+# a test class, a hook and a fixture by its name, and http.server a handler's do_<METHOD>
+out = run([*VULTURE, *[f for f in ALL_PY if area(f) in ("product", "tools")]]) + run(
     [
-        PY,
-        "-m",
-        "vulture",
-        *[f for f in ALL_PY if area(f) in ("product", "tools")],
-        "--min-confidence",
-        "60",
+        *(*VULTURE, "--ignore-names", "test_*,Test*,pytest_*,do_*"),
+        *("--ignore-decorators", "@pytest.fixture"),
+        *[f for f in ALL_PY if area(f) == "tests"],
     ]
 )
 routes = {
@@ -964,7 +996,9 @@ JS_KIND = {
 for cat in JS_KIND.values():
     add(S, cat, "4", "acorn")
 ROUNDING = "a value rounded to digits in product Python (rounding only on screen)"
+FORMATTED = "a date, time or number formatted outside its one formatter: Python product (ENF-11)"
 for cat, rule, tool in (
+    (FORMATTED, "13", "ast"),
     ("clock time typed in code", "8", "ast"),
     ("prose in code: history, dates, PRs, incidents", "1", "regex"),
     ("product functions over 80 lines", "1", "ast"),
@@ -1065,6 +1099,17 @@ for f in PRODUCT_PY:
             and len(node.args) + len(node.keywords) == 2
         ):
             add(S, ROUNDING, "5", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:100]}")
+        # one formatter per format (rule 13): a date or a time is written by time_et, a number
+        # to set digits or with thousands by numeric_contract
+        if (
+            f != "time_et.py" and isinstance(node, ast.Call) and called_name(node) == "strftime"
+        ) or (
+            f != "numeric_contract.py"
+            and isinstance(node, ast.FormattedValue)
+            and node.format_spec is not None
+            and re.search(r"\.\d+[fe%]|,", ast.unparse(node.format_spec))
+        ):
+            add(S, FORMATTED, "13", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:100]}")
 by_line("clock time typed in code", " | ")
 lines_matching(
     PAGE_JS,
@@ -1343,6 +1388,34 @@ for f in [f for f in TEST_FILES if f in trees]:
 # Non-Determinism in Tests"); a child program's own code, a string to the test, is not the test's.
 # A sleep whose time is the condition tested (an idle connection, a slow consumer) stays, labeled
 # INDUCED on its line (.claude/rules/tests.md): each is listed, reported, not a fixed wait
+UNRUN = "statements no test runs (coverage.py, pytest.yml's run of this commit)"
+if _args.coverage is None:
+    add(S, f"{UNRUN}: not counted, no coverage report given (reported)", "14", "coverage.py")
+else:
+    measured = json.loads(_args.coverage.read_text(encoding="utf-8"))["files"]
+    unrun = collections.Counter()
+    for a in ("product", "tools"):
+        add(S, f"{UNRUN}: Python {a}", "14", "coverage.py")
+    for f, cov in sorted(measured.items()):
+        if f not in TEXT or not cov["missing_lines"]:
+            continue
+        spans = []
+        for n in cov["missing_lines"]:
+            if spans and n == spans[-1][1] + 1:
+                spans[-1][1] = n
+            else:
+                spans.append([n, n])
+        unrun[area(f)] += len(cov["missing_lines"])
+        add(
+            S,
+            f"{UNRUN}: Python {area(f)}",
+            "14",
+            "coverage.py",
+            f"{f}: {len(cov['missing_lines'])} of {cov['summary']['num_statements']}: "
+            + ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in spans),
+        )
+    for a, n in unrun.items():
+        add(S, f"{UNRUN}: Python {a}", "14", "coverage.py", count=n)
 FIXED_WAITS = "fixed waits in tests: a sleep that is not a poll's interval (timing that can flake)"
 INDUCED_WAITS = "sleeps labeled INDUCED, their time the condition tested (reported)"
 add(S, FIXED_WAITS, "9/15", "ast")
@@ -1547,17 +1620,10 @@ S = "F. Databases"
 # a column named only where its table is created is written and read by nothing
 product_use = re.sub(r"(?is)CREATE TABLE IF NOT EXISTS \w+ \(.*?\n\s*\);", "", all_product_py)
 product_use = re.sub(r"(?is)CREATE (?:UNIQUE )?INDEX[^;]*;", "", product_use)
-for name in ("ed.db",):
+if not MACHINE:
+    add(S, f"the database, its tables and data/: {NOT_HERE}", "6", "db.inventory")
+for name in ("ed.db",) if MACHINE else ():
     p = DATA / name
-    if not p.exists():
-        add(
-            S,
-            "databases not in this checkout: counted on the production machine (reported)",
-            "6",
-            "db.inventory",
-            str(p),
-        )
-        continue
     for cat, rule in (
         (f"tables no product code reads or writes ({name})", "1/6"),
         (f"indexes on tables nothing uses ({name})", "1/6"),
@@ -1608,12 +1674,11 @@ for name in ("ed.db",):
                     "db.inventory",
                     f"{name}:{t.name}.{c.name} DEFAULT {c.default_sql}",
                 )
-DB_FILES = re.compile(r"(ed_console|stream_capture)\.db(-wal|-shm)?")
-if DATA.is_dir():
-    add(S, "files under data/ that are not the two databases", "6", "ls")
-for p in (
-    [p for p in sorted(DATA.iterdir()) if not DB_FILES.fullmatch(p.name)] if DATA.is_dir() else []
-):
+#: the database, SQLite's two files beside it, and the program's lock (program_lock.owner_lock_path)
+DB_FILES = re.compile(r"ed\.(db(-wal|-shm)?|lock)")
+if MACHINE:
+    add(S, "files under data/ that are not the database", "6", "ls")
+for p in [p for p in sorted(DATA.iterdir()) if not DB_FILES.fullmatch(p.name)] if MACHINE else []:
     size = (
         sum(x.stat().st_size for x in p.rglob("*") if x.is_file())
         if p.is_dir()
@@ -1621,7 +1686,7 @@ for p in (
     )
     add(
         S,
-        "files under data/ that are not the two databases",
+        "files under data/ that are not the database",
         "6",
         "ls",
         f"data/{p.name}{'/' if p.is_dir() else ''} ({size / 1e9:.2f} GB)",
@@ -1642,73 +1707,98 @@ RUNTIME = re.compile(
     r"\.claude/(settings\.local\.json|launch\.json|scheduled_tasks\.lock|"
     r"worktrees/)|\.cursor/cache/)"
 )
-untracked = git("ls-files", "--others", "--exclude-standard").splitlines()
-ignored = git("ls-files", "--others", "--ignored", "--exclude-standard").splitlines()
 for cat, rule, tool in (
-    ("tracked code importing a file git does not hold (runs unreviewed)", "Authority", "ast"),
-    ("worktrees", "housekeeping", "git worktree"),
-    ("local branches", "housekeeping", "git branch"),
     ("remote branches", "housekeeping", "git branch -r"),
-    ("stashes", "housekeeping", "git stash"),
     ("open pull requests", "housekeeping", "gh pr list"),
     ("tracked data, logs or binaries outside tests/fixtures", "1", "git ls-files"),
     ("documents naming a file that does not exist", "Close the change", "regex"),
+    *(
+        (
+            (
+                "tracked code importing a file git does not hold (runs unreviewed)",
+                "Authority",
+                "ast",
+            ),
+            ("worktrees", "housekeeping", "git worktree"),
+            ("local branches", "housekeeping", "git branch"),
+            ("stashes", "housekeeping", "git stash"),
+        )
+        if MACHINE
+        else ()
+    ),
 ):
     add(S, cat, rule, tool)
-add(
-    S,
-    "files on disk git does not hold, all of them, by extension below (reported)",
-    "Authority",
-    "git ls-files",
-    count=sum(
-        1
-        for p in untracked + ignored
-        if not THIRD_PARTY.search(p) and not p.startswith("data/") and not RUNTIME.search(p)
-    ),
-)
-loose_py = []
-for kind, paths in (("untracked", untracked), ("ignored", ignored)):
-    for p in [p for p in paths if not THIRD_PARTY.search(p) and not p.startswith("data/")]:
-        if RUNTIME.search(p):
-            add(S, "runtime files the program or tools keep (reported)", "Authority", "git", p)
-        else:
+if not MACHINE:
+    add(
+        S,
+        f"worktrees, local branches, stashes and files on disk git does not hold: {NOT_HERE}",
+        "housekeeping",
+        "git",
+    )
+if MACHINE:
+    untracked = git("ls-files", "--others", "--exclude-standard").splitlines()
+    ignored = git("ls-files", "--others", "--ignored", "--exclude-standard").splitlines()
+    add(
+        S,
+        "files on disk git does not hold, all of them, by extension below (reported)",
+        "Authority",
+        "git ls-files",
+        count=sum(
+            1
+            for p in untracked + ignored
+            if not THIRD_PARTY.search(p) and not p.startswith("data/") and not RUNTIME.search(p)
+        ),
+    )
+    loose_py = []
+    for kind, paths in (("untracked", untracked), ("ignored", ignored)):
+        for p in [p for p in paths if not THIRD_PARTY.search(p) and not p.startswith("data/")]:
+            if RUNTIME.search(p):
+                add(S, "runtime files the program or tools keep (reported)", "Authority", "git", p)
+            else:
+                add(
+                    S,
+                    f"files on disk git does not hold ({kind}), extension '{Path(p).suffix}'",
+                    "Authority",
+                    "git ls-files",
+                    p,
+                )
+                loose_py += [p] if p.endswith(".py") else []
+    add(
+        S,
+        "packages and caches on disk, not ours (reported)",
+        "size",
+        "git ls-files",
+        count=sum(1 for p in ignored if THIRD_PARTY.search(p)),
+    )
+    loose_mods = {p[:-3].replace("/", ".") for p in loose_py} | {Path(p).stem for p in loose_py}
+    for name, users in imports_of.items():
+        for f in [u for u in users if name in loose_mods]:
             add(
                 S,
-                f"files on disk git does not hold ({kind}), extension '{Path(p).suffix}'",
+                "tracked code importing a file git does not hold (runs unreviewed)",
                 "Authority",
-                "git ls-files",
-                p,
+                "ast",
+                f"{f}: {name}",
             )
-            loose_py += [p] if p.endswith(".py") else []
-add(
-    S,
-    "packages and caches on disk, not ours (reported)",
-    "size",
-    "git ls-files",
-    count=sum(1 for p in ignored if THIRD_PARTY.search(p)),
-)
-loose_mods = {p[:-3].replace("/", ".") for p in loose_py} | {Path(p).stem for p in loose_py}
-for name, users in imports_of.items():
-    for f in [u for u in users if name in loose_mods]:
+    for ln in git("worktree", "list").splitlines()[1:]:
+        add(S, "worktrees", "housekeeping", "git worktree", ln.split()[0] + " " + ln.split()[-1])
+    for ln in git(
+        "for-each-ref", "refs/heads", "--format=%(refname:short) %(committerdate:short)"
+    ).splitlines():
+        if not ln.startswith("main "):
+            add(S, "local branches", "housekeeping", "git branch", ln)
+    for ln in git("stash", "list").splitlines():
+        add(S, "stashes", "housekeeping", "git stash", ln)
+# GitHub's own branches, asked of it, not the tracking refs a checkout has kept
+for ln in git("ls-remote", "--heads", "origin").splitlines():
+    if ln.split("\t")[1] != "refs/heads/main":
         add(
             S,
-            "tracked code importing a file git does not hold (runs unreviewed)",
-            "Authority",
-            "ast",
-            f"{f}: {name}",
+            "remote branches",
+            "housekeeping",
+            "git ls-remote",
+            ln.split("\t")[1].replace("refs/heads/", "origin/"),
         )
-for ln in git("worktree", "list").splitlines()[1:]:
-    add(S, "worktrees", "housekeeping", "git worktree", ln.split()[0] + " " + ln.split()[-1])
-for ln in git(
-    "for-each-ref", "refs/heads", "--format=%(refname:short) %(committerdate:short)"
-).splitlines():
-    if not ln.startswith("main "):
-        add(S, "local branches", "housekeeping", "git branch", ln)
-for ln in git("branch", "-r", "--list", "origin/*", "--format=%(refname:short)").splitlines():
-    if ln.strip() not in ("origin/main", "origin/HEAD", "origin"):
-        add(S, "remote branches", "housekeeping", "git branch -r", ln)
-for ln in git("stash", "list").splitlines():
-    add(S, "stashes", "housekeeping", "git stash", ln)
 for pr in json.loads(
     run(
         [
@@ -1757,6 +1847,62 @@ for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
                 "Close the change",
                 "regex",
                 f"{f}: {named}",
+            )
+
+
+@functools.cache
+def bound(f):
+    """Return the names module `f` binds at its top: what `module.name` can mean."""
+    names = set()
+    stack = list(trees[f].body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.add(node.name)
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            names |= {a.name.split(".")[0] for a in node.names if a.asname is None}
+            names |= {a.asname for a in node.names if a.asname is not None}
+        elif isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names |= {n.id for t in targets for n in ast.walk(t) if isinstance(n, ast.Name)}
+        else:
+            stack += [c for c in ast.iter_child_nodes(node) if isinstance(c, ast.stmt)]
+    return names
+
+
+# each module by its dotted name and, where no other module shares it, by its last part, as the
+# rules write `check_locks.FREE`
+MODULES = {f[:-3].replace("/", ".").removesuffix(".__init__"): f for f in trees}
+stems = collections.Counter(m.rsplit(".", 1)[-1] for m in MODULES)
+MODULES |= {
+    m.rsplit(".", 1)[-1]: f for m, f in list(MODULES.items()) if stems[m.rsplit(".", 1)[-1]] == 1
+}
+CODE_NAME = re.compile(r"`([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)(?:\([^`]*\))?`")
+#: a name ending in a tracked file's suffix (`launch.py`, `config.yml`) is a file, checked above
+SUFFIXES = {Path(f).suffix[1:] for f in FILES}
+add(S, "documents naming code that does not exist", "Close the change", "ast")
+for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
+    for m in CODE_NAME.finditer(TEXT[f]):
+        parts = m.group(1).split(".")
+        # the longest leading part that is a module; the next part is a name it binds or a module
+        mod = next(
+            (
+                ".".join(parts[:i])
+                for i in range(len(parts) - 1, 0, -1)
+                if ".".join(parts[:i]) in MODULES
+            ),
+            None,
+        )
+        if mod is None or parts[-1] in SUFFIXES:
+            continue
+        name = parts[len(mod.split("."))]
+        if name not in bound(MODULES[mod]) and f"{mod}.{name}" not in MODULES:
+            add(
+                S,
+                "documents naming code that does not exist",
+                "Close the change",
+                "ast",
+                f"{f}: {m.group(1)}",
             )
 
 # =============================================================================================
@@ -2098,6 +2244,21 @@ reconcile(
 )
 add(S, "workflow files actionlint checked (reported)", "13", "actionlint", count=len(wfs))
 BATCH = [f for f in FILES if lang(f) == "Batch"]
+# SQL is a language of the repository too: each statement written in a Python string, which no
+# SQL checker reads (sqlfluff reads .sql files)
+SQL = re.compile(r"\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|PRAGMA|WITH|REPLACE)\s")
+for a in ("product", "tools", "tests"):
+    add(S, f"SQL statements in Python strings, read by no SQL checker: {a}", "13/LINTERS", "ast")
+for f in [f for f in ALL_PY if "vendor" not in f]:
+    for node in ast.walk(trees[f]):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and SQL.match(node.value):
+            add(
+                S,
+                f"SQL statements in Python strings, read by no SQL checker: {area(f)}",
+                "13/LINTERS",
+                "ast",
+                f"{f}:{node.lineno}: {' '.join(node.value.split())[:100]}",
+            )
 add(S, "batch files Blinter checked (reported)", "13", "blinter", count=len(BATCH))
 for f in BATCH:
     # Blinter's own report: each finding with its one line, a finding seen twice twice
