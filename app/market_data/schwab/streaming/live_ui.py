@@ -77,9 +77,9 @@ from push import news as push_news
 log = logging.getLogger(__name__)
 
 #: The console's pages and routes (server.app) and the page's socket (/ws), served by the program
-#: on every address: the page is served to whatever address the operator opened it on (its port:
-#: capture.open_sockets)
-CONSOLE_HOST = "0.0.0.0"
+#: on this computer alone: the operator opens the console here only, so no other machine on the
+#: network reaches it (its port: capture.open_sockets)
+CONSOLE_HOST = "127.0.0.1"
 #: feed verdict + row beat cadence (the heartbeat that keeps "live" honest)
 HEARTBEAT_SEC = 1.0
 

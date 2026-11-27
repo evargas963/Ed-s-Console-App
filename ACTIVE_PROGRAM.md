@@ -219,6 +219,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   the Heatmap with TradingView-style controls, each to the operator's spec. Separate items when
   asked: a daily accumulator, a per-stock depth measure.
 - LP-01 (QUEUED): check that the raw liquidity levels show on the Trade Desk chart.
+- LOCAL-SOCKETS (QUEUED): the program listens on this computer alone (`live_ui.CONSOLE_HOST`,
+  127.0.0.1; the operator 2026-11-27: he opens the console on this computer only). Left: the page's
+  socket `/ws` checks no Origin, so a page another site serves in the operator's own browser could
+  open it; the upgrade's Origin is checked against the console's own.
 
 ## Operator decides
 
@@ -227,9 +231,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   old statuses, so taking the field needs a rule for which message is current.
 - TAPE-BACKLOG (OPERATOR): the push sends each symbol's newest state, so a live tape can skip a
   print between pushes (the database keeps every one). Keep it so, or deliver each print once.
-- LOCAL-SOCKETS (OPERATOR): the page's socket `/ws` binds every address of this PC
-  (`live_ui.CONSOLE_HOST`, `0.0.0.0`) and checks no Origin, so another machine on the network can
-  read the price rows. Changing the bind is his setting.
 - DESK-INDEX-LINE (OPERATOR): the Trade Desk's foot strip repeats the three indexes the header's
   second row now shows on every page (`static/js/ed-trade-desk-map.js` `paintIndexes`), each with
   its last trade's time, on a line of its own. Whether that line stays is his. With it, at the

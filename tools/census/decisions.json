@@ -530,10 +530,10 @@
       "reason": "the name of one of our levels (calc.terrain_engine.OPTION_LEVELS and the level list), the industry's abbreviation (prior day's close, point of control), not read from Schwab"
     },
     {
-      "verdict": "issue",
+      "verdict": "ok",
       "category": "keys read in Schwab's spelling",
-      "pattern": ": greeksTime$",
-      "reason": "our own key written into Schwab's contract record in Schwab's spelling (feed.chain_sweep): a reader cannot tell it from a field Schwab sent (rules 3 and 17)"
+      "pattern": "^(feed/chain_sweep|option_contract)\\.py: greeksTime$",
+      "reason": "the time Schwab's stream sent each Greek, stamped on the program's own priced chain (feed.chain_sweep.take_greeks), which takes the stream's Greeks in place of the chain's rounded ones; Schwab's /chains answer is stored as received beside it (rest_chains_raw, complete_chain_captures.chains_answer), which never holds it (read 2026-11-27)"
     },
     {
       "verdict": "ok",
