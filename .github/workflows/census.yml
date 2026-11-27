@@ -16,6 +16,12 @@ permissions:
   pull-requests: read
   actions: read
 
+# a pull request's newer commit replaces the census of its older one, as pytest.yml's run does
+concurrency:
+  group:
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   census:
     runs-on: ubuntu-24.04
@@ -55,14 +61,44 @@ jobs:
       - name: Install the census's checkers for every other language
         run: npm ci --prefix head/tools/census
 
+      - name: Take each commit's coverage from its own pytest run (pytest.yml)
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # the census counts the statements no test runs from coverage.py's report of the
+          # commit's pytest run: the run is found, waited for, and its report taken
+          take() {
+            for _ in $(seq 40); do
+              id=$(gh run list -R "$GITHUB_REPOSITORY" -w pytest.yml -c "$1" -L 1 \
+                --json databaseId -q '.[0].databaseId')
+              [ -n "$id" ] && break
+              sleep 30
+            done
+            gh run watch "$id" -R "$GITHUB_REPOSITORY" -i 60 > /dev/null
+            gh run download "$id" -R "$GITHUB_REPOSITORY" -n coverage -D "$2"
+          }
+          take "$HEAD_SHA" coverage-head
+          if [ -n "$BASE_SHA" ]; then take "$BASE_SHA" coverage-base; fi
+
       - name: Count the head (after)
         working-directory: head
-        run: python -m tools.census.census ../census-out/after
+        run:
+          python -m tools.census.census ../census-out/after --coverage
+          ../coverage-head/coverage.json
 
       - name: Count the base with the head's census (before)
         if: github.event_name == 'pull_request'
         working-directory: head
-        run: python -m tools.census.census ../census-out/before --repo ../base
+        run: |
+          # a base whose pytest run wrote no coverage.json (before pytest.yml wrote one) is
+          # counted with that row reported as not counted
+          if [ -f ../coverage-base/coverage.json ]; then
+            python -m tools.census.census ../census-out/before --repo ../base \
+              --coverage ../coverage-base/coverage.json
+          else
+            python -m tools.census.census ../census-out/before --repo ../base
+          fi
 
       - name: Before and after in the job summary
         if: github.event_name == 'pull_request'

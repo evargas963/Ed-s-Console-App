@@ -44,7 +44,8 @@ def copied(files: dict[str, tuple[str, set[int]]]) -> Iterator[tuple[str, str]]:
         ]
         last_hit = -WIN
         for i in range(len(lines) - WIN + 1):
-            h = hashlib.sha1("\n".join(s for _, s in lines[i : i + WIN]).encode()).hexdigest()
+            block = "\n".join(s for _, s in lines[i : i + WIN]).encode()
+            h = hashlib.sha1(block, usedforsecurity=False).hexdigest()
             if h in seen and seen[h][0] != (f, i) and i >= last_hit + WIN:
                 yield f"{f}:{lines[i][0]}", seen[h][1]
                 last_hit = i
