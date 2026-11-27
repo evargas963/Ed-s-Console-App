@@ -2206,13 +2206,23 @@ for name, served in sorted(by_callee.items()):
         )
 
 MODULES = {f.removesuffix(".py").removesuffix("/__init__").replace("/", "."): f for f in PRODUCT_PY}
-ROOTS = ENTRY | {
-    MODULES[m]
+#: the modules a root runs with `python -m`: named in a batch file's line, or in an entry point's
+#: command, a list such as ["-m", "app.market_data.schwab.streaming.capture_main"] (launch.py)
+RUN_BY_M = {
+    m
     for f in FILES
     if lang(f) == "Batch" and f in TEXT
     for m in re.findall(r"-m\s+([\w.]+)", TEXT[f])
-    if m in MODULES
+} | {
+    b.value
+    for f in ENTRY
+    if f in trees
+    for n in ast.walk(trees[f])
+    if isinstance(n, (ast.List, ast.Tuple))
+    for a, b in zip(n.elts, n.elts[1:], strict=False)
+    if isinstance(a, ast.Constant) and a.value == "-m" and isinstance(b, ast.Constant)
 }
+ROOTS = ENTRY | {MODULES[m] for m in RUN_BY_M if m in MODULES}
 reached, todo = set(), [f for f in ROOTS if f in trees]
 while todo:
     f = todo.pop()

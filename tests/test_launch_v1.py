@@ -27,6 +27,7 @@ import site
 import socket
 import subprocess
 import sys
+import threading
 import time
 import venv
 from pathlib import Path
@@ -36,7 +37,7 @@ import pytest
 
 import launch
 import time_et
-from app.market_data.schwab.streaming.program_lock import program_ports
+from app.market_data.schwab.streaming.program_lock import ask_to_stop, program_ports
 from tests.shared_helpers import git, until
 
 pytestmark = pytest.mark.rail
@@ -249,51 +250,58 @@ def test_a_checkout_with_no_virtual_environment_says_how_to_make_one(tmp_path):
     assert "python -m venv .venv" in done.stdout, done.stdout
 
 
-@windows_only
-@pytest.mark.parametrize("code", [2, 3])
-def test_the_daemons_window_restarts_a_program_that_failed_and_not_one_that_may_not_run(
-    tmp_path, code
-):
-    """The real start_capture_daemon.cmd restarts a program that ended on an error, after its wait.
+def _program(runs: Path, *codes: int) -> list[str]:
+    """Return a program of the test's own (INDUCED): each run notes itself in `runs`, ends `codes`.
 
-    One that ends because this checkout may not run live (2) or another program holds the stream
-    (3) is not restarted: its window starts nothing more and ends, once its wait to be read is
-    over (at once here: the window has this test's input, and timeout.exe takes none
-    redirected). Induced: a capture_main of the test's own, beside the batch where its -m finds
-    it first, notes each run and ends 1 (an error), then `code`.
+    Its n-th run ends on the n-th code, the last code on every run after.
     """
-    home = tmp_path / "checkout"
-    home.mkdir()
-    shutil.copy(launch.ROOT / "start_capture_daemon.cmd", home)
-    venv.create(home / ".venv")
-    runs = tmp_path / "runs"
-    package = Path("app", "market_data", "schwab", "streaming")
-    (home / package).mkdir(parents=True)
-    for folder in (package, *package.parents[:-1]):
-        (home / folder / "__init__.py").write_text("", encoding="utf-8")
-    (home / package / "capture_main.py").write_text(
+    script = (
         "import sys\nfrom pathlib import Path\n"
         f"runs = Path({str(runs)!r})\n"
         "before = len(runs.read_text().splitlines()) if runs.exists() else 0\n"
         "with runs.open('a') as f:\n    f.write('run\\n')\n"
-        f"sys.exit(1 if before == 0 else {code})\n",
-        encoding="utf-8",
+        f"codes = {list(codes)!r}\n"
+        "sys.exit(codes[min(before, len(codes) - 1)])\n"
     )
-    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    subprocess.Popen(launch.daemon_window(home / "start_capture_daemon.cmd"), cwd=home, env=env)
-    ran = [runs]
+    return ["-c", script]
+
+
+@pytest.mark.parametrize(
+    "code", [launch.EXIT_REFUSED, launch.EXIT_OWNER_LOCK_HELD, launch.EXIT_STOPPED]
+)
+def test_the_daemons_window_restarts_a_program_that_failed_and_not_one_that_may_not_run(
+    tmp_path, code
+):
+    """The program's window runs it again RESTART_WAIT_SEC after it ends on an error.
+
+    One that ends refusing to run here (2), because another program holds the stream (3), or
+    stopped on request (5) is not run again. launch.window with a program of the test's own that
+    ends 1 (an error), then `code`; its stop request is the test's own lock's, never the
+    runtime's.
+    """
+    runs = tmp_path / "runs"
+    assert launch.window(_program(runs, 1, code), tmp_path / "stream_capture.db") == code
+    assert runs.read_text().splitlines() == ["run", "run"], "run again after a code it ends on"
+
+
+@windows_only
+def test_a_stop_between_two_runs_ends_the_windows_wait_and_nothing_runs_again(tmp_path):
+    """`launch.py stop` asks the window too: between two runs, the wait ends and nothing runs.
+
+    The window holds the stop request (a named event on Windows), so the ask finds it while no
+    program runs. Asked once the first run has noted itself, the window ends at its wait, the
+    program run once.
+    """
+    runs, db = tmp_path / "runs", tmp_path / "stream_capture.db"
+
+    def ask_once_it_ran() -> None:
+        asyncio.run(until(runs.exists, 60))
+        ask_to_stop(db)
+
+    asking = threading.Thread(target=ask_once_it_ran)
+    asking.start()
     try:
-        # the window has started once the first run notes itself, and ends only at its batch's end
-        asyncio.run(
-            until(
-                lambda: runs.exists() and not _running_in(home),
-                90,
-                state=lambda: [
-                    f"runs: {len(r.read_text().splitlines())}" for r in ran if r.exists()
-                ],
-            )
-        )
-        assert runs.read_text().splitlines() == ["run", "run"], "restarted after exit code"
+        assert launch.window(_program(runs, 1), db) == 1
     finally:
-        for p in _running_in(home):
-            p.kill()
+        asking.join(60)
+    assert runs.read_text().splitlines() == ["run"], "the window ran it again after the stop"
