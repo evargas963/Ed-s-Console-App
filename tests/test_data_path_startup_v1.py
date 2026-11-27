@@ -1,9 +1,9 @@
 """The capture daemon's start, Schwab to the screen.
 
-Its window closes when its batch ends, and the
-stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's log and
-/api/health on its heartbeat; a module that fails to load, and a chain sweep thread that ends on an
-error, leave their reason in the daemon's log.
+The stop takes only this checkout's processes; why Schwab is not connected reaches the daemon's
+log and /api/health on its heartbeat; a module that fails to load, and a chain sweep thread that
+ends on an error, leave their reason in the daemon's log. Its window's tests are the launcher's
+(tests/test_launch_v1.py).
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ import json
 import os
 import re
 import shutil
-import site
 import socket
 import sqlite3
 import subprocess
@@ -21,7 +20,6 @@ import sys
 import threading
 import time
 import uuid
-import venv
 from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
@@ -54,20 +52,6 @@ from tests.test_live_push_channel_v1 import listener, serve_page_socket
 from tests.test_one_levels_producer_v1 import _drain
 
 REPO = Path(__file__).resolve().parent.parent
-#: Windows console input mode: selecting text with the mouse (SetConsoleMode)
-QUICK_EDIT = 0x40
-#: prints the input mode of the console window process `argv[1]` runs in, read from that window
-WINDOW_MODE = (
-    "import ctypes, sys\n"
-    "k = ctypes.windll.kernel32\n"
-    "k.CreateFileW.restype = ctypes.c_void_p\n"
-    "k.FreeConsole()\n"
-    "assert k.AttachConsole(int(sys.argv[1])), 'no window to attach to'\n"
-    "h = k.CreateFileW('CONIN$', 0xC0000000, 3, None, 3, 0, None)\n"
-    "m = ctypes.c_uint32()\n"
-    "assert k.GetConsoleMode(ctypes.c_void_p(h), ctypes.byref(m)), 'no console mode'\n"
-    "sys.stdout.write(str(m.value))\n"
-)
 
 
 def _spy_0dte() -> tuple[dict, list[dict]]:
@@ -116,142 +100,6 @@ def test_a_page_is_refused_while_the_program_serves_no_prices():
         return refused.value.response.status_code
 
     assert asyncio.run(asyncio.wait_for(go(), 30)) == 403
-
-
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="the daemon's window is a Windows console window"
-)
-def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
-    """The launcher's command for the daemon's window runs the batch in a window of its own.
-
-    The command is launch.daemon_window. When the batch ends (the daemon stopped on request),
-    the window's cmd ends too, so no empty window stays open.
-    """
-    window_pid = tmp_path / "window.pid"
-    bat = tmp_path / "daemon.bat"
-    bat.write_text(
-        f'@"{sys.executable}" -c "import psutil; '
-        "window = next(p for p in psutil.Process().parents() "
-        "if p.name().lower() == 'cmd.exe'); "
-        f"open(r'{window_pid}', 'w').write(str(window.pid))\"\r\n",
-        encoding="utf-8",
-    )
-    subprocess.Popen(launch.daemon_window(bat), cwd=launch.ROOT)
-    deadline = time_et.elapsed() + 60.0
-    # the file exists from its open, before its write: the pid is in it once its digits are
-    while not (window_pid.exists() and window_pid.read_text(encoding="utf-8").isdigit()):
-        assert time_et.elapsed() < deadline, "the batch never ran"
-        time.sleep(0.1)
-    window = int(window_pid.read_text(encoding="utf-8"))
-    deadline = time_et.elapsed() + 30.0
-    while psutil.pid_exists(window) and time_et.elapsed() < deadline:
-        time.sleep(0.1)
-    still_open = psutil.pid_exists(window)
-    if still_open:
-        psutil.Process(window).kill()
-    assert not still_open, "the daemon's window stayed open after its batch ended"
-
-
-@pytest.mark.alone
-@pytest.mark.skipif(
-    sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
-)
-def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
-    """The real start_capture_daemon.cmd in a folder of its own starts the real daemon.
-
-    With launch.py and a virtual environment beside it, it starts the real daemon in its window
-    (no Schwab token, ports of its own). The stop finds it by launch.DAEMON_START and ends it,
-    exit 0, and the batch does not restart it. A batch line apart from DAEMON_START would read
-    "not running", leaving it up. The daemon has an error output, its window, where an error
-    while it loads shows (operator 2026-11-04: "i would rather run capture main on python
-    instead of pythonw"; under pythonw it had none): induced, a sitecustomize notes it for each
-    process by its id.
-    """
-    home = tmp_path / "checkout"
-    home.mkdir()
-    for name in ("launch.py", "start_capture_daemon.cmd"):
-        shutil.copy(launch.ROOT / name, home)
-    venv.create(home / ".venv")
-    notes = tmp_path / "error_output"
-    notes.mkdir()
-    probe = tmp_path / "site"
-    probe.mkdir()
-    (probe / "sitecustomize.py").write_text(
-        "import os, sys\n"
-        f"with open(os.path.join({str(notes)!r}, str(os.getpid())), 'w') as f:\n"
-        "    f.write(str(sys.stderr is not None))\n",
-        encoding="utf-8",
-    )
-    env = {
-        **os.environ,
-        "PYTHONPATH": os.pathsep.join([str(probe), str(launch.ROOT), *site.getsitepackages()]),
-        "ED_RUNTIME_ROOT": str(tmp_path),
-        "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
-    }
-    bat = home / "start_capture_daemon.cmd"
-    subprocess.Popen(launch.daemon_window(bat), cwd=home, env=env)
-    try:
-        end = time_et.elapsed() + 60
-        while program_ports(tmp_path / "data" / "stream_capture.db") is None:
-            assert time_et.elapsed() < end, "the batch's daemon never served its port"
-            time.sleep(0.1)
-        noted = [
-            (notes / str(p.pid)).read_text(encoding="utf-8")
-            for p in launch.running(launch.DAEMON_START, home)
-            if (notes / str(p.pid)).exists()
-        ]
-        assert noted == ["True"], noted
-        daemon = launch.running(launch.DAEMON_START, home)[0].pid
-        window_mode = subprocess.run(
-            [sys.executable, "-c", WINDOW_MODE, str(daemon)],
-            capture_output=True,
-            text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-            timeout=30,
-        )
-        assert window_mode.returncode == 0, window_mode.stderr
-        # selecting text holds only the window, written by a thread of its own, never the program:
-        # the daemon log test of a window that holds its writes shows it
-        assert int(window_mode.stdout) & QUICK_EDIT, "the operator can select text to read it"
-        stopped = subprocess.run(
-            [sys.executable, "launch.py", "stop"],
-            cwd=home,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=90,
-        )
-        assert (stopped.returncode, stopped.stdout) == (0, "Ed Console: stopped\n"), stopped.stderr
-        stopped_at = time_et.now()
-        end = time_et.elapsed() + 8  # past the batch's 5 s restart wait
-        while time_et.elapsed() < end:
-            # each one found, with when it started against the stop: one started after it is a
-            # restart, one started before it is a process the stop did not wait for
-            started = [
-                {
-                    "pid": p.pid,
-                    "started_sec_after_the_stop": round(p.info["create_time"] - stopped_at, 2),
-                    "seen_sec_after_the_stop": round(time_et.now() - stopped_at, 2),
-                    "line": p.info["cmdline"],
-                }
-                for p in psutil.process_iter(["name", "cwd", "create_time", "cmdline"])
-                if p.info["name"] == "python.exe"
-                and p.info["cwd"]
-                and Path(p.info["cwd"]).resolve() == home.resolve()
-            ]
-            log_ends = [
-                f.read_text(encoding="utf-8")[-1500:] for f in (tmp_path / "logs").glob("*.log")
-            ]
-            assert not started, (
-                f"the batch restarted a daemon stopped on request: {started}; "
-                f"the stop's error output: {stopped.stderr!r}; the daemon's log ends: {log_ends}"
-            )
-            time.sleep(0.2)
-    finally:
-        for p in psutil.process_iter(["cmdline"]):
-            # psutil gives None for a process whose command line it may not read
-            if p.info["cmdline"] is not None and str(home) in " ".join(p.info["cmdline"]):
-                p.kill()
 
 
 def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
