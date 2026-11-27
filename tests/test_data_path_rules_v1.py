@@ -71,7 +71,7 @@ from tests.feed_live_helper import (
     stream_daemon_bars,
 )
 from tests.schwab_rest_standin import SERVER_ERROR_BODY, SPY_QUOTES, TOKEN, LocalSchwab
-from tests.shared_helpers import et_ts
+from tests.shared_helpers import et_ts, until
 from time_et import ET, ct_label
 
 FX = Path(__file__).resolve().parent / "fixtures"
@@ -327,9 +327,8 @@ def test_d4_the_one_writer_records_every_message_it_is_handed_with_every_field(t
                 _frame("LEVELONE_OPTIONS", [e["content"]], e["content"]["QUOTE_TIME_MILLIS"]),
                 e["ts_recv"],
             )
-        deadline = time_et.elapsed() + 10  # written while the writer runs, before any stop
-        while writer.status()["rows_written"] < len(_EVENTS) and time_et.elapsed() < deadline:
-            await asyncio.sleep(0.01)
+        # written while the writer runs, before any stop
+        await until(lambda: writer.status()["rows_written"] >= len(_EVENTS), 10)
         stop.set()
         await task
 
@@ -1684,11 +1683,7 @@ def test_the_daemon_builds_one_schwab_client_and_a_failed_refresh_never_rebuilds
     worker = threading.Thread(target=sweep.work, args=(schwab_client, halt), daemon=True)
     try:
         worker.start()
-        deadline = time_et.elapsed() + 10
-        while (
-            not failed and time_et.elapsed() < deadline
-        ):  # each ticker's price history fails first
-            halt.wait(0.02)
+        asyncio.run(until(lambda: failed, 10))  # each ticker's price history fails first
     finally:
         halt.set()
         worker.join(10)

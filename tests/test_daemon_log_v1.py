@@ -19,9 +19,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import runtime_layout
-import time_et
 from app.market_data.schwab.streaming import capture
 from feed import connection
+from tests.shared_helpers import until
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -267,13 +267,16 @@ def test_the_window_shows_each_second_what_schwab_streamed(caplog):
             frame = {"timestamp": m["schwab_ts"], "content": [m["item"]]}
             connection._publisher(m["service"], bus, health)(frame, m["ts_recv"])
         services = {m["service"] for m in messages}
-        deadline = time_et.elapsed() + 10  # the window has shown a line for every service
-        while time_et.elapsed() < deadline and services - {
-            r.getMessage().split(":", 1)[0].removeprefix("PUSH ")
-            for r in caplog.records
-            if r.getMessage().startswith("PUSH ")
-        }:
-            await asyncio.sleep(0.01)
+
+        def unshown() -> set[str]:
+            return services - {
+                r.getMessage().split(":", 1)[0].removeprefix("PUSH ")
+                for r in caplog.records
+                if r.getMessage().startswith("PUSH ")
+            }
+
+        # the window has shown a line for every service
+        await until(lambda: not unshown(), 10, state=unshown)
         stop.set()
         await window
 
