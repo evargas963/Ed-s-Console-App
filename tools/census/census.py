@@ -85,7 +85,13 @@ def exe(name):
     return found
 
 
-def run(cmd, cwd=REPO, stdout_only=False):
+def run(cmd, cwd=REPO, stdout_only=False, ok=(0,)):
+    """Return a command's output; an exit code outside `ok` stops the census.
+
+    `ok` holds the codes the tool gives when it ran, with findings or without (ruff: 0, 1; vulture:
+    0, 3; stylelint: 0, 2); any other code is the tool failing, and a checker that did not run
+    would read as nothing found.
+    """
     r = subprocess.run(
         [str(c) for c in cmd],
         cwd=cwd,
@@ -95,6 +101,14 @@ def run(cmd, cwd=REPO, stdout_only=False):
         errors="replace",
         timeout=3600,
     )
+    if r.returncode not in ok:
+        log.error(
+            "census: %s exited %s:\n%s",
+            " ".join(str(c) for c in cmd)[:200],
+            r.returncode,
+            (r.stdout + r.stderr)[-3000:],
+        )
+        raise SystemExit(1)
     return r.stdout if stdout_only else r.stdout + r.stderr
 
 
@@ -566,7 +580,7 @@ out = run(
 for ln in out.splitlines():
     if re.match(r"(.+?):(\d+):\d+: ([A-Z]+\d+)", ln):
         add(S, "ruff findings under pyproject's selection (fail at commit)", "13", "ruff", ln)
-for ln in run([PY, "-m", "ruff", "format", "--check", ".", "--no-cache"]).splitlines():
+for ln in run([PY, "-m", "ruff", "format", "--check", ".", "--no-cache"], ok=(0, 1)).splitlines():
     if ln.startswith("Would reformat"):
         add(S, "files ruff format would change", "13", "ruff format", ln)
 # a suppression is a comment: Python's comments as its tokenizer reads them; in the other
@@ -617,7 +631,9 @@ archive = subprocess.run(
     ["git", "archive", "--format=tar", "HEAD"], cwd=REPO, capture_output=True, check=True
 ).stdout
 tarfile.open(fileobj=io.BytesIO(archive)).extractall(HEAD, filter="data")
-out = run([exe("lint-imports"), "--config", "head/locks.imports.toml", "--no-cache"], cwd=LINT)
+out = run(
+    [exe("lint-imports"), "--config", "head/locks.imports.toml", "--no-cache"], cwd=LINT, ok=(0, 1)
+)
 for ln in out.splitlines():
     if "BROKEN" in ln or re.match(r"^-?\s*\S+ -> \S+", ln.strip()):
         add(
@@ -648,7 +664,10 @@ for mode in ("basic", "strict"):
         encoding="utf-8",
     )
     out = run(
-        [exe("pyright"), "-p", cfg, "--pythonpath", PY, "--outputjson"], cwd=LINT, stdout_only=True
+        [exe("pyright"), "-p", cfg, "--pythonpath", PY, "--outputjson"],
+        cwd=LINT,
+        stdout_only=True,
+        ok=(0, 1),  # errors reported 1; a fatal, configuration or command error 2, 3, 4
     )
     pj = json.JSONDecoder().raw_decode(out[out.index("{") :])[0]
     diags = [d for d in pj["generalDiagnostics"] if d["severity"] == "error"]
@@ -713,12 +732,14 @@ for cat, tool in (
 VULTURE = [PY, "-m", "vulture", "--min-confidence", "60"]
 # the tests apart, so a product function only a test calls is still unused; pytest calls a test,
 # a test class, a hook and a fixture by its name, and http.server a handler's do_<METHOD>
-out = run([*VULTURE, *[f for f in ALL_PY if area(f) in ("product", "tools")]]) + run(
+# vulture's exit codes: none found 0, unused code found 3; invalid input 1, a bad command 2
+out = run([*VULTURE, *[f for f in ALL_PY if area(f) in ("product", "tools")]], ok=(0, 3)) + run(
     [
         *(*VULTURE, "--ignore-names", "test_*,Test*,pytest_*,do_*"),
         *("--ignore-decorators", "@pytest.fixture"),
         *[f for f in ALL_PY if area(f) == "tests"],
-    ]
+    ],
+    ok=(0, 3),
 )
 routes = {
     m.group(1)
@@ -1862,6 +1883,7 @@ for ln in run([PY, "-m", "pip", "freeze"], stdout_only=True).splitlines():
 audit = run(
     [PY, "-m", "pip_audit", "--disable-pip", "--no-deps", "-r", LINT / "pinned.txt", "-f", "json"],
     stdout_only=True,
+    ok=(0, 1),  # a known vulnerability found 1
 )
 for dep in json.loads(audit)["dependencies"]:
     for v in dep["vulns"]:
@@ -1877,6 +1899,7 @@ for f in [f for f in FILES if f.endswith("package-lock.json")]:
         [exe("npm"), "audit", "--package-lock-only", "--json"],
         cwd=(HEAD / f).parent,
         stdout_only=True,
+        ok=(0, 1),  # a known vulnerability found 1
     )
     for name, v in json.loads(out)["vulnerabilities"].items():
         add(
@@ -1929,7 +1952,9 @@ for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
         named = m.group(1)
         # a path git ignores is a file of the machine's own (the agent's settings, a log), named
         # for what it is wherever it is not
-        ignored_by_git = run(["git", "check-ignore", "--no-index", named], stdout_only=True)
+        ignored_by_git = run(
+            ["git", "check-ignore", "--no-index", named], stdout_only=True, ok=(0, 1)
+        )  # ignored 0, not ignored 1
         if not (REPO / named).exists() and not ignored_by_git:
             add(
                 S,
@@ -2228,20 +2253,22 @@ for cat, tool in (
     add(S, cat, "13/LINTERS", tool)
 
 
-def json_findings(name, cmd):
+def json_findings(name, cmd, ok):
     """Return a checker's JSON report, written to a file by the checker's own output option.
 
     A Node tool's report sent through a pipe can lose its end when the tool exits (seen in CI: html-
-    validate's cut at 15,992 characters). `cmd` holds `{out}` where the report file goes.
+    validate's cut at 15,992 characters). `cmd` holds `{out}` where the report file goes; `ok` the
+    tool's exit codes when it ran (run).
     """
     report_file = LINT / f"{name}.json"
-    run([str(c).replace("{out}", str(report_file)) for c in cmd], cwd=HEAD)
+    run([str(c).replace("{out}", str(report_file)) for c in cmd], cwd=HEAD, ok=ok)
     return json.loads(report_file.read_text(encoding="utf-8"))
 
 
 report = json_findings(
     "eslint",
     [exe("eslint"), "--config", CENSUS / "eslint.config.mjs", "-f", "json", "-o", "{out}", "."],
+    ok=(0, 1),  # findings 1; a fatal or configuration error 2
 )
 for fr in report:
     for msg in fr["messages"]:
@@ -2273,6 +2300,7 @@ report = json_findings(
         "-o",
         "{out}",
     ],
+    ok=(0, 2),  # findings 2; a fatal error 1, a bad command 64, a bad configuration 78
 )
 for fr in report:
     for w in fr["warnings"]:
@@ -2299,6 +2327,7 @@ report = json_findings(
         "json={out}",
         *[f for f in FILES if f.endswith(".html")],
     ],
+    ok=(0, 1),  # findings 1
 )
 for fr in report:
     for msg in fr["messages"]:
@@ -2351,6 +2380,7 @@ for ln in run(
         "!**/package-lock.json",
     ],
     cwd=HEAD,
+    ok=(0, 1, 2),  # files to format 1; a file it cannot parse 2, each its own [error] line below
 ).splitlines():
     if ln.startswith("[error]"):
         add(S, "files Prettier cannot parse", "13/LINTERS", "prettier", ln[:200])
@@ -2373,6 +2403,7 @@ out = run(
         "#static/vendor",
     ],
     cwd=HEAD,
+    ok=(0, 1),  # findings 1; a failure 2
 )
 for ln in out.splitlines():
     if m := re.match(r"(.+?):(\d+)(?::\d+)? (MD\d+)/([\w/-]+) (.+)", ln):
@@ -2391,16 +2422,17 @@ reconcile(
 )
 tomls = [HEAD / f for f in FILES if f.endswith(".toml")]
 add(S, "TOML files taplo checked (reported)", "13", "taplo", count=len(tomls))
-for ln in run([exe("taplo"), "lint", *tomls]).splitlines():
+for ln in run([exe("taplo"), "lint", *tomls], ok=(0, 1)).splitlines():
     if "ERROR" in ln and "operation failed" not in ln:
         add(S, "TOML: taplo lint errors", "13/LINTERS", "taplo", ln.strip()[:200])
-for ln in run([exe("taplo"), "fmt", "--check", *tomls]).splitlines():
+for ln in run([exe("taplo"), "fmt", "--check", *tomls], ok=(0, 1)).splitlines():
     if m := re.search(r'not properly formatted path="([^"]+)"', ln):
         add(S, "TOML: files taplo would format", "13/LINTERS", "taplo", rel(m.group(1)))
 out = run(
     [exe("yamllint"), "-c", CENSUS / "yamllint.config.yml", "-f", "parsable", "."],
     cwd=HEAD,
     stdout_only=True,
+    ok=(0, 1),  # an error found 1
 )
 for ln in out.splitlines():
     if m := re.match(r"(.+?):(\d+):\d+: \[(\w+)\] (.+) \(([\w-]+)\)$", ln):
@@ -2413,7 +2445,7 @@ for ln in out.splitlines():
         )
 reconcile("yamllint", sum(1 for x in out.splitlines() if x.strip()), "YAML: yamllint", "yamllint")
 wfs = [f for f in FILES if f.startswith(".github/workflows/")]
-out = run([exe("actionlint"), "-oneline", *wfs], cwd=HEAD, stdout_only=True)
+out = run([exe("actionlint"), "-oneline", *wfs], cwd=HEAD, stdout_only=True, ok=(0, 1))
 for ln in out.splitlines():
     if m := re.match(r"(.+?):(\d+):\d+: (.+) \[([\w-]+)\]$", ln):
         add(
@@ -2449,7 +2481,10 @@ for f in [f for f in ALL_PY if "vendor" not in f]:
 add(S, "batch files Blinter checked (reported)", "13", "blinter", count=len(BATCH))
 for f in BATCH:
     # Blinter's own report: each finding with its one line, a finding seen twice twice
-    report = json.loads(run([exe("blinter"), f, "--format", "json"], cwd=HEAD, stdout_only=True))
+    # an issue at or above Blinter's --fail-on level (security, its default) exits 1
+    report = json.loads(
+        run([exe("blinter"), f, "--format", "json"], cwd=HEAD, stdout_only=True, ok=(0, 1))
+    )
     for issue in report["issues"]:
         add(
             S,
