@@ -901,3 +901,13 @@ def test_a_stop_then_a_start_ends_the_stopped_levels_loop():
         assert len(_levels_loops() - before) == 1
     finally:
         server.stop_terrain_loop()
+
+
+def test_the_program_listens_on_this_computer_alone():
+    """The program's one listening socket, its pages and /ws, is bound to 127.0.0.1 alone.
+
+    The operator opens the console on this computer only (2026-11-27): no other machine on the
+    network reaches its pages or its socket. The port is the system's pick (conftest).
+    """
+    with capture.open_sockets() as sock:
+        assert sock.getsockname()[0] == "127.0.0.1"
