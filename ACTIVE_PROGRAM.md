@@ -66,7 +66,7 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 - RATE-EVIDENCE (NEXT): one regular session from the daemon log: per minute and per 10 s, requests
   sent, successes, 429s and 403s (with each 403's Akamai reference), beside each chain's quote
   batches, across the watchlist; whether concurrency or the per-minute count drives the refusals.
-- STOP-GAP (NEXT): `python launch.py stop` during the 5 s `start_capture_daemon.bat` waits before
+- STOP-GAP (NEXT): `python launch.py stop` during the 5 s `start_capture_daemon.cmd` waits before
   restarting a daemon that exited reads "not running", exit 0, and the window then restarts it; a
   daemon asked to stop that ends on another exit code reads "stopped" and is restarted too. Next:
   find what tells these apart from a clean stop's 30 s close, then fix at the source.

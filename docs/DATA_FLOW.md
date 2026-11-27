@@ -139,11 +139,12 @@ The rules for the data itself, at every hop from Schwab to the screen.
 The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with the console part in
 `server.py` and `app/options/order_flow/`.
 
-- Started by `launch.py` (`start_ed_console.bat`), which brings the checkout to origin/main when the
-  program is not running (`launch.bring_to_origin_main`), opens `start_capture_daemon.bat` in its
+- Started by `launch.py` (`start_ed_console.cmd`), which brings the checkout to origin/main when the
+  program is not running (`launch.bring_to_origin_main`), opens `start_capture_daemon.cmd` in its
   own window (`launch.daemon_window`), waits for `/api/health` and opens the browser.
-- `start_capture_daemon.bat` runs the program and restarts it 5 s after it exits, except after a
-  clean stop (exit 5, `capture.EXIT_STOPPED`).
+- `start_capture_daemon.cmd` runs the program and restarts it 5 s after it exits, except after a
+  clean stop (exit 5, `capture.EXIT_STOPPED`), another program holding the stream (exit 3) or a
+  checkout that may not run live (exit 2).
 - Stopped only by `python launch.py stop`, which sets the program's stop request
   (`program_lock.ask_to_stop`, a named event); the program's waiter (`capture.stop_on_request`)
   stops it, and its writer writes what it holds, with no wait to try a refused write again

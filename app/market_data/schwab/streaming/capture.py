@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture_main  (launch.py -> start_capture_daemon.bat)
+    python -m app.market_data.schwab.streaming.capture_main  (launch.py -> start_capture_daemon.cmd)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -776,7 +776,7 @@ class Daemon:
 
 
 #: Exit code of a daemon stopped on request (launch.py stop, Ctrl+C in its window):
-#: start_capture_daemon.bat does not restart it.
+#: start_capture_daemon.cmd does not restart it.
 EXIT_STOPPED = 5
 
 
@@ -1281,7 +1281,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
     stop (stop_on_request). Its writer, its web server, the price rows' beat, the chain sweep,
     the market follower, the stop request's waiter and the Schwab connection each run until the
     stop; one that ends first ends the daemon with an error naming it, which
-    start_capture_daemon.bat restarts. The port its socket holds goes in its lock (`lock_fd`),
+    start_capture_daemon.cmd restarts. The port its socket holds goes in its lock (`lock_fd`),
     where launch.py reads it.
     """
     pages = open_sockets()
