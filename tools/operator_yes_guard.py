@@ -135,14 +135,19 @@ def _targets(st: Statement, upstream: list[str] | None) -> tuple[list[dict], boo
                 names.update(
                     [part.lower().removesuffix(".exe")] if part and not part.isdigit() else []
                 )
-    found = []
-    for p in _processes():
-        image = (p["name"] or "").lower().removesuffix(".exe")
-        if p["pid"] in pids or any(
-            fnmatch(image, n) or (n.startswith("python") and image.startswith(n)) for n in names
-        ):
-            found.append(p)
+    found = [
+        p
+        for p in _processes()
+        # a name Windows does not show (None) matches no image name; its id still reaches it
+        if p["pid"] in pids or (p["name"] is not None and _named(p["name"], names))
+    ]
     return found, later or not (pids or names)
+
+
+def _named(name: str, names: set[str]) -> bool:
+    """Return whether the image `name` is one of `names` (patterns; `python` takes python3.13)."""
+    image = name.lower().removesuffix(".exe")
+    return any(fnmatch(image, n) or (n.startswith("python") and image.startswith(n)) for n in names)
 
 
 def _production_running() -> bool:
@@ -150,7 +155,7 @@ def _production_running() -> bool:
     return any(
         _production(p) is not False
         for p in _processes()
-        if (p["name"] or "").lower().startswith("python")
+        if p["name"] is not None and p["name"].lower().startswith("python")
     )
 
 
