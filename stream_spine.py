@@ -37,13 +37,10 @@ from typing import IO, TYPE_CHECKING, Any, TypedDict, cast, override
 import time_et
 from calc.l1_trade_observation import PRINT_FIELDS
 from calc.order_flow import Book, Exchanges, Json, Level
-from calibration.complete_chain_capture import (
-    CaptureMessage,
-    ensure_schema,
-    store_capture_message,
-)
+from calibration.complete_chain_capture import CAPTURE_BASIS, CaptureMessage
 from db_authority import resolve_stream_db_path
-from json_blob_codec import decode_text_blob, encode_text_blob
+from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_text_blob, encode_json_blob, encode_text_blob
 from numeric_contract import schwab_count, schwab_number, schwab_time_ms
 from option_contract import (
     NO_GREEKS,
@@ -229,6 +226,27 @@ CREATE TABLE IF NOT EXISTS stream_spill_progress (
     spill TEXT PRIMARY KEY,
     written_back INTEGER NOT NULL
 );
+-- The chain history (DATA_FLOW decisions 1 and 7): each capture the chain sweep takes, one row
+-- per expiry, a time series (each capture time its own rows), never replaced (store_capture).
+-- `spot` is the expiry's own underlyingPrice as Schwab sent it; `chain_spot` / `chain_spot_ts`
+-- the chain's one spot (Schwab's LAST_PRICE when the chain was complete) and its trade time.
+-- `chain_json` is the chain as the levels took it, compressed (json_blob_codec); `chains_answer`
+-- Schwab's /chains answer for the expiry, the body exactly as received, absent in captures
+-- written before the column was added.
+CREATE TABLE IF NOT EXISTS complete_chain_captures (
+    ticker TEXT NOT NULL,
+    expiry TEXT NOT NULL,
+    ts_utc REAL NOT NULL,
+    spot REAL,
+    completeness_basis TEXT NOT NULL,
+    chain_json TEXT NOT NULL,
+    chain_spot REAL,
+    chain_spot_ts REAL,
+    chains_answer BLOB,
+    PRIMARY KEY (ticker, expiry, ts_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_complete_chain_captures_latest
+    ON complete_chain_captures(ticker, expiry, ts_utc DESC);
 """
 
 #: Quotes, books and option quotes arrive in receipt order, thousands of symbols a second: indexed
@@ -1046,6 +1064,109 @@ class StoredFirst:
         return CAPTURE_STORED if stored else CAPTURE_REFUSED
 
 
+#: one expiry's row of a capture (persist_complete_chain_capture)
+CAPTURE_INSERT_SQL = (
+    "INSERT INTO complete_chain_captures "
+    "(ticker, expiry, ts_utc, spot, completeness_basis, chain_json, chain_spot, "
+    "chain_spot_ts, chains_answer) VALUES (?,?,?,?,?,?,?,?,?)"
+)
+#: what a capture write did: its row written, or nothing written (with why)
+WRITTEN, SKIPPED = "written", "skipped"
+
+
+@dataclass(frozen=True)
+class Persisted:
+    """What one expiry's capture write did: WRITTEN, or SKIPPED with why (`reason`)."""
+
+    status: str
+    reason: str | None = None
+
+
+def persist_complete_chain_capture(
+    conn: sqlite3.Connection,
+    *,
+    ticker: str,
+    expiry: str,
+    contracts: list[dict[str, Any]],
+    spot: float | None,
+    completeness_basis: str,
+    ts_utc: float,
+    chain_spot: float | None = None,
+    chain_spot_ts: float | None = None,
+    chains_answer: str | None = None,
+) -> Persisted:
+    """Append one COMPLETE single-expiry capture.
+
+    `spot` is that expiry's underlyingPrice as Schwab sent it; `chain_spot` / `chain_spot_ts`
+    the chain's one spot and its trade time (None when the daemon held no price). A time series
+    (PRIMARY KEY includes ts_utc): each capture time is its own set of rows, one per expiry. A
+    stored capture is never replaced: a second write of the same (ticker, expiry, ts_utc) raises
+    sqlite3.IntegrityError and the stored row stands. `conn` is the Recorder's connection, whose
+    open transaction the row joins (store_capture_message).
+
+    FAIL CLOSED: no contracts, or an unproven `completeness_basis`, writes NOTHING and
+    says why — a persisted row with an empty or unverifiable completeness claim would be
+    worse than no row, since a caller trusts what THIS table alone claims to be complete.
+    """
+    tk = ticker_storage_key(ticker)
+    if not tk:
+        return Persisted(SKIPPED, "no_ticker")
+    exp = expiry.strip()[:10]
+    if not exp:
+        return Persisted(SKIPPED, "no_expiry")
+    if not completeness_basis:
+        return Persisted(SKIPPED, "no_completeness_basis")
+    if not contracts:
+        return Persisted(SKIPPED, "no_contracts")
+    conn.execute(
+        CAPTURE_INSERT_SQL,
+        (
+            tk,
+            exp,
+            float(ts_utc),
+            spot,
+            str(completeness_basis),
+            encode_json_blob([dict(c) for c in contracts], default=str),
+            chain_spot,
+            chain_spot_ts,
+            None if chains_answer is None else encode_text_blob(chains_answer),
+        ),
+    )
+    return Persisted(WRITTEN)
+
+
+def store_capture_message(conn: sqlite3.Connection, msg: CaptureMessage) -> int:
+    """Write a capture message (capture_message) in `conn`'s transaction: one row per expiry.
+
+    How many rows were written; an expiry with no contracts is not a row. Every row is written
+    or none: a row the database refuses rolls back the capture's rows and raises.
+    """
+    conn.execute("SAVEPOINT capture")
+    try:
+        written = [
+            persist_complete_chain_capture(
+                conn,
+                ticker=msg["ticker"],
+                expiry=e["expiry"],
+                contracts=e["contracts"],
+                spot=e["spot"],
+                completeness_basis=CAPTURE_BASIS,
+                ts_utc=msg["ts_utc"],
+                chain_spot=msg["chain_spot"],
+                chain_spot_ts=msg["chain_spot_ts"],
+                chains_answer=e["chains_answer"],
+            ).status
+            == WRITTEN
+            for e in msg["expiries"]
+        ]
+    except BaseException:
+        conn.execute("ROLLBACK TO capture")
+        raise
+    finally:
+        conn.execute("RELEASE capture")
+    return sum(written)
+
+
 def _capture_written(conn: sqlite3.Connection, msg: Any) -> RowWritten:
     """Write a capture message's rows; its row record: (ticker, capture time, rows written)."""
     return RowWritten(
@@ -1667,7 +1788,6 @@ def _prepared(p: Path) -> list[_Spill]:
             name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         conn.executescript(STREAM_SCHEMA_SQL)
-        ensure_schema(conn)  # the chain history's captures (store_capture)
         for table, index in RECEIPT_TIME_INDEXES.items():
             if table not in tables:
                 conn.execute(index)

@@ -23,6 +23,7 @@ import calibration.complete_chain_capture as cch
 import live_market_plane as lmp
 import server
 from app.options.order_flow import streaming as ofs
+from db import last_capture_per_day
 from feed import chain_sweep as cs
 from state import level_store
 from stream_spine import CaptureWriter
@@ -79,7 +80,7 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
                 "SELECT spot, chain_spot, chain_spot_ts FROM complete_chain_captures"
             ).fetchall()
         assert stored == [(CRWD.spot, LAST, TRADED)]  # underlyingPrice kept as sent beside it
-        (read,) = cch.last_capture_per_day(tmp_path / "ed_console.db", TK, 1)
+        (read,) = last_capture_per_day(tmp_path / "ed_console.db", TK, 1)
         assert (read.spot, read.spot_ts) == (LAST, TRADED)
         for _topic, msg in published:
             for done in ofs.assemble_chain_part(msg):
@@ -118,7 +119,7 @@ def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
             completeness_basis=cch.CAPTURE_BASIS,
             ts_utc=CRWD.now.timestamp(),
         )
-    (read,) = cch.last_capture_per_day(db, TK, 1)
+    (read,) = last_capture_per_day(db, TK, 1)
     assert (read.spot, read.spot_ts) == (None, None)
     with closing(sqlite3.connect(db)) as c, c:
         recorded = {r[0] for r in c.execute("SELECT spot FROM complete_chain_captures")}
@@ -152,5 +153,5 @@ def test_a_stored_trade_time_without_its_price_is_no_chain_spot(tmp_path):
         chain_spot=None,
         chain_spot_ts=TRADED,
     )
-    (read,) = cch.last_capture_per_day(db, TK, 1)
+    (read,) = last_capture_per_day(db, TK, 1)
     assert (read.spot, read.spot_ts) == (None, None)

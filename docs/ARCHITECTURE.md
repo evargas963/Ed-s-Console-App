@@ -20,11 +20,13 @@ EdWebConsole/
 │                stream is asked for, the stop, the daily keep), live_ui.py (the page's one
 │                WebSocket, /ws), program_lock.py (one program at a time), live_push.py, and the
 │                order-flow stores (app/options/order_flow/)
-├── calibration/ complete_chain_capture.py: each chain capture as the Recorder stores it
+├── calibration/ complete_chain_capture.py: a chain capture as the Recorder takes it (its message)
+│                and as a start reads it back (StoredCapture)
 ├── static/      the page, which draws what is pushed
-├── *.py         at the root: the Recorder (db.py, stream_spine.py's writer, the startup loader),
-│                server.py (the routes and startup), and what every part uses (market sessions
-│                from Schwab's /markets, config, runtime paths, instrument identity, formatters)
+├── *.py         at the root: the Recorder (stream_spine.py's writer) and the startup loader
+│                (db.py), the only modules that use sqlite3; server.py (the routes and startup);
+│                and what every part uses (market sessions from Schwab's /markets, config,
+│                runtime paths, instrument identity, formatters)
 ├── typings/     type stubs for schwab-py and authlib, which ship none (read by type checkers only)
 ├── scripts/     the test runners (npm run test:all)
 ├── tests/
