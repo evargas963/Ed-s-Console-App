@@ -89,6 +89,11 @@ def _constants(tree: ast.Module) -> dict[str, str]:
 
 def fields_read(src: str, fields: set[str]) -> set[str]:
     """Return the Schwab fields this module takes out of a mapping by name."""
+    return keys_read(src) & fields
+
+
+def keys_read(src: str) -> set[str]:
+    """Return every key this module reads out of a mapping: a text, or a name bound to one."""
     tree = ast.parse(src)
     named = _constants(tree)
 
@@ -118,7 +123,7 @@ def fields_read(src: str, fields: set[str]) -> set[str]:
             k = key(n.left)
         else:
             continue
-        if k in fields:
+        if k is not None:
             found.add(k)
     return found
 

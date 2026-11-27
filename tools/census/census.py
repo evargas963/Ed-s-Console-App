@@ -24,6 +24,7 @@ import argparse
 import ast
 import collections
 import copy
+import csv
 import dataclasses
 import datetime as dt
 import functools
@@ -42,7 +43,7 @@ from pathlib import Path
 import db
 import time_et
 from tools import check_end_to_end as e2e
-from tools import check_integrity, check_tests_serve_app
+from tools import check_integrity, check_one_reader, check_tests_serve_app
 from tools.census import copied_blocks, python_literals
 
 log = logging.getLogger("census")
@@ -1799,6 +1800,61 @@ for ln in git("ls-remote", "--heads", "origin").splitlines():
             "git ls-remote",
             ln.split("\t")[1].replace("refs/heads/", "origin/"),
         )
+# every dependency pinned to one version, and none with a known vulnerability: pip-audit over
+# every requirements file, npm audit over every lockfile (the bank's standard, Standard of care 11)
+UNPINNED = "dependencies not pinned to one version"
+VULNERABLE = "dependencies with a known vulnerability (pip-audit, npm audit)"
+for cat in (UNPINNED, VULNERABLE):
+    add(S, cat, "Standard of care 11", "pip-audit + npm audit")
+pinned = []
+for f in [f for f in FILES if re.fullmatch(r"(.*/)?requirements[\w-]*\.txt", f)]:
+    for n, ln in enumerate(TEXT[f].splitlines(), 1):
+        req = ln.split("#")[0].strip()
+        if req.startswith("-") or not req:
+            continue
+        if "==" in req:
+            pinned.append(req)
+        else:
+            add(S, UNPINNED, "Standard of care 11", "requirements", f"{f}:{n}: {req}")
+(LINT / "pinned.txt").write_text("\n".join(sorted(set(pinned))) + "\n", encoding="utf-8")
+# a package installed only because a pinned one needs it is pinned nowhere: the next install may
+# take another version (pip-audit: "fully hash your pinned dependencies"; pip-tools' pip-compile)
+TRANSITIVE = "dependencies installed but pinned in no requirements file (taken as a library needs)"
+add(S, TRANSITIVE, "Standard of care 11", "pip freeze")
+named = {re.split(r"[=<>!~\[ ]", p)[0].lower().replace("_", "-") for p in pinned}
+for ln in run([PY, "-m", "pip", "freeze"], stdout_only=True).splitlines():
+    if "==" in ln and ln.split("==")[0].lower().replace("_", "-") not in named:
+        add(S, TRANSITIVE, "Standard of care 11", "pip freeze", ln)
+audit = run(
+    [PY, "-m", "pip_audit", "--disable-pip", "--no-deps", "-r", LINT / "pinned.txt", "-f", "json"],
+    stdout_only=True,
+)
+for dep in json.loads(audit)["dependencies"]:
+    for v in dep["vulns"]:
+        add(
+            S,
+            VULNERABLE,
+            "Standard of care 11",
+            "pip-audit",
+            f"{dep['name']}=={dep['version']}: {v['id']} (fixed in {', '.join(v['fix_versions'])})",
+        )
+for f in [f for f in FILES if f.endswith("package-lock.json")]:
+    out = run(
+        [exe("npm"), "audit", "--package-lock-only", "--json"],
+        cwd=(HEAD / f).parent,
+        stdout_only=True,
+    )
+    for name, v in json.loads(out)["vulnerabilities"].items():
+        add(
+            S,
+            VULNERABLE,
+            "Standard of care 11",
+            "npm audit",
+            f"{f}: {name} ({v['severity']}): "
+            + "; ".join(x["title"] if isinstance(x, dict) else f"through {x}" for x in v["via"])[
+                :150
+            ],
+        )
 for pr in json.loads(
     run(
         [
@@ -1904,6 +1960,31 @@ for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
                 "ast",
                 f"{f}: {m.group(1)}",
             )
+
+# =============================================================================================
+# M. THE RUNNING PROGRAM (Standard of care 7: nothing disappears silently, no error is hidden)
+# =============================================================================================
+log.info("census: M")
+S = "M. The running program"
+FAILURE = re.compile(r"(?i)\b(error|exception|failed|refused|ended|dropping|stalled|timed out)\b")
+if not MACHINE:
+    add(S, f"the program's log: {NOT_HERE}", "7", "the daemon's log")
+else:
+    # the newest day's log (runtime_layout.daemon_log_path), each kind of failure once with its
+    # count: a traceback's last line, or a line that says a failure; the once-a-minute status
+    # line ("alive | ...") reports counts ("0 failed"), each failure logged on its own line
+    newest = sorted((REPO / "logs").glob("stream_capture.????-??-??.log"))[-1]
+    KINDS = f"failures in the program's log, by kind ({newest.name}; each explained or fixed)"
+    add(S, KINDS, "7", "the daemon's log")
+    kinds = collections.Counter()
+    for ln in newest.read_text(encoding="utf-8", errors="replace").splitlines():
+        stamped = re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d+ (.*)", ln)
+        said = stamped.group(1) if stamped else ln
+        last_line = not stamped and re.match(r"[\w.]+(Error|Exception|Refused)\b", ln)
+        if last_line or (stamped and FAILURE.search(said) and not said.startswith("alive |")):
+            kinds[re.sub(r"\d+(\.\d+)?", "#", said)[:110]] += 1
+    for said, n in kinds.most_common():
+        add(S, KINDS, "7", "the daemon's log", f"{n:,} x {said}")
 
 # =============================================================================================
 # H. GOVERNANCE AND WORK LIST
@@ -2554,6 +2635,23 @@ for f in [f for f in PRODUCT_PY if not f.startswith(FEED)]:
             and field_key(node)
         ):
             add(S, DICT_READ, "12", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:120]}")
+
+# the First gate's question 1: each key read in Schwab's spelling is a field on Schwab's list
+# (docs/schwab_fields.csv: every field Schwab has sent); one the list lacks is our own name dressed
+# as Schwab's, or a field Schwab never sent, which is never received
+UNLISTED = (
+    "keys read in Schwab's spelling that the field list does not hold (candidates, check each: "
+    "our name, or a field Schwab never sent)"
+)
+LISTED = {
+    row["canonical_field"].rsplit(".", 1)[-1]
+    for row in csv.DictReader(io.StringIO(TEXT[check_one_reader.FIELDS_CSV]))
+}
+add(S, UNLISTED, "First gate 1", "check_one_reader.keys_read")
+for f in PRODUCT_PY:
+    for k in sorted(check_one_reader.keys_read(TEXT[f])):
+        if check_one_reader.SCHWAB_SPELLING.fullmatch(k) and k not in LISTED:
+            add(S, UNLISTED, "First gate 1", "check_one_reader.keys_read", f"{f}: {k}")
 
 out = run(
     [
