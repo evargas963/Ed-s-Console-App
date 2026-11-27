@@ -1,4 +1,9 @@
-"""db.py — the level crosses in the one database (db_authority.canonical_db_path)."""
+"""db.py — the program's reads of the one database (db_authority.canonical_db_path).
+
+Every read is read-only (SQLite's mode=ro): the rows a start reads back (stored_rows), each
+ticker's stored chain captures (last_capture_per_day) and the level crosses (EdDB). The Recorder
+(stream_spine.CaptureWriter) is the database's one writer.
+"""
 
 from __future__ import annotations
 
@@ -7,15 +12,94 @@ import logging
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, fields
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
+from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
 from db_authority import (
     canonical_db_path,
     eddb_allow_noncanonical_path,
     is_canonical_db_path,
 )
+from instrument_identity import ticker_storage_key
+from json_blob_codec import decode_json_blob
+from option_contract import read_chain
+from time_et import ET
 
 log = logging.getLogger(__name__)
+
+
+def stored_rows(db_path: str | Path, table: str, query: str, *args: object) -> list[Any]:
+    """Return the rows `query` reads of the record's `table`, read once at startup.
+
+    The database is opened read-only. One that does not exist yet, or holds no such table (a
+    first start), has no rows.
+    """
+    if not Path(db_path).is_file():
+        return []
+    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
+    try:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone():
+            return []
+        return conn.execute(query, args).fetchall()
+    finally:
+        conn.close()
+
+
+def last_capture_per_day(
+    db_path: Path | str,
+    ticker: str,
+    days: int,
+    *,
+    before_et_date: str | None = None,
+) -> list[StoredCapture]:
+    """Return the last capture of each of the newest `days` market days (newest first).
+
+    That is the close, with every expiry of that capture, its contracts read once
+    (option_contract.read_chain). `before_et_date` keeps only days before it (the previous
+    market day for a day-over-day view). No capture stored yet (no database, or no capture
+    table) is none.
+    """
+    tk = ticker_storage_key(ticker)
+    picked: list[tuple[str, float]] = []
+    for (ts,) in stored_rows(
+        db_path,
+        "complete_chain_captures",
+        "SELECT DISTINCT ts_utc FROM complete_chain_captures "
+        "WHERE ticker=? AND completeness_basis=? ORDER BY ts_utc DESC",
+        tk,
+        CAPTURE_BASIS,
+    ):
+        day = datetime.fromtimestamp(ts, ET).date().isoformat()
+        if before_et_date is not None and day >= before_et_date:
+            continue
+        if picked and picked[-1][0] == day:
+            continue
+        picked.append((day, ts))
+        if len(picked) == days:
+            break
+    out: list[StoredCapture] = []
+    for _day, ts in picked:
+        rows = stored_rows(
+            db_path,
+            "complete_chain_captures",
+            "SELECT chain_spot, chain_spot_ts, completeness_basis, chain_json "
+            "FROM complete_chain_captures "
+            "WHERE ticker=? AND completeness_basis=? AND ts_utc=? ORDER BY expiry",
+            tk,
+            CAPTURE_BASIS,
+            ts,
+        )
+        out.append(
+            StoredCapture.taken(
+                ts,
+                (rows[0][0], rows[0][1]),
+                read_chain(c for r in rows for c in decode_json_blob(r[3])),
+                rows[0][2],
+            )
+        )
+    return out
 
 
 #: SQLite access tuning (read-side accelerants for the large WAL DB).

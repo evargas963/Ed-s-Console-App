@@ -1,7 +1,7 @@
 """The chain captures the levels read are held in State, not read from the database live.
 
 state.capture_store: a ticker's stored captures are loaded once, the first time it is asked for,
-exactly as calibration.complete_chain_capture.last_capture_per_day reads them back; from then on
+exactly as db.last_capture_per_day reads them back; from then on
 a chain the sweep marks as its window's capture is kept as it arrives (server._on_chain), with no
 database read (rule 6). MRVL's real chain of 2026-10-07 (tests/real_chains.py), its front expiry,
 stored as one day's capture and delivered as the next day's.
@@ -10,7 +10,8 @@ stored as one day's capture and delivered as the next day's.
 from __future__ import annotations
 
 import server
-from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from db import last_capture_per_day
 from option_contract import read_chain
 from state import capture_store
 from tests.capture_store import store_capture

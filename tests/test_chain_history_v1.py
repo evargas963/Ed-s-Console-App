@@ -26,12 +26,13 @@ import calibration.complete_chain_capture as cch
 import server
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from db import last_capture_per_day
 from feed import chain_sweep as cs
 from feed import schwab_client as sc
 from json_blob_codec import decode_json_blob, decode_text_blob
 from option_contract import read_chain
 from state import level_store
-from stream_spine import LATEST, CaptureWriter, HealthRegistry, MessageBus
+from stream_spine import LATEST, STREAM_SCHEMA_SQL, CaptureWriter, HealthRegistry, MessageBus
 from tests.capture_store import store_capture
 from tests.schwab_rest_standin import CHAIN, QUOTES, SPY_QUOTES, LocalSchwab
 from tests.shared_helpers import et_ts
@@ -490,7 +491,7 @@ def test_a_failed_history_write_is_not_a_failed_chain_and_the_day_tries_again(tm
     assert capture is False, "a chain whose history was not stored is no capture"
     with closing(sqlite3.connect(db)) as conn, conn:  # the table takes writes again
         conn.execute("DROP TABLE complete_chain_captures")
-        cch.ensure_schema(conn)
+        conn.executescript(STREAM_SCHEMA_SQL)
     clock["now"] += 120  # the daemon restarts: its first chain is the day's next after the close
     sweep, published, client = _sweep(tmp_path, schwab, lambda: clock["now"])
     assert _rotate(sweep, client) == {"SPY"}
@@ -626,12 +627,12 @@ def test_the_reader_gives_the_last_full_capture_of_each_day(tmp_path):
     put("2026-09-24 16:00", 11.0, ["2030-01-04", "2030-01-11"])  # Thursday's last
     put("2026-09-25 16:00", 12.0, ["2030-01-04", "2030-01-11"])  # Friday's last
     put("2026-09-25 16:05", 99.0, ["2030-01-04"], basis="strike_range=ALL")  # old row
-    caps = cch.last_capture_per_day(db, "ZZ", 2)
+    caps = last_capture_per_day(db, "ZZ", 2)
     assert [(c.et_date, c.spot, len(c.contracts)) for c in caps] == [
         ("2026-09-25", 12.0, 2),
         ("2026-09-24", 11.0, 2),
     ]
-    prior = cch.last_capture_per_day(db, "ZZ", 1, before_et_date="2026-09-25")
+    prior = last_capture_per_day(db, "ZZ", 1, before_et_date="2026-09-25")
     assert [(c.et_date, c.spot) for c in prior] == [("2026-09-24", 11.0)]
 
 
@@ -663,7 +664,7 @@ def test_a_partial_morning_capture_is_never_the_prior_day(tmp_path):
         completeness_basis=cch.CAPTURE_BASIS,
         ts_utc=et_ts("2026-09-28 16:15"),
     )
-    caps = cch.last_capture_per_day(db, "ZZ", 2)
+    caps = last_capture_per_day(db, "ZZ", 2)
     assert [(c.et_date, c.basis) for c in caps] == [("2026-09-28", cch.CAPTURE_BASIS)]
     after = et_ts("2026-09-28 16:20")
     assert server._prior_capture(caps, after) is None

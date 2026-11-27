@@ -43,7 +43,6 @@ import os
 import queue
 import signal
 import socket
-import sqlite3
 import sys
 import threading
 from collections.abc import Awaitable, Callable, Iterable, Mapping
@@ -56,6 +55,7 @@ from typing import Any, NoReturn, TextIO, TypedDict, cast, override
 
 import uvicorn
 
+import db
 import live_market_plane as lmp
 import live_price_rows
 import runtime_layout
@@ -150,30 +150,13 @@ WATCHLIST_TEXT = {
 }
 
 
-def _stored(db_path: str | Path, table: str, query: str, *args: object) -> list[Any]:
-    """Return the rows `query` reads of the record's `table`, read once at startup.
-
-    The database is opened read-only. One that does not exist yet, or holds no such table (a
-    first start), has no rows.
-    """
-    if not Path(db_path).is_file():
-        return []
-    conn = sqlite3.connect(f"file:{Path(db_path).resolve().as_posix()}?mode=ro", uri=True)
-    try:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE name=?", (table,)).fetchone():
-            return []
-        return conn.execute(query, args).fetchall()
-    finally:
-        conn.close()
-
-
 def stored_watchlist(db_path: str | Path) -> list[str]:
     """Return the watchlist as the newest stored record holds it, read once at startup.
 
     The record is stream_watchlist, written by the daemon's writer; the watchlist is empty
     when none was ever stored.
     """
-    rows = _stored(
+    rows = db.stored_rows(
         db_path,
         "stream_watchlist",
         "SELECT tickers_json FROM stream_watchlist ORDER BY rowid DESC LIMIT 1",
@@ -190,7 +173,7 @@ def stored_limits(db_path: str | Path) -> list[SymbolLimit]:
     the rows the record keeps (stream_spine.KEPT_BY_TIME) has none here, and the connection asks
     it for everything until Schwab states one (feed.connection.Connection.ask).
     """
-    rows = _stored(
+    rows = db.stored_rows(
         db_path,
         "stream_subscriptions",
         "SELECT service, code, reason FROM stream_subscriptions WHERE code = ? ORDER BY ts",
@@ -1197,7 +1180,7 @@ async def run_chains(
     *,
     failures: CaptureWriter,
 ) -> None:
-    """Run the chain sweep (calibration.complete_chain_capture.ChainSweep) on its own thread.
+    """Run the chain sweep (feed.chain_sweep.ChainSweep) on its own thread.
 
     So the stream never waits on a chain; each chain part is published on the event loop, and
     the bus keeps each ticker's newest whole chain (stream_spine.MessageBus._chain). The sweep

@@ -22,7 +22,8 @@ from calc.math_exposure_core import (
     put_call_volume_ratio,
 )
 from calc.terrain_engine import compute_terrain
-from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from db import last_capture_per_day
 from option_contract import read_chain
 from state import level_store
 from tests.capture_store import store_capture

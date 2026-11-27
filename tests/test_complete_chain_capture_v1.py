@@ -1,10 +1,8 @@
-"""OPTIONS_ORDER_FLOW_V1 — calibration/complete_chain_capture.py direct unit tests.
+"""The Recorder's write of one expiry's chain capture (stream_spine.persist_complete_chain_capture).
 
-The canonical persistence for the COMPLETE vendor chain, distinct from the bounded
-analytical snapshots (`snapshots.option_chain_json`) and from option_chain_morning_full.py
-(near-term multi-expiry, once-daily). Uses the real captured TSLA fixture (real fractional
-strikes, live strike_range=ALL capture) to prove the round trip preserves the exact contract
-set — no rounding, no coercion, no dropped rows.
+The complete chain as Schwab sent it, stored per expiry. Uses the real captured TSLA fixture (real
+fractional strikes, a strike_range=ALL capture) to prove the round trip keeps the exact contract
+set: no rounding, no coercion, no dropped rows.
 """
 
 from __future__ import annotations

@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from contextlib import closing
 
-from calibration.complete_chain_capture import Persisted, persist_complete_chain_capture
-from stream_spine import CaptureWriter
+from stream_spine import CaptureWriter, Persisted, persist_complete_chain_capture
 
 
 def store_capture(db, **row) -> Persisted:

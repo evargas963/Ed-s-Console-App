@@ -26,6 +26,7 @@ import calibration.complete_chain_capture as cch
 import server
 from app.market_data.schwab.streaming import capture
 from app.options.order_flow import streaming as ofs
+from db import last_capture_per_day
 from feed import chain_sweep as cs
 from feed import schwab_client as sc
 from state import capture_store
@@ -34,6 +35,7 @@ from stream_spine import (
     CAPTURE_REFUSED,
     CAPTURE_STORED,
     LOG,
+    STREAM_SCHEMA_SQL,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
@@ -139,13 +141,13 @@ def _hold_write_lock(db) -> tuple[threading.Event, threading.Thread]:
 
 
 def _stored(db) -> list:
-    return [c for capture in cch.last_capture_per_day(db, "MRVL", 1) for c in capture.contracts]
+    return [c for capture in last_capture_per_day(db, "MRVL", 1) for c in capture.contracts]
 
 
 def _refuse(db, expiry: str) -> None:
     """Induced test condition: a trigger refuses this expiry, as a locked or full database would."""
     conn = sqlite3.connect(db)
-    cch.ensure_schema(conn)
+    conn.executescript(STREAM_SCHEMA_SQL)
     conn.execute(
         "CREATE TRIGGER refuse BEFORE INSERT ON complete_chain_captures "
         f"WHEN NEW.expiry = '{expiry}' BEGIN SELECT RAISE(ABORT, 'refused'); END"
@@ -166,7 +168,7 @@ def test_a_capture_the_database_refuses_partway_is_kept_and_leaves_nothing_store
     _refuse(db, list(chain.by_expiry)[-1])
     sweep.deliver(chain)
     assert published
-    assert cch.last_capture_per_day(db, "MRVL", 1) == []
+    assert last_capture_per_day(db, "MRVL", 1) == []
     with closing(sqlite3.connect(db)) as read, read:
         kept = read.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall()
     assert [topic for topic, _msg in kept] == ["capture.MRVL"]
@@ -392,7 +394,7 @@ def test_a_close_capture_refused_after_its_wait_gives_its_window_to_the_next_cha
     assert [capture for ts, capture in began if ts == _BEGUN] == [False], "refused: no capture"
     after = [capture for ts, capture in began if ts == _BEGUN + 60]
     assert after[-1] is True and after.count(True) == 1, "the next chain, once as the capture"
-    assert {c.ts_utc for c in cch.last_capture_per_day(db, "MRVL", 1)} == {_BEGUN + 60}
+    assert {c.ts_utc for c in last_capture_per_day(db, "MRVL", 1)} == {_BEGUN + 60}
     with closing(sqlite3.connect(db)) as read, read:
         kept = read.execute("SELECT topic, msg_json FROM stream_write_failures").fetchall()
     assert [(topic, json.loads(msg)["ts_utc"]) for topic, msg in kept] == [("capture.MRVL", _BEGUN)]

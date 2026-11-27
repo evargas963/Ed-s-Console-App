@@ -15,7 +15,8 @@ import pytest
 import server
 import time_et
 from calc.terrain_engine import compute_terrain, level_moves, positioning_migration
-from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from db import last_capture_per_day
 from numeric_contract import dollars_text
 from option_contract import read_chain
 from push import strikes as push_strikes

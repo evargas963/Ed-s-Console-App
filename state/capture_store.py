@@ -2,8 +2,8 @@
 
 A capture is the chain the sweep stored as a day's close capture (feed.chain_sweep), marked on
 its chain messages; the console keeps it here as it arrives (server._on_chain), the newest of each
-of the CAPTURE_DAYS newest market days, each a StoredCapture as
-calibration.complete_chain_capture.last_capture_per_day reads them back. A ticker's stored
+of the CAPTURE_DAYS newest market days, each a StoredCapture as db.last_capture_per_day reads
+them back. A ticker's stored
 captures are loaded once, the first time it is asked for (the startup loader, rule 6); from then
 on every live reader reads them here, never the database.
 """
@@ -13,7 +13,8 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from calibration.complete_chain_capture import StoredCapture, last_capture_per_day
+from calibration.complete_chain_capture import StoredCapture
+from db import last_capture_per_day
 from instrument_identity import ticker_storage_key
 
 #: the market days of captures the levels read (today's and the prior day: the two newest)

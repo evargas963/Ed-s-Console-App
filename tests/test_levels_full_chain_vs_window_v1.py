@@ -23,6 +23,7 @@ import calibration.complete_chain_capture as cch
 import server
 import time_et
 from calc.terrain_engine import compute_terrain
+from db import last_capture_per_day
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import OptionContract, read_chain
 from state import level_store
@@ -111,7 +112,7 @@ def test_the_level_producer_computes_from_the_full_chain(tmp_path):
             completeness_basis=cch.CAPTURE_BASIS,
             ts_utc=_FX["captured_utc"],
         )
-    server._publish_levels(tk, captures=cch.last_capture_per_day(db, tk, 2), now=_CAPTURED)
+    server._publish_levels(tk, captures=last_capture_per_day(db, tk, 2), now=_CAPTURED)
     published = level_store.published_levels(tk).served()
     full = _levels(
         compute_terrain(
