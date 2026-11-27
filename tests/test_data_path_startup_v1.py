@@ -116,11 +116,12 @@ def test_the_stop_takes_only_this_checkouts_processes(tmp_path):
         subprocess.Popen([sys.executable, *start], cwd=cwd) for cwd in (launch.ROOT, tmp_path)
     )
     try:
-        found: set = set()
-        end = time_et.elapsed() + 10
-        while ours.pid not in found and time_et.elapsed() < end:
+
+        def found_ours() -> set[int] | None:
             found = {p.pid for p in launch.running(start)}
-            time.sleep(0.05)
+            return found if ours.pid in found else None
+
+        found = asyncio.run(until(found_ours, seconds=10))
         theirs_tree = {theirs.pid} | {
             c.pid for c in psutil.Process(theirs.pid).children(recursive=True)
         }
@@ -469,10 +470,9 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
         return runtime
 
     try:
-        end = time_et.elapsed() + 60
-        while program_ports(tmp_path / "data" / "stream_capture.db") is None:
-            assert daemon.poll() is None and time_et.elapsed() < end, daemon.poll()
-            time.sleep(0.1)
+        ports_written = lambda: program_ports(tmp_path / "data" / "stream_capture.db") is not None
+        asyncio.run(until(lambda: daemon.poll() is not None or ports_written(), seconds=60))
+        assert daemon.poll() is None, daemon.poll()
         elsewhere = stop(other)
         out, err = elsewhere.communicate(timeout=60)
         assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
@@ -642,12 +642,10 @@ def test_a_process_that_only_names_the_console_is_not_the_console():
         )
     ]
     try:
-        end = time_et.elapsed() + 10
         for p in searches:
-            while time_et.elapsed() < end and named not in " ".join(
-                psutil.Process(p.pid).cmdline()
-            ):
-                time.sleep(0.05)
+            asyncio.run(
+                until(lambda p=p: named in " ".join(psutil.Process(p.pid).cmdline()), seconds=10)
+            )
             assert named in " ".join(psutil.Process(p.pid).cmdline())
         found = {p.pid for p in launch.running(launch.DAEMON_START)}
         assert not found & {p.pid for p in searches}
@@ -788,9 +786,7 @@ def test_the_stored_levels_are_priced_while_a_page_on_another_ticker_takes_ticks
             ticker.start()
             try:
                 assert server._load_stored_levels(list(names)) == 2
-                deadline = time_et.elapsed() + 10
-                while priced() != set(names) and time_et.elapsed() < deadline:
-                    time.sleep(0.05)
+                asyncio.run(until(lambda: priced() == set(names), seconds=10, state=priced))
                 done.update(priced())
             finally:
                 ticking.set()

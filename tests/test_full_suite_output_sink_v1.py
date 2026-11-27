@@ -9,18 +9,18 @@ output is bounded.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import psutil
 
-import time_et
+from tests.shared_helpers import until
 
 ROOT = Path(__file__).resolve().parent.parent
 log = logging.getLogger(__name__)
@@ -131,10 +131,7 @@ def test_stopping_the_runner_stops_what_it_started_and_one_already_ended_raises_
         "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); time.sleep(60)"
     )
     proc = subprocess.Popen([sys.executable, "-c", sleeper])
-    deadline = time_et.elapsed() + 30
-    while not psutil.Process(proc.pid).children(recursive=True) and time_et.elapsed() < deadline:
-        time.sleep(0.1)
-    started = psutil.Process(proc.pid).children(recursive=True)
+    started = asyncio.run(until(lambda: psutil.Process(proc.pid).children(recursive=True)))
     assert started, "the parent started no child"
     _stop_tree(proc)
     psutil.wait_procs(started, timeout=10)
