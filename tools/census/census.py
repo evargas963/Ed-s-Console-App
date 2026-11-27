@@ -38,7 +38,7 @@ import db
 import time_et
 from tools import check_end_to_end as e2e
 from tools import check_integrity, check_tests_serve_app
-from tools.census import blinter, copied_blocks, python_literals
+from tools.census import copied_blocks, python_literals
 
 log = logging.getLogger("census")
 ARGS = argparse.ArgumentParser(description="The census of everything that must reach 0.")
@@ -2061,8 +2061,16 @@ add(S, "workflow files actionlint checked (reported)", "13", "actionlint", count
 BATCH = [f for f in FILES if lang(f) == "Batch"]
 add(S, "batch files Blinter checked (reported)", "13", "blinter", count=len(BATCH))
 for f in BATCH:
-    for rule, message, n in blinter.findings(run([exe("blinter"), f], cwd=HEAD)):
-        add(S, f"Batch: Blinter {rule} {message[:50]}", "13/LINTERS", "blinter", f"{f}:{n}")
+    # Blinter's own report: each finding with its one line, a finding seen twice twice
+    report = json.loads(run([exe("blinter"), f, "--format", "json"], cwd=HEAD, stdout_only=True))
+    for issue in report["issues"]:
+        add(
+            S,
+            f"Batch: Blinter {issue['code']} {issue['name'][:50]}",
+            "13/LINTERS",
+            "blinter",
+            f"{f}:{issue['line']}",
+        )
 for f in [f for f in FILES if f.endswith((".json", ".webmanifest"))]:
     r = subprocess.run(
         # UTF-8 mode: the child prints non-ASCII text, which Windows' console encoding cannot hold
