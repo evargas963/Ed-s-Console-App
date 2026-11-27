@@ -112,6 +112,16 @@ def test_a_read_through_a_module_constant_is_a_read(tmp_path):
     ]
 
 
+def test_a_read_through_an_annotated_module_constant_is_a_read():
+    """`K: Final = "LAST_PRICE"` names the field as `K = "LAST_PRICE"` does: each read is seen."""
+    source = (
+        "from typing import Final\n"
+        'VENDOR_LAST_PRICE: Final = "LAST_PRICE"\n\n\n'
+        "def price(item):\n    return item[VENDOR_LAST_PRICE]\n"
+    )
+    assert cor.fields_read(source, {"LAST_PRICE", "LAST_SIZE"}) == {"LAST_PRICE"}
+
+
 def test_moving_the_one_reader_and_a_test_reading_it_are_not_refused(tmp_path):
     root = _pr(
         tmp_path,

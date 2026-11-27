@@ -71,17 +71,19 @@ def schwab_fields(text: str) -> set[str]:
 
 
 def _constants(tree: ast.Module) -> dict[str, str]:
-    """Module-level names bound once to a text (`K = "LAST_PRICE"`)."""
+    """Module-level names bound once to a text (`K = "LAST_PRICE"`, `K: Final = "LAST_PRICE"`)."""
     out = {}
     for node in tree.body:
-        if (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, str)
-        ):
-            for target in node.targets:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            for target in targets:
                 if isinstance(target, ast.Name):
-                    out[target.id] = node.value.value
+                    out[target.id] = value.value
     return out
 
 

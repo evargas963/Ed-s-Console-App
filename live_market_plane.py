@@ -159,7 +159,13 @@ def record_from_level_one_equity(
         # sent as no time (an index with no market, $VIX and $NDX), Schwab set no bid or ask, and
         # the 0s beside it are no quote, cleared as not a number (option_contract.streamed_top)
         sent.update(dict.fromkeys(_QUOTE_FIELDS))
-    sent.update(last_print(item))  # the last trade's three fields: their one reader's
+    printed = last_print(item)  # the last trade's three fields, each sent: their one reader's
+    if VENDOR_LAST_PRICE in printed:
+        sent[VENDOR_LAST_PRICE] = printed[VENDOR_LAST_PRICE]
+    if VENDOR_LAST_SIZE in printed:
+        sent[VENDOR_LAST_SIZE] = printed[VENDOR_LAST_SIZE]
+    if VENDOR_TRADE_TIME in printed:
+        sent[VENDOR_TRADE_TIME] = printed[VENDOR_TRADE_TIME]
     if not sent:
         return False
     with _lock:
