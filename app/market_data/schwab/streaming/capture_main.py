@@ -1,4 +1,4 @@
-"""The capture daemon's start, as its window runs it (start_capture_daemon.cmd).
+"""The capture daemon's start, as its window runs it (start_capture_daemon.cmd, launch.window).
 
     python -m app.market_data.schwab.streaming.capture_main
 

@@ -8,15 +8,16 @@ pages. Its start stops nothing.
    With local changes, not on main, split from origin/main or origin out of reach, it starts from
    the commit the checkout is at, the check not passed and why said: whether the app starts is
    never the repository's to decide. Running, the check is not run.
-1. The program, in its own window (start_capture_daemon.cmd restarts it). It reads its own .env
-   (the Schwab credentials); its log, and /api/health from its heartbeat, say whether Schwab took
-   them.
+1. The program, in its own window (start_capture_daemon.cmd, which runs `launch.py window`: it
+   runs the program again after it ends on an error, window). It reads its own .env (the Schwab
+   credentials); its log, and /api/health from its heartbeat, say whether Schwab took them.
 2. The default browser, at the pages' port the program wrote in its lock (program_ports), once
    they answer healthy (START_WAIT_SEC).
 
 `python launch.py stop` is the clean stop (stop): the program is asked to stop by its stop request
-(program_lock.ask_to_stop: a named event of this user's session on Windows) and writes what it
-holds before it exits.
+(program_lock.ask_to_stop: a named event of this user's session on Windows), which its window
+holds too, so a stop between two runs is asked as well; the program writes what it holds before
+it exits, and its window does not run it again.
 """
 
 from __future__ import annotations
@@ -32,12 +33,30 @@ from pathlib import Path
 import psutil
 
 import time_et
-from app.market_data.schwab.streaming.program_lock import Ports, ask_to_stop, program_ports
+from app.market_data.schwab.streaming.program_lock import (
+    EXIT_OWNER_LOCK_HELD,
+    EXIT_REFUSED,
+    EXIT_STOPPED,
+    Ports,
+    StopRequest,
+    ask_to_stop,
+    program_ports,
+)
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
-#: what the program runs right after Python (start_capture_daemon.cmd's line)
+#: what the program runs right after Python (its window's run of it: window)
 DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
+#: what the program's window runs right after Python (start_capture_daemon.cmd's line)
+WINDOW_START = ["launch.py", "window"]
+#: how long the window waits after the program ends on an error before it runs it again
+RESTART_WAIT_SEC = 5.0
+#: the program's exit codes its window does not run it again after, each with why
+NOT_RUN_AGAIN = {
+    EXIT_REFUSED: "it refused to run here (its reason is above)",
+    EXIT_OWNER_LOCK_HELD: "another program already holds the stream",
+    EXIT_STOPPED: "it was stopped on request",
+}
 #: how long a clean stop waits for the program to end
 STOP_WAIT_SEC = 30.0
 #: what the commit check before a start found (bring_to_origin_main)
@@ -130,16 +149,62 @@ def daemon_window(batch: Path) -> list[str]:
     return ["cmd", "/c", "start", "Ed Capture Daemon", "/min", "cmd", "/c", str(batch)]
 
 
+def window(start: list[str] = DAEMON_START, db_path: Path | None = None) -> int:
+    """Run the program in this window, and again RESTART_WAIT_SEC after it ends on an error.
+
+    start_capture_daemon.cmd runs it (`launch.py window`). The window holds the program's stop
+    request (program_lock.StopRequest, of the lock at `db_path`: None is the runtime's own), so
+    `launch.py stop` can ask between two runs as well as during one: the wait ends at the ask,
+    and nothing runs again. Nor does it after an exit code of NOT_RUN_AGAIN's or Ctrl+C in the
+    window. Returns the program's last exit code. `start` and `db_path` are a test's own.
+    """
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s")
+    request = StopRequest(db_path)
+    try:
+        while True:
+            code, interrupted = _run_once(start)
+            if interrupted or code in NOT_RUN_AGAIN:
+                why = "Ctrl+C in its window" if interrupted else NOT_RUN_AGAIN[code]
+                log.info("Ed Console ended (exit %s): %s; not run again", code, why)
+                return code
+            log.warning(
+                "Ed Console ended on an error (exit %s): run again in %.0f s",
+                code,
+                RESTART_WAIT_SEC,
+            )
+            if request.wait(RESTART_WAIT_SEC):
+                log.info("Ed Console: stopped on request; not run again")
+                return code
+    finally:
+        request.close()
+
+
+def _run_once(start: list[str]) -> tuple[int, bool]:
+    """Run the program once in this window; return its exit code and whether Ctrl+C was pressed.
+
+    Ctrl+C reaches the program as well as this window: the program stops by itself (its clean
+    stop, capture.INTERRUPTS), and this waits for it to end, never ending it.
+    """
+    interrupted = False
+    with subprocess.Popen([sys.executable, *start], cwd=ROOT) as program:
+        while True:
+            try:
+                return program.wait(), interrupted
+            except KeyboardInterrupt:
+                log.info("Ctrl+C: Ed Console is stopping; waiting for it to end")
+                interrupted = True
+
+
 def stop() -> int:
     """Stop the program cleanly: set its stop request (program_lock.ask_to_stop).
 
-    It writes what it holds and exits, and start_capture_daemon.cmd does not restart it; the
-    Schwab connection, the recording and the console's pages end together. Waits up to
-    STOP_WAIT_SEC for a program it asked; 0 when it ended. One it could not ask (it had made no
-    request to set) is reported at once, still running, exit 1: no wait can stop a program that
-    was not asked.
+    It writes what it holds and exits, and its window does not run it again; the Schwab
+    connection, the recording and the console's pages end together. Its window holds the request
+    too, so a stop between two runs is asked as well. Waits up to STOP_WAIT_SEC for the program
+    and its window; 0 when they ended. One it could not ask (no request to set) is reported at
+    once, still running, exit 1: no wait can stop a program that was not asked.
     """
-    program = running(DAEMON_START)
+    program = running(DAEMON_START) + running(WINDOW_START)
     left = program
     if program:
         try:
@@ -191,7 +256,7 @@ START_WAIT_SEC = 180.0
 
 
 def main() -> int:
-    if running(DAEMON_START):
+    if running(DAEMON_START) or running(WINDOW_START):  # between two runs only its window does
         print("Commit check: not run; Ed Console already runs from this checkout.")
     else:
         check, commit, why = bring_to_origin_main(ROOT)
@@ -214,4 +279,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(stop() if sys.argv[1:] == ["stop"] else main())
+    raise SystemExit(
+        stop() if sys.argv[1:] == ["stop"] else window() if sys.argv[1:] == ["window"] else main()
+    )

@@ -1,6 +1,6 @@
 """The capture daemon: the ONE Schwab streaming connection (Schwab allows one per account).
 
-    python -m app.market_data.schwab.streaming.capture_main  (launch.py -> start_capture_daemon.cmd)
+    python -m app.market_data.schwab.streaming.capture_main  (its window: launch.window)
 
 It is the only part of Ed Console that talks to Schwab. Beside the loop below, its chain sweep
 (run_chains) fetches full option chains on its own thread, one request at a time, without end:
@@ -71,6 +71,8 @@ from app.market_data.schwab.streaming.live_ui import (
     watchlist_changed,
 )
 from app.market_data.schwab.streaming.program_lock import (
+    EXIT_REFUSED,
+    EXIT_STOPPED,
     Ports,
     StopRequest,
     acquire_owner_lock,
@@ -775,11 +777,6 @@ class Daemon:
 # ---------------------------------------------------------------------------- process
 
 
-#: Exit code of a daemon stopped on request (launch.py stop, Ctrl+C in its window):
-#: start_capture_daemon.cmd does not restart it.
-EXIT_STOPPED = 5
-
-
 #: days of the daemon's log kept, one file a day (the operator's setting)
 LOG_DAYS_KEPT = 45
 
@@ -1281,7 +1278,7 @@ async def run(lock_fd: int, request: StopRequest) -> int:
     stop (stop_on_request). Its writer, its web server, the price rows' beat, the chain sweep,
     the market follower, the stop request's waiter and the Schwab connection each run until the
     stop; one that ends first ends the daemon with an error naming it, which
-    start_capture_daemon.cmd restarts. The port its socket holds goes in its lock (`lock_fd`),
+    its window runs again (launch.window). The port its socket holds goes in its lock (`lock_fd`),
     where launch.py reads it.
     """
     pages = open_sockets()
@@ -1351,12 +1348,12 @@ async def run(lock_fd: int, request: StopRequest) -> int:
 def main() -> int:
     if sys.argv[1:]:  # everything it needs comes from the console; no switch can move it
         print(f"the capture daemon takes no arguments (got {sys.argv[1:]})", file=sys.stderr)
-        return 2
+        return EXIT_REFUSED
     # a worktree must not run a live daemon against production's runtime
     binding = runtime_layout.live_binding_error()
     if binding is not None:
         print(f"CAPTURE DAEMON REFUSED: {binding}", file=sys.stderr, flush=True)
-        return 2
+        return EXIT_REFUSED
     _start_log()
     set_collector()  # before the program holds anything large
     request = StopRequest()  # before the lock: a program the lock names can always be asked
