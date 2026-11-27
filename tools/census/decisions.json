@@ -544,8 +544,8 @@
     {
       "verdict": "ok",
       "category": "ruff S608 (bandit",
-      "pattern": "^(db|stream_spine|tools/schwab_field_inventory|tests/[\\w/]+)\\.py:\\d+: Possible SQL injection",
-      "reason": "only a table's or a column's name is written in the text, the code's own or SQLite's catalog's (quoted where read from it), and every value is bound: SQLite's parameter is 'a placeholder in the expression for a value' (sqlite.org lang_expr, Parameters), not a name"
+      "pattern": "^(db\\.py:(212|279)|stream_spine\\.py:(2544|2597)|tools/schwab_field_inventory\\.py:342|tests/test_capture_writer_off_event_loop_v1\\.py:(39|186)|tests/test_data_path_stream_kept_v1\\.py:(231|385|955|963)|tests/test_data_path_tables_stand_v1\\.py:91|tests/test_data_path_writer_failures_v1\\.py:(103|171)): Possible SQL injection",
+      "reason": "each line read: only a table's or a column's name is written in the text, the code's own or SQLite's catalog's (quoted where read from it), and every value is bound: SQLite's parameter is 'a placeholder in the expression for a value' (sqlite.org lang_expr, Parameters), not a name. Judged by file and line, so a new or moved one is read again"
     }
   ]
 }
