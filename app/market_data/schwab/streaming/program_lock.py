@@ -29,7 +29,7 @@ from db_authority import resolve_stream_db_path
 
 log = logging.getLogger(__name__)
 
-#: Exit code when another program already holds the lock (start_capture_daemon.bat stops its
+#: Exit code when another program already holds the lock (start_capture_daemon.cmd stops its
 #: restart loop on it). 2 is the live-binding refusal (runtime_layout).
 EXIT_OWNER_LOCK_HELD = 3
 

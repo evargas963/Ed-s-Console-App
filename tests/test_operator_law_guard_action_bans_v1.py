@@ -284,7 +284,7 @@ def test_every_change_of_folder_is_refused_in_every_shell(cmd, powershell):
     [
         ("git -C /c/x status", False),
         ("echo 'cd tools'", False),
-        ('grep -n "cd /d" start_ed_console.bat', False),
+        ('grep -n "cd /d" start_ed_console.cmd', False),
         ("Get-Location", True),
         ("python -c \"import subprocess; subprocess.run(['git', 'log'], cwd='x')\"", False),
     ],

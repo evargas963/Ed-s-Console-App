@@ -38,7 +38,7 @@ import db
 import time_et
 from tools import check_end_to_end as e2e
 from tools import check_integrity, check_tests_serve_app
-from tools.census import copied_blocks, python_literals
+from tools.census import blinter, copied_blocks, python_literals
 
 log = logging.getLogger("census")
 ARGS = argparse.ArgumentParser(description="The census of everything that must reach 0.")
@@ -124,6 +124,7 @@ LANG = {
     ".html": "HTML",
     ".css": "CSS",
     ".bat": "Batch",
+    ".cmd": "Batch",
     ".yml": "YAML",
     ".yaml": "YAML",
     ".toml": "TOML",
@@ -757,7 +758,9 @@ for f, tree in trees.items():
                 imports_of[f"{node.module}.{a.name}"].add(f)
 ENTRY = {"server.py", "launch.py", "reauth_schwab.py"}
 entry_text = "\n".join(
-    TEXT[f] for f in FILES if f.endswith((".bat", ".toml", ".yml", ".mjs", ".ps1")) and f in TEXT
+    TEXT[f]
+    for f in FILES
+    if (lang(f) == "Batch" or f.endswith((".toml", ".yml", ".mjs", ".ps1"))) and f in TEXT
 )
 for f in [f for f in PAGE_JS if f in TEXT]:
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
@@ -2055,18 +2058,11 @@ reconcile(
     "actionlint",
 )
 add(S, "workflow files actionlint checked (reported)", "13", "actionlint", count=len(wfs))
-BATCH = [f for f in FILES if f.endswith((".bat", ".cmd"))]
+BATCH = [f for f in FILES if lang(f) == "Batch"]
 add(S, "batch files Blinter checked (reported)", "13", "blinter", count=len(BATCH))
 for f in BATCH:
-    for ln in run([exe("blinter"), f], cwd=HEAD).splitlines():
-        if m := re.match(r"Line (\d+): (.+) \(([A-Z]\d+)\)$", ln.strip()):
-            add(
-                S,
-                f"Batch: Blinter {m.group(3)} {m.group(2)[:50]}",
-                "13/LINTERS",
-                "blinter",
-                f"{f}:{m.group(1)}",
-            )
+    for rule, message, n in blinter.findings(run([exe("blinter"), f], cwd=HEAD)):
+        add(S, f"Batch: Blinter {rule} {message[:50]}", "13/LINTERS", "blinter", f"{f}:{n}")
 for f in [f for f in FILES if f.endswith((".json", ".webmanifest"))]:
     r = subprocess.run(
         # UTF-8 mode: the child prints non-ASCII text, which Windows' console encoding cannot hold
@@ -2161,7 +2157,7 @@ CALLERS = {
     for f in FILES
     if f in TEXT and area(f) in ("product", "tools") and lang(f) in ("Python", "JavaScript", "HTML")
 }
-CALLERS.update({f: TEXT[f] for f in FILES if f.endswith(".bat") and f in TEXT})
+CALLERS.update({f: TEXT[f] for f in FILES if lang(f) == "Batch" and f in TEXT})
 for f, n, m, p, _fn in routes:
     if p == "/" or not p.startswith(("/api", "/ws")):
         continue
@@ -2205,7 +2201,7 @@ MODULES = {f.removesuffix(".py").removesuffix("/__init__").replace("/", "."): f 
 ROOTS = ENTRY | {
     MODULES[m]
     for f in FILES
-    if f.endswith(".bat") and f in TEXT
+    if lang(f) == "Batch" and f in TEXT
     for m in re.findall(r"-m\s+([\w.]+)", TEXT[f])
     if m in MODULES
 }

@@ -1,4 +1,4 @@
-"""Ed Console's launcher: start_ed_console.bat runs it with the project's .venv Python.
+"""Ed Console's launcher: start_ed_console.cmd runs it with the project's .venv Python.
 
 Ed Console is one program (capture_main): the Schwab connection, the recording and the console's
 pages. Its start stops nothing.
@@ -8,7 +8,7 @@ pages. Its start stops nothing.
    With local changes, not on main, split from origin/main or origin out of reach, it starts from
    the commit the checkout is at, the check not passed and why said: whether the app starts is
    never the repository's to decide. Running, the check is not run.
-1. The program, in its own window (start_capture_daemon.bat restarts it). It reads its own .env
+1. The program, in its own window (start_capture_daemon.cmd restarts it). It reads its own .env
    (the Schwab credentials); its log, and /api/health from its heartbeat, say whether Schwab took
    them.
 2. The default browser, at the pages' port the program wrote in its lock (program_ports), once
@@ -36,7 +36,7 @@ from app.market_data.schwab.streaming.program_lock import Ports, ask_to_stop, pr
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
-#: what the program runs right after Python (start_capture_daemon.bat's line)
+#: what the program runs right after Python (start_capture_daemon.cmd's line)
 DAEMON_START = ["-m", "app.market_data.schwab.streaming.capture_main"]
 #: how long a clean stop waits for the program to end
 STOP_WAIT_SEC = 30.0
@@ -121,7 +121,7 @@ def _folder(p: psutil.Process) -> Path | None:
 
 
 def daemon_window(batch: Path) -> list[str]:
-    """Return the command that runs `batch` (start_capture_daemon.bat) in a minimized window.
+    """Return the command that runs `batch` (start_capture_daemon.cmd) in a minimized window.
 
     The window is its own, titled "Ed Capture Daemon", under `cmd /c` so the window closes when
     the batch ends (`start` given a batch file runs it under `cmd /K`, which keeps the window
@@ -133,7 +133,7 @@ def daemon_window(batch: Path) -> list[str]:
 def stop() -> int:
     """Stop the program cleanly: set its stop request (program_lock.ask_to_stop).
 
-    It writes what it holds and exits, and start_capture_daemon.bat does not restart it; the
+    It writes what it holds and exits, and start_capture_daemon.cmd does not restart it; the
     Schwab connection, the recording and the console's pages end together. Waits up to
     STOP_WAIT_SEC for a program it asked; 0 when it ended. One it could not ask (it had made no
     request to set) is reported at once, still running, exit 1: no wait can stop a program that
@@ -200,7 +200,7 @@ def main() -> int:
             print(f"Commit: {commit}")
         if check == COMMIT_MOVED:  # this process loaded the old code: the new one starts it
             return subprocess.call([sys.executable, str(ROOT / "launch.py")], cwd=ROOT)
-        subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.bat"), cwd=ROOT)
+        subprocess.Popen(daemon_window(ROOT / "start_capture_daemon.cmd"), cwd=ROOT)
         print('Ed Console: started in its own window ("Ed Capture Daemon").')
     started = time_et.elapsed()
     try:

@@ -8,8 +8,9 @@ it is, the check refused; an origin out of reach, or a git that does not answer,
 unknown, never passed. It starts either way (RC-512).
 
 The program (capture_main: the Schwab connection, the recording and the console's pages) runs in
-its own window from start_capture_daemon.bat; the launcher waits for its pages to answer and opens
-the browser at them, and launch.py stop asks it to stop by its stop request (a named event).
+its own window from start_capture_daemon.cmd; the launcher waits for its pages to answer and opens
+the browser at them, and launch.py stop asks it to stop by its stop request (a named event). The
+launcher's own batch, start_ed_console.cmd, runs launch.py with the project's Python.
 
 STAND-INS: local git repositories for GitHub's origin and the production checkout; a folder of
 its own holding launch.py, the batch and a virtual environment, as the production checkout does;
@@ -92,7 +93,7 @@ def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp
 
 @windows_only
 def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_it(tmp_path):
-    """The real start_capture_daemon.bat and launch.py in a folder of their own.
+    """The real start_capture_daemon.cmd and launch.py in a folder of their own.
 
     With a virtual environment beside them (no Schwab token, no origin to fetch, ports the
     system picks as the program binds them). `python launch.py` starts the one program in its
@@ -105,7 +106,7 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
     """
     home = tmp_path / "checkout"
     home.mkdir()
-    for name in ("launch.py", "start_capture_daemon.bat"):
+    for name in ("launch.py", "start_capture_daemon.cmd"):
         shutil.copy(launch.ROOT / name, home)
     venv.create(home / ".venv")
     opened = tmp_path / "opened"
@@ -188,3 +189,51 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
             cmd = p.info["cmdline"]  # None: a process whose command line Windows does not show
             if cmd is not None and str(home) in " ".join(cmd):
                 p.kill()
+
+
+def _console(home: Path) -> subprocess.CompletedProcess:
+    """Run the real start_ed_console.cmd, copied into `home`, as a double click runs it."""
+    shutil.copy(launch.ROOT / "start_ed_console.cmd", home)
+    return subprocess.run(
+        ["cmd", "/c", str(home / "start_ed_console.cmd")],
+        cwd=home,
+        stdin=subprocess.DEVNULL,  # its pause on an error reads no key and ends at once
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+@windows_only
+def test_the_console_launcher_runs_to_its_end_when_its_start_rewrites_it(tmp_path):
+    """A start that fast-forwards the checkout rewrites start_ed_console.cmd while it runs.
+
+    cmd.exe reads a batch file again, at the place it left off, after each command it read
+    whole, so the launcher is one block, read whole before it runs: what the new file holds at
+    that place never runs. Induced: a launch.py of the test's own writes the file anew, each of
+    its lines a command that would note it ran, and ends 0.
+    """
+    home = tmp_path / "checkout"
+    home.mkdir()
+    venv.create(home / ".venv")
+    ran, stray = tmp_path / "ran", tmp_path / "stray"
+    line = f'echo stray> "{stray}"\r\n'
+    (home / "launch.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(ran)!r}).write_text('ran')\n"
+        f"Path('start_ed_console.cmd').write_bytes({(line * 40).encode()!r})\n",
+        encoding="utf-8",
+    )
+    done = _console(home)
+    assert done.returncode == 0, (done.stdout, done.stderr)
+    assert ran.exists(), "launch.py did not run"
+    assert not stray.exists(), "a line of the rewritten file ran"
+
+
+@windows_only
+def test_a_checkout_with_no_virtual_environment_says_how_to_make_one(tmp_path):
+    """The launcher runs the project's own Python only: with no .venv it says how, exit 1."""
+    done = _console(tmp_path)
+    assert done.returncode == 1, (done.stdout, done.stderr)
+    assert "ERROR: repo virtualenv interpreter not found at" in done.stdout, done.stdout
+    assert "python -m venv .venv" in done.stdout, done.stdout

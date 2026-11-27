@@ -35,7 +35,7 @@ DOCS = (
     "docs/ARCHITECTURE.md",
     *AGENT_FILES,
 )
-FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".md")
+FILE_EXT = (".py", ".js", ".mjs", ".html", ".bat", ".cmd", ".md")
 
 
 def missing_paths(text: str, tracked: list[str]) -> list[str]:
