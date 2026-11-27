@@ -200,12 +200,14 @@ def test_a_message_the_writer_cannot_store_is_kept_as_sent_and_its_error_reaches
         task = asyncio.create_task(daemon.writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         bus.publish(f"optquote.{_CONTRACT}", bad)
-        deadline = time_et.elapsed() + 10  # every message taken: the rows and the refused one
-        while (
-            daemon.writer.status()["rows_written"] < len(_EVENTS)
-            or not daemon.writer.status()["failures"]
-        ) and time_et.elapsed() < deadline:
-            await asyncio.sleep(0.02)
+        await until(  # every message taken: the rows and the refused one
+            lambda: (
+                daemon.writer.status()["rows_written"] >= len(_EVENTS)
+                and daemon.writer.status()["failures"]
+            ),
+            10,
+            state=daemon.writer.status,
+        )
         beat = _beat(daemon)
         stop.set()
         await task

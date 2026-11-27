@@ -135,9 +135,7 @@ async def _run(body, feed=None):
         serve_page_socket(stop, sock, {"heartbeat_fn": feed, "stats": stats, "clock": feed.clock})
     )
     follower = asyncio.create_task(capture.Daemon(bus, HealthRegistry(), []).follow_market(stop))
-    end = time_et.elapsed() + 5
-    while "clients" not in stats and time_et.elapsed() < end:
-        await asyncio.sleep(0.01)
+    await until(lambda: "clients" in stats, 5)
     assert "clients" in stats  # serving
     try:
         async with connect(f"{url}/ws") as ws:
@@ -582,9 +580,7 @@ def test_a_page_that_goes_away_mid_send_ends_only_its_own_connection():
                 gone.transport.abort()  # the page's side of the connection cut mid-burst
             await asyncio.sleep(0)
         _, row = await _next_row(ws, "SPY", lambda r: r["spot"] == pytest.approx(501.99))
-        end = time_et.elapsed() + 5
-        while stats["clients"] != 1 and time_et.elapsed() < end:
-            await asyncio.sleep(0.01)
+        await until(lambda: stats["clients"] == 1, 5, state=lambda: stats)
         assert stats["clients"] == 1
         async with asyncio.timeout(2 * live_ui.HEARTBEAT_SEC):
             msg, _ = await _next_row(ws, "SPY")
@@ -670,16 +666,15 @@ def test_a_page_that_stops_reading_while_little_is_sent_is_dropped_at_the_keepal
         )
         page = _page_that_never_reads(port)
         try:
-            end = time_et.elapsed() + 5
-            while stats.get("clients") != 1 and time_et.elapsed() < end:
-                await asyncio.sleep(0.01)
+            await until(lambda: stats.get("clients") == 1, 5, state=lambda: stats)
             assert stats["clients"] == 1 and _held_by_this_program(port, page)
-            end = time_et.elapsed() + 5  # a ping, its timeout and a beat's margin
-            # the handler ends on the loop's next turns after the connection (connection_lost)
-            while (stats["clients"] or _held_by_this_program(port, page)) and (
-                time_et.elapsed() < end
-            ):
-                await asyncio.sleep(0.05)
+            # a ping, its timeout and a beat's margin; the handler ends on the loop's next turns
+            # after the connection (connection_lost)
+            await until(
+                lambda: not (stats["clients"] or _held_by_this_program(port, page)),
+                5,
+                state=lambda: stats,
+            )
             assert not _held_by_this_program(port, page), "the frozen page's connection is held"
             assert stats["clients"] == 0
             t0 = time_et.elapsed()
@@ -754,9 +749,7 @@ async def _serve_panels(body) -> None:
     served = asyncio.create_task(
         serve_page_socket(stop, sock, {"heartbeat_fn": daemon.status, "stats": stats})
     )
-    end = time_et.elapsed() + 5
-    while "clients" not in stats and time_et.elapsed() < end:
-        await asyncio.sleep(0.01)
+    await until(lambda: "clients" in stats, 5)
     assert "clients" in stats  # serving
     try:
         await asyncio.wait_for(body(f"{url}/ws"), 30)

@@ -26,6 +26,7 @@ from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import read_book
 from stream_spine import HealthRegistry, MessageBus, book_msg, quote_msg, verbatim_msg
 from tests.feed_live_helper import daemon_status, mark_feed_down, on_the_bus
+from tests.shared_helpers import until
 
 _MIX = json.loads(
     (Path(__file__).parent / "fixtures" / "real_stream_mix_2026_10_05_1400ct.json").read_text(
@@ -84,13 +85,14 @@ def test_every_option_and_equity_message_on_the_one_push_reaches_the_console():
         try:
             for m in rows:
                 daemon.bus.publish(*_message(m))
-            deadline = time_et.elapsed() + 30
             book = read_book(newest_book, "OPTIONS_BOOK")
-            while (
-                any(top(s) != t for s, t in want.items())
-                or ofls.newest_book(BOOK_CONTRACT, "OPTIONS_BOOK") != book
-            ) and time_et.elapsed() < deadline:
-                await asyncio.sleep(0.05)
+            await until(
+                lambda: (
+                    all(top(s) == t for s, t in want.items())
+                    and ofls.newest_book(BOOK_CONTRACT, "OPTIONS_BOOK") == book
+                ),
+                30,
+            )
             return {s: top(s) for s in want}, ofls.newest_book(BOOK_CONTRACT, "OPTIONS_BOOK")
         finally:
             ofs.stop_order_flow_stream()
