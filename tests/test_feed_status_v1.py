@@ -84,13 +84,15 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
 def test_a_frame_is_timed_once_and_what_it_carries_takes_that_time(tmp_path):
     """The time the stream read a frame is the time of everything the frame carries.
 
-    A connection that asks for the news alone, on Schwab's streamer
-    (tests/schwab_stream_standin.py, through the real schwab-py client) whose heartbeat does not
-    come in the test's time (INDUCED), reads Schwab's recorded NEWS_HEADLINE frame
-    (tests/fixtures/real_schwab_news_one_frame_spx_2026_11_20.json) last. Its items reach the bus
-    with the time the stream read it (feed.stream.TimedStream, last_frame_ts), and the feed's
-    last data is that time. The answer to the SUBS is one frame too: the subscription's record
-    and the start of the hold are its one time.
+    A daemon with an empty watchlist asks for the market context alone, the news last
+    (capture.Daemon.wanted). Schwab's streamer (tests/schwab_stream_standin.py, through the real
+    schwab-py client), whose heartbeat does not come in the test's time (INDUCED), answers each
+    request and then sends Schwab's recorded NEWS_HEADLINE frame
+    (tests/fixtures/real_schwab_news_one_frame_spx_2026_11_20.json), which, once every service
+    holds its symbols, is the last frame read. Its items reach the bus with the time the stream
+    read it (feed.stream.TimedStream, last_frame_ts), and the feed's last data is that time. The
+    answer to the SUBS is one frame too: the subscription's record and the start of the hold are
+    its one time.
     """
     entry = {
         "service": "NEWS_HEADLINE",
@@ -101,14 +103,18 @@ def test_a_frame_is_timed_once_and_what_it_carries_takes_that_time(tmp_path):
     streamer = LocalStreamer({}, {"NEWS_HEADLINE": entry}, beat=3600)
     rest = LocalSchwab(streamer.url)
     bus, health = MessageBus(), HealthRegistry()
-    conn = connection.Connection(bus, health, lambda: {"NEWS_HEADLINE": ("$SPX",)}, time_et.now, [])
+    conn = capture.Daemon(bus, health, []).connection
     seen = bus.subscribe("", policy=LOG)
     read: dict[str, float | None] = {}
+
+    def all_read() -> bool:
+        held = all(conn.held[s] for s in capture.MARKET_CONTEXT_SERVICES)
+        return held and health.last("NEWS_HEADLINE") is not None
 
     async def go():
         stop = asyncio.Event()
         run = asyncio.create_task(conn.run_connection(rest.client(tmp_path), stop))
-        await until(lambda: run.done() or health.last("NEWS_HEADLINE"), state=lambda: run)
+        await until(lambda: run.done() or all_read(), state=lambda: run)
         read["frame"] = conn.stream.last_frame_ts if conn.stream is not None else None
         read["hold"] = conn.held_since("NEWS_HEADLINE", "$SPX")
         stop.set()
