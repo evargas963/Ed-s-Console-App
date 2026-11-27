@@ -100,7 +100,8 @@ def git(*a):
 
 
 SHA = git("rev-parse", "--short", "HEAD").strip()
-TODAY = dt.datetime.fromtimestamp(time_et.now(), time_et.ET).date().isoformat()
+NOW = time_et.now()
+TODAY = dt.datetime.fromtimestamp(NOW, time_et.ET).date().isoformat()
 blobs = {}
 for row in git("ls-files", "-s").splitlines():
     meta, path = row.split("\t", 1)
@@ -1985,6 +1986,78 @@ else:
             kinds[re.sub(r"\d+(\.\d+)?", "#", said)[:110]] += 1
     for said, n in kinds.most_common():
         add(S, KINDS, "7", "the daemon's log", f"{n:,} x {said}")
+    # the record of the newest regular session that has ended, its window Schwab's /markets
+    # answer (time_et.record_markets): each watchlist ticker's minutes with no quote received
+    # (Standard of care 6 and 7), Schwab's quote time to its receipt and the stream's longest
+    # silences (Standard of care 5: how live the screen is gets measured)
+    ED = DATA / "ed.db"
+    ended = [
+        s
+        for s in [
+            time_et.record_markets(json.loads(a))
+            for (a,) in db.stored_rows(
+                ED,
+                "stream_markets_raw",
+                "SELECT native_json FROM stream_markets_raw WHERE status = 200 AND date <= ? "
+                "ORDER BY date, ts_recv",
+                TODAY,
+            )
+        ]
+        if s.is_open and s.regular and s.regular[-1][1].timestamp() <= NOW
+    ]
+    start, end = ended[-1].regular[0][0].timestamp(), ended[-1].regular[-1][1].timestamp()
+    ((listed,),) = db.stored_rows(
+        ED,
+        "stream_watchlist",
+        "SELECT tickers_json FROM stream_watchlist WHERE ts_recv <= ? ORDER BY ts_recv DESC "
+        "LIMIT 1",
+        end,
+    )
+    day = ended[-1].day
+    GAPS = f"minutes of the {day} regular session with no quote received for a watchlist ticker"
+    DELAY = f"the stream's delay on {day}, Schwab's quote time to receipt, by ticker (reported)"
+    SILENT = f"the stream's ten longest silences in the {day} regular session (reported)"
+    add(S, GAPS, "6/7", "ed.db stream_quotes_raw")
+    heard = collections.defaultdict(set)
+    delays = collections.defaultdict(list)
+    silences = []
+    before = start
+    for sym, at, sent in db.stored_rows(
+        ED,
+        "stream_quotes_raw",
+        "SELECT symbol, ts_recv, schwab_ts FROM stream_quotes_raw WHERE ts_recv >= ? AND "
+        "ts_recv < ? ORDER BY ts_recv",
+        start,
+        end,
+    ):
+        heard[sym].add(int((at - start) // 60))
+        if sent is not None:
+            delays[sym].append(at - sent / 1000)
+        silences.append((at - before, before))
+        before = at
+    silences.append((end - before, before))
+    for sym in json.loads(listed):
+        missed = sorted(set(range(int((end - start) // 60))) - heard[sym])
+        for m in missed:
+            add(
+                S,
+                GAPS,
+                "6/7",
+                "ed.db stream_quotes_raw",
+                f"{sym} {time_et.ct_time(start + 60 * m)}",
+            )
+        took = sorted(delays[sym])
+        if took:
+            add(
+                S,
+                DELAY,
+                "5",
+                "ed.db stream_quotes_raw",
+                f"{sym}: {len(took):,} quotes, median {took[len(took) // 2]:.3f} s, 99th "
+                f"percentile {took[int(len(took) * 0.99)]:.3f} s, worst {took[-1]:.3f} s",
+            )
+    for gap, began in sorted(silences, reverse=True)[:10]:
+        add(S, SILENT, "5", "ed.db stream_quotes_raw", f"{gap:.1f} s from {time_et.ct_time(began)}")
 
 # =============================================================================================
 # H. GOVERNANCE AND WORK LIST
