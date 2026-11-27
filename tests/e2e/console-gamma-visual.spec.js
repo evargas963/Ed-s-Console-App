@@ -8,7 +8,7 @@
  * the screenshots show the heatmap as the hero on real data, offline.
  * Captures DARK and LIGHT at 2560x1440 and 1920x1080 (full viewport, not cropped).
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { pushExpiries } = require("./fixtures/expiries");
 const { chainAt } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");

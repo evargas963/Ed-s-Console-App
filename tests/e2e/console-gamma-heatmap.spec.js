@@ -22,7 +22,7 @@
  * Endpoints are intercepted with synthetic payloads so the proof is deterministic and offline —
  * it exercises the real shell HTML/JS, not stubbed rendering.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { pushExpiries } = require("./fixtures/expiries");
 const path = require("path");
 

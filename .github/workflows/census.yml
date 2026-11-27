@@ -66,8 +66,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # the census counts the statements no test runs from coverage.py's report of the
-          # commit's pytest run: the run is found, waited for, and its report taken
+          # the census counts the statements and the page's lines no test runs from the reports
+          # of the commit's pytest run: the run is found, waited for, and its two reports taken,
+          # each into a folder named for it (coverage, page-coverage)
           take() {
             for _ in $(seq 40); do
               id=$(gh run list -R "$GITHUB_REPOSITORY" -w pytest.yml -c "$1" -L 1 \
@@ -76,7 +77,7 @@ jobs:
               sleep 30
             done
             gh run watch "$id" -R "$GITHUB_REPOSITORY" -i 60 > /dev/null
-            gh run download "$id" -R "$GITHUB_REPOSITORY" -n coverage -D "$2"
+            gh run download "$id" -R "$GITHUB_REPOSITORY" -p coverage -p page-coverage -D "$2"
           }
           take "$HEAD_SHA" coverage-head
           if [ -n "$BASE_SHA" ]; then take "$BASE_SHA" coverage-base; fi
@@ -85,20 +86,22 @@ jobs:
         working-directory: head
         run:
           python -m tools.census.census ../census-out/after --coverage
-          ../coverage-head/coverage.json
+          ../coverage-head/coverage/coverage.json --page-coverage ../coverage-head/page-coverage
 
       - name: Count the base with the head's census (before)
         if: github.event_name == 'pull_request'
         working-directory: head
         run: |
-          # a base whose pytest run wrote no coverage.json (before pytest.yml wrote one) is
+          # a base whose pytest run wrote no report of one kind (before pytest.yml wrote it) is
           # counted with that row reported as not counted
-          if [ -f ../coverage-base/coverage.json ]; then
-            python -m tools.census.census ../census-out/before --repo ../base \
-              --coverage ../coverage-base/coverage.json
-          else
-            python -m tools.census.census ../census-out/before --repo ../base
+          given=()
+          if [ -f ../coverage-base/coverage/coverage.json ]; then
+            given+=(--coverage ../coverage-base/coverage/coverage.json)
           fi
+          if [ -d ../coverage-base/page-coverage ]; then
+            given+=(--page-coverage ../coverage-base/page-coverage)
+          fi
+          python -m tools.census.census ../census-out/before --repo ../base "${given[@]}"
 
       - name: Before and after in the job summary
         if: github.event_name == 'pull_request'

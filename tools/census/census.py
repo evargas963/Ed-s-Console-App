@@ -1,15 +1,17 @@
 """The census of everything in the repository that must reach 0. Read-only on the repository.
 
     python -m tools.census.census <out dir> [--repo <checkout>] [--coverage <coverage.json>]
-        [--machine [--data <dir>]]
+        [--page-coverage <dir>] [--machine [--data <dir>]]
 
 Run from the checkout with the repository's Python, which also holds tools/census/requirements.txt;
 `npm ci --prefix tools/census` holds the other checkers. --repo is the checkout counted (default
 the one it runs from), so a pull request's base is counted by the head's census: one ruler before
 and after. --coverage is coverage.py's JSON report of the commit's pytest run (pytest.yml), whose
-statements no test runs are counted. --machine counts what only the working machine holds: its
-database (--data, default <repo>/data), its branches, stashes and worktrees, and the files on its
-disk git does not hold; a clone (CI's) reports those rows as not counted, never as 0. Writes
+statements no test runs are counted; --page-coverage the lines of the page's scripts each browser
+test worker ran (tests/e2e/fixtures/test.js), whose code lines no test runs are counted. --machine
+counts what only the working machine holds: its database (--data, default <repo>/data), its
+branches, stashes and worktrees, and the files on its disk git does not hold; a clone (CI's)
+reports those rows as not counted, never as 0. Writes
 <out>/census_<date>_<sha>.md (the report) and <out>/items_<date>_<sha>.txt (every item);
 `python -m tools.census.compare <before.md> <after.md>` prints what changed.
 
@@ -52,6 +54,7 @@ ARGS.add_argument("out", type=Path)
 ARGS.add_argument("--repo", type=Path, default=Path.cwd())
 ARGS.add_argument("--data", type=Path)
 ARGS.add_argument("--coverage", type=Path)
+ARGS.add_argument("--page-coverage", type=Path)
 ARGS.add_argument("--machine", action="store_true")
 _args = ARGS.parse_args()
 REPO = _args.repo.resolve()
@@ -1385,11 +1388,24 @@ for f in [f for f in TEST_FILES if f in trees]:
             continue
         if any(isinstance(o, ast.Name) and o.id in bound for o in owners):
             add(S, ASSIGNED_OVER, "9", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:120]}")
+
+
 # a test waits on its cause, or polls for it with a deadline (tests.shared_helpers.until): a sleep
 # outside a poll's loop, but a yield (sleep(0)), is a fixed wait (Fowler, "Eradicating
 # Non-Determinism in Tests"); a child program's own code, a string to the test, is not the test's.
 # A sleep whose time is the condition tested (an idle connection, a slow consumer) stays, labeled
 # INDUCED on its line (.claude/rules/tests.md): each is listed, reported, not a fixed wait
+def spans_of(lines):
+    """Return line numbers, in order, written as runs: `3, 7-9`."""
+    spans = []
+    for n in lines:
+        if spans and n == spans[-1][1] + 1:
+            spans[-1][1] = n
+        else:
+            spans.append([n, n])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in spans)
+
+
 UNRUN = "statements no test runs (coverage.py, pytest.yml's run of this commit)"
 if _args.coverage is None:
     add(S, f"{UNRUN}: not counted, no coverage report given (reported)", "14", "coverage.py")
@@ -1401,12 +1417,6 @@ else:
     for f, cov in sorted(measured.items()):
         if f not in TEXT or not cov["missing_lines"]:
             continue
-        spans = []
-        for n in cov["missing_lines"]:
-            if spans and n == spans[-1][1] + 1:
-                spans[-1][1] = n
-            else:
-                spans.append([n, n])
         unrun[area(f)] += len(cov["missing_lines"])
         add(
             S,
@@ -1414,10 +1424,33 @@ else:
             "14",
             "coverage.py",
             f"{f}: {len(cov['missing_lines'])} of {cov['summary']['num_statements']}: "
-            + ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in spans),
+            + spans_of(cov["missing_lines"]),
         )
     for a, n in unrun.items():
         add(S, f"{UNRUN}: Python {a}", "14", "coverage.py", count=n)
+# the page's own scripts as Chromium ran them in the browser tests (tests/e2e/fixtures/test.js):
+# a line with code holding no character V8 ran; a comment line is not code
+PAGE_UNRUN = "page lines no browser test runs (V8 coverage, pytest.yml's browser tests)"
+if _args.page_coverage is None:
+    add(S, f"{PAGE_UNRUN}: not counted, no page coverage given (reported)", "14", "V8")
+else:
+    ran = collections.defaultdict(set)
+    for p in sorted(_args.page_coverage.glob("*.json")):
+        for f, lines in json.loads(p.read_text(encoding="utf-8")).items():
+            ran[f] |= set(lines)
+    add(S, PAGE_UNRUN, "14", "V8")
+    missed_total = 0
+    for f in PAGE_JS:
+        code = {
+            n
+            for n, ln in enumerate(TEXT[f].splitlines(), 1)
+            if ln.strip() and not ln.strip().startswith(("//", "/*", "*"))
+        }
+        missed = sorted(code - ran[f])
+        missed_total += len(missed)
+        if missed:
+            add(S, PAGE_UNRUN, "14", "V8", f"{f}: {len(missed)} of {len(code)}: {spans_of(missed)}")
+    add(S, PAGE_UNRUN, "14", "V8", count=missed_total)
 FIXED_WAITS = "fixed waits in tests: a sleep that is not a poll's interval (timing that can flake)"
 INDUCED_WAITS = "sleeps labeled INDUCED, their time the condition tested (reported)"
 add(S, FIXED_WAITS, "9/15", "ast")

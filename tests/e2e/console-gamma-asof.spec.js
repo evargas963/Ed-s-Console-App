@@ -7,7 +7,7 @@
  * badges. Stale server state -> stale badge styling. Offline.
  */
 const path = require("path");
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { routeWatchlist } = require("./fixtures/watchlist");
 const { mockPriceSocket, chainAt } = require("./fixtures/price_socket");
 

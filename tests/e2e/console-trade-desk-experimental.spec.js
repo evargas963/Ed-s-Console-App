@@ -4,7 +4,7 @@
  * real 5-minute bars and a year of opens (tests/e2e/fixtures/experimental_tsla.json, held to the
  * producer by tests/test_open_gap_v1.py). Any page error fails the test.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { mockPriceSocket } = require("./fixtures/price_socket");
 const { routeWatchlist } = require("./fixtures/watchlist");
 const EXPERIMENTAL = require("./fixtures/experimental_tsla.json");
