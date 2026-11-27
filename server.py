@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import threading
 from collections.abc import AsyncGenerator, Callable, Collection, Iterable, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -57,7 +56,7 @@ from calc.terrain_engine import (
 )
 from calc.terrain_read import crossed
 from calibration.complete_chain_capture import CAPTURE_BASIS, StoredCapture
-from db import LevelCrossEvent, StoredCross, get_db
+from db import LevelCrossEvent, StoredCross, get_db, stored_rows
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from numeric_contract import (
@@ -1558,19 +1557,11 @@ def _load_stored_sessions(path: Path) -> None:
     table yet, as at the first start before the daemon's, is no answer held. A database that
     cannot be read, or a row that cannot be taken, stops the console's start with its error.
     """
-    if not path.is_file():
-        return
-    conn = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True, timeout=5)
-    try:
-        if not conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE name='stream_markets_raw'"
-        ).fetchone():
-            return
-        rows = conn.execute(
-            "SELECT native_json FROM stream_markets_raw WHERE status = 200 ORDER BY ts_recv"
-        ).fetchall()
-    finally:
-        conn.close()
+    rows = stored_rows(
+        path,
+        "stream_markets_raw",
+        "SELECT native_json FROM stream_markets_raw WHERE status = 200 ORDER BY ts_recv",
+    )
     for (answer,) in rows:
         record_markets(json.loads(answer))
     log.info("Recorded market answers held: %d", len(rows))

@@ -31,7 +31,7 @@ from calc.terrain_engine import (
     TotalGammaRecord,
     total_gamma_record,
 )
-from calibration.complete_chain_capture import last_capture_per_day
+from db import last_capture_per_day
 from push.terrain import terrain, total_gamma_text
 from state import level_store
 from tests.capture_store import store_capture

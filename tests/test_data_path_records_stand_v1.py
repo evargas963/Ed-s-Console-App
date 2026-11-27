@@ -14,7 +14,8 @@ from __future__ import annotations
 import sqlite3
 import threading
 
-from calibration.complete_chain_capture import CAPTURE_BASIS, last_capture_per_day
+from calibration.complete_chain_capture import CAPTURE_BASIS
+from db import last_capture_per_day
 from feed.chain_sweep import ChainSweep
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
