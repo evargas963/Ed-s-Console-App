@@ -15,6 +15,8 @@ from tests.feed_live_helper import mark_feed_down, mark_feed_live
 _FX = Path(__file__).resolve().parent / "fixtures"
 _TK = "ZZBKTIME"
 _WHEN = 1790380799830  # Fri 09/25 06:59 PM CT
+#: when the book is read: a minute after Schwab's quote and book times
+_NOW = _WHEN / 1000.0 + 60.0
 
 
 def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
@@ -22,7 +24,7 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
 
     A feed that stops does not remove them, and the last bid stays.
     """
-    mark_feed_live(_TK)
+    mark_feed_live(_TK, now=_NOW)
     lmp.record_from_level_one_equity(
         _TK,
         {
@@ -32,7 +34,7 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
             "QUOTE_TIME_MILLIS": _WHEN,
             "TRADE_TIME_MILLIS": _WHEN,
         },
-        received_ts=time_et.now(),
+        received_ts=_NOW,
     )
     of_state.push_book(
         _TK,
@@ -43,7 +45,7 @@ def test_a_down_feed_keeps_schwabs_quote_time_and_book_time_on_the_book():
         },
         "NASDAQ_BOOK",
     )
-    now = time_et.now()
+    now = _NOW
     try:
         mark_feed_down()
         body = push_book.order_flow_microstructure(_TK, "NASDAQ_BOOK", now)

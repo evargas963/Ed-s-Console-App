@@ -24,7 +24,6 @@ import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
 import server as srv
-import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from feed.schwab_client import flatten_chain_contracts
 from option_contract import LISTED, read_chain
@@ -65,7 +64,7 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
 
     The status: Schwab's socket open, `tk` and the `streamed` contracts held; each streamed
     (symbol, fields, receive time) pushed, and `tk`'s chain published at _AT; the status beats
-    at _AT (the publication's time) and again now (the routes' time).
+    at _AT, the publication's time and the routes' (_get).
     """
     held = {"LEVELONE_EQUITIES": [tk], "LEVELONE_OPTIONS": [s for s, _f, _t in streamed]}
     lmp.record_feed_heartbeat(daemon_status(_AT.timestamp(), schwab_socket_open=True, held=held))
@@ -84,7 +83,6 @@ def _hold(tk, contracts, fetched_ts, price, streamed=()):
     srv._publish_levels(
         tk, read_chain(contracts), fetched_ts, chain_spot=(price, fetched_ts), now=_AT
     )
-    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True, held=held))
 
 
 #: the chain fields the screens show, each as Schwab sent it (option_contract.chain_row)
@@ -132,8 +130,8 @@ def _as_shown(contracts):
 
 
 def _get(ticker, expiry=None):
-    """Return the chain panel for `ticker` (as typed) at `expiry` (None: the front one), now."""
-    return push_chain.chain(srv.ticker_storage_key(ticker), time_et.now(), {"expiry": expiry})
+    """Return the chain panel for `ticker` (as typed) at `expiry` (None: the front one), at _AT."""
+    return push_chain.chain(srv.ticker_storage_key(ticker), _AT.timestamp(), {"expiry": expiry})
 
 
 def _served(body):

@@ -20,9 +20,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 VERDICT = (
-    "import json, sys, server, time_et; from push import verdict; opened = []; "
+    "import json, sys, server; from push import verdict; opened = []; "
     "sys.addaudithook(lambda ev, a: opened.append(str(a[0])) if ev == 'open' else None); "
-    "v = verdict.terrain_staleness(None, 'SPY', now=time_et.now()); "
+    "v = verdict.terrain_staleness(None, 'SPY', now=1790780400.0); "
     "print(json.dumps({'opened': opened, 'keys': sorted(v)}))"
 )
 

@@ -237,9 +237,9 @@ def test_reconnect_clear_resets_restatement_identity():
     bus = MessageBus()
     live_state.bind_bus(bus.current)
     st = live_state._LIVE_STATE
-    apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), time_et.now()))
+    apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), 100.0))
     live_state.clear_all_live_state()
-    apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), time_et.now()))
+    apply_record(st, EQ, on_the_bus(bus, EQ, _sent(sym, P, 1, 5), 105.0))
     tape = live_state.prints(sym)
     assert len(tape) == 1
 

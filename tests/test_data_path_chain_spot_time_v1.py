@@ -5,7 +5,6 @@ from __future__ import annotations
 import live_market_plane as lmp
 import live_price_rows
 import server as srv
-import time_et
 from option_contract import read_chain
 from push import chain as push_chain
 from state import level_store
@@ -31,7 +30,7 @@ def test_the_chain_spot_carries_schwabs_trade_time():
         received_ts=1790380799.83,
     )
     try:
-        now = time_et.now()
+        now = 1790380799.83  # read when the price was received
         body = push_chain.chain(tk, now, {"expiry": exp})
         row = live_price_rows.price_row(tk, now)
     finally:
