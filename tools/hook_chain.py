@@ -89,10 +89,11 @@ def run_chain(raw_payload: str, members: tuple[str, ...]) -> int:
             mod = importlib.import_module(name)
             sys.stdin = io.StringIO(raw_payload)
             rc = mod.main()
-            if not isinstance(rc, int):
-                raise TypeError(f"{name}.main() returned {rc!r}, not an exit code")
         except (Exception, SystemExit):  # a broken guard must scream, not wave through
             log.exception("HOOK CHAIN: %s crashed", name)
+            rc = 2
+        if not isinstance(rc, int):
+            log.error("HOOK CHAIN: %s.main() returned %r, not an exit code", name, rc)
             rc = 2
         worst = max(worst, rc)
     if worst:
