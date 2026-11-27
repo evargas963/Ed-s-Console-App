@@ -2121,9 +2121,9 @@ for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
     f for f in FILES if f.startswith(".claude/rules/")
 ]:
     # read across line breaks: a wrapped paragraph may break the phrase, or the work item that
-    # builds its check, between two lines
+    # builds its check (ENF-12, STANDARD-CHECKS, CENSUS), between two lines
     for m in re.finditer(
-        r"no\s+machine\s+check(?:[\s,—–-]+(?:ENF-\d+|[A-Z]+(?:-[A-Z]+)+))?", TEXT[f]
+        r"no\s+machine\s+check(?:[\s,—–-]+(?:ENF-\d+|[A-Z]{2,}(?:-[A-Z]+)*\b))?", TEXT[f]
     ):
         line = TEXT[f].count("\n", 0, m.start()) + 1
         add(
