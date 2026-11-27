@@ -14,10 +14,9 @@ from pathlib import Path
 
 import pytest
 
-import time_et
 from calc.micro_structure import Candle
 from push import bars as push_bars
-from tests.feed_live_helper import spy_minutes
+from tests.feed_live_helper import RTH_INSTANT, spy_minutes
 from time_et import ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,7 +79,7 @@ def test_a_rolled_up_bar_carries_its_steps_start_as_schwabs_own_bar_does(tf):
 
 
 def test_the_bars_panel_accepts_30m_and_twelve_thousand_rows_and_nothing_beyond():
-    now = time_et.now()
+    now = RTH_INSTANT
     assert push_bars.bars("SPY", now, {"tf": "30", "limit": 12000})["tf"] == "30"
     with pytest.raises(ValueError, match="tf '31'"):
         push_bars.bars("SPY", now, {"tf": "31", "limit": 12000})

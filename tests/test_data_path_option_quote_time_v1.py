@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import time_et
 from app.options.order_flow import state as of_state
 from push import contract as push_contract
 from stream_spine import book_msg, verbatim_msg
@@ -52,7 +51,8 @@ def test_a_down_feed_keeps_the_contracts_quote_time_and_book_time():
                 )
                 pushed(f"optquote.{_SYM}", msg)
         mark_feed_down()
-        body = push_contract.options_microstructure(_SYM, time_et.now())
+        newest = max(e["ts_recv"] for e in events)  # read when the newest event was received
+        body = push_contract.options_microstructure(_SYM, newest)
     finally:
         of_state.clear_all_live_state()
     assert body["top_of_book"]["bid"] == 0.58
