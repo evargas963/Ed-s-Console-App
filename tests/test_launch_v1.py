@@ -14,11 +14,13 @@ launcher's own batch, start_ed_console.cmd, runs launch.py with the project's Py
 
 STAND-INS: local git repositories for GitHub's origin and the production checkout; a folder of
 its own holding launch.py, the batch and a virtual environment, as the production checkout does;
-a Python of the test's own as the default browser.
+a Python of the test's own as the default browser; a launch.py of the test's own that rewrites
+the console's batch, and a capture_main of the test's own that ends on the codes it is given.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
 import site
@@ -35,7 +37,7 @@ import pytest
 import launch
 import time_et
 from app.market_data.schwab.streaming.program_lock import program_ports
-from tests.shared_helpers import git
+from tests.shared_helpers import git, until
 
 pytestmark = pytest.mark.rail
 
@@ -51,6 +53,16 @@ def _merge(work: Path, name: str) -> str:
     git(work, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", name)
     git(work, "push", "-q", "origin", "HEAD:main")
     return git(work, "rev-parse", "HEAD")
+
+
+def _running_in(home: Path) -> list[psutil.Process]:
+    """Return the processes whose command line names `home`: a batch's window and its runs."""
+    return [
+        p
+        for p in psutil.process_iter(["cmdline"])
+        # None: a process whose command line Windows does not show
+        if p.info["cmdline"] is not None and str(home) in " ".join(p.info["cmdline"])
+    ]
 
 
 def test_each_start_brings_the_checkout_to_origin_main_or_says_why_it_cannot(tmp_path):
@@ -185,10 +197,8 @@ def test_the_launcher_starts_the_one_program_opens_its_pages_and_the_stop_ends_i
         assert program_ports(stream_db) is None, "the lock outlived the program"
         assert launch.running(launch.DAEMON_START, home) == []
     finally:
-        for p in psutil.process_iter(["cmdline"]):
-            cmd = p.info["cmdline"]  # None: a process whose command line Windows does not show
-            if cmd is not None and str(home) in " ".join(cmd):
-                p.kill()
+        for p in _running_in(home):
+            p.kill()
 
 
 def _console(home: Path) -> subprocess.CompletedProcess:
@@ -237,3 +247,53 @@ def test_a_checkout_with_no_virtual_environment_says_how_to_make_one(tmp_path):
     assert done.returncode == 1, (done.stdout, done.stderr)
     assert "ERROR: repo virtualenv interpreter not found at" in done.stdout, done.stdout
     assert "python -m venv .venv" in done.stdout, done.stdout
+
+
+@windows_only
+@pytest.mark.parametrize("code", [2, 3])
+def test_the_daemons_window_restarts_a_program_that_failed_and_not_one_that_may_not_run(
+    tmp_path, code
+):
+    """The real start_capture_daemon.cmd restarts a program that ended on an error, after its wait.
+
+    One that ends because this checkout may not run live (2) or another program holds the stream
+    (3) is not restarted: its window starts nothing more and ends, once its wait to be read is
+    over (at once here: the window has this test's input, and timeout.exe takes none
+    redirected). Induced: a capture_main of the test's own, beside the batch where its -m finds
+    it first, notes each run and ends 1 (an error), then `code`.
+    """
+    home = tmp_path / "checkout"
+    home.mkdir()
+    shutil.copy(launch.ROOT / "start_capture_daemon.cmd", home)
+    venv.create(home / ".venv")
+    runs = tmp_path / "runs"
+    package = Path("app", "market_data", "schwab", "streaming")
+    (home / package).mkdir(parents=True)
+    for folder in (package, *package.parents[:-1]):
+        (home / folder / "__init__.py").write_text("", encoding="utf-8")
+    (home / package / "capture_main.py").write_text(
+        "import sys\nfrom pathlib import Path\n"
+        f"runs = Path({str(runs)!r})\n"
+        "before = len(runs.read_text().splitlines()) if runs.exists() else 0\n"
+        "with runs.open('a') as f:\n    f.write('run\\n')\n"
+        f"sys.exit(1 if before == 0 else {code})\n",
+        encoding="utf-8",
+    )
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    subprocess.Popen(launch.daemon_window(home / "start_capture_daemon.cmd"), cwd=home, env=env)
+    ran = [runs]
+    try:
+        # the window has started once the first run notes itself, and ends only at its batch's end
+        asyncio.run(
+            until(
+                lambda: runs.exists() and not _running_in(home),
+                90,
+                state=lambda: [
+                    f"runs: {len(r.read_text().splitlines())}" for r in ran if r.exists()
+                ],
+            )
+        )
+        assert runs.read_text().splitlines() == ["run", "run"], "restarted after exit code"
+    finally:
+        for p in _running_in(home):
+            p.kill()
