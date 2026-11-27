@@ -472,7 +472,7 @@ def test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask(tmp_path):
     try:
         ports_written = lambda: program_ports(tmp_path / "data" / "stream_capture.db") is not None
         asyncio.run(until(lambda: daemon.poll() is not None or ports_written(), seconds=60))
-        assert daemon.poll() is None, daemon.poll()
+        assert ports_written(), daemon.poll()
         elsewhere = stop(other)
         out, err = elsewhere.communicate(timeout=60)
         assert (elsewhere.returncode, out) == (0, "Ed Console: not running\n"), err
