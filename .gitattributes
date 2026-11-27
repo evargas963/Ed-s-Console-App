@@ -2,5 +2,6 @@
 * text=auto eol=lf
 # cmd.exe reads a batch file by byte offset and expects CRLF.
 *.bat text eol=crlf
+*.cmd text eol=crlf
 # Captured Schwab data is kept byte for byte as it was saved.
 tests/fixtures/** -text

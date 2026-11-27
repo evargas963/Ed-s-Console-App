@@ -93,10 +93,11 @@ def _decide(cmd: str, tool: str = "Bash") -> str:
 
 
 STARTS_AND_CLEAN_STOPS = [
-    "start_ed_console.bat",
-    ".\\start_capture_daemon.bat",
+    "start_ed_console.cmd",
+    ".\\start_capture_daemon.cmd",
+    '& "C:\\x\\start_ed_console.cmd"',
     '& "C:\\x\\start_ed_console.bat"',
-    "cmd /c start_ed_console.bat",
+    "cmd /c start_ed_console.cmd",
     ".venv\\Scripts\\python.exe launch.py",
     "python launch.py stop",
     "py launch.py",
@@ -104,15 +105,15 @@ STARTS_AND_CLEAN_STOPS = [
     "python -m uvicorn server:app --port 8000",
     "pythonw -m app.market_data.schwab.streaming.capture_main",
     'Start-Process -FilePath "cmd.exe" '
-    "-ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.bat\"'",
-    'powershell -NoProfile -Command "cmd /c start_ed_console.bat"',
-    "Invoke-Item .\\start_ed_console.bat",
+    "-ArgumentList '/c','start','\"Ed Console\"','\"C:\\x\\start_ed_console.cmd\"'",
+    'powershell -NoProfile -Command "cmd /c start_ed_console.cmd"',
+    "Invoke-Item .\\start_ed_console.cmd",
     "ii launch.py",
-    "explorer.exe start_ed_console.bat",
-    'iex "cmd /c start_capture_daemon.bat"',
-    "Start-Job { & .\\start_ed_console.bat }",
-    'wmic process call create "cmd /c C:\\x\\start_ed_console.bat"',
-    "[System.Diagnostics.Process]::Start('C:\\x\\start_ed_console.bat')",
+    "explorer.exe start_ed_console.cmd",
+    'iex "cmd /c start_capture_daemon.cmd"',
+    "Start-Job { & .\\start_ed_console.cmd }",
+    'wmic process call create "cmd /c C:\\x\\start_ed_console.cmd"',
+    "[System.Diagnostics.Process]::Start('C:\\x\\start_ed_console.cmd')",
     "schtasks /run /tn EdConsole",
 ]
 
@@ -376,9 +377,9 @@ def test_the_test_changed_below_is_on_main():
         _shell("git add launch.py tests/test_launch_v1.py"),
         _shell("python -m ruff check launch.py"),
         # commands that only name a launcher or a process, as reads, diffs and searches do
-        _shell("Get-Content start_capture_daemon.bat, start_ed_console.bat", "PowerShell"),
+        _shell("Get-Content start_capture_daemon.cmd, start_ed_console.cmd", "PowerShell"),
         _shell(
-            "git -C ..\\wt diff origin/main...HEAD -- app start_capture_daemon.bat stream_spine.py"
+            "git -C ..\\wt diff origin/main...HEAD -- app start_capture_daemon.cmd stream_spine.py"
         ),
         _shell('git grep -n -E "start_capture_daemon|uvicorn server:app|restart" -- .'),
         _shell("Select-String -Path logs\\ed_server.log -Pattern 'uvicorn restart'", "PowerShell"),
@@ -387,15 +388,15 @@ def test_the_test_changed_below_is_on_main():
             "| Where-Object { $_.CommandLine "
             "-like '*streaming.capture*' }\""
         ),
-        _shell("file start_capture_daemon.bat && grep -c x start_capture_daemon.bat"),
+        _shell("file start_capture_daemon.cmd && grep -c x start_capture_daemon.cmd"),
         _shell(
             '"--- any python/uvicorn"; '
             "Get-Process | Where-Object { $_.ProcessName -match 'python' }",
             "PowerShell",
         ),
-        _shell('grep -rn "stop.set()\\|\\"op\\"\\|taskkill" start_capture_daemon.bat launch.py'),
+        _shell('grep -rn "stop.set()\\|\\"op\\"\\|taskkill" start_capture_daemon.cmd launch.py'),
         _shell(
-            "git commit -q -F - @'\nstart_ed_console.bat runs it again after a fast-forward\n'@",
+            "git commit -q -F - @'\nstart_ed_console.cmd runs it again after a fast-forward\n'@",
             "PowerShell",
         ),
         # looking at processes, and stopping or opening something that is not production

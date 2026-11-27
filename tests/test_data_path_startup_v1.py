@@ -157,7 +157,7 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
 )
 def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
-    """The real start_capture_daemon.bat in a folder of its own starts the real daemon.
+    """The real start_capture_daemon.cmd in a folder of its own starts the real daemon.
 
     With launch.py and a virtual environment beside it, it starts the real daemon in its window
     (no Schwab token, ports of its own). The stop finds it by launch.DAEMON_START and ends it,
@@ -169,7 +169,7 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
     """
     home = tmp_path / "checkout"
     home.mkdir()
-    for name in ("launch.py", "start_capture_daemon.bat"):
+    for name in ("launch.py", "start_capture_daemon.cmd"):
         shutil.copy(launch.ROOT / name, home)
     venv.create(home / ".venv")
     notes = tmp_path / "error_output"
@@ -188,7 +188,7 @@ def test_the_stop_finds_and_ends_the_daemon_its_batch_started(tmp_path):
         "ED_RUNTIME_ROOT": str(tmp_path),
         "SCHWAB_TOKEN_PATH": str(tmp_path / "missing_token.json"),
     }
-    bat = home / "start_capture_daemon.bat"
+    bat = home / "start_capture_daemon.cmd"
     subprocess.Popen(launch.daemon_window(bat), cwd=home, env=env)
     try:
         end = time_et.elapsed() + 60

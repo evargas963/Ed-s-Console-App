@@ -4,7 +4,7 @@ A check of shapes only; it cannot see a design-level patch. A file whose code is
 comments and docstrings are set aside (code_identical: the Python syntax tree; page code's syntax
 tree from Babel, tools/js_code_tree.js), or whose change is exactly the standard tools' own
 (ruff's safe fixes with the PR's committed pyproject.toml, then ruff format: tool_fixed), is not a
-change of product code. An .html page or a .bat file is always one, and so
+change of product code. An .html page or a batch file (.bat, .cmd) is always one, and so
 is removing code nothing calls, a deleted file included.
 
 The whole repository is judged (operator 2026-11-04: everything is repo wide): the shapes of every
@@ -69,7 +69,7 @@ from pathlib import Path
 
 #: the files whose patch shapes are counted and judged
 SHAPED_SUFFIXES = (".py", ".js", ".mjs", ".html")
-PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat")
+PRODUCT_SUFFIXES = (*SHAPED_SUFFIXES, ".bat", ".cmd")
 NOT_PRODUCT = ("tests/", "tools/", ".github/", "docs/", "playwright.config.mjs")
 CATCH_ALL = ("Exception", "BaseException")
 #: the errors whose only meaning is that the file read is not there (_absence_reads); a dict's

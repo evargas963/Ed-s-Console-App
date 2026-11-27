@@ -23,7 +23,20 @@ REPO = Path(__file__).resolve().parent.parent
 #: a command that runs a tool as a script
 SCRIPT_RUN = re.compile(r"python(?:\.exe)?\s+tools/(\w+)\.py")
 #: text a command can be written in
-TEXT = {".md", ".py", ".yml", ".yaml", ".toml", ".json", ".bat", ".ps1", ".mjs", ".js", ".cfg"}
+TEXT = {
+    ".md",
+    ".py",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".json",
+    ".bat",
+    ".cmd",
+    ".ps1",
+    ".mjs",
+    ".js",
+    ".cfg",
+}
 
 
 def _tracked() -> list[str]:

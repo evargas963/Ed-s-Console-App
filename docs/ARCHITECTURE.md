@@ -30,8 +30,8 @@ EdWebConsole/
 ├── tests/
 ├── tools/       the few checks the standard tools cannot do
 ├── docs/
-├── start_ed_console.bat     runs launch.py, which starts the one program
-└── start_capture_daemon.bat the program's window, which launch.py opens
+├── start_ed_console.cmd     runs launch.py, which starts the one program
+└── start_capture_daemon.cmd the program's window, which launch.py opens
 ```
 
 Imports flow one way: push → state → calc; feed → state. `locks.imports.toml` holds the rules that

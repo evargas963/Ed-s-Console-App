@@ -7,7 +7,7 @@ description:
 
 # Deploy
 
-Production is the `EdWebConsole` checkout: `start_ed_console.bat` runs `launch.py`, which brings the
+Production is the `EdWebConsole` checkout: `start_ed_console.cmd` runs `launch.py`, which brings the
 checkout to `origin/main` and starts Ed Console, one program, in its own window: the capture daemon,
 which serves the console's pages on port 8000 itself. Python 3.13, the project `.venv`; live needs
 `schwab_token.json` (`python reauth_schwab.py`). Probe `127.0.0.1`, never `localhost` (Windows tries
@@ -25,7 +25,7 @@ one aside, both stopped, Ed runs `icacls <file> /remove:d evarg`, moves it with 
    deploy.
 3. Stop it: `.venv/Scripts/python.exe launch.py stop` in the production checkout; show its output.
 4. Start it from outside this session, so an app restart cannot end it:
-   `explorer.exe start_ed_console.bat` in the production checkout.
+   `explorer.exe start_ed_console.cmd` in the production checkout.
 5. Confirm it came back and runs the merge commit: one program (`Get-CimInstance Win32_Process` with
    `capture_main` in the command line: the venv's launcher and its interpreter child), the ports it
    holds (`program_lock.program_ports()`), `curl -s http://127.0.0.1:8000/api/health` (its

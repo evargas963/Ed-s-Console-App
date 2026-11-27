@@ -829,10 +829,11 @@ def test_every_python_and_page_code_file_in_the_repo_is_read():
     assert product and all(trees)
 
 
-def test_a_batch_file_is_product_code_and_is_not_read_as_page_code(tmp_path):
-    root = _repo(tmp_path, {**BASE, "start.bat": "@echo off\r\n"})
-    _commit(root, {"start.bat": '@echo off\r\nrun || ""\r\n'})
-    assert _changed(root) == ["start.bat"]
+@pytest.mark.parametrize("name", ["start.bat", "start.cmd"])
+def test_a_batch_file_is_product_code_and_is_not_read_as_page_code(tmp_path, name):
+    root = _repo(tmp_path, {**BASE, name: "@echo off\r\n"})
+    _commit(root, {name: '@echo off\r\nrun || ""\r\n'})
+    assert _changed(root) == [name]
     assert cee.violations(root, "main") == []
 
 
