@@ -498,6 +498,42 @@
       "category": "ruff S311 (bandit",
       "pattern": "^feed/schwab_client\\.py:\\d+: Standard pseudo-random generators",
       "reason": "a server-error wait's jitter, each wait between half of it and all of it (AGENTS.md rule 3; Amazon's Builders' Library), not a secret"
+    },
+    {
+      "verdict": "ok",
+      "category": "keys read in Schwab's spelling",
+      "pattern": "^(config|db_authority|app/market_data/schwab/streaming/capture)\\.py: (ED_[A-Z_]+|SCHWAB_[A-Z_]+)$",
+      "reason": "a setting of the process environment read by its name, not a field of Schwab's"
+    },
+    {
+      "verdict": "ok",
+      "category": "keys read in Schwab's spelling",
+      "pattern": ": (LEVELONE_OPTIONS|NASDAQ_BOOK|NYSE_BOOK)$",
+      "reason": "Schwab's own service name, the key of a map by service (Schwab Streamer API, the services), not a field"
+    },
+    {
+      "verdict": "ok",
+      "category": "keys read in Schwab's spelling",
+      "pattern": "^calc/terrain_engine\\.py: (CALL|PUT)$",
+      "reason": "Schwab's putCall values: a strike's legs held by the side Schwab names them"
+    },
+    {
+      "verdict": "ok",
+      "category": "keys read in Schwab's spelling",
+      "pattern": "^feed/schwab_client\\.py: fromDate$",
+      "reason": "a parameter of Schwab's /pricehistory request, which Feed reads back from its own request (schwab-market-data-spec), not a field Schwab sends"
+    },
+    {
+      "verdict": "ok",
+      "category": "keys read in Schwab's spelling",
+      "pattern": "^push/(confluence|levels)\\.py: (PDC|TODAY_POC)$",
+      "reason": "the name of one of our levels (calc.terrain_engine.OPTION_LEVELS and the level list), the industry's abbreviation (prior day's close, point of control), not read from Schwab"
+    },
+    {
+      "verdict": "issue",
+      "category": "keys read in Schwab's spelling",
+      "pattern": ": greeksTime$",
+      "reason": "our own key written into Schwab's contract record in Schwab's spelling (feed.chain_sweep): a reader cannot tell it from a field Schwab sent (rules 3 and 17)"
     }
   ]
 }
