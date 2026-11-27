@@ -9,8 +9,8 @@ output is bounded.
 
 from __future__ import annotations
 
-import contextlib
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -23,6 +23,7 @@ import psutil
 import time_et
 
 ROOT = Path(__file__).resolve().parent.parent
+log = logging.getLogger(__name__)
 RUNNER = ROOT / "scripts" / "run-pytest-full.mjs"
 NODE = shutil.which("node")
 
@@ -103,13 +104,19 @@ def _spawn_with_non_draining_reader(cmd: list[str], env: dict[str, str]) -> subp
 def _stop_tree(proc: subprocess.Popen) -> None:
     """Stop `proc` and every process it started (the runner's pytest), then reap it.
 
-    A process that has already ended is stopped already, so it is passed over rather than
-    raised.
+    A process that has already ended is stopped already, so it is passed over, said, rather than
+    raised (psutil's own recipe for a process tree).
     """
-    with contextlib.suppress(psutil.NoSuchProcess):
-        for child in psutil.Process(proc.pid).children(recursive=True):
-            with contextlib.suppress(psutil.NoSuchProcess):
-                child.kill()
+    try:
+        children = psutil.Process(proc.pid).children(recursive=True)
+    except psutil.NoSuchProcess as e:
+        log.info("the runner had ended: %s", e)
+        children = []
+    for child in children:
+        try:
+            child.kill()
+        except psutil.NoSuchProcess as e:
+            log.info("a process it started had ended: %s", e)
     proc.kill()
     proc.wait(timeout=30)
 

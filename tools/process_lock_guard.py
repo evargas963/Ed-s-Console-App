@@ -22,6 +22,7 @@ Exit 2 BLOCKS. No env kill-switch. No Stop path. Reads nothing but the payload.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import sys
 from pathlib import Path
@@ -39,6 +40,7 @@ from tools.shell_parse import (  # the ONE shell reader
 )
 
 REPO = Path(__file__).resolve().parent.parent
+log = logging.getLogger("process_lock_guard")
 
 #: The file-mutating tool class is decided ONCE (tools.hook_chain.MUTATING_TOOLS, Cursor's
 #: StrReplace/Delete included) and imported here; no private copy.
@@ -62,7 +64,8 @@ def _primary_worktree_root(repo: Path) -> Path | None:
         return None
     try:
         text = dotgit.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except OSError as e:  # unreadable: the checkout is taken as production itself, refusing more
+        log.warning("process_lock_guard: %s cannot be read: %r", dotgit, e)
         return None
     m = re.search(r"^gitdir:\s*(.+?)\s*$", text, re.M)
     if not m:

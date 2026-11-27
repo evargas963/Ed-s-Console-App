@@ -815,19 +815,18 @@ def test_a_change_of_what_runs_beside_a_layout_change_is_a_change_of_page_code(
 
 
 def test_every_python_and_page_code_file_in_the_repo_is_read():
-    """Every .py, .js and .mjs product file of this repository reads (code_tree is not None).
+    """Every .py, .js and .mjs product file of this repository reads (code_tree gives its tree).
 
-    So a cleanup of its comments is judged by its code, never refused as unreadable.
+    So a cleanup of its comments is judged by its code, never refused as unreadable; one that
+    cannot be read raises ToolError, saying why.
     """
     root = Path(__file__).resolve().parent.parent
     files = subprocess.run(
         ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True
     ).stdout.split()
     product = [f for f in files if cee.is_product(f) and f.endswith(cee.CODE_TREE_SUFFIXES)]
-    unread = [
-        f for f in product if cee.code_tree(f, (root / f).read_text(encoding="utf-8")) is None
-    ]
-    assert product and unread == []
+    trees = [cee.code_tree(f, (root / f).read_text(encoding="utf-8")) for f in product]
+    assert product and all(trees)
 
 
 @pytest.mark.parametrize("name", ["start.bat", "start.cmd"])

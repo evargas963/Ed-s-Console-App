@@ -8,6 +8,7 @@ settings wire it, on a session transcript in Claude Code's JSON-lines form.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import socket
@@ -183,6 +184,28 @@ def _said(text: str) -> dict:
 
 
 TOOL_ONLY = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash"}]}}
+
+
+def test_a_damaged_line_is_said_and_a_long_transcripts_cut_line_is_not(tmp_path, caplog):
+    """A line that is not JSON decides nothing and is said, with its number.
+
+    A transcript longer than the tail read is read from the first whole line of its end: the
+    line the tail's start cuts is no damaged line, so it is not said.
+    """
+    waiting = _said("WAITING ON OPERATOR: his yes to a change of a request rate.")
+    with caplog.at_level(logging.WARNING, logger="keep_going"):
+        said = keep_going.last_message(_entries(tmp_path, '{"type": "assist', waiting))
+    assert said.startswith("WAITING ON OPERATOR:")
+    assert [r.getMessage()[:42] for r in caplog.records] == [
+        "keep_going: transcript line 1 is not JSON,"
+    ]
+    caplog.clear()
+    filler = _said("x" * 1000)
+    long = _entries(tmp_path, *[filler] * (keep_going.TAIL_BYTES // 1000 + 10), waiting)
+    assert long.stat().st_size > keep_going.TAIL_BYTES
+    with caplog.at_level(logging.WARNING, logger="keep_going"):
+        assert keep_going.last_message(long).startswith("WAITING ON OPERATOR:")
+    assert caplog.records == []
 
 
 def test_the_final_message_is_the_last_assistant_entry_and_a_bad_line_never_decides(tmp_path):
