@@ -152,6 +152,16 @@ def test_the_daemons_window_closes_when_its_batch_ends(tmp_path):
     assert not still_open, "the daemon's window stayed open after its batch ended"
 
 
+def _running_in(home: Path) -> list[psutil.Process]:
+    """Return the processes whose command line names `home`: a batch's window and its runs."""
+    return [
+        p
+        for p in psutil.process_iter(["cmdline"])
+        # None: a process whose command line Windows does not show
+        if p.info["cmdline"] is not None and str(home) in " ".join(p.info["cmdline"])
+    ]
+
+
 @pytest.mark.skipif(
     sys.platform != "win32", reason="the daemon's batch and its window are Windows'"
 )
@@ -162,20 +172,21 @@ def test_the_daemons_window_restarts_a_program_that_failed_and_not_one_that_may_
     """The real start_capture_daemon.cmd restarts a program that ended on an error, after its wait.
 
     One that ends because this checkout may not run live (2) or another program holds the stream
-    (3) is not restarted: its window stays to be read and starts nothing more. Induced: a
-    capture_main of the test's own, beside the batch where its -m finds it first, notes each run
-    and ends 1 (an error), then `code`.
+    (3) is not restarted: its window starts nothing more and ends, once its wait to be read is
+    over (at once here: the window has this test's input, and timeout.exe takes none
+    redirected). Induced: a capture_main of the test's own, beside the batch where its -m finds
+    it first, notes each run and ends 1 (an error), then `code`.
     """
     home = tmp_path / "checkout"
     home.mkdir()
     shutil.copy(launch.ROOT / "start_capture_daemon.cmd", home)
     venv.create(home / ".venv")
     runs = tmp_path / "runs"
-    package = home / "app" / "market_data" / "schwab" / "streaming"
-    package.mkdir(parents=True)
-    for folder in (package, *package.relative_to(home).parents):
+    package = Path("app", "market_data", "schwab", "streaming")
+    (home / package).mkdir(parents=True)
+    for folder in (package, *package.parents[:-1]):
         (home / folder / "__init__.py").write_text("", encoding="utf-8")
-    (package / "capture_main.py").write_text(
+    (home / package / "capture_main.py").write_text(
         "import sys\nfrom pathlib import Path\n"
         f"runs = Path({str(runs)!r})\n"
         "before = len(runs.read_text().splitlines()) if runs.exists() else 0\n"
@@ -185,18 +196,22 @@ def test_the_daemons_window_restarts_a_program_that_failed_and_not_one_that_may_
     )
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     subprocess.Popen(launch.daemon_window(home / "start_capture_daemon.cmd"), cwd=home, env=env)
+    ran = [runs]
     try:
-        deadline = time_et.elapsed() + 60.0
-        while not (runs.exists() and len(runs.read_text().splitlines()) == 2):
-            assert time_et.elapsed() < deadline, "the window did not restart the failed program"
-            time.sleep(0.1)
-        time.sleep(8)  # past the window's 5 s wait before a restart
+        # the window has started once the first run notes itself, and ends only at its batch's end
+        asyncio.run(
+            until(
+                lambda: runs.exists() and not _running_in(home),
+                90,
+                state=lambda: [
+                    f"runs: {len(r.read_text().splitlines())}" for r in ran if r.exists()
+                ],
+            )
+        )
         assert runs.read_text().splitlines() == ["run", "run"], "restarted after exit code"
     finally:
-        for p in psutil.process_iter(["cmdline"]):
-            cmd = p.info["cmdline"]  # None: a process whose command line Windows does not show
-            if cmd is not None and str(home) in " ".join(cmd):
-                p.kill()
+        for p in _running_in(home):
+            p.kill()
 
 
 @pytest.mark.alone
