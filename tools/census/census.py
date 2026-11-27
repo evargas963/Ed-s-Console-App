@@ -1303,6 +1303,41 @@ lines_matching(
     "9/15",
     "regex",
 )
+# a test that assigns over a name of a product module it imported (`calc.spot = ...`, or setattr)
+# patches the code it tests as surely as a patching tool; an object's state set as the program sets
+# it (`ofs.FEED.on_tick = ...`) is not a module's name
+ASSIGNED_OVER = "tests that assign over a product module's name (a patch, rule 9)"
+add(S, ASSIGNED_OVER, "9", "ast")
+PRODUCT_TOPS = {f.split("/")[0].removesuffix(".py") for f in PRODUCT_PY}
+for f in [f for f in TEST_FILES if f in trees]:
+    bound = set()  # the names the test binds to the product: each module or name it imports
+    for node in ast.walk(trees[f]):
+        if isinstance(node, ast.Import):
+            bound |= {
+                a.asname or a.name.split(".")[0]
+                for a in node.names
+                if a.name.split(".")[0] in PRODUCT_TOPS
+            }
+        elif (
+            isinstance(node, ast.ImportFrom)
+            and node.module is not None  # a relative import names no module
+            and node.module.split(".")[0] in PRODUCT_TOPS
+        ):
+            bound |= {a.asname or a.name for a in node.names}
+    for node in ast.walk(trees[f]):
+        if isinstance(node, ast.Assign | ast.AugAssign | ast.AnnAssign):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            owners = [t.value for t in targets if isinstance(t, ast.Attribute)]
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "setattr"
+        ):
+            owners = node.args[:1]
+        else:
+            continue
+        if any(isinstance(o, ast.Name) and o.id in bound for o in owners):
+            add(S, ASSIGNED_OVER, "9", "ast", f"{f}:{node.lineno}: {ast.unparse(node)[:120]}")
 # a test waits on its cause, or polls for it with a deadline (tests.shared_helpers.until): a sleep
 # outside a poll's loop, but a yield (sleep(0)), is a fixed wait (Fowler, "Eradicating
 # Non-Determinism in Tests"); a child program's own code, a string to the test, is not the test's.
