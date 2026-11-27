@@ -717,18 +717,18 @@
         color: var(--ed-ink);
         background: var(--ed-panel-2);
       }
-      .rail-child.on {
-        color: #fff;
-        font-weight: 600;
-        background: var(--ed-accent);
-      }
       .rail-child.na {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         cursor: not-allowed;
       }
       .rail-child.na:hover {
         background: none;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
+      }
+      .rail-child.on {
+        color: #fff;
+        font-weight: 600;
+        background: var(--ed-accent-fill);
       }
 
       /* watchlist (rail bottom) */
@@ -832,7 +832,7 @@
       .st-x {
         background: none;
         border: none;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         font-size: 14px;
         line-height: 1;
         padding: 0 2px;
@@ -943,11 +943,11 @@
         background: var(--ed-accent-bg);
       }
       .tab.na {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
       }
       .tab.na:hover {
         background: none;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         cursor: not-allowed;
       }
       .tab .np {
@@ -955,7 +955,7 @@
         letter-spacing: 0.1em;
         vertical-align: 2px;
         margin-left: 4px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
       }
 
       .viewbar {
@@ -987,12 +987,12 @@
         box-shadow: inset 0 -2px 0 var(--ed-accent);
       }
       .vtab.na {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         cursor: not-allowed;
       }
       .vtab.na:hover {
         background: none;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
       }
       .viewbar .ctrls,
       .subnav .ctrls {
@@ -1073,7 +1073,7 @@
         box-shadow: 0 0 0 2px var(--ed-neg-bg, transparent);
       }
       .ctrl input::placeholder {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         font-weight: 500;
       }
       .ctrl .cv::before {
@@ -1235,7 +1235,7 @@
         color: var(--ed-stale);
       }
       .chn-head .chn-dup {
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
       }
       /* Flow subview (D) — one selected contract's microstructure; server classifications are authority */
       .fl-head {
@@ -1286,7 +1286,7 @@
         border-color: var(--ed-live);
       }
       .fl-badge.warn {
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
         border-color: var(--ed-warn);
       }
       .fl-badge.stale {
@@ -1362,7 +1362,7 @@
       .fl-foot {
         font-family: var(--ed-sans);
         font-size: 10.5px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         padding: 12px 2px 0;
         line-height: 1.5;
       }
@@ -1387,7 +1387,7 @@
         font-size: 9.5px;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         padding: 5px 10px 3px;
       }
       .dom-row {
@@ -1707,7 +1707,7 @@
       }
       .panel-h #klSrc {
         font-size: 10px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
       }
       .panel-h .r {
         margin-left: auto;
@@ -1854,7 +1854,7 @@
       }
       .kl-row .k .kl-scope {
         font-size: 10px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         margin-left: 6px;
         letter-spacing: 0.02em;
       } /* per-row scope disclosure (e.g. the expiry a ratio is scoped to) */
@@ -1909,7 +1909,7 @@
         font-weight: 600;
       }
       .kl-tab.na {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         cursor: not-allowed;
       }
       .kl-h .sub {
@@ -2101,7 +2101,7 @@
         color: var(--ed-neg-ink);
       }
       .heat-vlegend .caps .m {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         text-align: left;
       }
       /* OI/Volume are unsigned magnitudes (call+put) -- a cell can never render in the red/negative
@@ -2136,7 +2136,7 @@
       }
       .heat-banner.degraded {
         background: var(--ed-proxy-bg);
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
         border: 1px solid var(--ed-warn);
       }
       .heat-banner.warming {
@@ -2643,7 +2643,7 @@
       /* an expired expiration (server-stamped): kept for reference in Wider / All available, never
      presented as current structure */
       .heat .hexp.expired .d {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         text-decoration: line-through;
       }
       .heat .hexp.expired .dte {
@@ -2656,7 +2656,7 @@
       }
       .heat-pan {
         font-size: 11px;
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
         padding: 0 0 6px;
       }
       /* concise status banner: one line, details in the tooltip */
@@ -2735,7 +2735,7 @@
         font-weight: 600;
       }
       .sd td.dim {
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
       }
       .sd tr.sd-net td {
         border-top: 1px solid var(--ed-edge);
@@ -2765,11 +2765,11 @@
         border-radius: 4px;
         font-size: 10px;
         letter-spacing: 0.03em;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         background: transparent;
       }
       .st-flag.on {
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
         background: var(--ed-proxy-bg);
         border: 1px solid var(--ed-warn);
       }
@@ -3186,7 +3186,7 @@
         gap: 12px;
         font-family: var(--ed-sans);
         font-size: 10.5px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         padding: 10px 2px 0;
       }
       .lv-foot .lv-absent {
@@ -3220,7 +3220,7 @@
       }
       .of .oe-sub {
         font-size: 11px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
         margin-top: 10px;
         max-width: 44ch;
         margin-left: auto;
@@ -3249,7 +3249,7 @@
         letter-spacing: 0.02em;
         padding: 1px 5px;
         border-radius: 3px;
-        color: var(--ed-ink-4);
+        color: var(--ed-ink-3);
       }
       .of-cls.at_bid {
         color: var(--ed-neg-ink);
@@ -3261,7 +3261,7 @@
       }
       .of-cls.outside_spread_low,
       .of-cls.outside_spread_high {
-        color: var(--ed-warn);
+        color: var(--ed-warn-ink);
       }
 
       /* AI drawer */
