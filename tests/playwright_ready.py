@@ -45,12 +45,15 @@ def ensure_playwright_ready(*, install_browsers: bool = True) -> None:
             "Then re-run: pytest tests/test_playwright_enforcement.py  or  npm run test:e2e"
         )
 
+    # npx by its full path, run with no shell between (npx.cmd on Windows)
+    npx = shutil.which("npx")
+    if npx is None:
+        raise AssertionError("Playwright E2E requires npx on PATH; it comes with npm.")
     r = subprocess.run(
-        "npx playwright --version",
+        [npx, "playwright", "--version"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
-        shell=True,
         timeout=120,
         env=os.environ.copy(),
     )
@@ -63,11 +66,10 @@ def ensure_playwright_ready(*, install_browsers: bool = True) -> None:
 
     if install_browsers:
         r2 = subprocess.run(
-            "npx playwright install chromium",
+            [npx, "playwright", "install", "chromium"],
             cwd=str(ROOT),
             capture_output=True,
             text=True,
-            shell=True,
             timeout=600,
         )
         if r2.returncode != 0:
