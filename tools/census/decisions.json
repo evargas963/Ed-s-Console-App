@@ -1,6 +1,66 @@
 {
-  "about": "Each candidate item is checked by hand once; its verdict and reason are recorded here and census.py applies them. verdict 'issue' moves the item to the issues column; 'ok' moves it to a reported 'checked, not an issue' row with this reason. An item no decision matches stays a candidate. 'category' is the start of the candidate row's name; 'pattern' a regular expression searched in the item.",
+  "about": "Each candidate item, and each issue at its row's design target, is checked by hand once; its verdict and reason are recorded here and census.py applies them. verdict 'issue' moves a candidate to the issues column; 'ok' moves an item to a reported 'checked, not an issue' row with this reason, which names the rule that sets the target. An item no decision matches stays where it was counted. 'category' is the start of the row's name; 'pattern' a regular expression searched in the item.",
   "decisions": [
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^time_et\\.py:\\d+: `time\\.(time|monotonic)` is banned",
+      "reason": "the one clock: the computer's clock is read in time_et.py alone (AGENTS.md rule 11)"
+    },
+    {
+      "verdict": "ok",
+      "category": "modules using sqlite3",
+      "pattern": "^(db|stream_spine)\\.py:\\d+: import sqlite3$",
+      "reason": "the startup loader (db.py) and the Recorder (stream_spine.py), the only modules that use sqlite3 (rule 6, docs/ARCHITECTURE.md)"
+    },
+    {
+      "verdict": "ok",
+      "category": "REST requests to Schwab",
+      "pattern": "^feed/schwab_client\\.py:\\d+: .*client\\.get_(option_chain|option_expiration_chain|quotes|market_hours|price_history)\\(",
+      "reason": "Feed's one request to each REST endpoint, each for what the stream does not send (rule 3); a streamed contract's fields /chains still sends are the work row STREAM-ONE"
+    },
+    {
+      "verdict": "ok",
+      "category": "skip or deferred-work markers",
+      "pattern": "^tests/test_check_integrity_v1\\.py:",
+      "reason": "check_integrity's own test: the markers it must refuse, written as its test data (rule 15)"
+    },
+    {
+      "verdict": "ok",
+      "category": "skip or deferred-work markers",
+      "pattern": "^tests/test_launch_v1\\.py:\\d+: windows_only = pytest\\.mark\\.skipif\\($",
+      "reason": "the launcher's window exists on Windows only; these tests run in pytest-windows, as production runs: a platform condition, not an opt-out"
+    },
+    {
+      "verdict": "ok",
+      "category": "skip or deferred-work markers",
+      "pattern": "^tests/test_operator_yes_guard_v1\\.py:\\d+: pytest\\.skip\\(\"no pythonw beside this Python",
+      "reason": "pythonw exists on Windows only; the test runs in pytest-windows, as production runs: a platform condition, not an opt-out"
+    },
+    {
+      "verdict": "ok",
+      "category": "remote branches",
+      "pattern": "^origin/evidence/schwab-minus-999$",
+      "reason": "kept on GitHub as evidence: raw Schwab answers that no other branch holds"
+    },
+    {
+      "verdict": "ok",
+      "category": "requirements with no machine check",
+      "pattern": ": no machine check(\\W+ENF-12)?$",
+      "reason": "held by the builder's audit (rule 14; ENF-12, the practices no machine can see); a requirement whose work item builds a check stays an issue"
+    },
+    {
+      "verdict": "ok",
+      "category": "swallows: JavaScript vendored",
+      "pattern": "^static/vendor/lightweight-charts/",
+      "reason": "the vendored chart library's one patch shape, left as it is: this repository cannot fix it at its source (AGENTS.md, Fix what you find)"
+    },
+    {
+      "verdict": "ok",
+      "category": "copied blocks (8+ lines): TOML",
+      "pattern": "^pyproject\\.toml:\\d+ = locks\\.ruff\\.toml:\\d+$",
+      "reason": "locks.ruff.toml stands alone, so no other file changes what locks counts: its copy of the commit's rules is the judge's own (AGENTS.md, Locks)"
+    },
     {
       "verdict": "ok",
       "category": "a product function more than one route calls",
