@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-import time_et
 from app.market_data.schwab.streaming.capture import shown_first
 from option_contract import read_chain
 from push import chain as push_chain
@@ -63,7 +62,7 @@ def _on_ladder(body):
 
 @pytest.mark.usefixtures("published")
 def test_the_chain_serves_every_gamma_as_schwab_sent_it():
-    body = push_chain.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
+    body = push_chain.chain("NVDA", NVDA["ts_utc"], {"expiry": NVDA["expiry"]})
     served = {c["symbol"]: c["gamma"] for c in _on_ladder(body)}
     sent = {k["symbol"]: k["gamma"] for k in NVDA["contracts"]}
     assert served[LARGE] == sent[LARGE] > 16
@@ -72,7 +71,7 @@ def test_the_chain_serves_every_gamma_as_schwab_sent_it():
 
 @pytest.mark.usefixtures("published")
 def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
-    body = push_chain.chain("NVDA", time_et.now(), {"expiry": NVDA["expiry"]})
+    body = push_chain.chain("NVDA", NVDA["ts_utc"], {"expiry": NVDA["expiry"]})
     sent = {
         k["symbol"]: k["lastTradingDay"]
         for k in NVDA["contracts"]
@@ -91,7 +90,7 @@ def test_the_chain_serves_each_last_trading_day_as_its_date_in_et():
 @pytest.mark.usefixtures("published")
 def test_the_heatmap_cell_of_a_large_gamma_has_its_gex():
     window = {"scope": "all", "centre": None, "shift": 0, "cols": None, "expiry": None}
-    body = push_surface.gamma_surface("NVDA", time_et.now(), window, requested=False)
+    body = push_surface.gamma_surface("NVDA", NVDA["ts_utc"], window, requested=False)
     cell = next(r for r in body["cells"] if r["strike"] == 148.0)
     assert cell["gex"][0] is not None
     assert all(r["gex"][0] is not None for r in body["cells"])
@@ -129,7 +128,7 @@ def test_the_chain_shows_greeks_on_a_no_value_volatility_as_missing():
         tk, NFLX.chain, NFLX.now.timestamp(), NFLX.spot, NFLX.now.date().isoformat(), NFLX.now
     )
     try:
-        body = push_chain.chain(tk, time_et.now(), {"expiry": expiry})
+        body = push_chain.chain(tk, NFLX.now.timestamp(), {"expiry": expiry})
     finally:
         with level_store._lock:
             level_store._levels.pop(tk, None)

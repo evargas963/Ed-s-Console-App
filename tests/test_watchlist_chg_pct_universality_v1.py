@@ -15,7 +15,6 @@ from pathlib import Path
 
 import live_market_plane as lmp
 import live_price_rows
-import time_et
 from tests.feed_live_helper import mark_feed_down, mark_feed_live
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -39,17 +38,17 @@ def test_the_price_row_serves_schwabs_percent_change_as_sent():
     try:
         lmp.record_from_level_one_equity("SPY", _SPY["item"], received_ts=_SPY["ts_recv"])
         assert (
-            live_price_rows.price_row("SPY", time_et.now())["chg_pct"]
+            live_price_rows.price_row("SPY", _SPY["ts_recv"])["chg_pct"]
             == _SPY["item"]["NET_CHANGE_PERCENT"]
             == -0.509189
         )
         assert _VIX["item"]["NET_CHANGE_PERCENT"] == 0
         lmp.record_from_level_one_equity("$VIX", _VIX["item"], received_ts=_VIX["ts_recv"])
         assert (
-            live_price_rows.price_row("$VIX", time_et.now())["chg_pct"] == 0.0
+            live_price_rows.price_row("$VIX", _VIX["ts_recv"])["chg_pct"] == 0.0
         )  # a flat day is a value
         assert (
-            live_price_rows.price_row("ZZNEVER", time_et.now())["chg_pct"] is None
+            live_price_rows.price_row("ZZNEVER", _SPY["ts_recv"])["chg_pct"] is None
         )  # Schwab sent nothing
         # each as the screen shows it: signed, two decimals; nothing sent, no text
         texts = {

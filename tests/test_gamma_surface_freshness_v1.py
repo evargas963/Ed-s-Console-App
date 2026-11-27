@@ -19,7 +19,6 @@ import pytest
 
 import live_market_plane as lmp
 import server
-import time_et
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from push import surface as push_surface
@@ -40,10 +39,10 @@ _ON, _OFF = "ZZFRESHON", "ZZFRESHOFF"  # on the watchlist, and not
 
 
 def _call(tk):
-    """Return the heatmap's panel for `tk` now: Auto, following the price, every column."""
+    """Return the heatmap's panel for `tk` at _AT: Auto, following the price, every column."""
     window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
     return push_surface.gamma_surface(
-        ticker_storage_key(tk), time_et.now(), window, requested=False
+        ticker_storage_key(tk), _AT.timestamp(), window, requested=False
     )
 
 
@@ -72,7 +71,8 @@ def _daemon(price: float, at: float, *tickers) -> None:
 @pytest.fixture
 def published():
     """CRWD's chain published at its capture under _ON and _OFF, at its own spot."""
-    _daemon(_CRWD["spot"], _AT.timestamp(), _ON, _OFF)  # live when the chain is published
+    # live when the chain is published and when the routes read it
+    _daemon(_CRWD["spot"], _AT.timestamp(), _ON, _OFF)
     for tk in (_ON, _OFF):
         server._publish_levels(
             tk,
@@ -81,7 +81,6 @@ def published():
             chain_spot=(_CRWD["spot"], _AT.timestamp()),
             now=_AT,
         )
-    _daemon(_CRWD["spot"], time_et.now(), _ON, _OFF)  # live now, as the routes read it
     yield
     with level_store._lock:
         for tk in (_ON, _OFF):
@@ -111,7 +110,7 @@ def test_the_live_surface_is_served_with_the_live_price():
 
 @pytest.mark.usefixtures("published")
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
-    _levels, live = server.terrain_cache_get(_ON, time_et.now())  # the one authority
+    _levels, live = server.terrain_cache_get(_ON, _AT.timestamp())  # the one authority
     d = _call(_ON)
     assert (d["levels_state"], d["levels_stale_reason"]) == (
         live["levels_state"],
@@ -146,7 +145,7 @@ def test_every_ticker_is_published_with_the_same_fields_and_atr_absent_without_a
 
     The chain basis, and ATR (from the bars, none here) absent, with no sentence in its place.
     """
-    t = push_terrain.terrain(ticker_storage_key(tk), time_et.now())
+    t = push_terrain.terrain(ticker_storage_key(tk), _AT.timestamp())
     assert t["chain_basis"] == CAPTURE_BASIS
     for horizon in ("daily", "weekly", "monthly"):
         assert t[f"atr_{horizon}"] is None and f"atr_{horizon}_reason" not in t, horizon
@@ -158,7 +157,7 @@ def test_with_no_levels_the_atr_is_absent():
 
     A ticker with no levels published still serves it (here absent, and no sentence in its place).
     """
-    t = push_terrain.terrain("ZZNOLEVELSATR", time_et.now())
+    t = push_terrain.terrain("ZZNOLEVELSATR", _AT.timestamp())
     assert t["atr_daily"] is None and "atr_daily_reason" not in t
 
 
