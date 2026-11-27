@@ -41,14 +41,16 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   file and every language, the scope never narrowed). It also counts every dependency not pinned to
   one version or pinned nowhere (a library's own), each with a known vulnerability (pip-audit, npm
   audit), each key read in Schwab's spelling that the field list does not hold, and each kind of
-  failure in the program's newest log (on the machine). Left: rows still to build: the stream's
-  silences and the screen's measured lag (SPEED's numbers, each session), the minutes of a session
-  with no record for a ticker, text contrast on the screen (axe-core in the browser tests) and the
-  page's JavaScript coverage; the census's own npm checkers updated past their 11 known
-  vulnerabilities; each finding fixed; each checker made a failing check at 0; one shared git reader
-  for the check tools (`_git` in `tools/check_end_to_end.py`, `tools/check_integrity.py`,
-  `tools/check_one_reader.py`, `tools/hook_chain.py`). Untracked files nothing uses go to an archive
-  beside the checkout; their deletion is the operator's.
+  failure in the program's newest log, and, from the record of the newest regular session, each
+  watchlist ticker's minutes with no quote received, Schwab's quote time to its receipt and the
+  stream's longest silences (on the machine). Left: rows still to build: the page's lag behind the
+  program (SPEED's numbers, each session), each streamed option contract's minutes with no record,
+  text contrast on the screen (axe-core in the browser tests) and the page's JavaScript coverage;
+  the census's own npm checkers updated past their 11 known vulnerabilities; each finding fixed;
+  each checker made a failing check at 0; one shared git reader for the check tools (`_git` in
+  `tools/check_end_to_end.py`, `tools/check_integrity.py`, `tools/check_one_reader.py`,
+  `tools/hook_chain.py`). Untracked files nothing uses go to an archive beside the checkout; their
+  deletion is the operator's.
 - REVIEW (IN PROGRESS): the repo-wide review's findings, each checked against the code and the
   sources and fixed with a test that fails on the old code. Next: the support and resistance line,
   once a longer price history shows which levels hold, and the other screens that print key levels.
