@@ -630,21 +630,27 @@ them".
 - **1. The daemon fetches the option chain.** Schwab's stream has no chain service; the contract
   list and open interest come only from REST. The daemon is the only Schwab client. Enforced by:
   `tests/test_schwab_client_import_boundary.py`.
-- **3. The browser is never pushed a whole chain.** Enforced by: no machine check — ENF-16.
+- **3. The browser is never pushed a whole chain.** The chain panel, the one panel that carries an
+  expiry's contracts, sends the asked expiry's alone, and no route serves a chain. Enforced by:
+  `tests/test_chain_api_v1.py` (`test_only_the_requested_expiry_is_served`,
+  `test_the_panel_is_plain_json_as_the_socket_sends_it_and_no_route_serves_it`).
 - **5. One database.** `ed.db` holds the stream's tables (D4), the chain history (decision 7) and
   the level crosses, with one writer, the Recorder. Enforced by: `tests/test_one_database_v1.py`;
   the console's read-only reads, `tests/test_level_crosses_wire.py`
   (`test_the_console_reads_the_crosses_and_a_write_through_it_fails`).
 - **6. Before any table is dropped:** each table's size is measured read-only, dropping needs the
   operator's word, and VACUUM is an offline maintenance step. Enforced by:
-  `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`); starting `EdDB` drops nothing
-  (`tests/test_data_path_tables_stand_v1.py`); any other table drop — ENF-16.
+  `tools/operator_law_guard.py` (`tests/test_protected_paths_v1.py`); starting `EdDB` drops nothing,
+  and on the writer's connections (`stream_spine.writer_connection`) SQLite refuses every drop
+  (`tests/test_data_path_tables_stand_v1.py`); every other connection is read-only.
 - **7. Chain history is kept for research.** Schwab keeps no past chains. One close capture a day
   per ticker (`chain_sweep.capture_slot`), every expiry, compressed, with each expiry's underlying
   price as sent and the chain's spot. Levels are not stored; research runs the one levels producer
   over the stored chains. Enforced by: `tests/test_chain_history_v1.py`.
 - **8. A panel scales its bars to what is visible.** Fitting bar lengths to the visible window is
-  drawing; the values drawn are the server's, unchanged. Enforced by: no machine check — ENF-16.
+  drawing: each bar is its value against the shown window's largest, served (`view.max_abs`), and
+  the values drawn are the server's, unchanged. Enforced by: `tests/e2e/console-gamma-scope.spec.js`
+  ("each bar is its value against the shown window's largest, with the served number").
 - **9. The trade side is estimated, and says so.** Schwab sends no aggressor side, so each print is
   signed by Lee and Ready against the bid and ask in force when it traded, never a later quote, and
   marked estimated (§3.4 Tape). Enforced by: `tests/test_tape_lee_ready_v1.py`,

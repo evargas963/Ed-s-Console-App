@@ -110,6 +110,26 @@ test.describe("the Gamma presentation scope", () => {
     expect(errors).toEqual([]);
   });
 
+  test("each bar is its value against the shown window's largest, with the served number", async ({
+    page,
+  }) => {
+    // docs/DATA_FLOW.md decision 8: the bars fit what is visible. CRWD's chain holds a strike larger
+    // than any in the window (max_abs_row, off screen); the window's own largest fills its row
+    const served = strikesFor("auto");
+    expect(Math.abs(served.max_abs_row.value)).toBeGreaterThan(served.view.max_abs);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#gbsBody .gbs-row")).toHaveCount(served.today.length);
+    const widths = [];
+    for (const r of served.today) {
+      const row = page.locator('#gbsBody .gbs-row[data-strike="' + r.strike + '"]');
+      await expect(row.locator(".gbs-v")).toHaveText(r.text);
+      const width = parseFloat(await row.locator(".gbs-bar").evaluate((el) => el.style.width));
+      expect(width).toBeCloseTo((Math.abs(r.value) / served.view.max_abs) * 100, 1);
+      widths.push(width);
+    }
+    expect(Math.max(...widths)).toBe(100);
+  });
+
   test("GEX-by-strike asks with the scope and draws the served window, legible at every scope", async ({
     page,
   }) => {

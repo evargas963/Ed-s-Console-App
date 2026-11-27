@@ -161,8 +161,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   `awk -i inplace`, python or node scripts that write files, PowerShell `Set-Content`/`Out-File`/
   `Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`, sed's own `w` command, and
   `git update-ref --stdin`. The standard tools' own safe fixes stay allowed.
-- ENF-03 (QUEUED): the page computes nothing (rule 4): the ESLint count of `Math`, `.sort(`,
-  `.reduce(`, `Date` and `Intl` outside the drawing modules driven to 0.
 - ENF-05 (QUEUED): every measurement and report covers every watchlist ticker; a check of the report
   scripts.
 - ENF-06 (QUEUED): a browser test that every shown time is Central Time.
@@ -176,8 +174,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   agent's work read in full, deploy means restarted and checked, `&&` chains, every requirement
   naming its enforcement, a screen's state said in its producer's words and not the page's), each
   held by the builder's audit until a check exists.
-- ENF-16 (QUEUED): operator decisions 3, 6 and 8 in `docs/DATA_FLOW.md` §6, which name no test, each
-  get one.
 - ENF-21 (QUEUED): a statement about what Schwab sends, accepts or limits cites `docs/schwab/` by
   section or Schwab's own reply; no machine check yet.
 - LIVE-SESSION (QUEUED): checks only a live session can show, across the watchlist: the heatmap

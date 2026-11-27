@@ -1,5 +1,7 @@
 """DATA_FLOW decision 6: starting the database's one writer leaves everything as it was.
 
+The writer can drop nothing: on its connections SQLite refuses every drop.
+
 The Recorder (stream_spine.CaptureWriter) creates the tables it writes at its start.
 
 It leaves every schema object it finds as it was, and every row of every table.
@@ -17,7 +19,9 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from stream_spine import CaptureWriter
+import pytest
+
+from stream_spine import CaptureWriter, writer_connection
 
 _NEWS = json.loads(
     (
@@ -111,3 +115,17 @@ def test_starting_the_database_keeps_every_table_it_finds_with_its_rows(tmp_path
         "starting the database dropped or changed an object"
     )
     assert _rows(db, before) == rows, "starting the database changed a table's rows"
+
+
+def test_the_writer_cannot_drop_a_table_or_an_index(tmp_path):
+    """A drop is the operator's alone: on the writer's connection SQLite refuses every one."""
+    db = tmp_path / "ed_console.db"
+    CaptureWriter(db)
+    before = _schema(db)
+    table = next(name for name, (kind, _sql) in before.items() if kind == "table")
+    index = next(name for name, (kind, sql) in before.items() if kind == "index" and sql)
+    with closing(writer_connection(db)) as conn:
+        for statement in (f'DROP TABLE "{table}"', f'DROP INDEX "{index}"'):
+            with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
+                conn.execute(statement)
+    assert _schema(db) == before
