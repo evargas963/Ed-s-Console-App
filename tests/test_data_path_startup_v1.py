@@ -533,7 +533,7 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
                 },
             )
         )
-        beats: list[float] = []
+        beats: asyncio.Queue[float] = asyncio.Queue()  # each beat's arrival, as it arrives
         async with (
             connect(f"{url}/ws", max_size=None) as reading,
             connect(f"{url}/ws", max_queue=1, max_size=None, close_timeout=1),
@@ -542,13 +542,18 @@ def test_a_browser_that_stopped_reading_is_dropped_others_keep_beats_and_the_sto
             async def read_all():
                 async for frame in reading:
                     if json.loads(frame)["type"] == "feed":
-                        beats.append(time_et.elapsed())
+                        beats.put_nowait(time_et.elapsed())
+
+            async def four_beats_after(start: float) -> None:
+                taken = 0
+                while taken < 4:
+                    taken += await beats.get() > start
 
             reader = asyncio.create_task(read_all())
             await until(lambda: stats.get("clients") == 2, 3)
             await until(lambda: stats.get("clients") == 1, 15)  # the stalled one dropped
             dropped_at, at_drop = time_et.elapsed(), stats["beat_send_failures"]
-            await until(lambda: sum(t > dropped_at for t in beats) >= 4, 10 * live_ui.HEARTBEAT_SEC)
+            await asyncio.wait_for(four_beats_after(dropped_at), 10 * live_ui.HEARTBEAT_SEC)
             missed = stats["beat_send_failures"] - at_drop
             stop.set()
             await asyncio.wait_for(daemon_side, 5)
