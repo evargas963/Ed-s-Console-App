@@ -7,17 +7,20 @@ every other action, a change to a test included, passes. Judged on real payloads
 hook chain the settings run.
 
 STAND-INS: python processes whose command lines carry the daemon's module, the console's app and
-launch.py (the guard reads command lines, as of production).
+launch.py (the guard reads command lines, as of production), and a copy of the system's own wait
+program under a name of its own, so a stop by name reaches it alone.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import psutil
 import pytest
 
 import runtime_layout
@@ -61,12 +64,26 @@ def _stand_in(*marks: str, exe: str = sys.executable, cwd: Path | None = None) -
     )
 
 
+#: the image name of a process of no production: a stop by a name the machine also runs under
+#: another user, whose command line cannot be read, is put to the operator, so a test names its own
+JOB = "ed_no_prod_job"
+
+
+def _named_job(folder: Path) -> subprocess.Popen:
+    """Start a copy of the system's own wait (ping on Windows, sleep elsewhere) named JOB."""
+    windows = sys.platform == "win32"
+    image = folder / (JOB + (".exe" if windows else ""))
+    shutil.copy(shutil.which("ping" if windows else "sleep"), image)
+    wait = ["-n", "600", "127.0.0.1"] if windows else ["600"]
+    return subprocess.Popen([str(image), *wait], stdout=subprocess.DEVNULL, cwd=folder)
+
+
 @pytest.fixture(scope="module")
 def procs(tmp_path_factory):
-    """Run the stand-ins: the daemon, the console, launch.py, and two more.
+    """Run the stand-ins: the daemon, the console, launch.py, and three more.
 
-    A process of no production, and a test console in another checkout (as Playwright's in a
-    worktree).
+    A process of no production, a test console in another checkout (as Playwright's in a
+    worktree), and JOB, which a stop by name reaches alone.
     """
     running = {
         "daemon": _stand_in("-m", "app.market_data.schwab.streaming.capture_main"),
@@ -76,7 +93,9 @@ def procs(tmp_path_factory):
         "worktree_console": _stand_in(
             "-m", "uvicorn", "server:app", cwd=tmp_path_factory.mktemp("worktree")
         ),
+        "job": _named_job(tmp_path_factory.mktemp("job")),
     }
+    assert psutil.Process(running["job"].pid).name().removesuffix(".exe") == JOB
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     if pythonw.exists():
         running["daemon_w"] = _stand_in(
@@ -402,8 +421,8 @@ def test_the_test_changed_below_is_on_main():
         # looking at processes, and stopping or opening something that is not production
         _shell("Get-Process python* | Select-Object Id, CPU", "PowerShell"),
         _shell("Get-Process -Id 18692", "PowerShell"),
-        _shell("Stop-Process -Name node", "PowerShell"),
-        _shell("taskkill /IM chrome.exe"),
+        _shell(f"Stop-Process -Name {JOB}", "PowerShell"),
+        _shell(f"taskkill /IM {JOB}.exe"),
         _shell("wmic process where name='python.exe' get processid,commandline"),
         _shell("ii .\\docs\\DATA_FLOW.md", "PowerShell"),
         _shell("explorer.exe .", "PowerShell"),
