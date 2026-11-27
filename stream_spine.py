@@ -1769,6 +1769,39 @@ class _Keep:
     removed: Counter[str] = field(default_factory=Counter[str])
 
 
+#: SQLite's actions that drop a schema object: a drop is the operator's alone, by hand
+#: (docs/DATA_FLOW.md decision 6), so the writer's connections refuse each one
+_DROPS = frozenset(
+    {
+        sqlite3.SQLITE_DROP_INDEX,
+        sqlite3.SQLITE_DROP_TABLE,
+        sqlite3.SQLITE_DROP_TEMP_INDEX,
+        sqlite3.SQLITE_DROP_TEMP_TABLE,
+        sqlite3.SQLITE_DROP_TEMP_TRIGGER,
+        sqlite3.SQLITE_DROP_TEMP_VIEW,
+        sqlite3.SQLITE_DROP_TRIGGER,
+        sqlite3.SQLITE_DROP_VIEW,
+        sqlite3.SQLITE_DROP_VTABLE,
+    }
+)
+
+
+def _no_drop(action: int, *_: str | None) -> int:
+    """Answer SQLite for each action a writer's statement takes: a drop is refused, all else not."""
+    return sqlite3.SQLITE_DENY if action in _DROPS else sqlite3.SQLITE_OK
+
+
+def writer_connection(path: Path, timeout_sec: float = 5.0) -> sqlite3.Connection:
+    """Open the database at `path` for the writer, waiting up to `timeout_sec` for its lock.
+
+    SQLite refuses a drop on it (_no_drop, Connection.set_authorizer). The wait is sqlite3's own
+    default unless given.
+    """
+    conn = sqlite3.connect(str(path), timeout=timeout_sec)
+    conn.set_authorizer(_no_drop)
+    return conn
+
+
 def _prepared(p: Path) -> list[_Spill]:
     """Prepare the database at `p` for the writer, and return the spill files found beside it.
 
@@ -1780,7 +1813,7 @@ def _prepared(p: Path) -> list[_Spill]:
     messages go after the newest. They are returned oldest first. No message is written here: a
     database that refuses writes at the start never stops the daemon starting.
     """
-    conn = sqlite3.connect(str(p))
+    conn = writer_connection(p)
     try:
         conn.executescript("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
         conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
@@ -1896,7 +1929,7 @@ class CaptureWriter:
         if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
             return None
         if conn is None:
-            own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
+            own = writer_connection(self.db_path, self.timeout_sec)
             try:
                 with own:  # commits, or rolls back on an error
                     out = self.insert(topic, msg, conn=own)
@@ -1972,7 +2005,7 @@ class CaptureWriter:
 
     def _write_alone(self, item: Item) -> None:
         """Write `item` on a connection of its own: the writer's thread is not running."""
-        own = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
+        own = writer_connection(self.db_path, self.timeout_sec)
         try:
             with own:  # commits, or rolls back on an error
                 out = self._store(own, item)
@@ -2204,7 +2237,7 @@ class CaptureWriter:
         return self.insert(*item, conn=conn)
 
     def _open(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path), timeout=self.timeout_sec)
+        conn = writer_connection(self.db_path, self.timeout_sec)
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
         return conn
