@@ -63,6 +63,12 @@
     },
     {
       "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tools/hook_chain\\.py:\\d+: `importlib\\.import_module` is banned[^|]*\\| mod = importlib\\.import_module\\(name\\) in run_chain$",
+      "reason": "the hook wiring (.claude/settings.json, .cursor/hooks.json) is the one roster of guards, and the chain loads each inside its own try, so a guard that cannot load blocks the action (exit 2); an import at the top would fail open, since Claude Code takes any other exit code as no block"
+    },
+    {
+      "verdict": "ok",
       "category": "modules using sqlite3",
       "pattern": "^(db|stream_spine)\\.py:\\d+: import sqlite3$",
       "reason": "the startup loader (db.py) and the Recorder (stream_spine.py), the only modules that use sqlite3 (rule 6, docs/ARCHITECTURE.md)"
