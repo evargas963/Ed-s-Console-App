@@ -267,9 +267,9 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    (`static/js/ed-tv-chart.js`) (the same config, a count in the census). Every letter and number it
    shows is readable: WCAG 2.2's contrast minimum in both themes, an inactive control too
    (`docs/SOURCES.md` wcag-contrast-minimum; operator: every number and letter high contrast,
-   uniform), text colored with the theme's text tokens, `--ed-ink-4` kept for hairlines. Enforced
-   by: `tests/e2e/console-contrast.spec.js` on every page the shell lists, each panel in its empty
-   state (in force); text drawn on a canvas and a panel holding data — no machine check, CENSUS
+   uniform), text colored with the theme's text tokens, no muted gray. Enforced by:
+   `tests/e2e/console-contrast.spec.js` on every page the shell lists, each panel in its empty state
+   (in force); text drawn on a canvas and a panel holding data — no machine check, CENSUS
 5. **The numbers** (serves 4, 5, 7). Every value comes from its one producer and matches what Schwab
    sent. Calculations keep every digit and use every contract; rounding happens only on screen.
    Every value is shown with its time. While it updates it is live; when it stops, for any reason,

@@ -1,5 +1,5 @@
 /* Trade Desk / Desk subview + the shared TradingView-style chart (ed-tv-chart.js).
-   Colors are ed-tokens only; no muted --ed-ink-4 on real text (WCAG AA). */
+   Colors are ed-tokens only; text meets WCAG 2.2 AA contrast (tests/e2e/console-contrast.spec.js). */
 
 /* ---------- shared chart ---------- */
 .tvc {
