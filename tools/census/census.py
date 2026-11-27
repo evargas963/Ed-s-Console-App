@@ -2532,6 +2532,11 @@ judged = {
 for it in [it for it in rows[TID251].items if it.split(": ")[0] in judged]:
     rows[TID251].items.remove(it)
     add(TID251[0], "TID251 lines judged in D, counted there (reported)", "locks/13", "ruff", it)
+# each line left is judged by its statement and the function that holds it
+for i, it in enumerate(rows[TID251].items):
+    f, n = it.split(":")[0], int(it.split(":")[1])
+    line = TEXT[f].splitlines()[n - 1].strip()[:100]
+    rows[TID251].items[i] = f"{it} | {line} in {enclosing(f, n)}"
 decisions = [
     (d["verdict"], d["category"], re.compile(d["pattern"]), d["reason"])
     for d in json.loads((CENSUS / "decisions.json").read_text(encoding="utf-8"))["decisions"]

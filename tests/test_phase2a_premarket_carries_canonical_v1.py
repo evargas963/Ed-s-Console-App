@@ -20,7 +20,7 @@ from calc.liquidity_value_engine import (
     build_zone_snapshot,
 )
 from calc.micro_structure import Candle
-from tests.conftest import most_recent_trading_day_et
+from tests.conftest import MARKETS_DAY
 from time_et import ET, sessions
 
 REPO = Path(__file__).resolve().parent.parent
@@ -80,7 +80,7 @@ def _pre_open(session: date) -> datetime:
 
 def test_premarket_carries_every_phase2a_level_unchanged():
     """One computation, the zones and the levels, identical values; absent stays absent."""
-    session = most_recent_trading_day_et()
+    session = MARKETS_DAY
     bars = _bars(session)
     canon = _canonical(session, bars)
 
@@ -113,7 +113,7 @@ def test_the_live_builder_before_the_open_carries_the_snapshot():
 
     From the same snapshot (ONE-09: no recompute path remains).
     """
-    session = most_recent_trading_day_et()
+    session = MARKETS_DAY
     canon = _canonical(session, _bars(session))
     out = build_zone_snapshot(
         "SPY",
