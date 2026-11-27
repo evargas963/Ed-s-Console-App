@@ -45,10 +45,11 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   watchlist ticker's minutes with no quote received, Schwab's quote time to its receipt and the
   stream's longest silences (on the machine). Left: rows still to build: the page's lag behind the
   program (SPEED's numbers, each session), each streamed option contract's minutes with no record,
-  text contrast on the screen (axe-core in the browser tests) and the page's JavaScript coverage;
-  the census's own npm checkers updated past their 11 known vulnerabilities; each finding fixed;
-  each checker made a failing check at 0; one shared git reader for the check tools (`_git` in
-  `tools/check_end_to_end.py`, `tools/check_integrity.py`, `tools/check_one_reader.py`,
+  the contrast of text drawn on a canvas and of panels holding data (every page's empty state is
+  held by `tests/e2e/console-contrast.spec.js`, AGENTS.md rule 4) and the page's JavaScript
+  coverage; the census's own npm checkers updated past their 11 known vulnerabilities; each finding
+  fixed; each checker made a failing check at 0; one shared git reader for the check tools (`_git`
+  in `tools/check_end_to_end.py`, `tools/check_integrity.py`, `tools/check_one_reader.py`,
   `tools/hook_chain.py`). Untracked files nothing uses go to an archive beside the checkout; their
   deletion is the operator's.
 - REVIEW (IN PROGRESS): the repo-wide review's findings, each checked against the code and the
