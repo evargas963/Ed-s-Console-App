@@ -191,11 +191,11 @@ def test_the_reader_takes_each_frame_with_no_timer_of_its_own(tmp_path):
         stop = asyncio.Event()
         run = asyncio.create_task(conn.run_connection(client, stop))
         await until(lambda: conn.stream is not None and conn.stream.schwab_ts is not None, 30)
-        before, started = loop.timers, time_et.now()
+        before, started = loop.timers, time_et.elapsed()
         await time_et.set_within(stop, 2.0)  # this wait's own timer: one
         scheduled = loop.timers - before - 1
         behind = time_et.now() - conn.stream.schwab_ts
-        assert time_et.now() - started >= 2.0
+        assert time_et.elapsed() - started >= 2.0
         stop.set()
         await asyncio.wait_for(run, 30)
         return scheduled, behind

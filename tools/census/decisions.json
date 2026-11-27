@@ -9,6 +9,60 @@
     },
     {
       "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/[\\w/]+\\.py:\\d+: `time_et\\.elapsed` is banned",
+      "reason": "a test times its subject, watches it for a while, paces a stand-in or waits with the one wait (tests.shared_helpers.until), on the one elapsed clock: a test is an entry point (rule 11)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/[\\w/]+\\.py:\\d+: `sqlite3` is banned",
+      "reason": "a test reads the record the Recorder wrote, or writes the record the loader reads, itself: a test checks against its own reading (AGENTS.md, Everything is repo wide)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/[\\w/]+\\.py:\\d+: `websockets` is banned",
+      "reason": "the test plays Schwab's stream (tests/schwab_stream_standin.py) or a page's socket to the program"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/(schwab_rest_standin|schwab_stream_standin|feed_live_helper)\\.py:\\d+: `time_et\\.now` is banned",
+      "reason": "Schwab's stand-in answers live, as Schwab does: its token, heartbeat and answer times are on the clock the program under test reads"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/[\\w/]+\\.py:\\d+: `time_et\\.now` is banned[^|]*\\| (\"creation_timestamp\"|\"expires_at\"|created = int\\(time_et\\.now\\(\\)\\)|int\\(time_et\\.now\\(\\)\\) \\+ 100 in )",
+      "reason": "a sign-in token's times: schwab-py and authlib judge a token by the computer's clock, so a test's token is made on it"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/test_(source_register|markets_sessions)_v1\\.py:\\d+: `time_et\\.now` is banned[^|]*\\| today = datetime\\.fromtimestamp\\(time_et\\.now\\(\\), ET\\)\\.date\\(\\) in ",
+      "reason": "the date the test is about is today: a source's read-again date, the sessions the daemon asks /markets for today"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tests/(test_data_path_(live_status|one_watchlist|rules|silent_price|startup|writer_failures)_v1|test_feed_status_v1|test_launch_v1|test_live_push_channel_v1|test_live_ui_daemon_to_browser_v1|test_markets_sessions_v1|test_option_contract_rule_v1|test_options_order_flow_(api|semantics)_v1|test_scheduler_user_tickers_and_confluence_misc|test_schwab_capability_boundary_v1|test_stream_reader_keeps_up_v1)\\.py:\\d+: `time_et\\.now` is banned",
+      "reason": "drives the live program, which stamps each receipt, beat and served panel on the computer's clock itself, so the test reads that clock; a captured value is replayed live (rule 9's captured instant is for a value computed from captured data alone)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^tools/(census/census|cpu_load|schwab_field_inventory)\\.py:\\d+: `(time_et\\.(now|elapsed)|sqlite3)` is banned",
+      "reason": "a tool's run is its own entry point (rule 11): the census's and the inventory's date and request window, the load generator's timer; the inventory reads the record read-only, for research (rule 6)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff TID251 (locks",
+      "pattern": "^launch\\.py:\\d+: `urllib\\.request` is banned",
+      "reason": "the launcher asks its own program's /api/health on 127.0.0.1, which is not Schwab: rule 10 bans Schwab's clients outside Feed"
+    },
+    {
+      "verdict": "ok",
       "category": "modules using sqlite3",
       "pattern": "^(db|stream_spine)\\.py:\\d+: import sqlite3$",
       "reason": "the startup loader (db.py) and the Recorder (stream_spine.py), the only modules that use sqlite3 (rule 6, docs/ARCHITECTURE.md)"

@@ -16,7 +16,7 @@ from calc import liquidity_value_engine as LVE
 from calc.micro_structure import Candle
 from state import price_level_store
 from state.price_level_store import materialize_price_level_snapshot
-from tests.conftest import most_recent_trading_day_et
+from tests.conftest import MARKETS_DAY, most_recent_trading_day_et
 from time_et import ET, sessions
 
 REPO = Path(__file__).resolve().parent.parent
@@ -104,7 +104,7 @@ def _mat(session, bars):
 def test_an_interior_bar_change_is_a_new_generation():
     """(a) The prior session's high moved from 105 to 999: a new snapshot with the new PDH."""
     _fresh()
-    session = most_recent_trading_day_et()
+    session = MARKETS_DAY
 
     first = _mat(session, _bars(session, 105.0))
     first_fingerprint = _held_fingerprint(session)
@@ -130,7 +130,7 @@ def test_an_interior_bar_change_is_a_new_generation():
 def test_concurrent_materialization_yields_one_object_and_one_generation():
     """(b) Eight concurrent callers, one input: one object."""
     _fresh()
-    session = most_recent_trading_day_et()
+    session = MARKETS_DAY
     bars = _bars(session, 105.0)
 
     barrier = threading.Barrier(8)
@@ -161,7 +161,7 @@ def test_concurrent_materialization_yields_one_object_and_one_generation():
 
 def test_the_fingerprint_covers_every_bar_field():
     """Each field that can move a level must move the key — checked field by field."""
-    session = most_recent_trading_day_et()
+    session = MARKETS_DAY
     base = _bars(session, 105.0)
     (prior,) = _daily(session, base)
     held = sessions()

@@ -17,7 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -31,7 +31,7 @@ from db_authority import canonical_db_path
 from state import bar_store, capture_store, cross_store, level_store, price_level_store
 from stream_spine import MessageBus
 from tests import feed_live_helper
-from time_et import ET, now, record_markets, session
+from time_et import record_markets, session
 
 # Every pytest process (serial runner, xdist controller, and each xdist worker) owns one
 # process-private runtime folder before any application module imports: every mutable runtime
@@ -82,6 +82,8 @@ def _remove_pytest_runtime_after_session():
 #: Schwab's /markets answers for every date it would answer on 2026-10-07 (2026-09-30 to
 #: 2027-10-07, and its 400 for each side), as sent
 MARKETS_ANSWERS = Path(__file__).parent / "fixtures" / "real_schwab_markets_2026_10_07.json"
+#: the day those answers were asked, a session they say was open
+MARKETS_DAY = date(2026, 10, 7)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -189,14 +191,13 @@ def feed():
     live_market_plane._by_ticker.clear()
 
 
-def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
-    """Return the newest ET date at or before `on_or_before` (today) the market was open.
+def most_recent_trading_day_et(*, on_or_before: date) -> date:
+    """Return the newest ET date at or before `on_or_before` the market was open.
 
     Open is what Schwab's /markets answers held say (the same answers the code reads, so the test
     cannot disagree with them).
     """
-    start = on_or_before or datetime.fromtimestamp(now(), ET).date()
-    day = start
+    day = on_or_before
     for _ in range(14):  # the longest market closure gap is far under two weeks
         s = session(day.isoformat())
         if s is not None and s.is_open:
@@ -204,7 +205,7 @@ def most_recent_trading_day_et(*, on_or_before: date | None = None) -> date:
         day -= timedelta(days=1)
     raise AssertionError(
         f"no open day in Schwab's /markets answers held in the 14 ET days before "
-        f"{start} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)"
+        f"{on_or_before} ({MARKETS_ANSWERS.name} covers 2026-09-30 to 2027-10-07)"
     )
 
 
