@@ -453,14 +453,15 @@ def test_a_stock_quote_before_schwabs_pre_market_is_shown():
 
     At 05:00 ET Schwab's /markets
     says Closed (pre-market opens 07:00): CRWD's quote, received then, is the price served.
+    INDUCED: the captured quote, received 10:38 ET, is received at 05:00 ET.
     """
     fx = json.loads((FX / "real_crwd_quote_2026_10_07.json").read_text(encoding="utf-8"))
     tk, native = fx["ticker"], fx["native"]
+    at = _et("2026-10-07 05:00").timestamp()
     try:
-        lmp.record_from_level_one_equity(tk, native, received_ts=time_et.now())
+        lmp.record_from_level_one_equity(tk, native, received_ts=at)
         mark_feed_live(tk)
         assert time_et.session_label(_et("2026-10-07 05:00")) == time_et.CLOSED
-        at = _et("2026-10-07 05:00").timestamp()
         assert (
             lmp.outage(tk, "LEVELONE_EQUITIES", at)
             == "Schwab LEVELONE_EQUITIES feed down during Closed"
