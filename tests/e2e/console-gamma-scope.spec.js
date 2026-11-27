@@ -7,7 +7,7 @@
  * strikes around 270 -- and the page is proved to ask with the scope, draw what it is sent and
  * keep the choice.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { routeWatchlist } = require("./fixtures/watchlist");
 const { mockPriceSocket, priceRow } = require("./fixtures/price_socket");
 const { watchRequests } = require("./fixtures/settled");

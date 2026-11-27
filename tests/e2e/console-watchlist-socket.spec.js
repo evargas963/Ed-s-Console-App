@@ -3,7 +3,7 @@
 // daemon's status, its `watchlist`; live_ui.LiveUiServer.beat_loop), and asks the console for no
 // list. STAND-INS: the program's socket, its beats carrying the watchlist alone (no rows), and the
 // console's watchlist routes (fixtures/watchlist.js).
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { routeWatchlist, beatNow } = require("./fixtures/watchlist");
 const { watchRequests, holdClock } = require("./fixtures/settled");
 

@@ -6,7 +6,7 @@
  * Real data: the confluence body as the real code served it on MRVL's full chain captured
  * 2026-10-07 10:31:20 ET (tests/fixtures/real_mrvl_confluence_payloads_2026_10_07.json).
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { mockPriceSocket, priceRow } = require("./fixtures/price_socket");
 const FX = require("../fixtures/real_mrvl_confluence_payloads_2026_10_07.json");
 

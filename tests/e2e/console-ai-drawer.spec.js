@@ -1,7 +1,7 @@
 // The AI Analyst drawer, closed, takes no focus: its buttons are out of the tab order and the
 // accessibility tree (HTML's `inert`). aria-hidden alone hid it from a screen reader while Tab
 // still reached its five buttons (html-validate hidden-focusable).
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 
 test.use({ storageState: { cookies: [], origins: [] } });
 

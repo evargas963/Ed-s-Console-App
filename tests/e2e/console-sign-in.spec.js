@@ -6,7 +6,7 @@
  * (tests/e2e/fixtures/sign_in_lines.json, held by tests/test_data_path_sign_in_v1.py; the
  * refusal is production's of 2026-11-19 13:00:13 CT). Any page error fails the test.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const LINES = require("./fixtures/sign_in_lines.json");
 
 // The page's socket as the program keeps it (live_ui): a beat carries the feed's status and the

@@ -12,7 +12,7 @@
  * STAND-IN: the program's socket, which answers each subscribe with what each symbol is and
  * sends a frame when the test says. Any page error fails the test.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { served } = require("./fixtures/price_socket");
 const { holdClock } = require("./fixtures/settled");
 const { eachPage } = require("./fixtures/pages");

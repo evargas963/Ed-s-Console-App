@@ -1,6 +1,6 @@
 // Universality (operator 2026-09-23): no built-in ticker or watchlist. A first run with
 // nothing chosen asks for a symbol and asks the server for nothing about any ticker.
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { watchRequests, holdClock } = require("./fixtures/settled");
 const { eachPage } = require("./fixtures/pages");
 

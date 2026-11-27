@@ -9,7 +9,7 @@
  * buy/sell aggressor side is ever fabricated; `classification` states only the mechanical
  * fact of where a print landed relative to that same tick's own bid/ask.
  */
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures/test");
 const { pushExpiries } = require("./fixtures/expiries");
 const { routeWatchlist } = require("./fixtures/watchlist");
 // the strikes panel as the server sends it on CRWD's real chain (held to the server by
