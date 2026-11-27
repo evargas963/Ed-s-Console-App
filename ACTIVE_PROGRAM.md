@@ -157,8 +157,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   `awk -i inplace`, python or node scripts that write files, PowerShell `Set-Content`/`Out-File`/
   `Add-Content`, `tee`, `ed`/`ex`/`vim` batch edits, `truncate`, `dd`, sed's own `w` command, and
   `git update-ref --stdin`. The standard tools' own safe fixes stay allowed.
-- ENF-03 (QUEUED): the page computes nothing (rule 4): the ESLint count of `Math`, `.sort(`,
-  `.reduce(`, `Date` and `Intl` outside the drawing modules driven to 0.
 - ENF-05 (QUEUED): every measurement and report covers every watchlist ticker; a check of the report
   scripts.
 - ENF-06 (QUEUED): a browser test that every shown time is Central Time.
