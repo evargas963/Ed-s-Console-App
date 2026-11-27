@@ -81,6 +81,62 @@ def test_every_feed_gets_one_row_with_the_same_checked_at(tmp_path):
     assert all(r[3] is None for r in rows if r[1] != "NEWS_HEADLINE"), "no data is None, not a time"
 
 
+def test_a_frame_is_timed_once_and_what_it_carries_takes_that_time(tmp_path):
+    """The time the stream read a frame is the time of everything the frame carries.
+
+    A daemon with an empty watchlist asks for the market context alone, the news last
+    (capture.Daemon.wanted). Schwab's streamer (tests/schwab_stream_standin.py, through the real
+    schwab-py client), whose heartbeat does not come in the test's time (INDUCED), answers each
+    request and then sends Schwab's recorded NEWS_HEADLINE frame
+    (tests/fixtures/real_schwab_news_one_frame_spx_2026_11_20.json), which, once every service
+    holds its symbols, is the last frame read. Its items reach the bus with the time the stream
+    read it (feed.stream.TimedStream, last_frame_ts), and the feed's last data is that time. The
+    answer to the SUBS is one frame too: the subscription's record and the start of the hold are
+    its one time.
+    """
+    entry = {
+        "service": "NEWS_HEADLINE",
+        "timestamp": _NEWS["messages"][0]["schwab_ts"],
+        "command": "SUBS",
+        "content": [m["content"] for m in _NEWS["messages"]],
+    }
+    streamer = LocalStreamer({}, {"NEWS_HEADLINE": entry}, beat=3600)
+    rest = LocalSchwab(streamer.url)
+    bus, health = MessageBus(), HealthRegistry()
+    conn = capture.Daemon(bus, health, []).connection
+    seen = bus.subscribe("", policy=LOG)
+    read: dict[str, float | None] = {}
+
+    def all_read() -> bool:
+        held = all(conn.held[s] for s in capture.MARKET_CONTEXT_SERVICES)
+        return held and health.last("NEWS_HEADLINE") is not None
+
+    async def go():
+        stop = asyncio.Event()
+        run = asyncio.create_task(conn.run_connection(rest.client(tmp_path), stop))
+        await until(lambda: run.done() or all_read(), state=lambda: run)
+        read["frame"] = conn.stream.last_frame_ts if conn.stream is not None else None
+        read["hold"] = conn.held_since("NEWS_HEADLINE", "$SPX")
+        stop.set()
+        await asyncio.wait_for(run, 10)
+
+    try:
+        asyncio.run(go())
+    finally:
+        streamer.close()
+        rest.close()
+
+    sent = []
+    while not seen.queue.empty():
+        sent.append(seen.queue.get_nowait())
+    news = [m for topic, m in sent if topic.startswith("news.")]
+    answers = [m for topic, m in sent if topic == "sub.NEWS_HEADLINE"]
+    assert read["frame"] is not None
+    assert len(news) == 2 and {m["ts_recv"] for m in news} == {read["frame"]}
+    assert health.last("NEWS_HEADLINE") == read["frame"]
+    assert len(answers) == 1 and answers[0]["ts"] == read["hold"]
+
+
 def test_the_console_reports_the_recorders_own_line(tmp_path):
     """The console's status line takes the Recorder's word from the heartbeat, not the database.
 

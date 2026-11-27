@@ -233,12 +233,14 @@ def test_a_frame_the_daemon_cannot_take_is_logged_and_the_stream_goes_on(caplog)
     mix = json.loads((REPO / "tests/fixtures/real_stream_mix_2026_10_05_1400ct.json").read_text())
     sent = next(m for m in mix["messages"] if m["service"] == "LEVELONE_EQUITIES")
     bus, health = capture.MessageBus(), capture.HealthRegistry()
-    handler = connection._publisher("LEVELONE_EQUITIES", bus, health, lambda: sent["ts_recv"])
+    handler = connection._publisher("LEVELONE_EQUITIES", bus, health)
     nameless = {k: v for k, v in sent["item"].items() if k != "key"}
     with caplog.at_level(logging.WARNING, logger="capture"):
-        handler({"timestamp": sent["schwab_ts"]})
+        handler({"timestamp": sent["schwab_ts"]}, sent["ts_recv"])
         nothing = dict(bus.current)
-        handler({"timestamp": sent["schwab_ts"], "content": [nameless, sent["item"]]})
+        handler(
+            {"timestamp": sent["schwab_ts"], "content": [nameless, sent["item"]]}, sent["ts_recv"]
+        )
     lines = [r.getMessage() for r in caplog.records]
     assert nothing == {}
     assert len(lines) == 2
@@ -263,7 +265,7 @@ def test_the_window_shows_each_second_what_schwab_streamed(caplog):
         await asyncio.sleep(0)
         for m in messages:
             frame = {"timestamp": m["schwab_ts"], "content": [m["item"]]}
-            connection._publisher(m["service"], bus, health, lambda t=m["ts_recv"]: t)(frame)
+            connection._publisher(m["service"], bus, health)(frame, m["ts_recv"])
         services = {m["service"] for m in messages}
         deadline = time_et.elapsed() + 10  # the window has shown a line for every service
         while time_et.elapsed() < deadline and services - {

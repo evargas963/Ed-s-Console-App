@@ -121,8 +121,11 @@ def _beat(daemon: capture.Daemon) -> dict:
 
 def _publish_options(bus, health, events) -> None:
     for e in events:  # each received at its recorded time
-        h = connection._publisher("LEVELONE_OPTIONS", bus, health, lambda t=e["ts_recv"]: t)
-        h(_frame("LEVELONE_OPTIONS", [e["content"]], e["content"]["QUOTE_TIME_MILLIS"]))
+        h = connection._publisher("LEVELONE_OPTIONS", bus, health)
+        h(
+            _frame("LEVELONE_OPTIONS", [e["content"]], e["content"]["QUOTE_TIME_MILLIS"]),
+            e["ts_recv"],
+        )
 
 
 def _writable(db: Path) -> None:
@@ -242,10 +245,10 @@ def test_one_value_the_database_cannot_hold_is_kept_and_the_writer_goes_on(tmp_p
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        h = connection._publisher("LEVELONE_EQUITIES", bus, health, lambda: _TSLA["ts_recv"])
-        h({"content": [big], "timestamp": 2**64})
+        h = connection._publisher("LEVELONE_EQUITIES", bus, health)
+        h({"content": [big], "timestamp": 2**64}, _TSLA["ts_recv"])
         await until(lambda: writer.status()["failures"] >= 1)  # kept as sent
-        h({"content": [_TSLA["native"]], "timestamp": 2})
+        h({"content": [_TSLA["native"]], "timestamp": 2}, _TSLA["ts_recv"])
         await until(lambda: writer.status()["rows_written"] >= 1)  # and the writer goes on
         stop.set()
         await task
@@ -364,9 +367,9 @@ class _Defect(dict):
 
 
 def _tsla_quotes(bus, health, n: int) -> None:
-    h = connection._publisher("LEVELONE_EQUITIES", bus, health, lambda: _TSLA["ts_recv"])
+    h = connection._publisher("LEVELONE_EQUITIES", bus, health)
     for i in range(n):
-        h({"content": [dict(_TSLA["native"])], "timestamp": i})
+        h({"content": [dict(_TSLA["native"])], "timestamp": i}, _TSLA["ts_recv"])
 
 
 def _defect() -> _Defect:
@@ -1250,7 +1253,7 @@ def _pages_for_the_mix(db, *, indexes: bool) -> int:
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         for service, frame, received in _mix_frames():
-            connection._publisher(service, bus, health, lambda t=received: t)(json.loads(frame))
+            connection._publisher(service, bus, health)(json.loads(frame), received)
         await until(
             lambda: _mix_rows(db) == 9 * sum(_MIX["counts"][t] for t in _MIX_TABLES), seconds=60.0
         )
@@ -1301,16 +1304,11 @@ def test_the_hold_cap_holds_memory_to_its_size(tmp_path):
     async def go():
         bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
-        received = [0.0]  # each frame's recorded receive time, read by the handlers' clock
-        handlers = {
-            s: connection._publisher(s, bus, health, lambda: received[0])
-            for s in {s for s, _f, _t in frames}
-        }
+        handlers = {s: connection._publisher(s, bus, health) for s in {s for s, _f, _t in frames}}
 
         async def publish() -> None:
-            for i, (service, frame, at) in enumerate(frames):
-                received[0] = at
-                handlers[service](json.loads(frame))
+            for i, (service, frame, at) in enumerate(frames):  # each at its recorded receive time
+                handlers[service](json.loads(frame), at)
                 if i % 500 == 0:
                     await asyncio.sleep(0)
 
