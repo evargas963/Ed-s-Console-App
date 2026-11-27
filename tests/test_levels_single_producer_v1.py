@@ -151,22 +151,19 @@ def test_strikes_payload_serves_each_strikes_volume_at_the_live_spot():
     SPY's same-day chain (tests/real_chains.SPY_0DTE) published by the levels producer at its
     captured price, the price row there with the feed live.
     """
-    srv._publish_levels(
-        C.ticker, read_chain(C.chain), C.now.timestamp(), chain_spot=(C.spot, 1.0), now=C.now
-    )
+    at = C.now.timestamp()  # the panel is read at the chain's capture, the feed live then
+    srv._publish_levels(C.ticker, read_chain(C.chain), at, chain_spot=(C.spot, 1.0), now=C.now)
     lmp.record_feed_heartbeat(
-        daemon_status(
-            time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": [C.ticker]}
-        )
+        daemon_status(at, schwab_socket_open=True, held={"LEVELONE_EQUITIES": [C.ticker]})
     )
     lmp.record_from_level_one_equity(
-        C.ticker, {"LAST_PRICE": C.spot, "TRADE_TIME_MILLIS": 1000}, received_ts=time_et.now()
+        C.ticker, {"LAST_PRICE": C.spot, "TRADE_TIME_MILLIS": 1000}, received_ts=at
     )
     try:
         body = push_strikes.strikes(
-            C.ticker, time_et.now(), {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
+            C.ticker, at, {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
         )
-        live = srv.resolve_spot(C.ticker, now=time_et.now())[0]
+        live = srv.resolve_spot(C.ticker, now=at)[0]
     finally:
         with level_store._lock:
             level_store._levels.pop(C.ticker, None)

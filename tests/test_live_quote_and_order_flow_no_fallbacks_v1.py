@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import live_market_plane as lmp
-import time_et
 from calc.order_flow import FlowInput, _resolve_quote_mark
 from option_contract import StreamedTop
 
@@ -18,13 +17,11 @@ def test_plane_change_percent_is_schwab_net_change_percent():
     lmp.record_from_level_one_equity(
         "NCPX",
         {"key": "NCPX", "LAST_PRICE": 101.0, "NET_CHANGE": 1.0, "NET_CHANGE_PERCENT": 1.0},
-        received_ts=time_et.now(),
+        received_ts=100.0,
     )
     row = lmp.get_quote("NCPX")
     assert row.chg_pct == 1.0 and row.net_change == 1.0
-    lmp.record_from_level_one_equity(
-        "NCPX", {"key": "NCPX", "BID_PRICE": 100.9}, received_ts=time_et.now()
-    )
+    lmp.record_from_level_one_equity("NCPX", {"key": "NCPX", "BID_PRICE": 100.9}, received_ts=105.0)
     assert lmp.get_quote("NCPX").chg_pct == 1.0  # unchanged field stands
 
 
@@ -47,7 +44,7 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
     lmp.record_from_level_one_equity(
         "ZZREG",
         {"key": "ZZREG", "LAST_PRICE": 767.5294, "NET_CHANGE_PERCENT": -0.495313},
-        received_ts=time_et.now(),
+        received_ts=100.0,
     )
     row = lmp.get_quote("ZZREG")
     assert (row.chg_pct, row.chg_pct_regular) == (-0.495313, None)
@@ -59,7 +56,7 @@ def test_the_regular_session_percent_is_its_own_field_absent_until_schwab_sends_
             "NET_CHANGE_PERCENT": -0.928243,
             "REGULAR_MARKET_CHANGE_PERCENT": -0.928243,
         },
-        received_ts=time_et.now(),
+        received_ts=105.0,
     )
     row = lmp.get_quote("ZZREG")
     assert (row.chg_pct, row.chg_pct_regular) == (-0.928243, -0.928243)

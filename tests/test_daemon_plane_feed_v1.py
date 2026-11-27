@@ -18,7 +18,6 @@ from pathlib import Path
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
 import live_market_plane as lmp
-import time_et
 from app.options.order_flow.state import read_book
 from push import book as push_book
 from stream_spine import book_msg, quote_msg
@@ -94,7 +93,7 @@ def test_l1_message_lands_in_the_tape_and_the_console_keeps_no_price(tmp_path):
         "TRADE_TIME_MILLIS": 1000,
         "TOTAL_VOLUME": 5000,
     }
-    _push_l1("SPY", native, ts_recv=time_et.now())
+    _push_l1("SPY", native, ts_recv=RTH_INSTANT)
 
     assert any(item.price == 450.0 for item in ofls.prints("SPY"))
     assert lmp.get_quote("SPY") is lmp.NO_QUOTE  # the price is the daemon's row, not a copy here
@@ -109,7 +108,7 @@ def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
     _reset(tmp_path)
     fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"
     content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
-    _push_book("SPY", content, ts_recv=time_et.now())
+    _push_book("SPY", content, ts_recv=RTH_INSTANT)
 
     held = read_book(content, "NASDAQ_BOOK")
     assert ofls.newest_book("SPY", "NASDAQ_BOOK") == held
@@ -125,7 +124,7 @@ def test_each_venue_serves_only_its_own_book(tmp_path):
     _reset(tmp_path)
     fx = _push_real_spy_books()
     for svc in ("NASDAQ_BOOK", "NYSE_BOOK"):
-        body = push_book.order_flow_microstructure("SPY", svc, time_et.now())
+        body = push_book.order_flow_microstructure("SPY", svc, RTH_INSTANT)
         prov = body["provenance"]
         assert (body["venue"], prov["book_source"]) == (svc, svc)
         assert prov["n_bid_levels"] == len(fx[svc]["content"]["BIDS"])
@@ -163,7 +162,7 @@ def test_each_symbol_lands_in_its_own_state_only(tmp_path):
     A QQQ tick must never appear in SPY's.
     """
     _reset(tmp_path)
-    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=time_et.now())
+    _push_l1("QQQ", {"key": "QQQ", "LAST_PRICE": 380.0}, ts_recv=RTH_INSTANT)
 
     def prices(sym: str) -> list:
         return [i.price for i in ofls.prints(sym)]

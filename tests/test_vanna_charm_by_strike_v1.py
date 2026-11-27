@@ -40,6 +40,8 @@ from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_down, mar
 from tests.real_chains import CRWD, quoted
 
 _SPOT = CRWD.spot
+#: the instant the panels are read: the chain's capture, when its levels are published
+_AT = CRWD.now.timestamp()
 _CONTRACTS = read_chain(CRWD.chain)
 _QUOTE = json.loads(
     (Path(__file__).resolve().parent / "fixtures" / "real_crwd_quote_2026_10_07.json").read_text(
@@ -80,13 +82,13 @@ def teardown_function(_fn):
 
 
 def test_vanna_by_strike_unavailable_with_no_cached_chain():
-    body = push_strike_bars.strike_bars("vanna", TK, time_et.now(), AUTO)
+    body = push_strike_bars.strike_bars("vanna", TK, _AT, AUTO)
     assert body["available"] is False
     assert body["reason"] == "no levels published for this ticker yet"
 
 
 def test_charm_by_strike_unavailable_with_no_cached_chain():
-    body = push_strike_bars.strike_bars("charm", TK, time_et.now(), AUTO)
+    body = push_strike_bars.strike_bars("charm", TK, _AT, AUTO)
     assert body["available"] is False
     assert body["reason"] == "no levels published for this ticker yet"
 
@@ -113,7 +115,7 @@ def test_a_window_the_panel_cannot_draw_is_unavailable_with_its_words(params, wo
     """
     _put_live_chain()
     for rows in ("vanna", "charm"):
-        body = push_strike_bars.strike_bars(rows, TK, time_et.now(), params)
+        body = push_strike_bars.strike_bars(rows, TK, _AT, params)
         assert body == {"ticker": TK, "available": False, "reason": words}
 
 
@@ -170,10 +172,10 @@ def test_a_request_that_names_no_expiry_is_said_by_every_panel_in_the_same_words
 def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_vanna():
     _put_live_chain()
     # Schwab's CRWD quote in the daemon's plane, as the daemon takes it in: its price row
-    lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=time_et.now())
-    mark_feed_live(TK)
+    lmp.record_from_level_one_equity(TK, _QUOTE["native"], received_ts=_QUOTE["ts_recv"])
+    mark_feed_live(TK, now=_AT)
 
-    body = push_strike_bars.strike_bars("vanna", TK, time_et.now(), ALL)
+    body = push_strike_bars.strike_bars("vanna", TK, _AT, ALL)
     assert body["available"] is True
     # the row marked is the live price's (the header's own); the panel serves no price beside it
     live = _QUOTE["native"]["LAST_PRICE"]
@@ -200,7 +202,7 @@ def test_vanna_by_strike_matches_the_same_canonical_faucet_call_vanna_minus_put_
 
 def test_charm_by_strike_matches_the_same_canonical_faucet_compute_charm_by_strike():
     _put_live_chain()
-    body = push_strike_bars.strike_bars("charm", TK, time_et.now(), ALL)
+    body = push_strike_bars.strike_bars("charm", TK, _AT, ALL)
     assert body["available"] is True
     rows = {r["strike"]: r["value"] for r in body["rows"]}
     assert rows, "a real chain must yield at least one charm row"
@@ -307,8 +309,8 @@ def test_the_bars_are_served_with_the_levels_verdict_and_stand_marked_stale(key)
 
 def test_vanna_and_charm_rows_are_sorted_by_strike_ascending():
     _put_live_chain()
-    v_rows = push_strike_bars.strike_bars("vanna", TK, time_et.now(), AUTO)["rows"]
-    c_rows = push_strike_bars.strike_bars("charm", TK, time_et.now(), AUTO)["rows"]
+    v_rows = push_strike_bars.strike_bars("vanna", TK, _AT, AUTO)["rows"]
+    c_rows = push_strike_bars.strike_bars("charm", TK, _AT, AUTO)["rows"]
     assert [r["strike"] for r in v_rows] == sorted(r["strike"] for r in v_rows)
     assert [r["strike"] for r in c_rows] == sorted(r["strike"] for r in c_rows)
 

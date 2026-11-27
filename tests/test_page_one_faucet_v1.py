@@ -25,7 +25,6 @@ from fastapi.routing import APIRoute
 import live_market_plane as lmp
 import live_price_rows
 import server
-import time_et
 from app.market_data.schwab.streaming.live_ui import Asked
 from calc.order_flow import FlowInput, compute_book_microstructure
 from instrument_identity import ticker_storage_key
@@ -47,6 +46,7 @@ from tests.feed_live_helper import (
     pushed,
 )
 from tests.real_chains import CRWD, SPY_CLOSE, SPY_PRINT_A_STRIKE_AWAY
+from tests.shared_helpers import et_ts
 from time_et import ET
 
 _QUOTE = json.loads(
@@ -61,6 +61,10 @@ EXPIRY = str(CRWD.chain[0]["expirationDate"])[:10]  # 2026-10-16
 PUBLISHED = CRWD.spot  # Schwab's price in the chain answer
 LIVE = _QUOTE["native"]["LAST_PRICE"]  # Schwab's last trade, as the daemon received it
 _AT = CRWD.now
+#: the instant CRWD's panels are read: its capture's, 40 s after the daemon received its quote
+_NOW = _AT.timestamp()
+#: the instant SPY's panels are read: when the daemon received its print a strike away
+_SPY_NOW = SPY_PRINT_A_STRIKE_AWAY["ts_recv"]
 #: a per-strike panel's window as the page asks it: Auto, following the price
 AUTO = {"scope": "auto", "centre": None, "shift": 0, "expiry": None}
 
@@ -90,7 +94,7 @@ def _forget():
         level_store._levels.pop(TK, None)
     lmp._by_ticker.pop(TK, None)
     lmp._fields_by_ticker.pop(TK, None)
-    lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
+    lmp.record_feed_heartbeat(daemon_status(_NOW, schwab_socket_open=True))
     mark_feed_down()
 
 
@@ -101,7 +105,7 @@ def held():
     The live price is Schwab's last trade.
     """
     _publish(_AT.timestamp())
-    _daemon(time_et.now())  # live now, as the routes read it
+    _daemon(_NOW)  # live when the routes read it
     yield level_store.published_levels(TK)
     _forget()
 
@@ -122,7 +126,7 @@ def test_every_panel_that_serves_a_price_serves_the_live_spot_and_no_other(held)
     computed at (operator 2026-11-12: "Yes, remove it"). The strikes panel, the heatmap, the
     chain and the vanna and charm bars mark the price's row by the served mark.
     """
-    now = time_et.now()
+    now = _NOW
     served, printed, instant, drawn = {}, {}, set(), {}
     for kind, panel in server.PAGE_PANELS.items():
         contract = next(iter(held.contracts))
@@ -189,7 +193,7 @@ def test_chain_serves_this_expirys_net_gex_from_the_heatmaps_own_column(held):
     col = [e["expiry"] for e in surf["expirations"]].index(EXPIRY)
     cells = {c["strike"]: c["gex"][col] for c in surf["cells"]}
     assert any(v is not None for v in cells.values()), "the real chain yields net GEX cells"
-    body = push_chain.chain(TK, time_et.now(), {"expiry": EXPIRY})
+    body = push_chain.chain(TK, _NOW, {"expiry": EXPIRY})
     assert body["ladder"] and "net_gex_by_strike" not in body
     for row in body["ladder"]:
         assert row["net_gex"] == cells.get(row["strike"])
@@ -232,7 +236,7 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
     Not the browser's clock (it counted days in UTC, a day off after 7 PM Central).
     """
-    body = push_expiries.expiries(TK, time_et.now())
+    body = push_expiries.expiries(TK, _NOW)
     assert body["expiries"] == [EXPIRY]
     assert body["dte"] == {EXPIRY: _CONTRACTS[0]["daysToExpiration"]}
     # the dropdown's texts are served (the page reformatted the date itself)
@@ -242,13 +246,11 @@ def test_days_to_expiry_are_schwabs_as_sent():
 
 
 def test_with_no_published_levels_the_expiries_carry_the_levels_reason():
-    body = push_expiries.expiries("ZZNOLEVELS", time_et.now())
+    body = push_expiries.expiries("ZZNOLEVELS", _NOW)
     assert (
         body["expiries"] is None  # unknown, never an empty list standing for it
         and body["reason"]
-        == push_verdict.terrain_staleness(None, "ZZNOLEVELS", now=time_et.now())[
-            "levels_stale_reason"
-        ]
+        == push_verdict.terrain_staleness(None, "ZZNOLEVELS", now=_NOW)["levels_stale_reason"]
     )
 
 
@@ -289,13 +291,13 @@ def _spot_rung(body):
 @pytest.mark.parametrize(
     "route",
     [
-        lambda: _spot_rung(push_chain.chain("SPY", time_et.now(), {"expiry": "2026-10-22"})),
+        lambda: _spot_rung(push_chain.chain("SPY", _SPY_NOW, {"expiry": "2026-10-22"})),
         lambda: _spot_cell(
             push_surface.gamma_surface(
-                "SPY", time_et.now(), {**AUTO, "cols": None, "expiry": None}, requested=False
+                "SPY", _SPY_NOW, {**AUTO, "cols": None, "expiry": None}, requested=False
             )
         ),
-        lambda: _spot_marked(push_strikes.strikes("SPY", time_et.now(), AUTO)),
+        lambda: _spot_marked(push_strikes.strikes("SPY", _SPY_NOW, AUTO)),
     ],
     ids=["chain", "gamma-surface", "terrain-strikes"],
 )
@@ -319,7 +321,7 @@ def test_the_spot_row_is_served(route):
     )
     lmp.record_from_level_one_equity("SPY", print_["native"], received_ts=print_["ts_recv"])
     lmp.record_feed_heartbeat(
-        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
+        daemon_status(_SPY_NOW, schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["SPY"]})
     )
     try:
         marked = route()
@@ -328,7 +330,7 @@ def test_the_spot_row_is_served(route):
             level_store._levels.pop("SPY", None)
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)
-        lmp.record_feed_heartbeat(daemon_status(time_et.now(), schwab_socket_open=True))
+        lmp.record_feed_heartbeat(daemon_status(_SPY_NOW, schwab_socket_open=True))
         mark_feed_down()
     assert marked == live
 
@@ -381,7 +383,7 @@ def test_heatmap_column_state_cell_age_and_front_expiry_are_served():
 @pytest.mark.usefixtures("held")
 def test_chain_flags_are_served():
     """ADJUSTED DELIVERABLE and duplicate contracts: served flags, not page rules."""
-    body = push_chain.chain(TK, time_et.now(), {"expiry": EXPIRY})
+    body = push_chain.chain(TK, _NOW, {"expiry": EXPIRY})
     plain = [c["symbol"] for c in _CONTRACTS if len(c["optionDeliverablesList"]) == 1]
     on_plain = [
         r["series"]["nonStandard"]
@@ -422,7 +424,7 @@ def _spx_chain(contracts):
     """Return the chain panel of 2026-10-16 after the levels are published from `contracts`."""
     at = datetime.fromtimestamp(_SPX["ts_utc"], ET)
     lmp.record_feed_heartbeat(
-        daemon_status(time_et.now(), schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["$SPX"]})
+        daemon_status(_SPX["ts_utc"], schwab_socket_open=True, held={"LEVELONE_EQUITIES": ["$SPX"]})
     )
     lmp.record_from_level_one_equity(
         "$SPX",
@@ -431,7 +433,7 @@ def _spx_chain(contracts):
     )
     try:
         server._publish_levels("$SPX", read_chain(contracts), _SPX["ts_utc"], now=at)
-        return push_chain.chain("$SPX", time_et.now(), {"expiry": "2026-10-16"})
+        return push_chain.chain("$SPX", _SPX["ts_utc"], {"expiry": "2026-10-16"})
     finally:
         with level_store._lock:
             level_store._levels.pop("$SPX", None)
@@ -496,7 +498,7 @@ def test_a_field_a_rows_call_and_put_differ_on_is_unknown_not_one_legs():
 
 def test_the_largest_gex_strike_is_served(held):
     rows = held.snap.per_strike["gex"]
-    body = push_strikes.strikes(TK, time_et.now(), AUTO)
+    body = push_strikes.strikes(TK, _NOW, AUTO)
     top = max(rows, key=lambda r: abs(r.value))
     # the row by name, with its net GEX and volume as the screen shows them, and its marks
     assert body["max_abs_row"] == {
@@ -558,13 +560,14 @@ def test_at_any_hour_the_price_is_schwabs_last_trade_with_schwabs_trade_time():
     mouth to our UI's ears. Period." -- no live/closed verdict by our clock: the row serves
     Schwab's last price as the spot with Schwab's trade time, and every consumer reads it.
     """
-    mark_feed_live("SPY")
+    sunday = et_ts("2026-09-27T12:00:00")
+    mark_feed_live("SPY", now=sunday)
     lmp.record_from_level_one_equity(
-        "SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830}, received_ts=time_et.now()
+        "SPY", {"LAST_PRICE": 772.04, "TRADE_TIME_MILLIS": 1790380799830}, received_ts=sunday
     )
-    row = live_price_rows.price_row("SPY", time_et.now())  # the daemon's one row
+    row = live_price_rows.price_row("SPY", sunday)  # the daemon's one row
     try:
-        spot = server.resolve_spot("SPY", now=time_et.now())
+        spot = server.resolve_spot("SPY", now=sunday)
     finally:
         lmp._by_ticker.pop("SPY", None)
         lmp._fields_by_ticker.pop("SPY", None)

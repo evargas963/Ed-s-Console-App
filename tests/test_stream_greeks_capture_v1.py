@@ -16,7 +16,6 @@ from collections import defaultdict
 from dataclasses import fields
 from pathlib import Path
 
-import time_et
 from option_contract import NO_GREEKS, Received, Streamed, StreamedGreeks, StreamedTop
 from stream_spine import MessageBus, held_key, quotes_at_trade, streamed_record
 from tests.feed_live_helper import on_the_bus
@@ -169,28 +168,28 @@ def test_total_volume_is_captured_alongside_the_greeks():
 
 def test_a_volume_only_tick_alone_is_captured_without_any_greek_present():
     bus = MessageBus()
-    _sent(bus, {"TOTAL_VOLUME": 777}, time_et.now())
+    _sent(bus, {"TOTAL_VOLUME": 777}, 100.0)
     g = _greeks(bus)
     assert g == StreamedGreeks(total_volume=Received(777.0, g.total_volume.ts_recv))
 
 
 def test_a_genuine_zero_volume_is_captured_not_dropped():
     bus = MessageBus()
-    _sent(bus, {"TOTAL_VOLUME": 0}, time_et.now())
+    _sent(bus, {"TOTAL_VOLUME": 0}, 100.0)
     g = _greeks(bus)
     assert g.total_volume.value == 0.0
 
 
 def test_a_negative_volume_is_rejected_not_stored_in_greeks_either():
     bus = MessageBus()
-    _sent(bus, {"TOTAL_VOLUME": -1}, time_et.now())
+    _sent(bus, {"TOTAL_VOLUME": -1}, 100.0)
     assert _greeks(bus) == NO_GREEKS
 
 
 def test_a_gamma_only_tick_does_not_blank_a_previously_observed_volume():
     bus = MessageBus()
-    _sent(bus, {"TOTAL_VOLUME": 500}, time_et.now())
-    _sent(bus, {"GAMMA": 0.02}, time_et.now())
+    _sent(bus, {"TOTAL_VOLUME": 500}, 100.0)
+    _sent(bus, {"GAMMA": 0.02}, 105.0)
     g = _greeks(bus)
     assert g.total_volume.value == 500.0
     assert g.gamma.value == 0.02
@@ -206,8 +205,8 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
     A gamma value learned on an earlier tick -- explicit per-field presence, not a group overwrite.
     """
     bus = MessageBus()
-    _sent(bus, {"GAMMA": 0.0123, "DELTA": 0.45, "OPEN_INTEREST": 4200}, time_et.now())
-    _sent(bus, {"BID_PRICE": 12.30, "ASK_PRICE": 12.35}, time_et.now())
+    _sent(bus, {"GAMMA": 0.0123, "DELTA": 0.45, "OPEN_INTEREST": 4200}, 100.0)
+    _sent(bus, {"BID_PRICE": 12.30, "ASK_PRICE": 12.35}, 105.0)
     g = _greeks(bus)
     assert g.gamma.value == 0.0123, "gamma must survive a tick that does not mention it"
     assert g.delta.value == 0.45
@@ -218,8 +217,8 @@ def test_a_bid_ask_only_tick_does_not_blank_a_previously_observed_gamma():
 
 def test_each_field_is_independently_updatable():
     bus = MessageBus()
-    _sent(bus, {"GAMMA": 0.01, "DELTA": 0.40, "OPEN_INTEREST": 100}, time_et.now())
-    _sent(bus, {"GAMMA": 0.02}, time_et.now())
+    _sent(bus, {"GAMMA": 0.01, "DELTA": 0.40, "OPEN_INTEREST": 100}, 100.0)
+    _sent(bus, {"GAMMA": 0.02}, 105.0)
     g = _greeks(bus)
     assert g.gamma.value == 0.02, "gamma updates independently"
     assert g.delta.value == 0.40, "delta from the earlier tick is untouched"
@@ -231,7 +230,7 @@ def test_each_field_is_independently_updatable():
 def test_a_negative_open_interest_is_rejected_not_stored():
     """schwab_count (AGENTS.md rule 2): a negative count is not a number and is not stored."""
     bus = MessageBus()
-    _sent(bus, {"OPEN_INTEREST": -5}, time_et.now())
+    _sent(bus, {"OPEN_INTEREST": -5}, 100.0)
     assert _greeks(bus) == NO_GREEKS
 
 
@@ -242,8 +241,8 @@ def test_the_streams_open_interest_is_not_kept_the_chains_is_the_one_producer():
     beside it.
     """
     bus = MessageBus()
-    _sent(bus, {"OPEN_INTEREST": 0}, time_et.now())
-    _sent(bus, {"OPEN_INTEREST": 4200}, time_et.now())
+    _sent(bus, {"OPEN_INTEREST": 0}, 100.0)
+    _sent(bus, {"OPEN_INTEREST": 4200}, 105.0)
     assert _greeks(bus) == NO_GREEKS
 
 
@@ -267,7 +266,7 @@ def test_each_field_carries_its_own_receive_timestamp():
 
 def test_greeks_are_symbol_scoped_not_cross_contaminated():
     bus = MessageBus()
-    _sent(bus, {"GAMMA": 0.01}, time_et.now())
-    _sent(bus, {"GAMMA": 0.02}, time_et.now(), sym="SPY   260116P00580000")
+    _sent(bus, {"GAMMA": 0.01}, 100.0)
+    _sent(bus, {"GAMMA": 0.02}, 100.0, sym="SPY   260116P00580000")
     assert _greeks(bus).gamma.value == 0.01
     assert _greeks(bus, "SPY   260116P00580000").gamma.value == 0.02

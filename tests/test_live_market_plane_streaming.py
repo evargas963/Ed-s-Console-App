@@ -10,23 +10,21 @@ import pytest
 import live_market_plane as lmp
 import live_price_rows
 import server
-import time_et
 from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down, mark_feed_live
 from tests.real_chains import SPY_FULL
 
 
-def _rec(ticker, item, received_ts=None):
-    """One streamed message, received now unless the test says when."""
-    return lmp.record_from_level_one_equity(
-        ticker, item, received_ts=time_et.now() if received_ts is None else received_ts
-    )
+def _rec(ticker, item, received_ts):
+    """One streamed message, received at `received_ts`."""
+    return lmp.record_from_level_one_equity(ticker, item, received_ts=received_ts)
 
 
 def test_record_from_level_one_equity_updates_plane():
-    _rec("ZZZ", {"key": "ZZZ", "LAST_PRICE": 1.0, "BID_PRICE": 0.9, "ASK_PRICE": 1.1})
+    _rec("ZZZ", {"key": "ZZZ", "LAST_PRICE": 1.0, "BID_PRICE": 0.9, "ASK_PRICE": 1.1}, 100.0)
     ok = _rec(
         "ZZZ",
         {"key": "ZZZ", "LAST_PRICE": 101.0, "BID_PRICE": 100.9, "ASK_PRICE": 101.1},
+        105.0,
     )
     assert ok is True
     row = lmp.get_quote("ZZZ")
@@ -47,6 +45,7 @@ def test_record_from_level_one_uses_schwab_quote_timestamp_for_fast_ts():
             "ASK_PRICE": 101.1,
             "QUOTE_TIME_MILLIS": 1_778_018_399_000,
         },
+        100.0,
     )
 
     assert ok is True
@@ -75,6 +74,7 @@ def test_record_from_level_one_never_uses_trade_time_as_the_quote_time():
             "TRADE_TIME_MILLIS": 1_778_018_500_000,
             # no QUOTE_TIME_MILLIS
         },
+        100.0,
     )
     assert ok is True
     row = lmp.get_quote("TRADEPROXY")
@@ -87,7 +87,7 @@ def test_received_ts_is_required_and_is_what_freshness_judges():
     assert param.default is inspect.Parameter.empty, "no wall-clock default"
     with pytest.raises(TypeError):
         lmp.record_from_level_one_equity("RQD", {"key": "RQD", "LAST_PRICE": 1.0})
-    old = time_et.now() - 100.0
+    old = 100.0
     assert _rec("RQD", {"key": "RQD", "LAST_PRICE": 1.0}, received_ts=old)
     row = lmp.get_quote("RQD")
     assert row.server_received_ts == old
@@ -136,8 +136,10 @@ def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():
     The row is published with no spot, never the previous price, and the bid and ask Schwab sent
     stand.
     """
-    _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
-    assert _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": -999.0, "BID_PRICE": 9.8}) is True
+    _rec(
+        "NOLAST", {"key": "NOLAST", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1}, 100.0
+    )
+    assert _rec("NOLAST", {"key": "NOLAST", "LAST_PRICE": -999.0, "BID_PRICE": 9.8}, 105.0) is True
     row = lmp.get_quote("NOLAST")
     assert (row.spot, row.bid, row.ask) == (None, 9.8, 10.1)
 
@@ -145,7 +147,11 @@ def test_a_minus_999_last_price_clears_the_spot_and_the_quote_stays():
 def test_a_quote_before_the_first_trade_is_published():
     """BID/ASK before any LAST_PRICE: the row carries the quote Schwab sent, and no spot."""
     assert (
-        _rec("PRETRADE", {"key": "PRETRADE", "BID_PRICE": 4.9, "ASK_PRICE": 5.1, "BID_SIZE": 0})
+        _rec(
+            "PRETRADE",
+            {"key": "PRETRADE", "BID_PRICE": 4.9, "ASK_PRICE": 5.1, "BID_SIZE": 0},
+            100.0,
+        )
         is True
     )
     row = lmp.get_quote("PRETRADE")
@@ -162,6 +168,7 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
             "ASK_PRICE": 50.1,
             "QUOTE_TIME_MILLIS": 1_778_018_399_000,
         },
+        100.0,
     )
 
     ok = _rec(
@@ -173,6 +180,7 @@ def test_record_from_level_one_new_schwab_timestamp_not_suppressed_as_duplicate(
             "ASK_PRICE": 50.1,
             "QUOTE_TIME_MILLIS": 1_778_018_400_000,
         },
+        105.0,
     )
 
     assert ok is True
@@ -187,21 +195,21 @@ def test_unchanged_bid_ask_stand_with_their_own_age():
     ask-only, 15% bid-only. A message with no BID_PRICE means the bid is unchanged -- it used to
     blank the bid and ask.
     """
-    t0 = time_et.now() - 5.0
+    t0 = 100.0
     _rec(
         "NOCARRY",
         {"key": "NOCARRY", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1},
         received_ts=t0,
     )
-    assert _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 11.0}) is True
+    assert _rec("NOCARRY", {"key": "NOCARRY", "LAST_PRICE": 11.0}, t0 + 5.0) is True
     row = lmp.get_quote("NOCARRY")
     assert row.spot == 11.0 and row.bid == 9.9 and row.ask == 10.1
 
 
 def test_a_zero_price_is_taken_as_sent():
     """Operator ruling 2026-09-27: take what Schwab sends; a reported 0 is 0."""
-    _rec("ZRO", {"key": "ZRO", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
-    _rec("ZRO", {"key": "ZRO", "BID_PRICE": 0})
+    _rec("ZRO", {"key": "ZRO", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1}, 100.0)
+    _rec("ZRO", {"key": "ZRO", "BID_PRICE": 0}, 105.0)
     row = lmp.get_quote("ZRO")
     assert row.bid == 0.0 and row.ask == 10.1
 
@@ -209,8 +217,8 @@ def test_a_zero_price_is_taken_as_sent():
 def test_a_value_that_is_not_a_number_clears_the_field():
     """AGENTS.md rule 2: -999 and text are not numbers."""
     for bad in (-999, "9.9"):
-        _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1})
-        _rec("CLR", {"key": "CLR", "BID_PRICE": bad})
+        _rec("CLR", {"key": "CLR", "LAST_PRICE": 10.0, "BID_PRICE": 9.9, "ASK_PRICE": 10.1}, 100.0)
+        _rec("CLR", {"key": "CLR", "BID_PRICE": bad}, 105.0)
         row = lmp.get_quote("CLR")
         assert row.bid is None and row.ask == 10.1, bad
 
@@ -220,6 +228,7 @@ def test_record_from_level_one_rejects_mark_as_current_spot():
     ok = _rec(
         "MARKONLY",
         {"key": "MARKONLY", "MARK": 20.95, "BID_PRICE": 20.9, "ASK_PRICE": 21.1},
+        100.0,
     )
 
     assert ok is True
@@ -231,6 +240,7 @@ def test_record_from_level_one_rejects_midpoint_spot_fabrication():
     ok = _rec(
         "MIDONLY",
         {"key": "MIDONLY", "BID_PRICE": 30.0, "ASK_PRICE": 30.2},
+        100.0,
     )
 
     assert ok is True
@@ -245,6 +255,7 @@ def test_record_from_level_one_ignores_non_canonical_bid_ask_keys():
     ok = _rec(
         "NOCANON",
         {"key": "NOCANON", "LAST_PRICE": 100.0, "BID": 99.5, "ASK": 100.5},
+        100.0,
     )
     assert ok is True
     row = lmp.get_quote("NOCANON")
@@ -265,11 +276,11 @@ def test_last_price_is_carried_forward_only_from_a_streamed_row():
     assert not hasattr(lmp, "record_quote"), "the plane has ONE writer: the stream"
     with lmp._lock:
         lmp._by_ticker["RESTROW"] = lmp.QuoteRow(ticker="RESTROW", spot=50.0)
-    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}) is True
+    assert _rec("RESTROW", {"key": "RESTROW", "BID_PRICE": 49.9}, 100.0) is True
     row = lmp.get_quote("RESTROW")  # the streamed fields only: a price not streamed never carries
     assert (row.spot, row.bid) == (None, 49.9)
-    _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0})
-    assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}) is True
+    _rec("STREAMROW", {"key": "STREAMROW", "LAST_PRICE": 50.0}, 100.0)
+    assert _rec("STREAMROW", {"key": "STREAMROW", "BID_PRICE": 49.9}, 105.0) is True
     row = lmp.get_quote("STREAMROW")
     assert row.spot == 50.0 and row.bid == 49.9
 
