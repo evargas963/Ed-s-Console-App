@@ -203,7 +203,7 @@
   position: absolute;
   inset: 40% 0 auto;
   text-align: center;
-  color: var(--ed-warn);
+  color: var(--ed-warn-ink);
   font-size: 13px;
   z-index: 5;
   pointer-events: none;
@@ -229,7 +229,7 @@
 .ofh-empty {
   padding: 30px 12px;
   text-align: center;
-  color: var(--ed-warn);
+  color: var(--ed-warn-ink);
   font-size: 13px;
 }
 
@@ -253,7 +253,7 @@
 
 .liqm-empty {
   padding: 12px;
-  color: var(--ed-warn);
+  color: var(--ed-warn-ink);
   font-size: 13px;
 }
 
@@ -293,7 +293,7 @@
 }
 
 .tdm .warn {
-  color: var(--ed-warn);
+  color: var(--ed-warn-ink);
 }
 
 /* a stopped index's mark, on the strip and on the Volatility card: the served word, the trade's
@@ -592,7 +592,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ed-warn);
+  color: var(--ed-warn-ink);
   font-size: 13px;
   z-index: 5;
   background: var(--ed-panel);
@@ -968,7 +968,7 @@
 
 .liq .scbtn.on {
   background: none;
-  color: #c9a227;
+  color: var(--ed-warn-ink);
   border-color: #c9a227;
 }
 
@@ -1067,7 +1067,7 @@
 }
 
 .liq .bal {
-  color: #c9a227;
+  color: var(--ed-warn-ink);
 }
 
 .liq-bars {
@@ -1125,14 +1125,14 @@
 .liq-flag {
   font-size: 11.5px;
   font-weight: 600;
-  color: #c9a227;
+  color: var(--ed-warn-ink);
 }
 
 .liq-pill {
   display: inline-flex;
   align-items: center;
   border: 1px solid #c9a227;
-  color: #c9a227;
+  color: var(--ed-warn-ink);
   border-radius: 999px;
   padding: 0 7px;
   font-size: 11px;
@@ -1592,7 +1592,7 @@
 
 .cm-host.panel-b {
   padding: 0;
-  background: #080d14;
+  background: var(--ed-panel);
 }
 
 .cm-page {
