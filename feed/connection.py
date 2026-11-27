@@ -218,18 +218,19 @@ def _message(
 
 
 def _publisher(
-    service: str, bus: MessageBus, health: HealthRegistry, clock: Callable[[], float]
-) -> Callable[[dict[str, Any]], None]:
+    service: str, bus: MessageBus, health: HealthRegistry
+) -> Callable[[dict[str, Any], float], None]:
     """schwab-py handler for one service: every item -> the bus.
 
-    Each item goes with the timestamp Schwab put on the frame. The service counts as alive only
-    when a frame delivered data, not merely arrived. A frame with no list of items, and an item
-    with no symbol, cannot be taken: each is logged as it came and the stream goes on.
+    Each item goes with the timestamp Schwab put on the frame and the time the stream read the
+    frame (`received`, TimedStream). The service counts as alive only when a frame delivered
+    data, not merely arrived. A frame with no list of items, and an item with no symbol, cannot
+    be taken: each is logged as it came and the stream goes on.
     """
 
-    def handler(msg: dict[str, Any]) -> None:
+    def handler(msg: dict[str, Any], received: float) -> None:
         published = False
-        now, schwab_ts = clock(), msg.get("timestamp")
+        schwab_ts = msg.get("timestamp")
         content = msg.get("content")
         if not isinstance(content, list):
             log.warning("%s: a frame with no list of items, not taken: %.500r", service, msg)
@@ -239,28 +240,33 @@ def _publisher(
                 log.warning("%s: an item with no symbol, not taken: %.500r", service, item)
                 continue
             sym = key.upper()
-            kind, out = _message(service, sym, item, schwab_ts, now)
+            kind, out = _message(service, sym, item, schwab_ts, received)
             bus.publish(f"{kind}.{sym}", out)
             published = True
         if published:
-            health.beat(service, now)
+            health.beat(service, received)
 
     return handler
 
 
-def _dispatch(publishers: dict[str, Callable[[dict[str, Any]], None]], msg: dict[str, Any]) -> None:
+def _dispatch(
+    publishers: dict[str, Callable[[dict[str, Any], float], None]],
+    msg: dict[str, Any],
+    received: float,
+) -> None:
     """Hand a frame's data, its fields named (_label), and its notifications to their services.
 
-    Schwab's heartbeats carry nothing to hand.
+    Each goes with the time the stream read the frame (`received`). Schwab's heartbeats carry
+    nothing to hand.
     """
     data: list[dict[str, Any]] = msg["data"] if "data" in msg else []
     for d in data:
         if d["service"] in publishers:
-            publishers[d["service"]](label(d))
+            publishers[d["service"]](label(d), received)
     notify: list[dict[str, Any]] = msg["notify"] if "notify" in msg else []
     for d in notify:
         if "heartbeat" not in d and d["service"] in publishers:
-            publishers[d["service"]](d)
+            publishers[d["service"]](d, received)
 
 
 @dataclass(eq=False)
@@ -311,7 +317,7 @@ class Connection:
         self.wake = asyncio.Event()  # a request is waiting: the connection sends it now
         self.stream: TimedStream | None = None
         #: each service's items -> the bus (_dispatch)
-        self.publishers = {svc: _publisher(svc, bus, health, clock) for svc in SERVICES}
+        self.publishers = {svc: _publisher(svc, bus, health) for svc in SERVICES}
         #: why Schwab is not connected, for /api/health (read while the socket is not open):
         #: SCHWAB_CONNECTING, or NOT CONNECTED since the first failure in a row (_down_since) with
         #: the last one's reason, as the log has it
@@ -362,11 +368,12 @@ class Connection:
                 await stream._send({"requests": [req]})
                 log.info("%s %s sent: %d symbols, requestid %d", svc, cmd, len(chunk), rid)
 
-    def answered(self, response: dict[str, Any]) -> None:
+    def answered(self, response: dict[str, Any], received: float) -> None:
         """Take one answer from Schwab (an entry of a frame's `response`).
 
         It is matched to its request by its requestid, logged and recorded
-        (stream_subscriptions) exactly as Schwab sent it. The first answer to a request decides
+        (stream_subscriptions) exactly as Schwab sent it, at the time the stream read its frame
+        (`received`), when a hold it begins begins too. The first answer to a request decides
         what the service holds; a later answer to the same request is recorded as its own. An
         answer that states a symbol limit (stated_limit) other than the one held replaces it,
         and the service is asked again within it (ask).
@@ -400,7 +407,7 @@ class Connection:
                 symbols=sent.symbols,
                 code=code,
                 reason=msg,
-                ts=self.clock(),
+                ts=received,
             ),
         )
         svc = sent.service
@@ -417,8 +424,7 @@ class Connection:
         # API, Command Name); what Schwab refuses it does not confirm, so a refused SUBS holds none
         held, new = self.held[svc], frozenset(sent.symbols if code == 0 else ())
         kept = {"SUBS": new, "ADD": held | new, "UNSUBS": held - new}[sent.command]
-        now = self.clock()
-        self.since[svc] = {sym: self.since[svc].get(sym, now) for sym in kept}
+        self.since[svc] = {sym: self.since[svc].get(sym, received) for sym in kept}
         self.held[svc] = kept
 
     def held_since(self, service: str, symbol: str) -> float | None:
@@ -460,11 +466,12 @@ class Connection:
     async def read(self, stream: TimedStream) -> None:
         """Handle every frame Schwab sends, as it comes, until the socket is gone.
 
-        Each answer goes to its request (answered), the data to the services' publishers. This
-        task alone reads, so every answer reaches it; it awaits each frame with no timer of its
-        own (a stop cancels it, and websockets' recv is safe to cancel: no frame is lost). A frame
-        schwab-py cannot parse (UnparsableMessage) is logged and the next one read; any other
-        error ends the connection, which run logs and reconnects.
+        Each answer goes to its request (answered), the data to the services' publishers, each
+        with the one time the stream read its frame (TimedStream: a frame's receipt is timed once,
+        there). This task alone reads, so every answer reaches it; it awaits each frame with no
+        timer of its own (a stop cancels it, and websockets' recv is safe to cancel: no frame is
+        lost). A frame schwab-py cannot parse (UnparsableMessage) is logged and the next one read;
+        any other error ends the connection, which run logs and reconnects.
         """
         while True:
             try:
@@ -477,11 +484,12 @@ class Connection:
                     exc_info=True,
                 )
                 continue
+            received = stream.last_frame_ts
             responses: list[dict[str, Any]] = msg["response"] if "response" in msg else []
             for response in responses:
-                self.answered(response)
+                self.answered(response, received)
             try:
-                _dispatch(self.publishers, msg)
+                _dispatch(self.publishers, msg, received)
             except Exception as e:  # that frame is logged; the next one is read
                 log.warning(
                     "schwab: skipped a frame (%s: %s)",

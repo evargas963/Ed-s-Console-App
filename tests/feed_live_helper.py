@@ -104,7 +104,7 @@ def on_the_bus(
     (topic, record), as the console takes it.
     """
     frame = {"timestamp": schwab_ts, "content": [item]}
-    connection._publisher(service, bus, HealthRegistry(), lambda: ts_recv)(frame)
+    connection._publisher(service, bus, HealthRegistry())(frame, ts_recv)
     return bus.current[held_key(service, item["key"].upper())]
 
 
@@ -197,8 +197,7 @@ def news_on_the_bus(bus: MessageBus, messages: list[dict]) -> None:
     for schwab_ts, group in groupby(messages, key=lambda m: m["schwab_ts"]):
         sent = list(group)
         frame = {"timestamp": schwab_ts, "content": [m["item"] for m in sent]}
-        at = sent[0]["ts_recv"]
-        connection._publisher("NEWS_HEADLINE", bus, HealthRegistry(), lambda at=at: at)(frame)
+        connection._publisher("NEWS_HEADLINE", bus, HealthRegistry())(frame, sent[0]["ts_recv"])
 
 
 def spy_minutes() -> list[Candle]:
