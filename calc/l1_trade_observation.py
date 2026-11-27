@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, NamedTuple
+from typing import Any, Final, NamedTuple, TypedDict
 
 from numeric_contract import schwab_count, schwab_number, schwab_time_ms
 from option_contract import NO_TOP, StreamedTop
@@ -42,9 +42,23 @@ TAPE_NOTE = (
     "Michaely and O'Hara 2000); Finucane (2000) found the two about equal. Schwab's stream is "
     "not every trade. Pressure: signed size over the signed size in the window, -1 to +1."
 )
-VENDOR_TRADE_TIME = "TRADE_TIME_MILLIS"
-VENDOR_LAST_PRICE = "LAST_PRICE"
-VENDOR_LAST_SIZE = "LAST_SIZE"
+VENDOR_TRADE_TIME: Final = "TRADE_TIME_MILLIS"
+VENDOR_LAST_PRICE: Final = "LAST_PRICE"
+VENDOR_LAST_SIZE: Final = "LAST_SIZE"
+#: a print's three fields: a new value of any makes a new print
+PRINT_FIELDS = frozenset({VENDOR_LAST_PRICE, VENDOR_LAST_SIZE, VENDOR_TRADE_TIME})
+
+
+class SentPrint(TypedDict, total=False):
+    """The last-print fields a LEVELONE message carries, by Schwab's name, each as read.
+
+    Schwab streams LEVELONE as Change (Streamer API §1.5): a field the message does not carry is
+    not in it; one sent as no number is None (AGENTS.md rule 2).
+    """
+
+    LAST_PRICE: float | None
+    LAST_SIZE: float | None
+    TRADE_TIME_MILLIS: int | None
 
 
 def _time_millis(val: Any) -> int | None:
@@ -53,23 +67,20 @@ def _time_millis(val: Any) -> int | None:
     return int(v) if v is not None else None
 
 
-#: how each field of the last print is read, as Schwab sends it (AGENTS.md rule 2)
-_PRINT_READERS = {
-    VENDOR_LAST_PRICE: schwab_number,
-    VENDOR_LAST_SIZE: schwab_count,
-    VENDOR_TRADE_TIME: _time_millis,
-}
-#: a print's three fields: a new value of any makes a new print
-PRINT_FIELDS = frozenset(_PRINT_READERS)
-
-
-def last_print(item: dict[str, Any]) -> dict[str, Any]:
+def last_print(item: dict[str, Any]) -> SentPrint:
     """Read a LEVELONE message's last print; the one reader of its three fields.
 
     Each of LAST_PRICE, LAST_SIZE and TRADE_TIME_MILLIS (epoch ms) the message carries, by its
     Schwab name; one sent as no number is None. A field the message does not carry is not in it.
     """
-    return {name: read(item[name]) for name, read in _PRINT_READERS.items() if name in item}
+    sent: SentPrint = {}
+    if VENDOR_LAST_PRICE in item:
+        sent[VENDOR_LAST_PRICE] = schwab_number(item[VENDOR_LAST_PRICE])
+    if VENDOR_LAST_SIZE in item:
+        sent[VENDOR_LAST_SIZE] = schwab_count(item[VENDOR_LAST_SIZE])
+    if VENDOR_TRADE_TIME in item:
+        sent[VENDOR_TRADE_TIME] = _time_millis(item[VENDOR_TRADE_TIME])
+    return sent
 
 
 @dataclass(frozen=True)

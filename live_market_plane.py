@@ -123,6 +123,29 @@ def _read_stream_field(name: str, raw: Any) -> float | str | None:
     return schwab_number(raw)
 
 
+def _sent(item: dict[str, Any]) -> dict[str, float | str | None]:
+    """Return each field a LEVELONE_EQUITIES message sent, by Schwab's name, as read.
+
+    The plane's own fields, and the last trade's three from their one reader (last_print); one
+    sent as no number is None. A field the message does not carry is not in it.
+    """
+    own = _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS + _TEXT_FIELDS
+    sent = {name: _read_stream_field(name, item[name]) for name in own if name in item}
+    if "QUOTE_TIME_MILLIS" in sent and sent["QUOTE_TIME_MILLIS"] is None:
+        # Schwab's quote time is the last time a bid or ask updated (Streamer API §3.1, field 34):
+        # sent as no time (an index with no market, $VIX and $NDX), Schwab set no bid or ask, and
+        # the 0s beside it are no quote, cleared as not a number (option_contract.streamed_top)
+        sent.update(dict.fromkeys(_QUOTE_FIELDS))
+    printed = last_print(item)
+    if VENDOR_LAST_PRICE in printed:
+        sent[VENDOR_LAST_PRICE] = printed[VENDOR_LAST_PRICE]
+    if VENDOR_LAST_SIZE in printed:
+        sent[VENDOR_LAST_SIZE] = printed[VENDOR_LAST_SIZE]
+    if VENDOR_TRADE_TIME in printed:
+        sent[VENDOR_TRADE_TIME] = printed[VENDOR_TRADE_TIME]
+    return sent
+
+
 def record_from_level_one_equity(
     ticker: str,
     item: dict[str, Any],
@@ -152,14 +175,7 @@ def record_from_level_one_equity(
     if not t:
         return False
     rts = float(received_ts)
-    own = _PRICE_FIELDS + _COUNT_FIELDS + _CLOCK_FIELDS + _SIGNED_FIELDS + _TEXT_FIELDS
-    sent = {name: _read_stream_field(name, item[name]) for name in own if name in item}
-    if "QUOTE_TIME_MILLIS" in sent and sent["QUOTE_TIME_MILLIS"] is None:
-        # Schwab's quote time is the last time a bid or ask updated (Streamer API §3.1, field 34):
-        # sent as no time (an index with no market, $VIX and $NDX), Schwab set no bid or ask, and
-        # the 0s beside it are no quote, cleared as not a number (option_contract.streamed_top)
-        sent.update(dict.fromkeys(_QUOTE_FIELDS))
-    sent.update(last_print(item))  # the last trade's three fields: their one reader's
+    sent = _sent(item)
     if not sent:
         return False
     with _lock:
