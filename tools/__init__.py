@@ -1,1 +1,1 @@
-# Namespace for `python -m tools.schwab_universal_coverage_scanner_v3` and V4 tooling modules.
+"""The repository's tools, each run as `python -m tools.<name>` or by the hooks that name it."""

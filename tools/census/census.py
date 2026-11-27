@@ -10,9 +10,10 @@ so. Writes <out>/census_<date>_<sha>.md (the report) and <out>/items_<date>_<sha
 item); `python -m tools.census.compare <before.md> <after.md>` prints what changed.
 
 Every section names the AGENTS.md rule it checks and the tool that counts it, and each checker's
-own total is compared with what the census read. What no machine counts yet is in hand_found.json;
-each candidate's verdict, and each issue at its row's design target, with its reason is in
-decisions.json. A checker whose output the census cannot read stops the census with that error.
+own total is compared with what the census read. What no machine counts yet is a row of the work
+list, ACTIVE_PROGRAM.md, counted with the open work rows; each candidate's verdict, and each issue
+at its row's design target, with its reason is in decisions.json. A checker whose output the
+census cannot read stops the census with that error.
 """
 
 import argparse
@@ -1832,7 +1833,8 @@ for wf, r_ in latest.items():
             "gh run list",
             f"{wf}: {r_['conclusion']} at {r_['headSha'][:8]} {r_['createdAt']}",
         )
-for f in [f for f in FILES if f.startswith("tools/") and f.endswith(".py")]:
+# a package's __init__.py makes its folder importable; it is no tool
+for f in [f for f in FILES if f.startswith("tools/") and f.endswith(".py") and "__init__" not in f]:
     add(
         S,
         "hand-built check tools (each until a standard tool does its job: STANDARD-CHECKS)",
@@ -2530,22 +2532,6 @@ lines_matching(
     "9/15",
     "regex",
 )
-
-# =============================================================================================
-# I. FOUND BY HAND (no machine count yet; each needs a counting command or the screen)
-# =============================================================================================
-log.info("census: I")
-S = "I. Found by hand"
-HAND = json.loads((CENSUS / "hand_found.json").read_text(encoding="utf-8"))["items"]
-add(
-    S,
-    "items found by hand, all categories below (reported)",
-    "see item",
-    "by hand",
-    count=len(HAND),
-)
-for found in HAND:
-    add(S, found["category"], "see item", "by hand", found["item"])
 
 # =============================================================================================
 # DECISIONS (decisions.json): each item checked by hand once. A candidate moves to an issue row or

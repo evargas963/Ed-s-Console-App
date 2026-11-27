@@ -59,8 +59,9 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   the stream alone (open interest stays the chain's, rule 3's exception).
 - SPEED (NEXT; also LIVE-MEASURE): one regular session's numbers across the watchlist, from the
   daemon log and py-spy: requests per minute and every 429 or 502, the chain rotation time, the
-  program's memory and CPU, the levels' age, and how far the push runs behind Schwab. Then the $SPX
-  levels computation.
+  program's memory and CPU, the levels' age, and how far the push runs behind Schwab, a streamed
+  contract's chain ladder cell among them (a median 4.4 s behind on 2026-11-18, before #1194 showed
+  each streamed value as it arrives). Then the $SPX levels computation.
 - RATE-EVIDENCE (NEXT): one regular session from the daemon log: per minute and per 10 s, requests
   sent, successes, 429s and 403s (with each 403's Akamai reference), beside each chain's quote
   batches, across the watchlist; whether concurrency or the per-minute count drives the refusals.
@@ -72,7 +73,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   objects each time: about 36,000 for QQQ, 25,822 of them per-strike rows (`calc/terrain_engine.py`
   `StrikeValue`, `StrikeRow`), and its thread used 51 of 90 seconds of one core in the replay of
   2026-11-20 10:35 ET. It is what set off the full collections the session now runs without
-  (`docs/DATA_FLOW.md` §3.1). Next: the confirming measurement on the live program at the next
+  (`docs/DATA_FLOW.md` §3.1), and what held the lock when `/api/health` took over 1 s (1 of 60 live
+  requests on 2026-11-18). Next: the confirming measurement on the live program at the next
   regular-hours open (the lock's holder by py-spy, each thread's CPU time read from outside, the
   day's `garbage collection after the close` line); then the reprice publishes only what changed, in
   records the collector does not track.
@@ -135,8 +137,10 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   so the ladder then carries the records.
 - ENF-13 (QUEUED; also GUARD-SHRINK): the command guards (`tools/operator_yes_guard.py`,
   `tools/operator_law_guard.py`, `tools/process_lock_guard.py`, `tools/shell_parse.py`) cut to the
-  least code that keeps every verdict their tests check. This is the one list of their known open
-  forms (no test, not refused):
+  least code that keeps every verdict their tests check, the hand lexer in `tools/shell_parse.py`
+  replaced where a standard parser reads the same (bashlex for bash, PowerShell's own
+  `System.Management.Automation.Language.Parser`). This is the one list of their known open forms
+  (no test, not refused):
   - `gh` run by another program: `Start-Process`, `winpty`, `xargs -a f gh`, a git alias, a program
     built by python or node, cmd's `start`, `[Diagnostics.Process]::Start`,
     `wmic process call create`, PowerShell splatting; an alias written into gh's `config.yml`;
@@ -176,7 +180,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   when its feed stops, with OFFLINE in the header; each 1-minute bar equals Schwab's about 3 s after
   it closes; each book shown under its own venue; a viewed ticker's levels and heatmap repriced on
   every tick with no visible lag; the option rule's contracts held and updating; the heatmap chip's
-  counts match its cells.
+  counts match its cells; every ticker's levels and Greeks against Schwab's own numbers (the
+  watchlist's prices and changes matched Schwab's exactly on 2026-11-18, all 9).
 - CARRIED-PRS (QUEUED): what the closed pull requests still wanted, each re-checked against main
   first: the status push on its own clock; the opening range from Schwab's open; settled contracts
   leave the book; a missing flip says what was searched; the charts name a gap after a drop; a chain
