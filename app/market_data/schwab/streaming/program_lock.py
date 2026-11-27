@@ -29,9 +29,12 @@ from db_authority import resolve_stream_db_path
 
 log = logging.getLogger(__name__)
 
-#: Exit code when another program already holds the lock (start_capture_daemon.cmd stops its
-#: restart loop on it). 2 is the live-binding refusal (runtime_layout).
+#: The program's exit codes that its window (launch.window) never runs it again after: it refused
+#: to run (arguments given, or this checkout may not run live: runtime_layout), another program
+#: already holds the lock, or it was stopped on request (launch.py stop).
+EXIT_REFUSED = 2
 EXIT_OWNER_LOCK_HELD = 3
+EXIT_STOPPED = 5
 
 #: OpenEventW's right to set an event; WaitForSingleObject's answer for a set one
 EVENT_MODIFY_STATE = 0x0002
