@@ -191,7 +191,7 @@ def test_the_terrain_endpoint_serves_a_published_ticker_as_json_without_internal
     """
     _daemon()
     snap = _put_chain()
-    body = push_terrain.terrain(TK, time_et.now())
+    body = push_terrain.terrain(TK, _T)
     assert json.loads(json.dumps(body)) == body
     assert snap.gamma_flip is not None
     assert body["call_wall"] == snap.call_wall and body["gamma_flip"] == snap.gamma_flip
@@ -481,18 +481,17 @@ def test_vanna_and_charm_by_strike_read_the_published_snapshot():
     Its 2026-10-16 expiry still has time value, which charm needs.
     """
     valued = datetime(2026, 10, 7, 12, 0, tzinfo=ET)
-    _daemon(at=valued.timestamp())  # live when the chain is published
+    _daemon(at=valued.timestamp())  # live when the chain is published and the routes read it
     snap = server._publish_levels(TK, _RECORDS, _T, chain_spot=(_SPOT, _T), now=valued)
-    _daemon(at=time_et.now())  # live now, as the routes read it
     every = {"scope": "all", "centre": None, "shift": 0, "expiry": None}
-    charm = push_strike_bars.strike_bars("charm", TK, time_et.now(), every)
+    charm = push_strike_bars.strike_bars("charm", TK, valued.timestamp(), every)
     own = [r["strike"] for r in charm["rows"]]
     at_price = [r["strike"] for r in charm["rows"] if r["marks"]]
     assert charm["available"] and at_price == [min(own, key=lambda k: abs(k - snap.spot))]
     assert len(charm["rows"]) == sum(
         1 for b in snap.charm_by_strike.values() if b.get("net_charm") is not None
     )
-    vanna = push_strike_bars.strike_bars("vanna", TK, time_et.now(), every)
+    vanna = push_strike_bars.strike_bars("vanna", TK, valued.timestamp(), every)
     assert vanna["available"] and vanna["rows"]
 
 
@@ -519,7 +518,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     _put_chain()
     published = _cached().served()
     _daemon(price=None)  # the price is no longer live
-    out = push_terrain.terrain(TK, time_et.now())
+    out = push_terrain.terrain(TK, _T)
     for k in ("regime", "net_gex_at_spot", "call_wall", "headline"):
         assert out[k] == published[k], k
     for k in ("call_wall_state", "call_wall_lean", "flip_relation", "pin_candidate"):
@@ -530,7 +529,7 @@ def test_the_route_serves_the_publication_and_a_chain_without_a_spot_publishes_n
     assert not {"spot", "spot_source", "spot_as_of_ts_utc"} & (published.keys() | out.keys())
     assert "spot_state" not in out
     _publish(_RECORDS, _T, chain_spot=(None, None))  # the next chain: no spot
-    out = push_terrain.terrain(TK, time_et.now())
+    out = push_terrain.terrain(TK, _T)
     assert (
         out["regime"] == "UNAVAILABLE"
         and out["call_wall"] is None
