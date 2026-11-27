@@ -11,8 +11,8 @@ item); `python -m tools.census.compare <before.md> <after.md>` prints what chang
 
 Every section names the AGENTS.md rule it checks and the tool that counts it, and each checker's
 own total is compared with what the census read. What no machine counts yet is in hand_found.json;
-each candidate's verdict and its reason is in candidate_decisions.json. A checker whose output the
-census cannot read stops the census with that error.
+each candidate's verdict, and each issue at its row's design target, with its reason is in
+decisions.json. A checker whose output the census cannot read stops the census with that error.
 """
 
 import argparse
@@ -1140,8 +1140,7 @@ lines_matching(
             r"(?:client\(\)|\bclient)\.(get_quotes?|get_option_chain|"
             r"get_price_history\w*|get_market_hours?|get_movers|"
             r"get_instruments?|get_option_expiration_chain)\s*\(",
-            "REST requests to Schwab (reported; checked 2026-11-07: each asks "
-            "for what the stream does not send, but STREAM-ONE)",
+            "REST requests to Schwab (each for what the stream does not send)",
         )
     ],
     S,
@@ -1752,8 +1751,11 @@ add(
 for f in ["AGENTS.md", "CLAUDE.md", "docs/DATA_FLOW.md"] + [
     f for f in FILES if f.startswith(".claude/rules/")
 ]:
-    # read across line breaks: a wrapped paragraph may break the phrase between two lines
-    for m in re.finditer(r"no\s+machine\s+check[^;|\n]*", TEXT[f]):
+    # read across line breaks: a wrapped paragraph may break the phrase, or the work item that
+    # builds its check, between two lines
+    for m in re.finditer(
+        r"no\s+machine\s+check(?:[\s,—–-]+(?:ENF-\d+|[A-Z]+(?:-[A-Z]+)+))?", TEXT[f]
+    ):
         line = TEXT[f].count("\n", 0, m.start()) + 1
         add(
             S,
@@ -2314,7 +2316,7 @@ for f in [f for f in FILES if lang(f) in ("Python", "JavaScript", "HTML") and f 
             add(S, cat, "1", "regex", f"{f}:{n}: named a workaround by its author: {code}")
 by_line("workarounds: ", "; ")
 
-#: each read is judged by its code (candidate_decisions.json): a record of ours whose keys nothing
+#: each read is judged by its code (decisions.json): a record of ours whose keys nothing
 #: guarantees is an issue; a boundary's input read by name and checked there is not
 DICT_READ = (
     "dict reads with .get by a field's name outside the Feed (check each: a dict whose keys "
@@ -2511,19 +2513,34 @@ for found in HAND:
     add(S, found["category"], "see item", "by hand", found["item"])
 
 # =============================================================================================
-# CANDIDATE DECISIONS (candidate_decisions.json): each checked candidate moves to an issue row or a
-# reported "checked, not an issue" row with its reason
+# DECISIONS (decisions.json): each item checked by hand once. A candidate moves to an issue row or
+# to a reported "checked, not an issue" row with its reason; an issue at its row's design target,
+# set by the rule its reason names, moves to that reported row, so every issue left is work. A
+# banned name that a check in D judges line by line (the clock taken, sqlite3 in product code) is
+# counted there, once.
 # =============================================================================================
 CANDIDATE = re.compile(r"check each|candidates|\(check\)")
+REPORTED = ": checked, not an issue (reported)"
+TID251 = ("B. Linters", "ruff TID251 (locks.ruff.toml, noqa ignored)")
+add(*TID251, "locks/13", "ruff")
+judged = {
+    it.split(": ")[0]
+    for k, row in rows.items()
+    if k[1].startswith(("clock taken", "modules using sqlite3"))
+    for it in row.items
+}
+for it in [it for it in rows[TID251].items if it.split(": ")[0] in judged]:
+    rows[TID251].items.remove(it)
+    add(TID251[0], "TID251 lines judged in D, counted there (reported)", "locks/13", "ruff", it)
 decisions = [
     (d["verdict"], d["category"], re.compile(d["pattern"]), d["reason"])
-    for d in json.loads((CENSUS / "candidate_decisions.json").read_text(encoding="utf-8"))[
-        "decisions"
-    ]
+    for d in json.loads((CENSUS / "decisions.json").read_text(encoding="utf-8"))["decisions"]
 ]
-for key in [k for k in list(rows) if CANDIDATE.search(k[1])]:
+for key in [
+    k for k in list(rows) if CANDIDATE.search(k[1]) or any(k[1].startswith(d[1]) for d in decisions)
+]:
     row = rows[key]
-    for verdict in (": confirmed", ": checked, not an issue (reported)"):
+    for verdict in (": confirmed", REPORTED) if CANDIDATE.search(key[1]) else (REPORTED,):
         add(key[0], key[1].split(" (")[0] + verdict, row.rule, row.tool + " + by hand")
     keep = []
     for it in row.items:
@@ -2531,7 +2548,7 @@ for key in [k for k in list(rows) if CANDIDATE.search(k[1])]:
         if not hits:
             keep.append(it)
             continue
-        verdict = ": confirmed" if hits[0][0] == "issue" else ": checked, not an issue (reported)"
+        verdict = ": confirmed" if hits[0][0] == "issue" else REPORTED
         add(
             key[0],
             key[1].split(" (")[0] + verdict,
@@ -2550,7 +2567,8 @@ lines = [
     f"# EdWebConsole census, {TODAY}, {SHA}",
     "",
     "Run from the checkout: `python -m tools.census.census <out dir> [<data dir>]`. Every "
-    f"item is in `items_{stem}.txt`. Target: every issue count 0.",
+    f"item is in `items_{stem}.txt`. Target: every issue count 0; an item at its row's design "
+    "target is reported with the rule that sets it.",
     "",
     "| Section | Category | Rule | Counted by | Count | Kind |",
     "|---|---|---|---|---|---|",
@@ -2568,8 +2586,9 @@ for (sec, cat), row in rows.items():
     items_out += [f"\n## {sec} / {cat} ({n}, {kind})", *row.items]
 lines += [
     "",
-    "Kind: issue = each item breaks a rule; candidate = each item must be checked by "
-    "hand and is an issue or not; reported = a size or a check's own result, no target.",
+    "Kind: issue = each item breaks a rule, above its row's design target; candidate = each item "
+    "must be checked by hand and is an issue or not; reported = a size, a check's own result or "
+    "an item at its design target, no target.",
     "",
     "## Totals by section",
     "",

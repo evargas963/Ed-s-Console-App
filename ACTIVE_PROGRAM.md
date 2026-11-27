@@ -28,13 +28,16 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   the one market-data answer not recorded (`feed.schwab_client.option_expiries`). Every step that
   deletes data is planned to the operator and run by him.
 - CENSUS (IN PROGRESS; also LINTERS): `tools/census/census.py` (`.github/workflows/census.yml`)
-  counts every issue in the repository; each count is driven to 0, then becomes a failing `locks`
-  check. Every language's standard checker (ESLint, Stylelint, html-validate, Prettier,
-  markdownlint, taplo, yamllint, actionlint, Blinter, `json.tool`) runs over every tracked file;
-  Markdown's layout is Prettier's alone. Left: each finding fixed; each checker made a failing check
-  at 0; one shared git reader for the check tools (`_git` in `tools/check_end_to_end.py`,
-  `tools/check_integrity.py`, `tools/check_one_reader.py`, `tools/hook_chain.py`). Untracked files
-  nothing uses go to an archive beside the checkout; their deletion is the operator's.
+  counts every issue in the repository, each above its row's design target: an item at the target a
+  rule sets (the one clock in `time_et.py`, the Recorder's and the loader's sqlite3, the builder's
+  audit) is reported with that rule (`tools/census/decisions.json`), so every issue left is work;
+  each count is driven to 0, then becomes a failing `locks` check. Every language's standard checker
+  (ESLint, Stylelint, html-validate, Prettier, markdownlint, taplo, yamllint, actionlint, Blinter,
+  `json.tool`) runs over every tracked file; Markdown's layout is Prettier's alone. Left: each
+  finding fixed; each checker made a failing check at 0; one shared git reader for the check tools
+  (`_git` in `tools/check_end_to_end.py`, `tools/check_integrity.py`, `tools/check_one_reader.py`,
+  `tools/hook_chain.py`). Untracked files nothing uses go to an archive beside the checkout; their
+  deletion is the operator's.
 - REVIEW (IN PROGRESS): the repo-wide review's findings, each checked against the code and the
   sources and fixed with a test that fails on the old code. Next: the support and resistance line,
   once a longer price history shows which levels hold, and the other screens that print key levels.
