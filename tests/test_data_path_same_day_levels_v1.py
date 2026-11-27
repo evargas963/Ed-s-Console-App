@@ -10,7 +10,9 @@ open interest (tests/test_pin_by_open_interest_v1.py).
 
 from __future__ import annotations
 
+import cProfile
 import math
+import pstats
 import statistics
 
 import pytest
@@ -81,24 +83,24 @@ def test_a_same_day_expiry_reads_the_charm_map_already_priced():
     """SPY expires 2026-10-07, the day this chain was captured.
 
     The rail charm is that expiry's map. Charm is calculated once for the expiry, not again for
-    the rail.
+    the rail: Python's own profiler counts the real calls.
     """
     held = SPY_0DTE
-    calls = {"n": 0}
-    real = terrain_engine.compute_charm_by_strike
-
-    def counting(*args, **kwargs):
-        calls["n"] += 1
-        return real(*args, **kwargs)
-
-    terrain_engine.compute_charm_by_strike = counting
-    try:
-        snap = terrain_engine.compute_terrain(
-            held.ticker, read_chain(held.chain), held.spot, now=held.now, sessions=sessions()
-        )
-    finally:
-        terrain_engine.compute_charm_by_strike = real
-    assert calls["n"] == len(snap.charm_by_expiry)
+    profile = cProfile.Profile()
+    snap = profile.runcall(
+        terrain_engine.compute_terrain,
+        held.ticker,
+        read_chain(held.chain),
+        held.spot,
+        now=held.now,
+        sessions=sessions(),
+    )
+    charm_calls = sum(
+        counts[1]
+        for (_file, _line, name), counts in pstats.Stats(profile).stats.items()
+        if name == "compute_charm_by_strike"
+    )
+    assert charm_calls == len(snap.charm_by_expiry)
     # worked out from the raw chain outside the program: BSM delta's time derivative per contract
     assert (snap.same_day["call_charm_wall"], snap.same_day["put_charm_wall"]) == charm_walls(held)
     assert snap.same_day["call_charm_wall"] == 780.0
