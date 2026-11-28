@@ -54,6 +54,11 @@ def display_symbol(key: str) -> str:
     return key[1:] if key.startswith("$") else key
 
 
+#: an option's OCC OSI symbol as Schwab sends it: a 6-character root padded with spaces, the
+#: expiry as YYMMDD, C or P, and the strike in 8 digits
+OSI_SYMBOL_LENGTH = 21
+
+
 def vendor_option_root(symbol: str) -> str:
     """Option root already encoded in a Schwab/OCC OSI vendor symbol.
 
@@ -62,7 +67,7 @@ def vendor_option_root(symbol: str) -> str:
     8-digit strike (see ``tests/fixtures/real_cde_complete_chain_half_dollar.json``).
     """
     raw = symbol.strip().upper()
-    if len(raw) != 21:
+    if len(raw) != OSI_SYMBOL_LENGTH:
         return ""
     if not raw[6:12].isdigit() or raw[12] not in "CP" or not raw[13:].isdigit():
         return ""

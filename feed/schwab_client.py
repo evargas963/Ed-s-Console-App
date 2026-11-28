@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any, override
 from urllib.parse import parse_qs, urlparse
@@ -231,7 +232,7 @@ def log_request(response: httpx.Response) -> None:
         f"REQUEST {req.method} {what} -> {response.status_code}"
         f" (sent {ct_clock(req.extensions['sent'])}, answered {ct_clock(answered)})"
     )
-    if response.status_code < 400:
+    if response.status_code < HTTPStatus.BAD_REQUEST:
         log.info(line)
         return
     body = (
@@ -319,7 +320,7 @@ class OneRefreshSession(OAuth2Client):
                 count, full = held.count + 1, min(SERVER_ERROR_MOST_WAIT_SEC, held.full * 2)
             else:
                 held, count, full = None, 1, SERVER_ERROR_FIRST_WAIT_SEC
-            if response.status_code >= 500:
+            if response.status_code >= HTTPStatus.INTERNAL_SERVER_ERROR:
                 wait = random.uniform(full / 2, full)
                 self._server_errors[path] = _ServerErrors(
                     count, full, response.extensions["answered"] + wait
@@ -378,7 +379,11 @@ class OneRefreshSession(OAuth2Client):
         sent = self.token
         response = self._answered(method, url, withhold_token, auth, **kwargs)
         challenge = response.headers.get("www-authenticate")
-        if response.status_code != 401 or challenge is None or "invalid_token" not in challenge:
+        if (
+            response.status_code != HTTPStatus.UNAUTHORIZED
+            or challenge is None
+            or "invalid_token" not in challenge
+        ):
             return response
         with self._refresh_lock:
             if sent is not None and self.token is sent:
@@ -814,7 +819,7 @@ def option_expiries(
     expiries are None when Schwab does not answer 200.
     """
     resp = client.get_option_expiration_chain(ticker)
-    if resp.status_code != 200:
+    if resp.status_code != HTTPStatus.OK:
         return None, resp
     return listed_expiries(resp.json(), today), resp
 
@@ -842,7 +847,7 @@ def check_ticker(client: Client, ticker: str) -> tuple[bool, int, object]:
         answer: Json = resp.json()
     except ValueError:
         return False, resp.status_code, resp.text
-    quoted = resp.status_code == 200 and isinstance(answer, dict) and ticker in answer
+    quoted = resp.status_code == HTTPStatus.OK and isinstance(answer, dict) and ticker in answer
     return quoted, resp.status_code, answer
 
 
