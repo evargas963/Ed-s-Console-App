@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
-from tools import operating_process_lock as OPL
+from tools import operating_process_lock as opl
 from tools import operator_yes_guard as yes_guard
-from tools import process_lock_guard as PLG
+from tools import process_lock_guard as plg
 from tools.operator_law_guard import bash_violations
 
 #: Split so this file's own text is not read as the actions it names.
@@ -100,11 +100,11 @@ PIPED_COMMITS = [
 
 @pytest.mark.parametrize("tool, cmd", PIPED_COMMITS)
 def test_a_piped_commit_is_refused_whatever_its_message_holds(tool, cmd):
-    assert OPL.commit_pipe_violations(cmd, tool == "PowerShell")
+    assert opl.commit_pipe_violations(cmd, tool == "PowerShell")
 
 
 def test_a_wipe_after_a_heredoc_message_with_an_apostrophe_is_refused():
-    assert OPL.reset_guard_violations(
+    assert opl.reset_guard_violations(
         "git commit -m \"$(cat <<'EOF'\nit's done\nEOF\n)\" && git reset --hard"
     )
 
@@ -341,7 +341,7 @@ def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refu
 
     Other listing options still meet the branch rule.
     """
-    primary = PLG._primary_worktree_root(PLG.REPO) or PLG.REPO
+    primary = plg._primary_worktree_root(plg.REPO) or plg.REPO
     lock = "PROD_CHECKOUT_LOCK"
     for cmd in (
         f'git -C "{primary}" branch --list fix/x',
@@ -349,13 +349,13 @@ def test_a_branch_listing_aimed_at_production_is_a_read_and_a_new_branch_is_refu
         f'git -C "{primary}" branch --contains abc1234',
         f'git -C "{primary}" branch -a --list "*decomp*"',
     ):
-        assert not any(lock in b for b in PLG.pretooluse_block("Bash", {"command": cmd})), cmd
+        assert not any(lock in b for b in plg.pretooluse_block("Bash", {"command": cmd})), cmd
     for cmd in (
         f'git -C "{primary}" branch fix/x',
         f'git -C "{primary}" branch -D fix/x',
         f'git -C "{primary}" branch --merged abc1234',
     ):
-        assert any(lock in b for b in PLG.pretooluse_block("Bash", {"command": cmd})), cmd
+        assert any(lock in b for b in plg.pretooluse_block("Bash", {"command": cmd})), cmd
 
 
 def test_a_heredoc_piped_into_python_is_judged_as_python():
@@ -389,7 +389,7 @@ def test_a_lock_disable_through_the_environment_is_refused(cmd):
     ],
 )
 def test_a_wipe_run_by_another_program_is_refused(tool, cmd):
-    assert OPL.reset_guard_violations(cmd, tool == "PowerShell")
+    assert opl.reset_guard_violations(cmd, tool == "PowerShell")
 
 
 def test_a_kill_written_as_an_argument_is_refused_and_an_empty_pipe_input_does_not_crash():
@@ -408,8 +408,8 @@ def test_a_kill_written_as_an_argument_is_refused_and_an_empty_pipe_input_does_n
 
 def test_a_checkout_naming_no_path_passes_as_on_main():
     """`git checkout -q --` checks out no path; with a path after `--` it is refused."""
-    assert not OPL.reset_guard_violations("git checkout -q -- 2>/dev/null")
-    assert OPL.reset_guard_violations("git checkout -q -- server.py")
+    assert not opl.reset_guard_violations("git checkout -q -- 2>/dev/null")
+    assert opl.reset_guard_violations("git checkout -q -- server.py")
 
 
 @pytest.mark.parametrize(

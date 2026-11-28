@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import pytest
 
-from calc import terrain_engine as TE
+from calc import terrain_engine
 from calc.liquidity_models import volume_profile
 from tests.feed_live_helper import daemon_bars
 from tests.real_chains import CRWD, crwd_exposures
@@ -52,7 +52,7 @@ def test_a_strike_with_no_resolvable_gamma_draws_no_bar():
     unknown GAMMA was drawn at 0.0 -- visually identical to a strike measured at flat gamma, on the
     surface used to read where dealers are short.
     """
-    rows = TE._per_strike_rows({500.0: {}})
+    rows = terrain_engine._per_strike_rows({500.0: {}})
     assert rows == [], f"drew a bar for a strike with no gamma: {rows}"
 
 
@@ -67,7 +67,7 @@ def test_a_measured_gamma_still_draws_its_bar():
         side: ct["gamma"] * ct["openInterest"] * ct["multiplier"] * CRWD.spot * CRWD.spot * 0.01
         for side, ct in legs.items()
     }
-    rows = [r for r in TE._per_strike_rows(crwd_exposures(CRWD.chain)) if r[0] == 270.0]
+    rows = [r for r in terrain_engine._per_strike_rows(crwd_exposures(CRWD.chain)) if r[0] == 270.0]
     assert len(rows) == 1
     assert rows[0][0] == pytest.approx(270.0)
     assert rows[0][1] == pytest.approx(gex["CALL"] - gex["PUT"], rel=1e-12)
@@ -80,7 +80,7 @@ def test_a_genuine_zero_gamma_still_draws_its_bar():
     Strike 297.5: Schwab sent open interest 0 on both sides.
     """
     assert [ct["openInterest"] for ct in _at(297.5).values()] == [0, 0]
-    rows = [r for r in TE._per_strike_rows(crwd_exposures(CRWD.chain)) if r[0] == 297.5]
+    rows = [r for r in terrain_engine._per_strike_rows(crwd_exposures(CRWD.chain)) if r[0] == 297.5]
     assert len(rows) == 1 and rows[0][1] == pytest.approx(0.0)
 
 
@@ -93,7 +93,7 @@ def test_a_strike_with_a_contract_whose_gamma_term_was_not_sent_has_gex_unknown(
     call = next(c for c in chain if c["strikePrice"] == 270.0 and c["putCall"] == "CALL")
     assert call["openInterest"] > 0
     del call["gamma"]
-    rows = TE._per_strike_rows(crwd_exposures(chain))
+    rows = terrain_engine._per_strike_rows(crwd_exposures(chain))
     assert [r[:2] for r in rows if r[0] == 270.0] == [(270.0, None)]
 
 

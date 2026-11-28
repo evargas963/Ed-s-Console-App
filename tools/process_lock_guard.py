@@ -27,7 +27,7 @@ import re
 import sys
 from pathlib import Path
 
-import tools.operating_process_lock as OPL
+import tools.operating_process_lock as opl
 from tools.hook_chain import BASH_TOOLS, MUTATING_TOOLS  # the ONE roster of each class
 from tools.pretooluse_guard import live_file
 from tools.shell_parse import (  # the ONE shell reader
@@ -386,9 +386,9 @@ def pretooluse_block(tool: str, tool_input: dict, payload_cwd: str = "") -> list
         ps = tool == "PowerShell"
         statements = read(cmd, payload_cwd or "", ps)
         # piped commits mask hook failures as exit 0 — block BEFORE it runs.
-        out.extend(OPL.commit_pipe_violations(cmd, ps))
+        out.extend(opl.commit_pipe_violations(cmd, ps))
         # the tree-destructive git CLASS, soft forms included, blocks BEFORE the tree is touched.
-        out.extend(OPL.reset_guard_violations(cmd, ps))
+        out.extend(opl.reset_guard_violations(cmd, ps))
         # Live-checkout invariant #1/#4: PREVENT a git branch-move/commit/reset/merge that
         # TARGETS the production checkout, at the moment of the command (not just at next launch).
         # Every git invocation in the chain is judged on its own — no laundering by a harmless

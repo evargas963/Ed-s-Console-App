@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tools import operator_law_guard as G
+from tools import operator_law_guard as guard
 
 pytestmark = pytest.mark.rail
 
@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parent.parent
 def test_appdata_redirect_not_protected_tree():
     """The protected tree is path-segment anchored: `AppData/` is not `data/`."""
     cmd = "git show HEAD:x > /c/scratch/AppData/Local/Temp/out.txt"
-    assert not any("under data/" in b for b in G.bash_violations(cmd))
+    assert not any("under data/" in b for b in guard.bash_violations(cmd))
 
 
 @pytest.mark.parametrize(
@@ -35,7 +35,7 @@ def test_appdata_redirect_not_protected_tree():
     ],
 )
 def test_real_protected_tree_targets_block(cmd):
-    assert any("under data/" in b for b in G.bash_violations(cmd)), cmd
+    assert any("under data/" in b for b in guard.bash_violations(cmd)), cmd
 
 
 @pytest.mark.parametrize(
@@ -48,13 +48,13 @@ def test_real_protected_tree_targets_block(cmd):
     ],
 )
 def test_protected_tree_permits_restores_messages_and_reads(cmd):
-    assert not any("under data/" in b for b in G.bash_violations(cmd)), cmd
+    assert not any("under data/" in b for b in guard.bash_violations(cmd)), cmd
 
 
 # ── lock disable ───────────────────────────────────────────────────────────────────────
 def test_git_push_dry_run_not_lock_disable():
     for cmd in ("git push -n origin main", "git push --dry-run origin main"):
-        out = G.bash_violations(cmd)
+        out = guard.bash_violations(cmd)
         assert not any("disables a mechanical lock" in v for v in out), (cmd, out)
     for cmd in (
         "git commit -n -m x",
@@ -64,7 +64,7 @@ def test_git_push_dry_run_not_lock_disable():
         "pre-commit uninstall",
         "git -c core.hooksPath=/dev/null commit -m x",
     ):
-        out = G.bash_violations(cmd)
+        out = guard.bash_violations(cmd)
         assert any("disables a mechanical lock" in v for v in out), (cmd, out)
 
 
@@ -81,9 +81,9 @@ def test_git_push_dry_run_not_lock_disable():
     ],
 )
 def test_blind_staging_blocks(cmd):
-    assert any("blind staging" in v for v in G.bash_violations(cmd)), cmd
+    assert any("blind staging" in v for v in guard.bash_violations(cmd)), cmd
 
 
 @pytest.mark.parametrize("cmd", ["git add tools/x.py", "git add -p", "git add tests/ tools/"])
 def test_explicit_staging_passes(cmd):
-    assert G.bash_violations(cmd) == [], cmd
+    assert guard.bash_violations(cmd) == [], cmd

@@ -138,7 +138,7 @@ def rest_rows(
     """
     now = dt.datetime.fromtimestamp(time_et.now())
     today = now.date()
-    P, M = c.Instrument.Projection, c.Movers
+    projection, movers = c.Instrument.Projection, c.Movers
     hashes = [a["hashValue"] for a in c.get_account_numbers().json()]
     calls = [  # (endpoint, variant, call)
         ("quotes", "", lambda: c.get_quotes(roster + EXTRA_QUOTES + _option_symbols(c))),
@@ -224,9 +224,9 @@ def rest_rows(
                 f"{i.value} {s.value} {f.value}",
                 lambda i=i, s=s, f=f: c.get_movers(i, sort_order=s, frequency=f),
             )
-            for i in M.Index
-            for s in M.SortOrder
-            for f in (M.Frequency.ZERO, M.Frequency.TEN)
+            for i in movers.Index
+            for s in movers.SortOrder
+            for f in (movers.Frequency.ZERO, movers.Frequency.TEN)
         ],
         *[
             (
@@ -239,21 +239,29 @@ def rest_rows(
         (
             "instruments",
             "fundamental",
-            lambda: c.get_instruments(roster + EXTRA_QUOTES, P.FUNDAMENTAL),
+            lambda: c.get_instruments(roster + EXTRA_QUOTES, projection.FUNDAMENTAL),
         ),
-        ("instruments", "symbol_search", lambda: c.get_instruments(roster, P.SYMBOL_SEARCH)),
-        ("instruments", "symbol_regex", lambda: c.get_instruments(["AAP.*"], P.SYMBOL_REGEX)),
+        (
+            "instruments",
+            "symbol_search",
+            lambda: c.get_instruments(roster, projection.SYMBOL_SEARCH),
+        ),
+        (
+            "instruments",
+            "symbol_regex",
+            lambda: c.get_instruments(["AAP.*"], projection.SYMBOL_REGEX),
+        ),
         (
             "instruments",
             "description_search",
-            lambda: c.get_instruments(["Apple"], P.DESCRIPTION_SEARCH),
+            lambda: c.get_instruments(["Apple"], projection.DESCRIPTION_SEARCH),
         ),
         (
             "instruments",
             "description_regex",
-            lambda: c.get_instruments(["Apple.*"], P.DESCRIPTION_REGEX),
+            lambda: c.get_instruments(["Apple.*"], projection.DESCRIPTION_REGEX),
         ),
-        ("instruments", "search", lambda: c.get_instruments(["SPY"], P.SEARCH)),
+        ("instruments", "search", lambda: c.get_instruments(["SPY"], projection.SEARCH)),
         ("accountnumbers", "", lambda: c.get_account_numbers()),
         ("accounts", "positions", lambda: c.get_accounts(fields=[c.Account.Fields.POSITIONS])),
         *[

@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from calc import liquidity_value_engine as LVE
+from calc import liquidity_value_engine as lve
 from calc.micro_structure import Candle
 from state import price_level_store
 from state.price_level_store import materialize_price_level_snapshot
@@ -83,7 +83,7 @@ def _mat(session, bars):
     return materialize_price_level_snapshot(
         "ZZRC324",
         session,
-        LVE.bars_from_candles(
+        lve.bars_from_candles(
             [
                 Candle(
                     ts=b["timestamp"] / 1000,
@@ -167,7 +167,7 @@ def test_the_fingerprint_covers_every_bar_field():
     held = sessions()
 
     def key(bars, candle, hours=held):
-        return LVE.snapshot_input_fingerprint(
+        return lve.snapshot_input_fingerprint(
             "ZZRC324", session, bars, "test_fixture", candle, hours
         )
 
