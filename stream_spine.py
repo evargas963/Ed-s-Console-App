@@ -74,7 +74,7 @@ type BusMessage = (
 #: file or handed in by a test, any JSON value. Code that reads one checks it is a dict first.
 type Payload = dict[str, Any] | list[Any] | str | float | None
 #: What the writer holds: a bus message with its topic, or a message kept as sent with its error.
-type Item = tuple[str, Payload] | KeptFailure
+type Item = tuple[str, dict[str, Any]] | KeptFailure
 #: What became of a held message: its row, its kept failure, or nothing to write (insert).
 type Outcome = RowWritten | KeptFailure | None
 
@@ -1552,10 +1552,7 @@ def _held_size(item: Item) -> int:
             _object_bytes(v, seen) for v in (item.topic, item.msg, item.error)
         )
     topic, msg = item
-    total = sys.getsizeof(item) + _object_bytes(topic, seen)
-    if not isinstance(msg, dict):
-        return total + _object_bytes(msg, seen)
-    total += sys.getsizeof(msg)
+    total = sys.getsizeof(item) + _object_bytes(topic, seen) + sys.getsizeof(msg)
     for key, value in msg.items():
         if key != "src":
             total += _object_bytes(value, seen)
@@ -1570,8 +1567,6 @@ def _received(item: Item) -> float | None:
     if isinstance(item, KeptFailure):
         return item.ts
     msg = item[1]
-    if not isinstance(msg, dict):
-        return None
     return msg["ts_recv"] if msg.get("ts_recv") is not None else msg.get("ts")
 
 
@@ -1911,7 +1906,7 @@ class CaptureWriter:
         self._spills = _prepared(p)
 
     def insert(
-        self, topic: str, msg: Payload, *, conn: sqlite3.Connection | None = None
+        self, topic: str, msg: dict[str, Any], *, conn: sqlite3.Connection | None = None
     ) -> Outcome:
         """One bus message -> one row.
 
@@ -1924,7 +1919,7 @@ class CaptureWriter:
         spec = _INSERTS.get(kind)
         if spec is None and kind not in _STORED_FIRST:
             return None
-        if isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None:
+        if kind in _VERBATIM and msg.get("content") is None:
             return None
         if conn is None:
             own = writer_connection(self.db_path, self.timeout_sec)
@@ -2098,11 +2093,8 @@ class CaptureWriter:
         `out` is its row record or kept failure once committed, or None once it never will be
         (lost, or not recorded): its waiter reads it refused (StoredFirst.outcome).
         """
-        if (
-            isinstance(item, tuple)
-            and (kind := item[0].split(".", 1)[0]) in _STORED_FIRST
-            and isinstance(msg := item[1], dict)
-        ):
+        if isinstance(item, tuple) and (kind := item[0].split(".", 1)[0]) in _STORED_FIRST:
+            msg = item[1]
             waiter = self._waiters.pop((kind, msg["ticker"], msg["ts_utc"]), None)
             if waiter is not None:
                 waiter.told(out)
@@ -2298,13 +2290,11 @@ class CaptureWriter:
         if not conn.in_transaction:
             conn.execute("BEGIN")
         out: list[tuple[Item, Outcome]] = []
-        rows: dict[str, list[tuple[str, Payload]]] = {}
+        rows: dict[str, list[tuple[str, dict[str, Any]]]] = {}
         for item in items:
             if isinstance(item, tuple):
                 kind, msg = item[0].split(".", 1)[0], item[1]
-                if kind in _INSERTS and not (
-                    isinstance(msg, dict) and kind in _VERBATIM and msg.get("content") is None
-                ):
+                if kind in _INSERTS and not (kind in _VERBATIM and msg.get("content") is None):
                     rows.setdefault(kind, []).append(item)
                     continue
             out.append((item, self._store(conn, item)))
@@ -2315,7 +2305,7 @@ class CaptureWriter:
         return out
 
     def _many(
-        self, conn: sqlite3.Connection, kind: str, items: list[tuple[str, Payload]]
+        self, conn: sqlite3.Connection, kind: str, items: list[tuple[str, dict[str, Any]]]
     ) -> list[tuple[Item, Outcome]]:
         """Write `kind`'s messages in one INSERT, each with its RowWritten.
 

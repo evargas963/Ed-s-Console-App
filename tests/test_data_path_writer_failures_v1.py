@@ -942,10 +942,11 @@ def test_messages_the_disk_will_not_spill_are_counted_lost_with_when_they_were_r
 def test_a_stop_whose_spill_the_disk_refuses_counts_what_it_held_lost_with_when(tmp_path):
     """INDUCED CONDITIONS: another connection holds the write lock while the quotes arrive.
 
-    The writer holds every captured option quote in memory. Then the database's folder refuses
-    a new file (_uncreatable) and the writer is stopped: the stop's spill file cannot be opened,
-    so what it held is neither in the database nor on disk. Each is counted lost once, and the
-    Record says how many and the window they were received in.
+    The writer holds every captured option quote in memory, and a chain the sweep kept (its
+    history write failed) beside them. Then the database's folder refuses a new file
+    (_uncreatable) and the writer is stopped: the stop's spill file cannot be opened, so what it
+    held is neither in the database nor on disk. Each is counted lost once, and the Record says
+    how many and the window they were received in, the kept chain's failure time among them.
     """
     db = tmp_path / "stream_capture.db"
     writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
@@ -958,6 +959,8 @@ def test_a_stop_whose_spill_the_disk_refuses_counts_what_it_held_lost_with_when(
         task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
         _publish_options(bus, health, _EVENTS)
         await until(lambda: writer.status()["waiting"] == len(_EVENTS), state=writer.status)
+        writer.keep_failure("chain.TSLA", {"native": _TSLA["native"]}, OSError("disk full"), 2.0)
+        await until(lambda: writer.status()["waiting"] == len(_EVENTS) + 1, state=writer.status)
         release = _uncreatable(tmp_path)
         stop.set()
         await task
@@ -969,10 +972,10 @@ def test_a_stop_whose_spill_the_disk_refuses_counts_what_it_held_lost_with_when(
         if release is not None:
             release()
         holder.close()
-    received = [e["ts_recv"] for e in _EVENTS]
+    received = [e["ts_recv"] for e in _EVENTS] + [2.0]  # the kept chain's failure time
     assert (after["state"], after["lost"], after["left_on_disk"]) == (
         "stopped",
-        len(_EVENTS),
+        len(_EVENTS) + 1,
         [],
     )
     assert (after["lost_first_ts"], after["lost_last_ts"]) == (min(received), max(received))
