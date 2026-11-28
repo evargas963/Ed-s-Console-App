@@ -166,8 +166,6 @@ class OrderFlowState:
         It comes from `service`: NYSE_BOOK, NASDAQ_BOOK or OPTIONS_BOOK. The book as read once
         (stream_spine.read_book) is returned; None when the message carries no book.
         """
-        if not content_item:
-            return None
         book = read_book(content_item, service)
         sym = ticker_storage_key(symbol)
         if book is None or not sym:

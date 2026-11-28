@@ -1112,6 +1112,27 @@ def test_the_intake_keeps_one_value_a_second_for_the_windows_and_no_longer():
         ofls.clear_all_live_state()
 
 
+def test_values_the_windows_no_longer_reach_are_let_go_and_a_blank_ticker_keeps_none():
+    """The replay's readouts, then the last one again OF_LEAN_KEPT_SEC past it (INDUCED: a time).
+
+    Every value the windows no longer reach is let go, but the one that still stands at the
+    window's start; a readout under a blank ticker is kept for none.
+    """
+    ofls.clear_all_live_state()
+    try:
+        _readout, points = _replay()
+        for ts, readout in points:
+            history.LEAN.record("SPY", ts, readout)
+        last_ts, last = points[-1]
+        later = last_ts + e.OF_LEAN_KEPT_SEC + 1
+        history.LEAN.record("SPY", later, last)
+        history.LEAN.record(" ", later, last)
+        assert [t for t, _v in history.LEAN.points("SPY")] == [last_ts, later]
+        assert history.LEAN.points(" ") == []
+    finally:
+        ofls.clear_all_live_state()
+
+
 # ── the browser tests' fixtures are the route's answers ──────────────────────────────────────
 
 _E2E_FILES = {

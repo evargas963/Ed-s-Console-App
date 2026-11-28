@@ -270,9 +270,7 @@ class RecentBooks:
         self._books: dict[tuple[str, str], deque[KeptBook]] = {}
 
     def record(self, ticker: str, venue: str, book: Book) -> None:
-        sym = ticker_storage_key(ticker)
-        if not sym:
-            return
+        sym = ticker_storage_key(ticker)  # a book is read only for a symbol (State's push_book)
         bids, asks = tuple(book.pairs("BIDS")), tuple(book.pairs("ASKS"))
         if not bids and not asks:
             return

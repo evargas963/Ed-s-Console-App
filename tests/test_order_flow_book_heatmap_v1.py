@@ -101,6 +101,23 @@ def test_repeated_unchanged_levels_do_not_inflate_the_cell():
     assert bids[(7, 760.39)] == 1480  # not 2960
 
 
+def test_books_whose_every_size_is_zero_are_drawn_over_every_price_they_list():
+    """INDUCED on Schwab's NYSE books of 2026-11-02: every level's TOTAL_VOLUME sent as 0.
+
+    A 0 is a size Schwab sent (rule 2), so each level is a cell of 0; with no size at all there is
+    no tail to trim, and the price window is every price the books list, lowest to highest.
+    """
+    price_of = {"BIDS": "BID_PRICE", "ASKS": "ASK_PRICE"}
+    zeroed = [
+        (ts, svc, {**sent, **{s: [{**lv, "TOTAL_VOLUME": 0} for lv in sent[s]] for s in price_of}})
+        for ts, svc, sent in _sent(NYSE)
+    ]
+    d = book_heatmap_for_ticker(SYM, NYSE, minutes=60, books=_books(zeroed))
+    prices = {lv[p] for _t, _s, sent in zeroed for s, p in price_of.items() for lv in sent[s]}
+    assert d["available"] is True and {c["bid"] for c in d["cells"] if c["bid"] is not None} == {0}
+    assert (d["display_lo"], d["display_hi"]) == (min(prices), max(prices))
+
+
 def test_books_within_one_second_keep_only_the_newest():
     """One book per second of Schwab's BOOK_TIME, the newest in that second.
 
