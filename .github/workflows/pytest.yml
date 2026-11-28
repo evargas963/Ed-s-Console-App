@@ -202,9 +202,13 @@ jobs:
       - name: The product lines no test runs on either system
         run: |
           python -m coverage combine --keep systems/coverage-*/.coverage
-          python -m coverage report --sort=cover --skip-covered --show-missing | tee coverage.txt
+          # a test's copy of a module in its temporary folder exists only on the runner that ran
+          # it, and is no file of the repository
+          copies="*/pytest-of-*/*"
+          python -m coverage report --sort=cover --skip-covered --show-missing --omit="$copies" \
+            | tee coverage.txt
           # every file's statements and those no test ran, which the census counts (census.yml)
-          python -m coverage json -o coverage.json
+          python -m coverage json -o coverage.json --omit="$copies"
 
       - name: Upload which product lines the suite runs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

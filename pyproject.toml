@@ -60,6 +60,12 @@ relative_files = true
 source = ["."]
 omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
 
+# the checkout on each CI runner, Linux's and Windows' (a runner checks the repository out to
+# <its work folder>/Ed-s-Console-App/Ed-s-Console-App), is this one when their data is combined
+# (pytest.yml's coverage job); in coverage.py's patterns "/" matches either slash
+[tool.coverage.paths]
+source = [".", "*/Ed-s-Console-App/Ed-s-Console-App"]
+
 # AGENTS.md rule 12: a value that crosses a module boundary is a typed record, held by pyright's
 # strict mode
 [tool.pyright]
