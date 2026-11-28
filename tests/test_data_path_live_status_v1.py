@@ -77,7 +77,6 @@ def _clean():
         kept.pop(TK, None)
     with level_store._lock:
         level_store._levels.pop(TK, None)
-    server._last_feed_stamp.clear()
 
 
 def _beat(ts: float, *, socket_open: bool = True, options: list[str] | None = None) -> None:
