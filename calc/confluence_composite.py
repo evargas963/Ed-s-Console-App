@@ -25,6 +25,7 @@ from numeric_contract import (
     compact_text,
     count_text,
     dollars_text,
+    fixed_text,
     iv_text,
     price_text,
     schwab_number,
@@ -654,11 +655,12 @@ def _composite_shown(c: Composite) -> tuple[float, str, str]:
     sign = _sign(c.gamma)
     hover = (
         f"{GAMMA_WORDS[sign]} here ({ASSUMPTION}): {GAMMA_EFFECT[sign]}. Strength "
-        f"{c.strength:.0f} of 100: the equal vote of {len(c.measured)} of {len(FAMILIES)} "
+        f"{fixed_text(c.strength, 0)} of 100: the equal vote of {len(c.measured)} of "
+        f"{len(FAMILIES)} "
         f"families measured here ({', '.join(c.measured)}), each its size against the "
         "expiry's largest. A size and a kind of move, not a direction; untested."
     )
-    return sign * c.strength / 100.0, f"{GAMMA_SHORT[sign]} {c.strength:.0f}", hover
+    return sign * c.strength / 100.0, f"{GAMMA_SHORT[sign]} {fixed_text(c.strength, 0)}", hover
 
 
 class CompositeCells(TypedDict):
@@ -822,7 +824,7 @@ def _look_cells(r: StrikeReadings) -> LookCells:
     unknown_share = None
     b, s, u = look.bought, look.sold, look.unknown
     if b is not None and s is not None and u is not None and b + s + u > 0:
-        unknown_share = f"{100.0 * u / (b + s + u):.0f}%"
+        unknown_share = f"{fixed_text(100.0 * u / (b + s + u), 0)}%"
     return {
         "volume_text": count_text(r.look_volume),
         "volume_reason": _absent(r.look_volume, LOOK_REASON),

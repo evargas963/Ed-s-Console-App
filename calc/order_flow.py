@@ -532,8 +532,9 @@ _SIDE = {"BID_HEAVY": "BID", "OFFER_HEAVY": "OFFER"}
 #: the detail panel's words
 READOUT_DETAIL = {
     "tilt": "Order book imbalance: the bid shares less the ask shares over the two together, each"
-    f" second, as it is. NEUTRAL under {OF_TILT_PCT:.0f}%; BUY-HEAVY or SELL-HEAVY from"
-    f" {OF_TILT_PCT:.0f}% (the line Bookmap's Imbalance indicator changes colour at): direction"
+    f" second, as it is. NEUTRAL under {fixed_text(OF_TILT_PCT, 0)}%; BUY-HEAVY or SELL-HEAVY"
+    f" from {fixed_text(OF_TILT_PCT, 0)}% (the line Bookmap's Imbalance indicator changes colour"
+    " at): direction"
     " only, not strength. A flip is a change of side, buy to sell or back.",
     "construction": "Aggregate: every exchange's and market maker's quote from the books Schwab"
     " sends for this symbol, one per contributor by side; where a contributor quotes in both"

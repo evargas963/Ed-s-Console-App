@@ -29,7 +29,7 @@ from calc.option_book import (
 )
 from calc.order_flow import STATE_WORDS, Book, book_age_sec
 from calc.terrain_engine import nearest_strike
-from numeric_contract import count_text, strike_text
+from numeric_contract import count_text, share_text, signed_text, strike_text
 from push.answers import NotAvailable, not_available
 from push.book import when_age
 from push.chain import expiry_asked
@@ -162,16 +162,6 @@ class NoOptionBook(LevelsVerdict):
     reason: str
 
 
-def _share_text(share: float | None) -> str | None:
-    """Return a share of a whole as the screen shows it: a whole percent ("62%")."""
-    return None if share is None else f"{share:.0%}"
-
-
-def _lean_text(value: float | None) -> str | None:
-    """Return a lean, -1 to +1, as the screen shows it: signed, two decimals ("+0.23")."""
-    return None if value is None else f"{value:+.2f}"
-
-
 def _book_when(book: Book | None, now: float) -> str | None:
     """Return a book's time, as Schwab sent BOOK_TIME, with its age; None with no time sent."""
     ms = None if book is None else book.book_time_ms
@@ -223,8 +213,8 @@ def _served_split(s: Split) -> ServedSplit:
         "right_share": s.right_share,
         "left_text": count_text(s.left),
         "right_text": count_text(s.right),
-        "left_share_text": _share_text(s.left_share),
-        "right_share_text": _share_text(s.right_share),
+        "left_share_text": share_text(s.left_share),
+        "right_share_text": share_text(s.right_share),
     }
 
 
@@ -232,16 +222,16 @@ def _served_lean(x: Lean) -> ServedLean:
     """Return the lean, its zone and the needle's angle, and its three readings, with texts."""
     return {
         "value": x.value,
-        "value_text": _lean_text(x.value),
+        "value_text": signed_text(x.value, 2),
         "zone": x.zone,
         "zone_index": x.zone_index,
         "needle_deg": x.needle_deg,
         "calls": x.calls,
-        "calls_text": _lean_text(x.calls),
+        "calls_text": signed_text(x.calls, 2),
         "puts": x.puts,
-        "puts_text": _lean_text(x.puts),
+        "puts_text": signed_text(x.puts, 2),
         "volume": x.volume,
-        "volume_text": _lean_text(x.volume),
+        "volume_text": signed_text(x.volume, 2),
     }
 
 
