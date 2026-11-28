@@ -370,10 +370,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   Schwab's /markets answer are open (`ChainSweep.chain_due`), and once more after the close. The
   rotation is sorted, a ticker a page shows before each other one (`ChainSweep.rotation`). Greeks
   are never the chain's (Schwab rounds them): a streamed contract takes the stream's, every other
-  one its `/quotes` answer, as many symbols a request as the measured URL holds
-  (`schwab_client.quotes_batch`, `QUOTES_URL_MAX`) (`ChainSweep.send_quotes`), each answer to the
-  console at once (`order_flow.state.push_rest_quotes`): every answer, since each carries its own
-  contracts (D3), and a contract keeps the answer received last. Each contract is read once
+  one its `/quotes` answer, a GET of as many symbols a request as the measured URL holds
+  (`schwab_client.quotes_batch`, `QUOTES_URL_MAX`; Schwab's POST /quotes, which its spec lists no
+  operation for, answers at most 100) (`ChainSweep.send_quotes`), each answer to the console at once
+  (`order_flow.state.push_rest_quotes`): every answer, since each carries its own contracts (D3),
+  and a contract keeps the answer received last. Each contract is read once
   (`option_contract.read_chain`, in `chain_sweep.chain_messages`) → the bus in parts of
   `chain_sweep.CHAIN_PART_CONTRACTS` → the console (`order_flow.streaming.assemble_chain_part`; a
   chain missing a part is never priced) → `server._on_chain` → the pricing thread. The first chain
