@@ -16,3 +16,19 @@ def test_compute_max_pain_returns_none_for_sparse_chain():
     one = [ct for ct in CRWD.chain if ct["strikePrice"] == 315.0]
     assert [ct["openInterest"] > 0 for ct in one] == [True, False]
     assert compute_max_pain(crwd_exposures(one)) is None
+
+
+def test_compute_max_pain_is_withheld_with_a_strike_whose_open_interest_was_not_sent():
+    """Induced: the 315 call's openInterest taken out, as Schwab leaves a field out.
+
+    The whole chain weighs every strike's open interest; with one strike's not known, max pain
+    over part of it would be a number of ours, so it is "-".
+    """
+    assert compute_max_pain(crwd_exposures(CRWD.chain)) is not None
+    unsent = [
+        {k: v for k, v in ct.items() if k != "openInterest"}
+        if ct["strikePrice"] == 315.0 and ct["putCall"] == "CALL"
+        else ct
+        for ct in CRWD.chain
+    ]
+    assert compute_max_pain(crwd_exposures(unsent)) is None

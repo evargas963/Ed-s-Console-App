@@ -1652,6 +1652,34 @@ def test_each_levels_reader_gets_its_own_timeframe_at_once_with_no_get():
 
 
 @pytest.mark.usefixtures("no_levels")
+def test_a_panel_asked_for_what_the_program_does_not_serve_fails_in_words():
+    """A book of a service that is no stock book, and the Flow panel naming no contract.
+
+    Each panel fails alone, in the words of the refusal; the page's other panels are served.
+    """
+    _publish(CRWD)
+
+    async def body(url):
+        async with connect(url) as ws:
+            await _select(
+                ws,
+                A,
+                {"book": {"venue": "OPTIONS_BOOK"}, "contract": {}, "levels:view": {"tf": "1"}},
+            )
+            seen = await _frames_of(ws, ("book", "contract", "levels:view"))
+            assert seen["book"]["failed"] == (
+                "the program could not produce this panel: ValueError: "
+                "venue 'OPTIONS_BOOK' is not one of NYSE_BOOK, NASDAQ_BOOK"
+            )
+            assert seen["contract"]["failed"] == (
+                "the program could not produce this panel: ValueError: contract is required"
+            )
+            assert "failed" not in seen["levels:view"]
+
+    asyncio.run(_serve_panels(body))
+
+
+@pytest.mark.usefixtures("no_levels")
 def test_each_price_row_of_the_ticker_sends_its_levels_again_from_that_price():
     _publish(CRWD)
     moved = CRWD.spot + 1.25

@@ -192,6 +192,21 @@ def test_a_marker_before_the_charts_first_bar_is_counted_and_worded():
 _WED_EVENING = datetime(2026, 10, 7, 18, 0, tzinfo=time_et.ET)
 
 
+def test_a_session_window_with_no_session_schwab_sent_fails_in_words():
+    """The 30-minute chart's window is this session, from Schwab's /markets answers.
+
+    The answers held begin 2026-09-30 (tests/conftest.py): asked on 2026-09-25, no regular
+    session held began by then, so the window has no start and the panel fails in words, never
+    with a start of ours.
+    """
+    now = datetime(2026, 9, 25, 18, 0, tzinfo=time_et.ET)
+    with pytest.raises(ValueError, match="no regular session that began by") as refused:
+        push_desk.desk_events_payload("ZZDESKX", "30", now, None)
+    assert str(refused.value) == (
+        "Schwab's /markets has sent no regular session that began by 2026-09-25T18:00:00-04:00"
+    )
+
+
 def test_the_desk_event_feed_numbers_orders_and_counts_the_real_crosses():
     """SPY's level crosses of 2026-10-06 and 10-07 as the console recorded them.
 

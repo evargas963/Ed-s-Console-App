@@ -224,6 +224,11 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Operator decides
 
+- SIGNED-ZERO (OPERATOR): two formatters write a signed number (ENF-11's one formatter per format):
+  `numeric_contract.signed_text` and `change_percent_text` write a zero "+0.00" and a rounded
+  negative zero "-0.00" (the watchlist's flat $VIX reads "+0.00%"), while the matrix's
+  `calc.confluence_composite._signed` writes both "0.00". Merging them into the one formatter
+  changes how one screen shows a zero; which form every screen shows is his.
 - ONE-30 (OPERATOR): an option contract's own SECURITY_STATUS is not read; inside its option window
   a Halted contract reads LIVE (`live_market_plane.not_trading`). Re-subscription snapshots resend
   old statuses, so taking the field needs a rule for which message is current.

@@ -26,6 +26,7 @@ import server
 from calibration.complete_chain_capture import CAPTURE_BASIS
 from option_contract import read_chain
 from push import contract as push_contract
+from push import strikes as push_strikes
 from push import terrain as push_terrain
 from state import capture_store, level_store
 from tests.capture_store import store_capture
@@ -52,12 +53,13 @@ def _et(hh: int, mm: int = 0, day: str = "2026-10-07") -> datetime:
 
 
 def _forget() -> None:
-    """Forget what a restart forgets: the levels, the plane's rows and the captures held."""
+    """Forget what a restart forgets: levels, chain failures, the plane's rows, the captures."""
     capture_store.clear()
     with level_store._lock:
         for tk in ("TSLA", "SPY"):
             level_store._levels.pop(tk, None)
     for tk in ("TSLA", "SPY"):
+        level_store.chain_priced(tk)
         lmp._by_ticker.pop(tk, None)
         lmp._fields_by_ticker.pop(tk, None)
     mark_feed_down()
@@ -203,6 +205,57 @@ def test_the_levels_are_due_by_two_of_the_daemons_rounds_and_nothing_of_ours(
     )
     body = push_terrain.terrain("TSLA", delivered.timestamp() + after)
     assert (body["levels_state"], body["levels_stale_reason"]) == (state, why)
+
+
+def test_levels_overdue_with_every_chain_since_failed_say_the_failure(published):
+    """Levels past two of the daemon's rounds whose ticker's chains have failed since say so.
+
+    The failure is the daemon's answer for the ticker's chain, taken by the program's chain
+    callback (server._on_chain), and it outranks the round: the reason is the levels' age and
+    the failure, never that the sweep has not delivered the ticker.
+    """
+    delivered = _et(13, 0)
+    published("TSLA", TSLA, delivered)
+    lmp.record_feed_heartbeat(
+        daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=40.0)
+    )
+    server._on_chain(
+        "TSLA", None, delivered.timestamp() + 60, "full chain returned HTTP 400", None, False
+    )
+    body = push_terrain.terrain("TSLA", delivered.timestamp() + 81)
+    assert (body["levels_state"], body["levels_stale_reason"]) == (
+        "STALE",
+        "levels are 81s old and every chain since has failed — "
+        "chain fetch failed (full chain returned HTTP 400)",
+    )
+
+
+@pytest.mark.usefixtures("published")  # its forgetting, before and after
+def test_live_levels_priced_with_no_price_say_why_the_strikes_have_no_row():
+    """TSLA's captured chain delivered with no price held: its levels are LIVE, with no row.
+
+    The strikes panel says why in a whole sentence, the levels' snapshot's own reason (no spot
+    price); a live verdict gives no reason of its own, so nothing trails it.
+    """
+    delivered = _et(13, 0)
+    lmp.record_feed_heartbeat(
+        daemon_status(delivered.timestamp(), schwab_socket_open=True, chain_round_sec=40.0)
+    )
+    server._publish_levels(
+        "TSLA",
+        read_chain(TSLA.chain),
+        delivered.timestamp(),
+        chain_spot=(None, None),
+        now=delivered,
+    )
+    body = push_strikes.terrain_strikes_payload(
+        "TSLA", "auto", None, 0, None, delivered.timestamp() + 1
+    )
+    assert (body["levels_state"], body["today"], body["none_said"]) == (
+        "LIVE",
+        [],
+        "no per-strike rows — no spot price",
+    )
 
 
 def test_in_schwabs_option_pre_market_the_levels_are_live_and_stand_through_the_gap(published):

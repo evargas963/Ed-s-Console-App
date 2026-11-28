@@ -20,7 +20,9 @@ from calc.confluence_composite import (
     NO_MULTIPLIER,
     NOT_HELD,
     StrikeLookBack,
+    atm_iv_change,
     build_matrix,
+    expiry_flow,
     family_votes,
     iv_by_strike,
     window_rows,
@@ -211,6 +213,12 @@ def test_a_strike_is_its_calls_and_its_puts_or_nothing():
         assert got.iv_change == pytest.approx(blend("now") - blend("start"), rel=1e-12)
         missing = strike_look_back(legs, {call: looks[call]})
         assert missing.volume is None and missing.flow is None and missing.iv_change is None
+        # INDUCED: the call's volume at the window's start not known: the strike's volume and
+        # its volatility blend at that end (weighed by volume) are not known; its flow is
+        unstarted = {**looks, call: replace(looks[call], volume=(None, looks[call].volume[1]))}
+        part = strike_look_back(legs, unstarted)
+        assert (part.volume, part.iv_change) == (None, None)
+        assert part.flow == pytest.approx(got.flow, rel=1e-12, abs=1e-9)
 
 
 def test_the_flow_cell_says_why_it_is_not_known():
@@ -245,6 +253,52 @@ def test_the_flow_cell_says_why_it_is_not_known():
     hover = row_of(held)["flow_hover"]
     assert "the dealers take the other side of each trade" in hover
     assert "dealers long calls" not in hover
+
+
+def test_the_expirys_flow_and_its_at_the_money_iv_change_are_its_strikes_own():
+    """The headline's two readings of the expiry over the window from 10:04 ET.
+
+    The expiry's hedging flow is its strikes' flows summed (each worked out from the raw items),
+    known only while every strike's is; its at-the-money volatility change is the mean of the
+    blend's change at the two strikes the price lies between, the one strike's on it, none with
+    the price outside them (the stock's own, 720.19, below both). INDUCED: the prices between and
+    on the strikes, and a contract the chain sent no strike for, which no strike's blend reads.
+    """
+    looks = _replayed().look_back(FX["symbols"], DAY, START)
+    chain = read_chain(FX["chain_rows"])
+    now = datetime(2026, 11, 23, 10, 10, tzinfo=ET)
+    book, _diagnostics = compute_exposures_by_strike(chain, now=now, sessions=sessions())
+    spot = _underlying(None)
+    by_strike = {
+        k: strike_look_back([c for c in chain if c.strike == k], looks) for k in (721.0, 722.0)
+    }
+    matrix = build_matrix(book, {}, iv_by_strike(chain), spot, {}, None, {}, by_strike)
+    expected = _worked_out(START * 60.0)
+    flow = sum(c.multiplier * expected[c.symbol]["totals"][3] for c in chain)
+    assert expiry_flow(matrix) == pytest.approx(flow, rel=1e-12, abs=1e-9)
+    oi = {c.symbol: c.open_interest for c in chain}
+
+    def blend(strike: float, end: str) -> float:
+        parts = [
+            (oi[c.symbol] + expected[c.symbol][end][0], expected[c.symbol][end][1])
+            for c in chain
+            if c.strike == strike
+        ]
+        return sum(w * iv for w, iv in parts) / sum(w for w, _iv in parts)
+
+    change = {k: blend(k, "now") - blend(k, "start") for k in (721.0, 722.0)}
+    assert atm_iv_change(matrix, 721.5) == pytest.approx(sum(change.values()) / 2, rel=1e-12)
+    assert atm_iv_change(matrix, 722.0) == pytest.approx(change[722.0], rel=1e-12)
+    assert spot < 721.0 and atm_iv_change(matrix, spot) is None
+    assert atm_iv_change(matrix, None) is None
+    unsent = {**by_strike, 722.0: NOT_HELD}
+    assert expiry_flow(build_matrix(book, {}, {}, spot, {}, None, {}, unsent)) is None
+    no_strike = [replace(chain[0], strike=None), *chain[1:]]
+    assert set(iv_by_strike(no_strike)) == {721.0, 722.0}
+    assert (
+        iv_by_strike(no_strike)[chain[0].strike]
+        == iv_by_strike([c for c in chain[1:] if c.strike == chain[0].strike])[chain[0].strike]
+    )
 
 
 def _underlying(before_ts: float | None) -> float:
