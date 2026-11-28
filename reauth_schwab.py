@@ -5,8 +5,9 @@ Run: python reauth_schwab.py  (or: python -m reauth_schwab)
 1. Deletes the existing token file (if present)
 2. Ensures the local callback server is bound before opening the browser
 3. Opens your browser to Schwab's OAuth page
-4. After you sign in and approve, saves a new token to schwab_token.json
-5. Verifies the token file exists — raises RuntimeError if missing
+4. After you sign in and approve, saves a new token to schwab_token.json, whole (the save
+   writes it whole or fails, and the failure is printed)
+5. Prints what the saved token holds (no secret values)
 
 401 on /accounts/accountNumbers: If market data works but accounts returns 401,
 your Schwab app is likely registered for "Market Data" only. At developer.schwab.com,
@@ -46,8 +47,6 @@ def _print_post_reauth_validation(token_path: str) -> None:
         "No restart: the capture daemon takes it at once if Schwab refused the old "
         "sign-in, else when its token next comes due (within about 30 minutes)."
     )
-    if not os.path.exists(token_path):
-        return
     inv = inspect_token_file(token_path)
     print("\n--- Post-reauth token validation (secrets redacted) ---")
     print(f"  token path:        {token_path}")
