@@ -346,7 +346,10 @@ def gamma_surface_payload(
     live, verdict = terrain_cache_get(tk, now.timestamp())
     surf = None if live is None else live.gamma_surface
     if live is None or surf is None:
-        return _no_surface(tk, verdict["levels_stale_reason"], now.timestamp(), requested)
+        priced_why = None if live is None else live.snap.error
+        return _no_surface(
+            tk, priced_why, verdict["levels_stale_reason"], now.timestamp(), requested
+        )
     # the row at the price: the listed strike nearest the live price, the header's own rule
     spot_strike = nearest_strike(surf["strikes"], resolve_spot(tk, now=now.timestamp())[0])
     # the surface's state is the levels' (terrain_staleness: LIVE, CLOSE, STALE, NOT LIVE);
@@ -386,33 +389,32 @@ def gamma_surface_payload(
     }
 
 
-def _no_surface(tk: str, levels_why: str | None, now: float, requested: bool) -> NoSurface:
+def _no_surface(
+    tk: str, priced_why: str | None, levels_why: str | None, now: float, requested: bool
+) -> NoSurface:
     """Return the `surface` panel's answer with no live surface: why. Nothing stands in for it.
 
     `requested`: a page shows this ticker. Warming: its chain is coming, because it is on the
     watchlist (fetched in turn; while Closed, once, its close values). The reason is that state's
-    own; `levels_why` is the levels' own reason for being stale (terrain_staleness), None when
-    they give none.
+    own. `priced_why`: why the levels held were priced with no surface, their snapshot's own
+    (calc.terrain_engine: no spot price, no exposures), None with no levels; `levels_why`: the
+    levels' own reason for being stale (terrain_staleness), None or empty when they give none.
     """
     watched = lmp.watchlist()  # the last list stands when the heartbeat is missing
     warming = watched is not None and tk in watched
+    why: list[str | None]
     if lmp.daemon_status(now) is None:
         why = ["the capture daemon is not reporting (no current heartbeat)"]
         if watched is None:
             why.append("its watchlist is unknown")
         elif tk not in watched:
             why.append("it is not on the watchlist")
-        if levels_why:
-            why.append(levels_why)
+        why += [priced_why, levels_why]
     elif watched is not None and tk not in watched:
         # no chain is coming for it, at any hour: that, not how old its last levels are
         why = ["no chain is fetched for this ticker: it is not on the watchlist"]
-    elif levels_why:
-        why = [levels_why]
-    elif warming:
-        why = ["the surface is projected when the daemon delivers this ticker's chain"]
-    else:
-        why = ["no chain is fetched for this ticker: it is not on the watchlist"]
+    else:  # a current beat names the watchlist (lmp.daemon_status), and the ticker is on it
+        why = [priced_why, levels_why]
     state = SURFACE_WARMING if requested and warming else SURFACE_REQUESTED if requested else None
     return {
         "ticker": tk,

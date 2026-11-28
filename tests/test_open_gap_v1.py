@@ -17,7 +17,9 @@ import math
 from datetime import date
 from pathlib import Path
 
+import live_market_plane as lmp
 import server
+import time_et
 from calc.liquidity_value_engine import wilson_interval
 from calc.micro_structure import Candle
 from open_gap import open_gap_record, today_open
@@ -198,6 +200,38 @@ def test_a_page_showing_the_tab_is_told_again_with_each_price_row_of_its_ticker(
         on_socket.server.on_row("TSLA")
         assert on_socket.told(page) == {"experimental"}
         assert on_socket.told(other) == set(), "a page showing another ticker is not"
+
+
+def test_today_s_card_before_the_open_is_schwabs_live_change_with_its_trade_time():
+    """2026-11-11 before the open: TSLA's trades as Schwab streamed them.
+
+    tests/fixtures/real_premarket_first_prints_2026_11_11.json, with /markets for that date as
+    sent: the evening's last trade, then the day's first, 04:00:01 ET. The card is Schwab's
+    NET_CHANGE_PERCENT as sent with the newest (1.71415, against the prior close) and that
+    trade's time in Central Time.
+    """
+    sent = Path(__file__).parent / "fixtures" / "real_premarket_first_prints_2026_11_11.json"
+    fx = json.loads(sent.read_text(encoding="utf-8"))
+    taken = [m for m in fx["messages"] if m["ticker"] == "TSLA"]
+    held = time_et.HELD.sessions
+    try:
+        record_markets(fx["markets"])
+        for m in taken:
+            lmp.record_from_level_one_equity("TSLA", m["item"], received_ts=m["ts_recv"])
+        card = push_experimental.experimental("TSLA", et_ts("2026-11-11 08:00"))["today"]
+    finally:
+        time_et.HELD.sessions = held
+        time_et.HELD.first_trade = {}
+        lmp._by_ticker.pop("TSLA", None)
+        lmp._fields_by_ticker.pop("TSLA", None)
+    assert taken[-1]["item"]["NET_CHANGE_PERCENT"] == 1.71415
+    assert card == {
+        "label": "Today's gap · before the open",
+        "gap_text": "▲ +1.71%",
+        "gap_up": True,
+        "when_text": "vs. prior close · Schwab, live · Wed 11/11 03:00 AM CT",
+        "results": [],
+    }
 
 
 def test_today_s_card_after_the_open_waits_for_the_bar_then_serves_its_result():

@@ -108,6 +108,36 @@ def test_the_live_surface_is_served_with_the_live_price():
     assert not [k for k in (*d, *surface) if k.startswith("stream_overlay")]
 
 
+def test_levels_priced_with_no_price_held_say_why_there_is_no_surface():
+    """CRWD's chain published under _ON with no price held: levels, and no surface.
+
+    Its reason is the levels' own, their snapshot's (no spot price), with their verdict's (no
+    /markets answer held for 2026-09-02); never that the chain has yet to arrive, for it has.
+    With the daemon's heartbeat late, that comes first, and the last watchlist, which holds _ON,
+    adds nothing.
+    """
+    _daemon(_CRWD["spot"], _AT.timestamp())  # reporting, _ON on its watchlist, no price held
+    server._publish_levels(
+        _ON, read_chain(_CRWD["chain"]), _AT.timestamp(), chain_spot=(None, None), now=_AT
+    )
+    try:
+        assert level_store.published_levels(_ON).gamma_surface is None
+        d = _call(_ON)
+        window = {"scope": "auto", "centre": None, "shift": 0, "cols": None, "expiry": None}
+        late = push_surface.gamma_surface(_ON, _AT.timestamp() + 3600, window, requested=False)
+    finally:
+        with level_store._lock:
+            level_store._levels.pop(_ON, None)
+    assert (d["available"], d["reason"]) == (
+        False,
+        "no spot price — the market session is unknown",
+    )
+    assert late["reason"] == (
+        "the capture daemon is not reporting (no current heartbeat) — no spot price — "
+        "the market session is unknown"
+    )
+
+
 @pytest.mark.usefixtures("published")
 def test_freshness_is_the_one_terrain_authority_not_a_second_policy():
     _levels, live = server.terrain_cache_get(_ON, _AT.timestamp())  # the one authority

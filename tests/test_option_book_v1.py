@@ -73,13 +73,18 @@ def _clear() -> None:
 
 @contextmanager
 def held(
-    *, books_held: bool = True, books_sent: bool = True, priced: bool = True
+    *,
+    books_held: bool = True,
+    books: list[dict] = REAL["books"],
+    priced: bool = True,
+    listed: list[dict] = LISTED,
 ) -> Iterator[None]:
     """SPY's chain published and its messages taken in, as the console holds them at AT.
 
     `books_held` False: the daemon's status holds no contract on OPTIONS_BOOK (the books stand,
-    not live). `books_sent` False: no OPTIONS_BOOK message is taken in (no book is held).
-    `priced` False: SPY's price message is not taken in (no live price is held).
+    not live). `books`: the OPTIONS_BOOK messages taken in (none: no book is held). `priced`
+    False: SPY's price message is not taken in (no live price is held). `listed`: the chain's
+    contracts as published.
     """
     sessions = time_et.HELD.sessions
     time_et.HELD.sessions = {}  # the day's own answer, whatever else a test run holds
@@ -102,7 +107,7 @@ def held(
                 chain_round_sec=ROUND_SEC,
             )
         )
-        for b in REAL["books"] if books_sent else []:
+        for b in books:
             pushed(
                 f"book.{b['symbol']}",
                 book_msg(
@@ -127,7 +132,7 @@ def held(
         chain = REAL["chain"]
         server._publish_levels(
             TK,
-            read_chain(LISTED),
+            read_chain(listed),
             chain["ts_recv"],
             chain_spot=(chain["answer"]["underlyingPrice"], chain["ts_recv"]),
             now=datetime.fromtimestamp(AT, time_et.ET),
@@ -154,7 +159,7 @@ def build_option_book_panels() -> dict:
         }
     with held(priced=False):
         panels["no_price"] = push_option_book.option_book(TK, AT, AUTO)
-    with held(books_sent=False):
+    with held(books=[]):
         panels["no_book"] = push_option_book.option_book(TK, AT, AUTO)
     return json.loads(json.dumps(panels))
 
@@ -260,6 +265,26 @@ def test_the_summary_and_the_lean_are_the_books_worked_out_from_the_raw_messages
     assert (got["zone_index"], got["zone"]) == (zone, ZONES[zone])
     assert got["needle_deg"] == pytest.approx(value * 90)
     assert panel["book_state"] == lmp.LIVE and panel["zones"] == list(ZONES)
+
+
+def test_a_strike_listed_on_one_side_and_a_summary_of_one_strike():
+    """INDUCED on the captures: the 737 put left out of the chain, and 736's books alone taken in.
+
+    The 737 row shows its call and no put, for no put is listed there; the summary sums the one
+    strike whose call and put both have a book, and says so in the singular.
+    """
+    put = next(c for c in LISTED if c["strikePrice"] == 737.0 and c["putCall"] == "PUT")
+    at_736 = {c["symbol"] for c in LISTED if c["strikePrice"] == 736.0}
+    with held(
+        listed=[c for c in LISTED if c is not put],
+        books=[b for b in REAL["books"] if b["symbol"] in at_736],
+    ):
+        panel = push_option_book.option_book(TK, AT, AUTO)
+    row = next(r for r in panel["rows"] if r["strike"] == 737.0)
+    assert row["put"] is None and row["call"]["symbol"] in QUOTES
+    assert panel["summary"]["summed_text"] == (
+        "1 strike 736: those whose call and put both have a Schwab book"
+    )
 
 
 def test_books_that_stopped_stand_marked_not_live():

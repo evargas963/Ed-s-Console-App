@@ -1160,6 +1160,79 @@ def test_the_matrix_says_the_levels_word_and_the_chains_time_and_age():
     )
 
 
+def test_the_look_back_since_the_open_starts_at_schwabs_open_and_before_it_says_why():
+    """The look-back "since the open": from the minute Schwab's /markets says the session opened.
+
+    TSLA's captured chain, delivered the evening before. Read Thursday 2026-10-08 at 10:00 ET,
+    the window starts at that day's regular open as Schwab sent it (09:30 ET, shown in Central
+    Time); read at 09:00 ET, before it, there is no window, the look-back says why, and the
+    option trades cast no vote, with no flow over a window to read.
+    """
+    tk = "TSLA"
+    at = datetime(2026, 10, 7, 18, 0, tzinfo=ET)
+    expiry = str(TSLA.chain[0]["expirationDate"])[:10]
+    try:
+        spot = _chain_spot(tk, _AT_CAPTURE[TSLA.ticker])
+        server._publish_levels(tk, read_chain(TSLA.chain), at.timestamp(), chain_spot=spot, now=at)
+        before = push_confluence.confluence_payload(
+            tk, expiry, datetime(2026, 10, 8, 9, 0, tzinfo=ET), "open"
+        )
+        after = push_confluence.confluence_payload(
+            tk, expiry, datetime(2026, 10, 8, 10, 0, tzinfo=ET), "open"
+        )
+    finally:
+        _forget(tk)
+    opened = sessions()["2026-10-08"].regular[0][0]
+    assert opened == datetime(2026, 10, 8, 9, 30, tzinfo=ET)
+    assert (after["lookback"]["start_text"], after["lookback"]["reason"]) == (
+        f"since {ct_label(opened.timestamp())}",
+        None,
+    )
+    assert (before["lookback"]["start_text"], before["lookback"]["reason"]) == (
+        None,
+        "the regular session has not opened",
+    )
+    assert "the look-back's hedging flow is not known" in json.dumps(before["headline"])
+
+
+def test_an_expiry_sent_without_its_days_or_its_strikes_says_why():
+    """INDUCED on MRVL's captured chain of 20 expiries: one sent without daysToExpiration, another
+    whose every contract is sent without strikePrice.
+
+    The expiry with no days to expiration is listed last and, chosen, says why. The one with no
+    strike has a matrix of no rows: nothing inside it, above or below, and a contract with no
+    strike is read at none.
+    """
+    tk = "MRVL"
+    expiries = sorted({str(c["expirationDate"])[:10] for c in MRVL.chain})
+    undated, unstruck = expiries[1], expiries[2]
+    sent = [
+        {k: v for k, v in c.items() if k != "daysToExpiration"}
+        if str(c["expirationDate"]).startswith(undated)
+        else {k: v for k, v in c.items() if k != "strikePrice"}
+        if str(c["expirationDate"]).startswith(unstruck)
+        else c
+        for c in MRVL.chain
+    ]
+    at = MRVL.now
+    try:
+        server._publish_levels(
+            tk, read_chain(sent), at.timestamp(), chain_spot=(MRVL.spot, at.timestamp()), now=at
+        )
+        listed = push_confluence.confluence_payload(tk, None, at)
+        days = push_confluence.confluence_payload(tk, undated, at)
+        rows = push_confluence.confluence_payload(tk, unstruck, at, "1")
+    finally:
+        _forget(tk)
+    assert listed["available"] is True and listed["expiry"] == expiries[0]
+    assert (days["available"], days["reason"], days["expiry"]) == (
+        False,
+        "that expiry did not carry days to expiration",
+        undated,
+    )
+    assert (rows["rows"], rows["levels_above"], rows["levels_below"]) == ([], [], [])
+
+
 def test_a_later_expiry_keeps_its_columns_at_that_expirys_close():
     """TSLA's captured Friday chain, delivered after that Friday's equity close, is valued then.
 
