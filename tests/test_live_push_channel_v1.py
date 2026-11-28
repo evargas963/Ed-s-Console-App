@@ -365,6 +365,52 @@ def test_option_l1_and_book_update_the_contract_and_report_greeks():
     asyncio.run(_run(body, on_tick=seen.append))
 
 
+def test_the_feed_started_again_while_it_runs_stays_the_one_it_was():
+    """The console's feed is started once a daemon is bound (as capture.serve_console does).
+
+    Started again while it reads the bus, it says it runs and keeps its one task, its callbacks
+    as set: a second reader of the same bus would apply every message twice.
+    """
+
+    async def body(_bus, _web):
+        task = ofs.FEED.task
+        assert task is not None and not task.done()
+        assert ofs.start_order_flow_stream(on_tick_callback=print) is True
+        assert ofs.FEED.task is task and ofs.FEED.on_tick is not print
+
+    asyncio.run(_run(body))
+
+
+def test_a_tick_callback_that_fails_is_counted_and_every_trade_is_still_applied(caplog):
+    """SPY's real message, three trades of it published on the daemon's bus.
+
+    INDUCED: the console's tick callback raises each time it is called (once for the ticks taken
+    together). Each failure is counted (the feed's `tick_failures`, which rides the daemon's
+    beat) and logged; every trade is still on SPY's tape with its own receive time.
+    """
+    before = ofs.FEED.tick_failures
+    at = [time_et.now() - 3.0 + i for i in range(3)]
+    calls: list[str] = []
+
+    def failing(sym: str) -> None:
+        calls.append(sym)
+        raise RuntimeError("a tick callback that fails")
+
+    async def body(bus, _web):
+        for i, ts in enumerate(at):  # each once the feed reads (a late reader takes the newest)
+            bus.publish("quote.SPY", _spy_trade(SPY_LAST + 0.01 * (i + 1), ts))
+            assert await until(_received(ts))
+        assert await until(
+            lambda: calls and ofs.FEED.tick_failures == before + len(calls),
+            state=lambda: (calls, before, ofs.FEED.tick_failures),
+        )
+
+    asyncio.run(_run(body, on_tick=failing))
+    assert set(calls) == {"SPY"}
+    assert "tick callback failed for SPY" in caplog.text
+    assert "a tick callback that fails" in caplog.text
+
+
 #: every sqlite3.connect this process makes while _AUDITING is set, as Python's audit hook reports
 #: it
 _OPENED: list = []

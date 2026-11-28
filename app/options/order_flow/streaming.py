@@ -292,14 +292,6 @@ def _service_feed(symbol: str, service: str, now: float) -> ServiceFeed:
     }
 
 
-def _log_stream(phase: str, **kwargs: Any) -> None:
-    if kwargs:
-        extra = " ".join(f"{k}={v!r}" for k, v in sorted(kwargs.items()))
-        log.info("STREAM_DIAG %s %s", phase, extra)
-    else:
-        log.info("STREAM_DIAG %s", phase)
-
-
 #: the option quote fields the levels are priced from: a message carrying one reprices (a
 #: streamed contract's volume and its Greeks; its open interest is the chain's)
 _REPRICE_FIELDS = ("TOTAL_VOLUME", "GAMMA", "DELTA", "THETA", "VEGA", "RHO", "VOLATILITY")
@@ -583,4 +575,4 @@ def stop_order_flow_stream() -> None:
     if task is not None and not task.done():
         task.cancel()
     FEED.task = None
-    _log_stream("FEED_CANCEL_REQUESTED")
+    log.info("STREAM_DIAG FEED_CANCEL_REQUESTED")

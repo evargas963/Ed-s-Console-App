@@ -101,6 +101,45 @@ def test_a_page_frame_the_daemon_cannot_read_is_logged_with_what_arrived(caplog)
     assert "b'\\xff not text'" in warned, warned  # a binary frame, read as what it carries
 
 
+def test_a_subscribes_panels_the_program_cannot_take_are_counted_and_the_rest_served(caplog):
+    """A subscribe's panels that are no object, a panel the program has not, and parameters
+    that are no object are each refused: counted (`page_refused`) and logged with what arrived.
+
+    The page is still served its symbols, and a panel named with its parameters is served.
+    INDUCED: the frames are a test's; no page of the program sends one.
+    """
+
+    async def go():
+        stop, stats = asyncio.Event(), {}
+        ui, url = _serving(stop, stats)
+        assert await until(lambda: "clients" in stats)  # serving
+        ws = await connect(f"{url}/ws", max_size=None)
+        try:
+            seen: set = set()
+            for panels in ("terrain", {"no_such_panel": {}, "terrain": 5, "expiries": {}}):
+                ask = {"op": "subscribe", "symbols": ["SPY"], "ticker": "SPY", "panels": panels}
+                await ws.send(json.dumps(ask))
+                while (kind := json.loads(await asyncio.wait_for(ws.recv(), 5))["type"]) != (
+                    "symbols"
+                ):  # the page's rows and beats meanwhile
+                    seen.add(kind)
+            while "expiries" not in seen:  # the one panel it could take, served
+                seen.add(json.loads(await asyncio.wait_for(ws.recv(), 5))["type"])
+            return stats["page_refused"]
+        finally:  # a failure still closes the socket: cancelling over an open one can hang
+            await ws.close()
+            stop.set()
+            await ui
+
+    with caplog.at_level(logging.WARNING, logger="app.market_data.schwab.streaming.live_ui"):
+        refused = asyncio.run(go())
+    warned = " | ".join(r.getMessage() for r in caplog.records if r.name.endswith("live_ui"))
+    assert refused == 3
+    assert "a subscribe's panels not an object: 'terrain'" in warned, warned
+    assert "panel unknown, or its parameters not an object: 'no_such_panel' {}" in warned, warned
+    assert "panel unknown, or its parameters not an object: 'terrain' 5" in warned, warned
+
+
 def test_the_header_line_names_each_count_left_out_and_nothing_when_none():
     """The header shows what the program left out only when something was (operator 2026-11-20).
 

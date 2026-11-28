@@ -175,6 +175,23 @@ def test_fail_closed_no_book():
     assert m["provenance"]["book_source"] == "unavailable"
 
 
+def test_the_intake_keeps_a_book_only_with_a_side_and_a_symbol():
+    """The real SPY NASDAQ_BOOK message (tests/fixtures/real_spy_nyse_nasdaq_books.json).
+
+    INDUCED: an empty message, one with neither side, and the real book under a blank symbol
+    are each no book, and none replaces the book held; the real book is kept as read.
+    """
+    fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"
+    content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
+    state = OrderFlowState()
+    kept = state.push_book("SPY", content, "NASDAQ_BOOK")
+    assert kept is not None and state.newest_book("SPY", "NASDAQ_BOOK") is kept
+    assert state.push_book("SPY", {}, "NASDAQ_BOOK") is None
+    assert state.push_book("SPY", {"key": "SPY", "BOOK_TIME": 1}, "NASDAQ_BOOK") is None
+    assert state.push_book(" ", content, "NASDAQ_BOOK") is None
+    assert state.newest_book("SPY", "NASDAQ_BOOK") is kept
+
+
 def test_every_emitted_metric_is_classified():
     """The metric set is taken from the actual payload.
 

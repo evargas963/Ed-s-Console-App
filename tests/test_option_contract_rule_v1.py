@@ -1141,3 +1141,6 @@ def test_an_expiring_contract_streams_and_is_recorded_until_its_option_day_ends(
     window = {t: capture.saved_window(ladders, at(t)) for t in ("16:10", "16:15")}
     assert expiring <= order["16:10"] and window["16:10"] and window["16:10"] == expiring
     assert not expiring & order["16:15"] and window["16:15"] and not window["16:15"] & expiring
+    # past the last listed expiry's option day no contract of the chain is recorded
+    ends = [end for _expires, end, _symbols in ladders if end is not None]
+    assert ends and capture.saved_window(ladders, max(ends) + 1) == frozenset()
