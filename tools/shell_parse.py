@@ -973,7 +973,9 @@ def _pwsh_command(args) -> int | None:
             (
                 i
                 for i, a in enumerate(args)
-                if a.lower() == "-cwa" or (len(a) >= 9 and "-commandwithargs".startswith(a.lower()))
+                if a.lower() == "-cwa"
+                # a prefix no longer than -command is -Command's, found above
+                or (len(a) > len("-command") and "-commandwithargs".startswith(a.lower()))
             ),
             None,
         )

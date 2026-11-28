@@ -16,6 +16,8 @@ from collections.abc import Iterator
 
 #: the fewest lines a copied block holds
 WIN = 8
+#: the longest a line left out is (a closing bracket, `],`, `})`): no code in it to copy
+SHORT_LINE = 3
 
 
 def import_lines(tree: ast.Module) -> set[int]:
@@ -40,7 +42,7 @@ def copied(files: dict[str, tuple[str, set[int]]]) -> Iterator[tuple[str, str]]:
         lines = [
             (n, s)
             for n, s in lines
-            if n not in left_out and len(s) > 3 and not s.startswith(("#", "//", '"""'))
+            if n not in left_out and len(s) > SHORT_LINE and not s.startswith(("#", "//", '"""'))
         ]
         last_hit = -WIN
         for i in range(len(lines) - WIN + 1):
