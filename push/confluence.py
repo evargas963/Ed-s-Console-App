@@ -201,7 +201,7 @@ class Marker(TypedDict):
     short: str
     title: str
     lane: str
-    price: float | None
+    price: float
     hold_text: str | None
 
 
@@ -261,8 +261,6 @@ def _screen_levels(
     levels: list[Level] = []
     for marker in markers:
         price = marker["price"]
-        if price is None:
-            continue
         shown = price_text(price)
         hold = marker["hold_text"] or NO_HOLD_RECORD
         levels.append(

@@ -137,6 +137,29 @@ def test_a_strike_whose_open_interest_is_not_known_is_not_ranked():
     assert pin.strike_widths == pytest.approx(SPY_0DTE.spot - pin.strike, rel=1e-12)
 
 
+def test_an_expiry_listing_one_strike_says_no_strike_width():
+    """INDUCED: SPY's 0DTE chain cut to its pin strike's call and put, so it lists one strike.
+
+    The pin is that strike; one strike has no width to the next, so the note gives the price's
+    distance in expected moves alone.
+    """
+    full = compute_terrain(
+        "SPY", read_chain(SPY_0DTE.chain), SPY_0DTE.spot, now=SPY_0DTE.now, sessions=sessions()
+    )
+    one = [c for c in SPY_0DTE.chain if c["strikePrice"] == full.pin_candidate]
+    snap = compute_terrain(
+        "SPY", read_chain(one), SPY_0DTE.spot, now=SPY_0DTE.now, sessions=sessions()
+    )
+    assert len(one) == 2 and snap.pin_candidate == full.pin_candidate
+    assert snap.pin_strike_widths is None and snap.pin_expected_moves is not None
+    side = "above" if snap.pin_expected_moves > 0 else "below"
+    assert push_levels.pin_note(snap) == (
+        "Most open interest within one expected move, of the expiry settling at today's close. "
+        f"Price {abs(snap.pin_expected_moves):.2f} expected moves {side} it; 223 minutes to the "
+        "close."
+    )
+
+
 def test_the_note_says_how_far_the_price_is_and_how_long_is_left():
     snap = compute_terrain(
         "SPY", read_chain(SPY_0DTE.chain), SPY_0DTE.spot, now=SPY_0DTE.now, sessions=sessions()
