@@ -203,12 +203,13 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   (`live_ui.HEARTBEAT_SEC`), which carries the header's news line (`push.news.news`) on a page's
   first beat and on the first beat after the line changed or the Central day turned
   (`LiveUiServer.mark_news`). A client that stops reading is dropped (`live_ui.PageSocket`); the
-  page reconnects. A frame, symbol or panel a page sends that the server cannot take is logged and
-  counted (`page_refused`), and the beat carries the socket's counts (`page_socket`). The header
-  shows these with the records not applied and the reprices failed, while any is above 0
-  (`live_ui.left_out_line`, the beat's `left_out`). Enforced by:
-  `tests/test_live_ui_daemon_to_browser_v1.py`, `tests/test_data_path_silent_price_v1.py`,
-  `tests/e2e/console-sign-in.spec.js`.
+  page reconnects. A page another site serves is refused at the upgrade, HTTP 403 and logged: its
+  Origin is not the console's own (`live_ui.page_socket`, RFC 6455 §10.2). A frame, symbol or panel
+  a page sends that the server cannot take is logged and counted (`page_refused`), and the beat
+  carries the socket's counts (`page_socket`). The header shows these with the records not applied
+  and the reprices failed, while any is above 0 (`live_ui.left_out_line`, the beat's `left_out`).
+  Enforced by: `tests/test_live_ui_daemon_to_browser_v1.py`,
+  `tests/test_data_path_silent_price_v1.py`, `tests/e2e/console-sign-in.spec.js`.
 - **Page → program:** HTTP for the page itself, `/api/health`, `/api/build`, `/api/watchlist` (POST,
   DELETE) and `/api/flow-contract`.
 
