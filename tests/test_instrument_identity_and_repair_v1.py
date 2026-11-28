@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from instrument_identity import BROKER_INDEX_BARE_ROOTS, ticker_storage_key
+from instrument_identity import BROKER_INDEX_BARE_ROOTS, ticker_storage_key, vendor_option_root
 from state import bar_store
 from tests.feed_live_helper import daemon_bars, stream_daemon_bars
 
@@ -47,6 +47,20 @@ def test_ticker_storage_key_preserves_spx_prefix():
     assert ticker_storage_key("$SPX") == "$SPX"
     assert ticker_storage_key("  $spx  ") == "$SPX"
     assert ticker_storage_key("vix") == "$VIX"
+    # a "$" alone, like a blank, names no symbol: no key, so nothing is kept or served under it
+    assert ticker_storage_key("$") == ticker_storage_key(" $ ") == ticker_storage_key(" ") == ""
+
+
+def test_an_option_root_is_read_only_from_an_osi_symbol():
+    """Schwab's option symbols are the 21-character OSI form (OCC): root, date, side, strike.
+
+    A real one (SPY's 2026-10-07 777 call, tests/real_chains.py) gives its root; a stock's
+    symbol, and a 21-character text not in that form (INDUCED), give none.
+    """
+    assert vendor_option_root("SPY   261007C00777000") == "SPY"
+    assert vendor_option_root("SPY") == ""
+    assert vendor_option_root("SPY   26100XC00777000") == ""  # its date not digits
+    assert vendor_option_root("SPY   261007X00777000") == ""  # its side neither C nor P
 
 
 def test_ticker_storage_key_vxn_rvx_broker_index_roots():

@@ -8,7 +8,6 @@ ticker's stored chain captures (last_capture_per_day) and the level crosses (EdD
 from __future__ import annotations
 
 import functools
-import logging
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, fields
@@ -26,8 +25,6 @@ from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_json_blob
 from option_contract import read_chain
 from time_et import ET
-
-log = logging.getLogger(__name__)
 
 
 def stored_rows(db_path: str | Path, table: str, query: str, *args: object) -> list[Any]:
@@ -112,34 +109,23 @@ SQLITE_CACHE_SIZE_KIB = -131072  # 128 MiB (negative = KiB in SQLite's PRAGMA co
 
 
 def configure_sqlite_connection(conn: sqlite3.Connection, *, busy_timeout_ms: int = 30000) -> None:
-    """Set the production pragmas for any sqlite3 connection touching the console DB.
+    """Set a reader's pragmas on a connection to the console's database (EdDB, read-only).
 
-    Safe to call on every new connection (WAL is idempotent once enabled on the file).
-
-    PRAGMA failures are rare (each pragma is well-formed) but possible if the DB file
-    is locked by a separate WAL-mode-incompatible client or filesystem permissions
-    block fsync. Log at debug so operators can spot pragmas silently degrading
-    (e.g. journal_mode falls back to DELETE under read-only mounts) instead of
-    inheriting whatever default the connection had.
+    How long it waits on the writer's lock, and its access tuning for a large database: the
+    defaults (2 MB page cache, no memory-mapping) re-fault every read from disk through a tiny
+    per-connection cache. mmap_size maps the hot working set (shared via the OS page cache, not
+    per-connection memory), and a 128 MB page cache holds hot index and data pages across a
+    query. Measured: a wide-row read 8.55 -> 6.59 ms. The database's journal mode and its
+    synchronous setting are the writer's (stream_spine: WAL as it prepares the database, NORMAL
+    on each connection it opens, CaptureWriter._open); a read-only connection changes neither.
+    A pragma SQLite refuses raises.
     """
     for pragma in (
-        "PRAGMA journal_mode=WAL",
-        "PRAGMA synchronous=NORMAL",
         f"PRAGMA busy_timeout={int(busy_timeout_ms)}",
-        "PRAGMA foreign_keys=ON",
-        # access tuning for a large DB: the defaults (2 MB page cache, no
-        # memory-mapping) re-fault every read from disk through a tiny per-connection
-        # cache. mmap_size maps the hot working set (shared via the OS page cache — not
-        # per-connection RAM), and a 128 MB page cache holds hot index/data pages across
-        # a query. Both are read-side accelerants; neither changes durability (WAL +
-        # synchronous=NORMAL unchanged). Measured: wide-row read 8.55 -> 6.59 ms.
         f"PRAGMA mmap_size={SQLITE_MMAP_SIZE_BYTES}",
         f"PRAGMA cache_size={SQLITE_CACHE_SIZE_KIB}",
     ):
-        try:
-            conn.execute(pragma)
-        except sqlite3.Error as e:
-            log.debug("configure_sqlite_connection: %s failed: %s", pragma, e)
+        conn.execute(pragma)
 
 
 # ── Database location (ONE APP, ONE MAIN, ONE DB) ───────────────────────────

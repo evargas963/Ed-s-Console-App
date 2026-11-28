@@ -37,9 +37,7 @@ def ticker_storage_key(ticker: str) -> str:
         return ""
     if t.startswith("$"):
         rest = t[1:].strip()
-        if not rest:
-            return "$"
-        return "$" + rest.upper()
+        return "$" + rest.upper() if rest else ""  # a "$" alone names no symbol
     u = t.upper()
     if u in BROKER_INDEX_BARE_ROOTS:
         return "$" + u

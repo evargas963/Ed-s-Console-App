@@ -169,14 +169,12 @@ def record_from_level_one_equity(
     what every freshness check judges. A current record merged from several messages (the
     daemon's bus) carries each field's own receive time in `field_received`.
     """
-    if not item:
-        return False
     t = ticker_storage_key(ticker)  # the plane's key
     if not t:
         return False
     rts = float(received_ts)
     sent = _sent(item)
-    if not sent:
+    if not sent:  # no field the plane reads, an empty message's none among them
         return False
     with _lock:
         fs = _fields_by_ticker.setdefault(t, {})
@@ -427,15 +425,6 @@ def feed_up(feed: FeedNow) -> bool:
     return feed.status is not None and feed.status["schwab_socket_open"]
 
 
-def live_on(feed: FeedNow, symbol: str, service: str) -> bool:
-    """Whether `feed` says Schwab `service` is delivering `symbol`."""
-    if not feed_up(feed):
-        return False
-    t = ticker_storage_key(symbol)
-    symbols = feed.held.get(service)
-    return bool(t) and symbols is not None and t in symbols
-
-
 def daemon_status(now: float) -> Beat | None:
     """Return the daemon's latest status while its heartbeat is current at `now`, else None."""
     return feed_now(now).status
@@ -509,8 +498,9 @@ def _judge(feed: FeedNow, symbol: str, service: str, now: float) -> tuple[str, s
             OFFLINE,
             f"Schwab {service} feed down during {session_label(datetime.fromtimestamp(now, ET))}",
         )
-    if not live_on(feed, symbol, service):
-        return NOT_LIVE, f"{ticker_storage_key(symbol)} is not streamed on Schwab {service}"
+    t, held = ticker_storage_key(symbol), feed.held.get(service)
+    if not t or held is None or t not in held:  # the heartbeat says Schwab delivers it, or not
+        return NOT_LIVE, f"{t} is not streamed on Schwab {service}"
     why = not_trading(symbol, service, now)
     return (LIVE, None) if why is None else (NOT_LIVE, why)
 
