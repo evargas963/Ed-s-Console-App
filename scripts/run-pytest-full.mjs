@@ -68,7 +68,7 @@ export function boundedTail(text, budget = TAIL_BYTES) {
 
 function printTail(label, logPath, budget) {
   if (budget <= 0) return;
-  let text = "";
+  let text;
   try {
     text = fs.readFileSync(logPath, "utf8");
   } catch (e) {
