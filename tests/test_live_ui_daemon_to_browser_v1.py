@@ -59,8 +59,6 @@ from zoneinfo import ZoneInfo
 import psutil
 import pytest
 from websockets.asyncio.client import connect
-from websockets.exceptions import InvalidStatus
-from websockets.typing import Origin
 
 import live_market_plane as lmp
 import live_price_rows
@@ -601,12 +599,12 @@ def test_a_page_another_site_serves_is_refused_the_socket_and_the_consoles_own_a
             "http://127.0.0.1:3000",  # below every system's ephemeral range: never the test's
             f"https://127.0.0.1:{port}",
         ):
-            with pytest.raises(InvalidStatus) as refused:
-                await connect(url, origin=Origin(foreign))
+            with pytest.raises(Exception, match="rejected WebSocket connection") as refused:
+                await connect(url, origin=foreign)
             assert refused.value.response.status_code == HTTPStatus.FORBIDDEN, foreign
             assert f"refused the page socket to a page from {foreign}, not the" in caplog.text
         for own in (f"http://127.0.0.1:{port}", f"http://localhost:{port}", None):
-            async with connect(url, origin=None if own is None else Origin(own)) as page:
+            async with connect(url, origin=own) as page:
                 frame = json.loads(await asyncio.wait_for(page.recv(), 2 * live_ui.HEARTBEAT_SEC))
                 assert frame["type"] == "feed", own  # the beat: served
 
