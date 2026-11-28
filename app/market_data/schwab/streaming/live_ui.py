@@ -531,7 +531,19 @@ async def page_socket(ws: WebSocket) -> None:
 
     Served while the program serves prices (serve_live_ui, the app's state `prices`); refused
     before and after, and the page's reconnect keeps its schedule.
+
+    Served to the console's own pages alone: a browser names the page that opens a socket in its
+    Origin, and one another site serves is refused with HTTP 403, as RFC 6455 §10.2 asks of a
+    server meant for certain sites (docs/SOURCES.md rfc6455-origin). The console's own are its
+    address on this computer, by its number and by its name, localhost (RFC 6761 §6.3). A client
+    that is no browser sends no Origin and is served (§10.2: the check is not meant to stop one).
     """
+    _, port = ws.scope["server"]
+    origin = ws.headers.get("origin")
+    if origin not in (None, f"http://{CONSOLE_HOST}:{port}", f"http://localhost:{port}"):
+        log.warning("live ui: refused the page socket to a page from %s, not the console", origin)
+        await ws.close()
+        return
     prices = ws.app.state.prices
     if prices is None:
         await ws.close()

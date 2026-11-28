@@ -217,10 +217,6 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   the Heatmap with TradingView-style controls, each to the operator's spec. Separate items when
   asked: a daily accumulator, a per-stock depth measure.
 - LP-01 (QUEUED): check that the raw liquidity levels show on the Trade Desk chart.
-- LOCAL-SOCKETS (QUEUED): the program listens on this computer alone (`live_ui.CONSOLE_HOST`,
-  127.0.0.1; the operator 2026-11-27: he opens the console on this computer only). Left: the page's
-  socket `/ws` checks no Origin, so a page another site serves in the operator's own browser could
-  open it; the upgrade's Origin is checked against the console's own.
 
 ## Operator decides
 
