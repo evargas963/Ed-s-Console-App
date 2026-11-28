@@ -25,6 +25,7 @@ census cannot read stops the census with that error.
 
 import argparse
 import ast
+import bisect
 import collections
 import copy
 import csv
@@ -2120,6 +2121,14 @@ for f in [f for f in FILES if f.endswith(".md") and f in TEXT]:
 log.info("census: M")
 S = "M. The running program"
 FAILURE = re.compile(r"(?i)\b(error|exception|failed|refused|ended|dropping|stalled|timed out)\b")
+#: the daemon's line for each REST request it sent (feed.schwab_client), its answer's code and the
+#: Central times it was sent and answered
+REQUEST_LINE = re.compile(
+    r"REQUEST \w+ (?P<path>\S+).*? -> (?P<code>\d{3}) \(sent (?P<sent>\d\d:\d\d:\d\d\.\d+) CT, "
+    r"answered (?P<answered>\d\d:\d\d:\d\d\.\d+) CT\)(?P<rest>.*)"
+)
+#: the reference Akamai, Schwab's edge, gives a request it blocks (its 403 page's "Reference #")
+AKAMAI_REFERENCE = re.compile(r"Reference\s*#\s*([\w.]+)")
 if not MACHINE:
     add(S, f"the program's log: {NOT_HERE}", "7", "the daemon's log")
 else:
@@ -2210,6 +2219,60 @@ else:
             )
     for gap, began in sorted(silences, reverse=True)[:10]:
         add(S, SILENT, "5", "ed.db stream_quotes_raw", f"{gap:.1f} s from {time_et.ct_time(began)}")
+    # what Schwab's REST was asked in that session and how it answered, from the daemon's own
+    # line for each request in that day's log: how many a minute and of each endpoint, and each
+    # answer that was not 200 with the requests in flight when it was sent and those sent in the
+    # minute before (rule 3: the next is sent as each answer is taken)
+    RATES = f"REST requests in the {day} regular session, a minute and by endpoint (reported)"
+    REFUSED = f"REST answers other than 200 in the {day} regular session (reported)"
+    add(S, RATES, "3", "the daemon's log")
+    add(S, REFUSED, "3", "the daemon's log")
+    asked = []
+    for m in REQUEST_LINE.finditer(
+        (REPO / "logs" / f"stream_capture.{day}.log").read_text(encoding="utf-8", errors="replace")
+    ):
+        sent, answered = (
+            dt.datetime.fromisoformat(f"{day}T{m[k]}").replace(tzinfo=time_et.CT).timestamp()
+            for k in ("sent", "answered")
+        )
+        if start <= sent < end:
+            asked.append(
+                (
+                    sent,
+                    answered,
+                    int(m["code"]),
+                    m["path"].rsplit("/", 1)[-1],
+                    AKAMAI_REFERENCE.search(m["rest"]),
+                )
+            )
+    asked.sort()
+    sends, answers = [a[0] for a in asked], sorted(a[1] for a in asked)
+    flying = [i - bisect.bisect_right(answers, s) for i, s in enumerate(sends)]
+    if not asked:
+        add(S, RATES, "3", "the daemon's log", "no request in the session")
+    else:
+        minutes = sorted(collections.Counter(int((s - start) // 60) for s in sends).values())
+        tens = collections.Counter(int((s - start) // 10) for s in sends)
+        add(
+            S,
+            RATES,
+            "3",
+            "the daemon's log",
+            f"{len(asked):,} requests: a minute, median {minutes[len(minutes) // 2]} and most "
+            f"{minutes[-1]}; in 10 s, most {max(tens.values())}; most in flight {max(flying)}",
+        )
+    for endpoint, n in collections.Counter(a[3] for a in asked).most_common():
+        add(S, RATES, "3", "the daemon's log", f"{endpoint}: {n:,}")
+    for (sent, _answered, code, endpoint, ref), now_flying in zip(asked, flying, strict=True):
+        if code != 200:
+            before = bisect.bisect_left(sends, sent) - bisect.bisect_left(sends, sent - 60)
+            said = (
+                f"{code} {endpoint} sent {time_et.ct_time(sent)}: {now_flying} in flight, "
+                f"{before} sent in the 60 s before"
+            )
+            if ref:
+                said += f", Akamai reference {ref[1]}"
+            add(S, REFUSED, "3", "the daemon's log", said)
 
 # =============================================================================================
 # H. GOVERNANCE AND WORK LIST

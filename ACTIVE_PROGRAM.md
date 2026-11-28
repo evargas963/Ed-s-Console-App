@@ -73,13 +73,11 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   streamed contract's open interest, volume and quote fields, which `/chains` still sends, read from
   the stream alone (open interest stays the chain's, rule 3's exception).
 - SPEED (NEXT; also LIVE-MEASURE): one regular session's numbers across the watchlist, from the
-  daemon log and py-spy: requests per minute and every 429 or 502, the chain rotation time, the
-  program's memory and CPU, the levels' age, and how far the push runs behind Schwab, a streamed
-  contract's chain ladder cell among them (a median 4.4 s behind on 2026-11-18, before #1194 showed
-  each streamed value as it arrives). Then the $SPX levels computation.
-- RATE-EVIDENCE (NEXT): one regular session from the daemon log: per minute and per 10 s, requests
-  sent, successes, 429s and 403s (with each 403's Akamai reference), beside each chain's quote
-  batches, across the watchlist; whether concurrency or the per-minute count drives the refusals.
+  daemon log and py-spy: the chain rotation time, the program's memory and CPU, the levels' age, and
+  how far the push runs behind Schwab, a streamed contract's chain ladder cell among them (a median
+  4.4 s behind on 2026-11-18, before #1194 showed each streamed value as it arrives). Then the $SPX
+  levels computation. The requests a minute and every answer that is not 200 are the census's (M,
+  each machine run's newest ended session).
 
 ## Queued
 
