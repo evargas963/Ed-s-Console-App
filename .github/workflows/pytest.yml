@@ -149,10 +149,13 @@ jobs:
           echo "CI_CPUS nproc=$(nproc) cpu_count process_cpu_count=$counts"
           # The browser tests run on a runner of their own (linux-browser): pytest on every core
           # beside Playwright starves Playwright's real-time timeouts. A test marked `alone` holds
-          # a wall-clock limit, so it runs after the workers, with none beside it.
+          # a wall-clock limit, so it runs after the workers, with none beside it. Each side of an
+          # if, a loop and a match is measured as well as each statement (--cov-branch, which
+          # pytest-cov hands to every process a test starts; a setting in pyproject.toml reaches
+          # only its own), and a side no test takes is counted by the census.
           set +e
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone" \
-            --cov --cov-context=test --cov-report=
+            --cov --cov-branch --cov-context=test --cov-report=
           pytest_rc=$?
           python -m pytest --durations=1 -rs -m alone
           alone_rc=$?

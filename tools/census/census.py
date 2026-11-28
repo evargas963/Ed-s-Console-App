@@ -7,8 +7,9 @@ Run from the checkout with the repository's Python, which also holds tools/censu
 `npm ci --prefix tools/census` holds the other checkers. --repo is the checkout counted (default
 the one it runs from), so a pull request's base is counted by the head's census: one ruler before
 and after. --coverage is coverage.py's JSON report of the commit's pytest run (pytest.yml), whose
-statements no test runs are counted; --page-coverage the lines of the page's scripts each browser
-test worker ran (tests/e2e/fixtures/test.js), whose code lines no test runs are counted. --machine
+statements and branches no test runs are counted; --page-coverage the lines of the page's scripts
+each browser test worker ran (tests/e2e/fixtures/test.js), whose code lines no test runs are
+counted. --machine
 counts what only the working machine holds: its database (--data, default <repo>/data), its
 branches, stashes and worktrees, and the files on its disk git does not hold; a clone (CI's)
 reports those rows as not counted, never as 0. Writes
@@ -513,6 +514,30 @@ for d in json.loads(out):
             "ruff S",
             f"{f}:{d['location']['row']}: {d['message'][:120]}",
         )
+# what ruff holds of PEP 8's names (pep8-naming) and of a module's private names reached from
+# outside it (SLF001; .claude/rules/tests.md: a test never pins a private helper), over the files
+# locks.ruff.toml reads; a function's size (pylint's returns, branches, arguments and statements)
+# is counted and reported, never judged (AGENTS.md, Fix what you find); a bare number compared
+# (PLR2004) is checked by hand, an expected value in an assert being a test's own data
+out = run(
+    [
+        *(PY, "-m", "ruff", "check", ".", "--config", "locks.ruff.toml"),
+        *("--select", "N,PLR0911,PLR0912,PLR0913,PLR0915,PLR2004,SLF001", "--ignore-noqa"),
+        *("--output-format", "json", "--no-cache", "--exit-zero"),
+    ],
+    stdout_only=True,
+)
+SIZE_RULES = {"PLR0911", "PLR0912", "PLR0913", "PLR0915"}
+for d in json.loads(out):
+    f = Path(d["filename"]).resolve().relative_to(REPO.resolve()).as_posix()
+    code = d["code"]
+    if code in SIZE_RULES:
+        cat = f"ruff {code}: a function's size, noqa ignored (reported)"
+    elif code == "PLR2004":
+        cat = f"ruff {code}: a bare number compared, noqa ignored (check each)"
+    else:
+        cat = f"ruff {code}: names and private reach, noqa ignored"
+    add(S, cat, "13", "ruff", f"{f}:{d['location']['row']}: {d['message'][:120]}")
 stats = run(
     [
         PY,
@@ -999,15 +1024,25 @@ for cat in JS_KIND.values():
     add(S, cat, "4", "acorn")
 ROUNDING = "a value rounded to digits in product Python (rounding only on screen)"
 FORMATTED = "a date, time or number formatted outside its one formatter: Python product (ENF-11)"
+#: State is the one in-memory store (docs/ARCHITECTURE.md): a container, or an object of the
+#: module's own class, made at a module's top level outside state/ is a table that never changes
+#: or state a call may change unseen by its caller
+HELD_OUTSIDE_STATE = "values a module holds at its top level, outside state/ (check each)"
+#: size is counted and never judged (AGENTS.md, Fix what you find): a long function or file is a
+#: prompt to ask whether it does one thing, and no code is reshaped only to meet a count
+LONG_FUNCTIONS = "product functions over 80 lines (reported)"
+LONG_FILES = "product files over 1,000 lines (reported)"
+CONTAINERS = {"dict", "list", "set", "defaultdict", "deque", "OrderedDict", "Counter"}
 for cat, rule, tool in (
     (FORMATTED, "13", "ast"),
     ("clock time typed in code", "8", "ast"),
     ("prose in code: history, dates, PRs, incidents", "1", "regex"),
-    ("product functions over 80 lines", "1", "ast"),
+    (LONG_FUNCTIONS, "1", "ast"),
     ("public functions returning a plain dict, not a typed record", "12", "ast"),
     ("global statements (module state changed at run time)", "11", "ast"),
+    (HELD_OUTSIDE_STATE, "11", "ast"),
     ("a ticker typed into code (every ticker treated the same; check each)", "7", "ast"),
-    ("product files over 1,000 lines", "1", "wc"),
+    (LONG_FILES, "1", "wc"),
     ("computing functions not in docs/derived_register.md (check each)", "First gate 2", "ast"),
     (ROUNDING, "5", "ast"),
 ):
@@ -1219,7 +1254,16 @@ for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT]:
             )
 for f, n, name, length, _node in func_index:
     if area(f) == "product" and length > 80:
-        add(S, "product functions over 80 lines", "1", "ast", f"{f}:{n} {name} ({length} lines)")
+        add(S, LONG_FUNCTIONS, "1", "ast", f"{f}:{n} {name} ({length} lines)")
+for f in [f for f in PRODUCT_PY if not f.startswith("state/")]:
+    made = CONTAINERS | {n.name for n in trees[f].body if isinstance(n, ast.ClassDef)}
+    for node in trees[f].body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = node.value
+        called = isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+        if isinstance(value, (ast.Dict, ast.List, ast.Set)) or (called and value.func.id in made):
+            add(S, HELD_OUTSIDE_STATE, "11", "ast", f"{f}:{node.lineno} {ast.unparse(node)[:100]}")
 TICKER = re.compile(
     r"^\$?(?:SPX|SPY|QQQ|IWM|NVDA|TSLA|AMD|META|AAPL|MSFT|AMZN|GOOGL?|NDX|VIX|"
     r"DJI|COMPX|VXN|RVX|RUT|DJX|XSP|OEX)$"
@@ -1289,7 +1333,7 @@ lines_matching(
     skip_comment=True,
 )
 for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT and TEXT[f].count("\n") > 1000]:
-    add(S, "product files over 1,000 lines", "1", "wc", f"{f} ({TEXT[f].count(chr(10)):,} lines)")
+    add(S, LONG_FILES, "1", "wc", f"{f} ({TEXT[f].count(chr(10)):,} lines)")
 register = TEXT["docs/derived_register.md"]
 for f, n, name, _length, _node in func_index:
     if (
@@ -1404,27 +1448,48 @@ def spans_of(lines):
 
 
 UNRUN = "statements no test runs (coverage.py, pytest.yml's run of this commit)"
+#: a side of an `if`, a loop or a `match` no test takes (pytest.yml's `--cov-branch`), each
+#: `from->to` as coverage.py names it, a negative `to` leaving the function
+UNTAKEN = "branches no test takes (coverage.py, pytest.yml's run of this commit)"
 if _args.coverage is None:
     add(S, f"{UNRUN}: not counted, no coverage report given (reported)", "14", "coverage.py")
 else:
     measured = json.loads(_args.coverage.read_text(encoding="utf-8"))["files"]
-    unrun = collections.Counter()
-    for a in ("product", "tools"):
-        add(S, f"{UNRUN}: Python {a}", "14", "coverage.py")
-    for f, cov in sorted(measured.items()):
-        if f not in TEXT or not cov["missing_lines"]:
-            continue
-        unrun[area(f)] += len(cov["missing_lines"])
+    with_branches = all("missing_branches" in cov for cov in measured.values())
+    if not with_branches:
         add(
-            S,
-            f"{UNRUN}: Python {area(f)}",
-            "14",
-            "coverage.py",
-            f"{f}: {len(cov['missing_lines'])} of {cov['summary']['num_statements']}: "
-            + spans_of(cov["missing_lines"]),
+            S, f"{UNTAKEN}: not counted, the report has no branches (reported)", "14", "coverage.py"
         )
-    for a, n in unrun.items():
-        add(S, f"{UNRUN}: Python {a}", "14", "coverage.py", count=n)
+    missed = {UNRUN: collections.Counter(), UNTAKEN: collections.Counter()}
+    for a in ("product", "tools"):
+        for cat in (UNRUN, UNTAKEN) if with_branches else (UNRUN,):
+            add(S, f"{cat}: Python {a}", "14", "coverage.py")
+    for f, cov in sorted(measured.items()):
+        if f not in TEXT:
+            continue
+        if cov["missing_lines"]:
+            missed[UNRUN][area(f)] += len(cov["missing_lines"])
+            add(
+                S,
+                f"{UNRUN}: Python {area(f)}",
+                "14",
+                "coverage.py",
+                f"{f}: {len(cov['missing_lines'])} of {cov['summary']['num_statements']}: "
+                + spans_of(cov["missing_lines"]),
+            )
+        if with_branches and cov["missing_branches"]:
+            missed[UNTAKEN][area(f)] += len(cov["missing_branches"])
+            add(
+                S,
+                f"{UNTAKEN}: Python {area(f)}",
+                "14",
+                "coverage.py",
+                f"{f}: {len(cov['missing_branches'])} of {cov['summary']['num_branches']}: "
+                + ", ".join(f"{src}->{dst}" for src, dst in cov["missing_branches"]),
+            )
+    for cat, by_area in missed.items():
+        for a, n in by_area.items():
+            add(S, f"{cat}: Python {a}", "14", "coverage.py", count=n)
 # the page's own scripts as Chromium ran them in the browser tests (tests/e2e/fixtures/test.js):
 # a line with code holding no character V8 ran; a comment line is not code
 PAGE_UNRUN = "page lines no browser test runs (V8 coverage, pytest.yml's browser tests)"
@@ -2803,12 +2868,13 @@ for a, fs in sorted(scores.items()):
         "ruff C901",
         count=sum(s for s, _ in fs),
     )
-    add(S, f"complexity, McCabe, {a}: functions over 10, ruff's default cap", "1", "ruff C901")
+    over = f"complexity, McCabe, {a}: functions over 10, ruff's default (reported)"
+    add(S, over, "1", "ruff C901")
     for s, it in sorted(fs, reverse=True):
         if s > 10:
             add(
                 S,
-                f"complexity, McCabe, {a}: functions over 10, ruff's default cap",
+                over,
                 "1",
                 "ruff C901",
                 f"{it} ({s})",

@@ -195,11 +195,10 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
    the program listens on, with its written default, which a test points at a free port of its own
    (`check_end_to_end.PORT_SETTINGS`); ruff `S110` (a catch-all `except` passed in silence) and
    `BLE` (a catch-all `except` that neither records its traceback nor re-raises) over the whole
-   repository (in force); ruff `C90` complexity cap and `TRY` (but `TRY003`, which flags a built-in
-   exception's message as Python's own library writes it), as one-way counts (locks);
-   `check_end_to_end` is deleted once a standard tool refuses every shape its docstring lists
-   (swallowing excepts, missing values replaced or repaired, the page's patch shapes) — the shapes
-   left — STANDARD-CHECKS
+   repository (in force); ruff `TRY` (but `TRY003`, which flags a built-in exception's message as
+   Python's own library writes it), as a one-way count (locks); `check_end_to_end` is deleted once a
+   standard tool refuses every shape its docstring lists (swallowing excepts, missing values
+   replaced or repaired, the page's patch shapes) — the shapes left — STANDARD-CHECKS
 2. **Schwab fields as sent** (serves 1, 3, 12). Not a number: absent, -999, text, NaN or infinity, a
    value Schwab's own field definition excludes (a negative volume or size; a time of 0, since each
    of Schwab's times is when an event occurred and 0 is sent where none has, as an index's quote
@@ -356,7 +355,7 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     in `pyproject.toml`; `ASYNC110`, since a test's wait on a thread's or another process's state
     has no event to wait on, and its accepted wait is a poll with a time-out,
     `tests.shared_helpers.until`; and `SIM115`, whose findings are mostly files held open past the
-    function, which a `with` would close); ruff `TRY` (but `TRY003`, rule 1), `C90` and `PLC0415` as
+    function, which a `with` would close); ruff `TRY` (but `TRY003`, rule 1) and `PLC0415` as
     one-way counts (locks)
 14. **The builder answers for the change** (serves 9, 11). The agent that builds a change audits it
     end to end, Schwab to the screen, the right amount, not too much and not too little: it moves a
@@ -436,8 +435,13 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     (TEST-CLEANUP, no machine check, ENF-12).
   - Size is not a rule: lines, bytes and work items are reported and never judged
     (`check_locks.FREE`); simple code is held by the checks of correctness (one producer, no patch
-    shapes, no dead code, the complexity cap, the builder's audit) and by `/simplify` on every
-    change (no machine check, ENF-12).
+    shapes, no dead code, the builder's audit) and by `/simplify` on every change (no machine check,
+    ENF-12). A function's or a file's length, its complexity and its count of arguments are census
+    counts, reported: a prompt for a person to ask whether it does one thing or five, judged case by
+    case with correctness first, never a gate, and no working code is split or reshaped only to meet
+    a count (operator 2026-11-28). Enforced by: the census's size rows, each reported
+    (`tools/census/census.py`); that no code is reshaped only for a count — the builder's audit
+    (rule 14), no machine check.
   - A test is known by what it asserts, not by its name: a test renamed with an assertion dropped is
     a lost assertion. A machine cannot tell that from a test deleted beside a new one, so it is the
     builder's audit (rule 14, no machine check). No test duplicates another

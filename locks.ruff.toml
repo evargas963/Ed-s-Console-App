@@ -10,7 +10,6 @@ select = [
   "ARG",     # an argument nothing reads
   "B",       # likely bugs
   "BLE",     # a catch-all except
-  "C90",     # a function too complex to read
   "E",
   "F",
   "I",
@@ -56,9 +55,6 @@ ignore = [
   # class, a style of one plugin that adds a class per message and fixes nothing
   "TRY003",
 ]
-
-[lint.mccabe]
-max-complexity = 10
 
 [lint.flake8-tidy-imports.banned-api]
 "http.client".msg = "Only Feed talks to Schwab."

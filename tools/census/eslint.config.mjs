@@ -29,6 +29,12 @@ const ORDERS = ["sort", "reduce"].map((name) => ({
 export default [
   { ignores: ["**/static/vendor/**", "**/node_modules/**"] },
   js.configs.recommended,
+  // ESLint's names, a property exempt, as Schwab spells its fields (AGENTS.md rule 2)
+  {
+    rules: {
+      camelcase: ["error", { properties: "never", ignoreDestructuring: true }],
+    },
+  },
   {
     files: ["**/static/**/*.js"],
     languageOptions: {
