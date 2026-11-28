@@ -344,19 +344,19 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
     exception: the daemon runs under `python` in its window, so an error while it loads shows there,
     and `capture_main` imports it at the top. Ruff `PLC0415` holds the rule (locks). One formatter
     per format (price, Central Time, dollars; a Greek with every digit Schwab sent, as a plain
-    decimal, never in exponent form, `tests/test_served_numbers_v1.py`), on the server (no machine
-    check — ENF-11). Enforced by: `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`:
-    lines at most 100 columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and
-    the `SIM` rules with a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`,
-    `SIM910`, `SIM911`) or with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`), and
-    `ASYNC` (flake8-async: no blocking call, a file opened, a path read or `time.sleep`, inside an
-    async function, which would stall the loop that reads Schwab's stream) (in force; `UP042`,
-    `E711`, `E712`, `E731` and the `B`, `SIM` and `ASYNC` rules whose only fix is unsafe deselected,
-    in `pyproject.toml`; `ASYNC110`, since a test's wait on a thread's or another process's state
-    has no event to wait on, and its accepted wait is a poll with a time-out,
-    `tests.shared_helpers.until`; and `SIM115`, whose findings are mostly files held open past the
-    function, which a `with` would close); ruff `TRY` (but `TRY003`, rule 1) and `PLC0415` as
-    one-way counts (locks)
+    decimal, never in exponent form), on the server: a date or a time by `time_et`, a number by
+    `numeric_contract`, in every file of the program (`tests/test_served_numbers_v1.py`, in force).
+    Enforced by: `ruff format` and ruff `UP`, `W`, `S110`, `BLE`, `E` (`E501`: lines at most 100
+    columns; `E741`: no `l`, `O` or `I` as a name), `B`, `I` (import order) and the `SIM` rules with
+    a safe fix (`SIM114`, `SIM117`, `SIM118`, `SIM208`, `SIM300`, `SIM905`, `SIM910`, `SIM911`) or
+    with no fix and nothing to fix (`SIM107`, `SIM113`, `SIM116`), and `ASYNC` (flake8-async: no
+    blocking call, a file opened, a path read or `time.sleep`, inside an async function, which would
+    stall the loop that reads Schwab's stream) (in force; `UP042`, `E711`, `E712`, `E731` and the
+    `B`, `SIM` and `ASYNC` rules whose only fix is unsafe deselected, in `pyproject.toml`;
+    `ASYNC110`, since a test's wait on a thread's or another process's state has no event to wait
+    on, and its accepted wait is a poll with a time-out, `tests.shared_helpers.until`; and `SIM115`,
+    whose findings are mostly files held open past the function, which a `with` would close); ruff
+    `TRY` (but `TRY003`, rule 1) and `PLC0415` as one-way counts (locks)
 14. **The builder answers for the change** (serves 9, 11). The agent that builds a change audits it
     end to end, Schwab to the screen, the right amount, not too much and not too little: it moves a
     value onto the one wire and deletes what it replaces; product code that grows beside the old
