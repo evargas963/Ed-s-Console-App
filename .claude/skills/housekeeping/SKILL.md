@@ -27,9 +27,14 @@ description:
    A candidate that fails a test stays. Propose what to close or delete, and wait for Ed's yes.
 
 3. On Ed's yes: close a PR with a comment naming what replaced it; delete merged branches
-   (recoverable from GitHub). Remove a worktree only after each `.venv` or `node_modules` in it that
-   is a junction to production is unlinked (`cmd /c rmdir <junction>`; a `.venv` built by
-   `tools/bootstrap_worktree_venv.py` is the worktree's own), then run `pip check` in production.
+   (recoverable from GitHub). The agent's own branch whose pull request merged needs no yes (Ed,
+   2026-11-28): once its files are shown identical to the merge commit on `main`
+   (`git diff --quiet <branch> <merge commit>`, the merge commit an ancestor of `origin/main`; for a
+   branch brought current on GitHub, the files the branch changed), it is deleted from a dev
+   worktree (`git branch -D`), any worktree that has it checked out moved off it first. Remove a
+   worktree only after each `.venv` or `node_modules` in it that is a junction to production is
+   unlinked (`cmd /c rmdir <junction>`; a `.venv` built by `tools/bootstrap_worktree_venv.py` is the
+   worktree's own), then run `pip check` in production.
 4. Anything permanent (a stash drop, an unmerged branch, a folder, anything under `data/`): give Ed
    the exact commands, one group at a time, and wait for his result. The agent does not run them.
 5. Show the state after (step 1 again).
