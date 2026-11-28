@@ -451,6 +451,63 @@ def test_a_writer_that_dies_while_recording_counts_the_message_that_ended_it(tmp
     assert (after["unrecorded"], after["held"], _count(db, "stream_quotes_raw")) == (14, 0, 0)
 
 
+def test_a_failure_kept_while_the_writer_runs_is_written_in_turn_even_one_json_cannot_hold(
+    tmp_path, caplog
+):
+    """The chain sweep keeps a chain whose history write failed while the writer runs.
+
+    The one writer takes it in turn (keep_failure queues it) and writes it to
+    stream_write_failures as JSON. INDUCED: a second kept message that holds itself, which JSON
+    cannot hold: it is kept as Python's repr, with a log line, never lost. Real data: the
+    captured TSLA LEVELONE_EQUITIES item.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+    looped: dict = {"native": _TSLA["native"]}
+    looped["self"] = looped
+
+    async def go():
+        bus, stop = MessageBus(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        await until(lambda: writer.status()["state"] == "recording", state=writer.status)
+        writer.keep_failure("chain.TSLA", {"native": _TSLA["native"]}, OSError("disk full"), 2.0)
+        writer.keep_failure("chain.TSLA", looped, OSError("disk full"), 3.0)
+        await until(lambda: len(_failures(db)) == 2, state=writer.status)
+        stop.set()
+        await task
+
+    asyncio.run(go())
+    (sent, error), (held, _error) = [(m, e) for _t, m, e in _failures(db)]
+    assert json.loads(sent) == {"native": _TSLA["native"]} and error == "OSError: disk full"
+    assert held == repr(looped)
+    assert "chain.TSLA is not JSON" in caplog.text
+
+
+def test_a_chain_kept_after_the_writer_died_is_counted_not_recorded(tmp_path):
+    """INDUCED CONDITION: a _Defect message ends the writer, then the chain sweep keeps a chain.
+
+    A writer that died records nothing more: the kept chain is counted not recorded, as every
+    message after its death is.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01)
+
+    async def go():
+        bus, stop = MessageBus(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        bus.publish("quote.TSLA", _defect())
+        await until(lambda: writer.status()["state"] == "dead", state=writer.status)
+        dead = writer.status()["unrecorded"]
+        writer.keep_failure("chain.TSLA", {"native": _TSLA["native"]}, OSError("disk full"), 2.0)
+        after = writer.status()["unrecorded"]
+        stop.set()
+        await task
+        return dead, after
+
+    dead, after = asyncio.run(go())
+    assert after == dead + 1 and _failures(db) == []
+
+
 def test_a_row_only_the_database_refuses_is_kept_and_the_writer_is_not_blocked(tmp_path):
     """INDUCED CONDITION: a trigger on the quotes table raises SQLite's "integer overflow".
 
@@ -714,6 +771,46 @@ def test_a_block_past_the_hold_cap_spills_to_disk_and_writes_back_in_arrival_ord
     )
 
 
+def test_a_failure_kept_while_the_writer_spills_is_spilled_and_written_back_as_kept(tmp_path):
+    """INDUCED CONDITION: another connection holds the write lock past the hold cap.
+
+    Meanwhile the chain sweep keeps a chain whose history write failed. The kept chain goes to
+    the spill file behind the quotes held before it, and once the lock is released it is written
+    back as kept, its error with it, as every quote is written back.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = _small_cap_writer(db)
+    holder = _locked(db)
+
+    async def go():
+        stop = asyncio.Event()
+        _bus, _health, _daemon, task, during = await _spilled(writer, stop)
+        spilled = during["spill"]["messages"]
+        writer.keep_failure("chain.TSLA", {"native": _TSLA["native"]}, OSError("disk full"), 2.0)
+        await until(
+            lambda: writer.status()["spill"]["messages"] == spilled + 1, state=writer.status
+        )
+        holder.execute("COMMIT")
+        await until(
+            lambda: writer.status()["spill"] is None and len(_failures(db)) == 1,
+            state=writer.status,
+        )
+        stop.set()
+        await task
+
+    try:
+        asyncio.run(go())
+    finally:
+        holder.close()
+    ((topic, sent, error),) = _failures(db)
+    assert (topic, json.loads(sent), error) == (
+        "chain.TSLA",
+        {"native": _TSLA["native"]},
+        "OSError: disk full",
+    )
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS]
+
+
 def _run_until_no_spill(writer: CaptureWriter) -> dict:
     """`writer` run until it holds no spill file, then stopped; its status."""
 
@@ -769,6 +866,116 @@ def _undeletable(path: Path):
         return open(path, "rb").close
     os.chmod(path.parent, stat.S_IREAD | stat.S_IEXEC)
     return lambda: os.chmod(path.parent, stat.S_IRWXU)
+
+
+def _uncreatable(folder: Path):
+    """INDUCED CONDITION: the disk refuses a new file in `folder`.
+
+    On Windows its access list denies everyone adding a file (icacls), elsewhere it is made
+    read-only; the files already in it are written as before. Returns the release.
+    """
+    if sys.platform == "win32":
+        everyone = "*S-1-1-0"
+        icacls = ["icacls", str(folder)]
+        subprocess.run([*icacls, "/deny", f"{everyone}:(WD)"], check=True, capture_output=True)
+        return lambda: subprocess.run(
+            [*icacls, "/remove:d", everyone], check=True, capture_output=True
+        )
+    os.chmod(folder, stat.S_IREAD | stat.S_IEXEC)
+    return lambda: os.chmod(folder, stat.S_IRWXU)
+
+
+def test_messages_the_disk_will_not_spill_are_counted_lost_with_when_they_were_received(
+    tmp_path,
+):
+    """INDUCED CONDITIONS: another connection holds the write lock while the quotes arrive.
+
+    The writer's hold cap is _SMALL_CAP, and the database's folder refuses a new file
+    (_uncreatable), so no spill file can be opened. The quotes past the cap are neither in the
+    database nor on disk: each is counted lost once, and the Record says how many and the window
+    they were received in. Released, the writer writes the ones it held and goes on.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = _small_cap_writer(db)
+    holder = _locked(db)
+    release = _uncreatable(tmp_path)
+
+    async def go():
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        daemon = capture.Daemon(bus, health)
+        daemon.writer = writer
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, _EVENTS)
+
+        def all_counted() -> bool:
+            s = writer.status()
+            return s["lost"] > 0 and s["lost"] + s["waiting"] == len(_EVENTS)
+
+        await until(all_counted, state=writer.status)
+        during = _beat(daemon)["writer"]
+        release()
+        holder.execute("COMMIT")
+        await until(
+            lambda: _count(db, "stream_options_quotes_raw") == len(_EVENTS) - during["lost"],
+            state=writer.status,
+        )
+        after = writer.status()
+        stop.set()
+        await task
+        return during, after
+
+    try:
+        during, after = asyncio.run(go())
+    finally:
+        release()
+        holder.close()
+    lost = during["lost"]
+    received = [e["ts_recv"] for e in _EVENTS[-lost:]]
+    assert during["spill"] is None and after["lost"] == lost
+    assert (
+        f"LOST {lost} messages, received {time_et.ct_label(min(received))} to "
+        f"{time_et.ct_label(max(received))}" in during["line"]
+    )
+    assert _stored_quotes(db) == [e["content"] for e in _EVENTS[:-lost]]
+
+
+def test_a_stop_whose_spill_the_disk_refuses_counts_what_it_held_lost_with_when(tmp_path):
+    """INDUCED CONDITIONS: another connection holds the write lock while the quotes arrive.
+
+    The writer holds every captured option quote in memory. Then the database's folder refuses
+    a new file (_uncreatable) and the writer is stopped: the stop's spill file cannot be opened,
+    so what it held is neither in the database nor on disk. Each is counted lost once, and the
+    Record says how many and the window they were received in.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, batch_rows=1, batch_sec=0.01, timeout_sec=0.2, retry_sec=0.1)
+    holder = _locked(db)
+    release = None
+
+    async def go():
+        nonlocal release
+        bus, health, stop = MessageBus(), HealthRegistry(), asyncio.Event()
+        task = asyncio.create_task(writer.run(bus.subscribe("", policy=LOG), stop=stop))
+        _publish_options(bus, health, _EVENTS)
+        await until(lambda: writer.status()["waiting"] == len(_EVENTS), state=writer.status)
+        release = _uncreatable(tmp_path)
+        stop.set()
+        await task
+        return writer.status()
+
+    try:
+        after = asyncio.run(go())
+    finally:
+        if release is not None:
+            release()
+        holder.close()
+    received = [e["ts_recv"] for e in _EVENTS]
+    assert (after["state"], after["lost"], after["left_on_disk"]) == (
+        "stopped",
+        len(_EVENTS),
+        [],
+    )
+    assert (after["lost_first_ts"], after["lost_last_ts"]) == (min(received), max(received))
 
 
 def test_a_written_back_spill_the_disk_will_not_delete_is_deleted_at_the_next_start(tmp_path):

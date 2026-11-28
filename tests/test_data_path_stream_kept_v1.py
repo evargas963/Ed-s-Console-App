@@ -618,6 +618,51 @@ def test_a_keep_part_refused_after_a_commit_counts_none_of_the_committed_as_held
     ), f"held {during['held']} after the ten were committed"
 
 
+def test_a_keep_part_the_database_refuses_as_it_runs_waits_and_removes_its_rows_after(tmp_path):
+    """INDUCED CONDITIONS: one /quotes answer received a week earlier (_old_quotes_answer).
+
+    The keep is asked while another connection holds the write lock, so its part's DELETE is
+    refused as it runs (database is locked): the database's refusal, not the part's own. The
+    writer waits as it does for any refused write and keeps nothing as a failure; once the lock
+    is let go, the keep removes the old row.
+    """
+    db = tmp_path / "stream_capture.db"
+    writer = CaptureWriter(db, timeout_sec=0.05, retry_sec=0.1)
+    with closing(sqlite3.connect(db)) as conn, conn:
+        _old_quotes_answer(writer, conn)
+    holder = sqlite3.connect(db, isolation_level=None, check_same_thread=False)
+    bus = MessageBus()
+    sub = bus.subscribe("", policy=LOG)
+
+    async def go():
+        stop = asyncio.Event()
+        task = asyncio.create_task(writer.run(sub, stop=stop))
+        await until(lambda: writer.status()["state"] == WRITER_RECORDING, state=writer.status)
+        holder.execute("BEGIN IMMEDIATE")
+        writer.prune(et_ts(_FIVE_SESSIONS))
+        await until(lambda: writer.status()["state"] == WRITER_BLOCKED, state=writer.status)
+        during = writer.status()
+        holder.execute("COMMIT")
+        await until(
+            lambda: (
+                _rows(db, "SELECT COUNT(*) FROM rest_quotes_raw")[0][0] == 0
+                and writer.status()["state"] == WRITER_RECORDING
+            ),
+            state=writer.status,
+        )
+        after = writer.status()
+        stop.set()
+        await task
+        return during, after
+
+    try:
+        during, after = asyncio.run(go())
+    finally:
+        holder.close()
+    assert during["error"] == "OperationalError: database is locked"
+    assert (after["state"], after["failures"]) == (WRITER_RECORDING, 0)
+
+
 def test_a_keep_part_that_fails_for_its_own_reason_is_kept_as_sent_and_the_writer_goes_on(
     tmp_path,
 ):

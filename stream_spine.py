@@ -618,14 +618,12 @@ def _exchange_sizes(rows: Json, size_key: str) -> Exchanges | None:
     return tuple(out)
 
 
-def current_key(topic: str, msg: BusMessage | Payload) -> str:
+def current_key(topic: str, msg: BusMessage | Mapping[str, Any]) -> str:
     """Return a topic's key in the current state, by its source and, for a book, its service.
 
     By its source (`src`: a message from elsewhere is never merged into Schwab's record) and,
     for a book, its service (NYSE_BOOK and NASDAQ_BOOK are two books of one symbol).
     """
-    if not isinstance(msg, dict):
-        return topic
     if topic.startswith("book."):
         return f"{topic}@{msg.get('service')}#{msg.get('src')}"
     return f"{topic}#{msg.get('src')}"
@@ -2555,6 +2553,7 @@ class CaptureWriter:
             removed, part = 0, 1  # fewer than a part: the table is done
         conn.commit()
         with self._lock:
+            self._committed([])  # the database took the part: a writer it blocked records again
             keep.removed[table] += removed
             if removed < part:
                 keep.tables.pop(0)
