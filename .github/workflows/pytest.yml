@@ -157,7 +157,9 @@ jobs:
           python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone" \
             --cov --cov-branch --cov-context=test --cov-report=
           pytest_rc=$?
-          python -m pytest --durations=1 -rs -m alone
+          # measured too, its data added to the workers' (--cov-append)
+          python -m pytest --durations=1 -rs -m alone \
+            --cov --cov-branch --cov-context=test --cov-append --cov-report=
           alone_rc=$?
           set -e
           if [ "$pytest_rc" -ne 0 ]; then
@@ -165,18 +167,50 @@ jobs:
           fi
           exit "$alone_rc"
 
-      - name: The product lines no test runs
-        if: success() || failure()
-        run: |
-          python -m coverage report --sort=cover --skip-covered --show-missing | tee coverage.txt
-          # every file's statements and those no test ran, which the census counts (census.yml)
-          python -m coverage json -o coverage.json
-
       - name: Every test file serves the app (.claude/rules/tests.md)
         run: python -m tools.check_tests_serve_app .coverage
 
-      - name: Upload which product lines each test runs
+      - &upload-coverage
+        name: Upload which product lines each test runs on this system
         if: success() || failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-${{ runner.os }}
+          path: .coverage
+          include-hidden-files: true
+          retention-days: 14
+
+  coverage:
+    # The lines the suite runs on both systems, as one report: coverage.py combines the two
+    # systems' data, its relative_files (pyproject.toml) mapping Windows' paths and Linux's to one
+    # file in this checkout. The census reads this job's `coverage` (census.yml).
+    needs: [linux-pytest, windows-pytest]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - *check-out
+      - *set-up-tools
+      - *install
+
+      - name: Download each system's data
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: coverage-*
+          path: systems
+
+      - name: The product lines no test runs on either system
+        run: |
+          python -m coverage combine --keep systems/coverage-*/.coverage
+          # a test's copy of a module in its temporary folder exists only on the runner that ran
+          # it, and is no file of the repository
+          copies="*/pytest-of-*/*"
+          python -m coverage report --sort=cover --skip-covered --show-missing --omit="$copies" \
+            | tee coverage.txt
+          # every file's statements and those no test ran, which the census counts (census.yml)
+          python -m coverage json -o coverage.json --omit="$copies"
+
+      - name: Upload which product lines the suite runs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage
@@ -252,8 +286,11 @@ jobs:
           # runner context is a step's, not a job's)
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        # pinned to nproc as in linux-pytest: `-n auto` started 2 workers on this 4-core runner
-        run: python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone"
+        # pinned to nproc as in linux-pytest: `-n auto` started 2 workers on this 4-core runner;
+        # measured as linux-pytest measures, so the lines only Windows runs are counted as run
+        run: |
+          python -m pytest -n "$(nproc)" --dist loadfile --durations=20 -rs -m "not alone" \
+            --cov --cov-branch --cov-context=test --cov-report=
 
       - name: Run the tests that hold a wall-clock limit, with no workers beside them
         if: success() || failure()
@@ -261,7 +298,11 @@ jobs:
         env:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
-        run: python -m pytest --durations=1 -rs -m alone
+        run: |
+          python -m pytest --durations=1 -rs -m alone \
+            --cov --cov-branch --cov-context=test --cov-append --cov-report=
+
+      - *upload-coverage
 
   pytest-windows:
     # The required check on Windows; it reads both results itself, as pytest-full does.
