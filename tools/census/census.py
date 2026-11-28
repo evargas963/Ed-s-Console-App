@@ -514,11 +514,11 @@ for d in json.loads(out):
             "ruff S",
             f"{f}:{d['location']['row']}: {d['message'][:120]}",
         )
-# what ruff holds of a function's size (pylint's returns, branches, arguments and statements), of
-# PEP 8's names (pep8-naming) and of a module's private names reached from outside it (SLF001;
-# .claude/rules/tests.md: a test never pins a private helper), over the files locks.ruff.toml
-# reads; a bare number compared (PLR2004) is checked by hand, an expected value in an assert being
-# a test's own data
+# what ruff holds of PEP 8's names (pep8-naming) and of a module's private names reached from
+# outside it (SLF001; .claude/rules/tests.md: a test never pins a private helper), over the files
+# locks.ruff.toml reads; a function's size (pylint's returns, branches, arguments and statements)
+# is counted and reported, never judged (AGENTS.md, Fix what you find); a bare number compared
+# (PLR2004) is checked by hand, an expected value in an assert being a test's own data
 out = run(
     [
         *(PY, "-m", "ruff", "check", ".", "--config", "locks.ruff.toml"),
@@ -527,16 +527,17 @@ out = run(
     ],
     stdout_only=True,
 )
+SIZE_RULES = {"PLR0911", "PLR0912", "PLR0913", "PLR0915"}
 for d in json.loads(out):
     f = Path(d["filename"]).resolve().relative_to(REPO.resolve()).as_posix()
-    add(
-        S,
-        f"ruff {d['code']} (size, names and private reach, noqa ignored"
-        + ("; check each)" if d["code"] == "PLR2004" else ")"),
-        "13",
-        "ruff",
-        f"{f}:{d['location']['row']}: {d['message'][:120]}",
-    )
+    code = d["code"]
+    if code in SIZE_RULES:
+        cat = f"ruff {code}: a function's size, noqa ignored (reported)"
+    elif code == "PLR2004":
+        cat = f"ruff {code}: a bare number compared, noqa ignored (check each)"
+    else:
+        cat = f"ruff {code}: names and private reach, noqa ignored"
+    add(S, cat, "13", "ruff", f"{f}:{d['location']['row']}: {d['message'][:120]}")
 stats = run(
     [
         PY,
@@ -1027,17 +1028,21 @@ FORMATTED = "a date, time or number formatted outside its one formatter: Python 
 #: module's own class, made at a module's top level outside state/ is a table that never changes
 #: or state a call may change unseen by its caller
 HELD_OUTSIDE_STATE = "values a module holds at its top level, outside state/ (check each)"
+#: size is counted and never judged (AGENTS.md, Fix what you find): a long function or file is a
+#: prompt to ask whether it does one thing, and no code is reshaped only to meet a count
+LONG_FUNCTIONS = "product functions over 80 lines (reported)"
+LONG_FILES = "product files over 1,000 lines (reported)"
 CONTAINERS = {"dict", "list", "set", "defaultdict", "deque", "OrderedDict", "Counter"}
 for cat, rule, tool in (
     (FORMATTED, "13", "ast"),
     ("clock time typed in code", "8", "ast"),
     ("prose in code: history, dates, PRs, incidents", "1", "regex"),
-    ("product functions over 80 lines", "1", "ast"),
+    (LONG_FUNCTIONS, "1", "ast"),
     ("public functions returning a plain dict, not a typed record", "12", "ast"),
     ("global statements (module state changed at run time)", "11", "ast"),
     (HELD_OUTSIDE_STATE, "11", "ast"),
     ("a ticker typed into code (every ticker treated the same; check each)", "7", "ast"),
-    ("product files over 1,000 lines", "1", "wc"),
+    (LONG_FILES, "1", "wc"),
     ("computing functions not in docs/derived_register.md (check each)", "First gate 2", "ast"),
     (ROUNDING, "5", "ast"),
 ):
@@ -1249,7 +1254,7 @@ for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT]:
             )
 for f, n, name, length, _node in func_index:
     if area(f) == "product" and length > 80:
-        add(S, "product functions over 80 lines", "1", "ast", f"{f}:{n} {name} ({length} lines)")
+        add(S, LONG_FUNCTIONS, "1", "ast", f"{f}:{n} {name} ({length} lines)")
 for f in [f for f in PRODUCT_PY if not f.startswith("state/")]:
     made = CONTAINERS | {n.name for n in trees[f].body if isinstance(n, ast.ClassDef)}
     for node in trees[f].body:
@@ -1328,7 +1333,7 @@ lines_matching(
     skip_comment=True,
 )
 for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT and TEXT[f].count("\n") > 1000]:
-    add(S, "product files over 1,000 lines", "1", "wc", f"{f} ({TEXT[f].count(chr(10)):,} lines)")
+    add(S, LONG_FILES, "1", "wc", f"{f} ({TEXT[f].count(chr(10)):,} lines)")
 register = TEXT["docs/derived_register.md"]
 for f, n, name, _length, _node in func_index:
     if (
@@ -2863,12 +2868,13 @@ for a, fs in sorted(scores.items()):
         "ruff C901",
         count=sum(s for s, _ in fs),
     )
-    add(S, f"complexity, McCabe, {a}: functions over 10, ruff's default cap", "1", "ruff C901")
+    over = f"complexity, McCabe, {a}: functions over 10, ruff's default (reported)"
+    add(S, over, "1", "ruff C901")
     for s, it in sorted(fs, reverse=True):
         if s > 10:
             add(
                 S,
-                f"complexity, McCabe, {a}: functions over 10, ruff's default cap",
+                over,
                 "1",
                 "ruff C901",
                 f"{it} ({s})",
