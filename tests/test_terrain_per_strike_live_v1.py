@@ -15,6 +15,7 @@ Real data: SPY's whole chain of 2026-11-09 11:06 ET, 35 expiries (tests/real_cha
 from __future__ import annotations
 
 import time_et
+from calc.math_exposure_core import compute_exposures_by_strike
 from calc.terrain_engine import TerrainSnapshot, compute_terrain, per_strike_view
 from option_contract import read_chain
 from tests.real_chains import SPY_FULL
@@ -43,6 +44,44 @@ def test_an_unknown_dte_keeps_its_contract_in_its_own_expiry():
     assert set(view["by_expiry"]) == {r["expirationDate"][:10] for r in rows}
     for c in contracts[:3]:
         assert c.strike in {r.strike for r in view["by_expiry"][c.expiry]["gex"]}
+
+
+def test_a_book_priced_with_no_price_has_no_dollar_rows_and_keeps_its_counts():
+    """SPY's whole chain priced with no price: a book with no dollars in it.
+
+    Its GEX and DEX rows are dollars, so it has none; its open interest and vanna rows are each
+    strike's, as the book holds them.
+    """
+    raw, _diag = compute_exposures_by_strike(
+        read_chain(SPY_FULL.chain), spot=None, now=SPY_FULL.now, sessions=time_et.sessions()
+    )
+    view = per_strike_view({}, raw, {}, {})
+    assert raw and (view["gex"], view["dex"]) == ([], [])
+    assert [r.strike for r in view["oi"]] == [r.strike for r in view["vanna"]] == sorted(raw)
+
+
+def test_a_chain_with_no_strike_or_no_days_to_expiration_says_what_it_lacks():
+    """INDUCED on SPY's whole chain: every strikePrice taken out, then every daysToExpiration.
+
+    With no strike nothing is exposed at any price: the levels are unavailable, saying so. With
+    no days to expiration no expiry is the front one, so max pain, the front expiry's, is "-".
+    """
+    struck_out = [{k: v for k, v in c.items() if k != "strikePrice"} for c in SPY_FULL.chain]
+    undated = [{k: v for k, v in c.items() if k != "daysToExpiration"} for c in SPY_FULL.chain]
+
+    def terrain(rows):
+        return compute_terrain(
+            SPY_FULL.ticker,
+            read_chain(rows),
+            SPY_FULL.spot,
+            now=SPY_FULL.now,
+            sessions=time_et.sessions(),
+        )
+
+    assert terrain(struck_out).error == "chain produced no exposures"
+    dated, no_days = terrain(SPY_FULL.chain), terrain(undated)
+    assert dated.max_pain is not None and dated.error == ""
+    assert (no_days.max_pain, no_days.max_pain_dte, no_days.error) == (None, None, "")
 
 
 def test_per_strike_is_excluded_from_to_dict_but_timestamp_is_not():

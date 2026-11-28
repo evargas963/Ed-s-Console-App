@@ -372,8 +372,6 @@ def cluster_price_levels_into_zones(
     max_width = float_positive_or_none(config.max_zone_width)
 
     def _flush_current(cur: list[float]) -> None:
-        if not cur:
-            return
         lo, hi = min(cur), max(cur)
         mid = (lo + hi) / 2
         tags: list[str] = []

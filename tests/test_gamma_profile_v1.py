@@ -223,6 +223,10 @@ def test_gamma_at_price_is_unknown_outside_the_profile() -> None:
     assert gamma_at_price(prof, prof[0][0]) == prof[0][1]  # the ends are the profile's own
     assert gamma_at_price(prof, prof[-1][0]) == prof[-1][1]
     assert gamma_at_price([], spot) is None
+    # a profile of one price is known at that price alone, as its own value
+    (only,) = prof[:1]
+    assert gamma_at_price([only], only[0]) == only[1]
+    assert gamma_at_price([only], only[0] + 1.0) is None
     assert gamma_at_price(prof, None) is None
 
 

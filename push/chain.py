@@ -148,12 +148,15 @@ class NoChain(LevelsVerdict):
 
 
 def _net_gex_column(surf: GammaSurface | None, expiry: str) -> dict[float, float | None] | None:
-    """Return the heatmap's net GEX by strike in `expiry`; None without a surface or its column."""
+    """Return the heatmap's net GEX by strike in `expiry`; None without a surface.
+
+    The surface's columns are the books' expiries, and the books group every contract of the
+    priced chain the ladder reads (server.project_gamma_surface), so `expiry`, a contract's, has
+    one: a column missing raises, and the panel fails in words.
+    """
     if surf is None:
         return None
-    col = next((i for i, e in enumerate(surf["expirations"]) if e["expiry"] == expiry), None)
-    if col is None:
-        return None
+    col = [e["expiry"] for e in surf["expirations"]].index(expiry)
     return {c["strike"]: c["gex"][col] for c in surf["cells"]}
 
 
@@ -307,8 +310,8 @@ def expiry_asked(t: str, now: float, params: dict[str, Any]) -> ExpiryAsked:
         return why(level_store.chain_failure(t) or NO_CHAIN_YET)
     if not held.priced_chain:
         return why(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
-    if resolved is None:
-        return why("no listed expiry for this ticker")
+    if resolved is None:  # the levels list the expiries: none when they could not be priced
+        return why(held.snap.error or "no listed expiry for this ticker")
     priced = [c for c in held.priced_chain if c.expiry == resolved]
     if not priced:
         return why(f"the chain lists no contracts for {resolved}")
