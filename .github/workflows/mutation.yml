@@ -60,6 +60,10 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      # GitHub runs 20 of this repository's jobs at once, and a matrix as many of them as runners
+      # allow (docs/SOURCES.md github-actions-concurrency): six modules at a time leave 14, a pull
+      # request's required checks with room for the next's
+      max-parallel: 6
       matrix:
         module: ${{ fromJSON(needs.modules.outputs.list) }}
     steps:
