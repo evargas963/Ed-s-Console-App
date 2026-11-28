@@ -20,7 +20,7 @@ from typing import TypedDict
 
 import live_market_plane as lmp
 from instrument_identity import ticker_storage_key
-from numeric_contract import change_percent_text, count_text, price_text
+from numeric_contract import change_percent_text, count_text, price_text, signed_text
 from time_et import age_text, ct_label
 
 SPOT_SOURCE = "streaming_plane"
@@ -88,9 +88,9 @@ def bar_change(bar_open: float, bar_close: float) -> BarChange:
     """
     chg = bar_close - bar_open
     pct = chg / bar_open * 100 if bar_open else None
-    text = f"{chg:+.2f}"
+    text = signed_text(chg, 2)
     if pct is not None:  # its percent beside it, when it is a number
-        text += f" ({pct:+.2f}%)"
+        text += f" ({change_percent_text(pct)})"
     return {"chg": chg, "chg_pct": pct, "chg_text": text}
 
 

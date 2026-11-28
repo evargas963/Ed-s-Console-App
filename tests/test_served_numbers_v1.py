@@ -28,6 +28,8 @@ from numeric_contract import (
     dollars_text,
     greek_text,
     iv_text,
+    share_text,
+    signed_text,
     strike_text,
 )
 
@@ -358,6 +360,25 @@ def test_a_count_shows_every_unit_it_moves_by():
         "20,100",
     ]
     assert (count_text(1234567.0), count_text(-1200)) == ("1,234,567", "-1,200")
+
+
+def test_a_share_is_a_whole_percent_and_a_lean_is_signed_with_two_decimals():
+    """SPY's Options Level II as the browser tests draw it (option_book_spy.json).
+
+    Each side's share of its calls, puts and volume a whole percent (share_text), each lean of
+    the book signed with two decimals (signed_text), the text worked here from the number.
+    """
+    book = json.loads((E2E / "option_book_spy.json").read_text(encoding="utf-8"))["auto"]
+    for kind in ("calls", "puts", "volume"):
+        for side in ("left", "right"):
+            share = book["summary"][kind][f"{side}_share"]
+            assert book["summary"][kind][f"{side}_share_text"] == f"{round(share * 100)}%"
+            assert share_text(share) == f"{round(share * 100)}%"
+    lean = book["lean"]
+    for key in ("value", "calls", "puts", "volume"):
+        sign = "-" if lean[key] < 0 else "+"
+        assert lean[f"{key}_text"] == signed_text(lean[key], 2) == f"{sign}{abs(lean[key]):.2f}"
+    assert (share_text(None), signed_text(None, 2)) == (None, None)
 
 
 def test_a_value_not_known_has_no_text_and_zero_is_a_value():

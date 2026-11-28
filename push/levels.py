@@ -18,7 +18,7 @@ from calc.liquidity_value_engine import (
 )
 from calc.terrain_engine import OPTION_LEVELS, SAME_DAY_LEVELS, TerrainSnapshot
 from calc.terrain_read import from_spot_text, level_side
-from numeric_contract import price_text
+from numeric_contract import fixed_text, price_text
 from push.bars import aggregate_vwap
 from push.spot import resolve_spot
 from push.verdict import LevelsVerdict, terrain_cache_get
@@ -65,12 +65,13 @@ def pin_note(snap: TerrainSnapshot) -> str | None:
     if snap.pin_candidate is None or z is None or snap.pin_minutes_to_close is None:
         return None
     side = "at" if z == 0 else "above" if z > 0 else "below"
-    distance = f"{abs(z):.2f} expected moves"
+    distance = f"{fixed_text(abs(z), 2)} expected moves"
     if widths is not None:  # an expiry listing one strike has no strike width
-        distance += f" ({abs(widths):.1f} strike widths)"
+        distance += f" ({fixed_text(abs(widths), 1)} strike widths)"
     return (
         f"Most open interest within one expected move, of the expiry settling at today's close. "
-        f"Price {distance} {side} it; {snap.pin_minutes_to_close:.0f} minutes to the close."
+        f"Price {distance} {side} it; {fixed_text(snap.pin_minutes_to_close, 0)} minutes to the "
+        "close."
     )
 
 
