@@ -501,6 +501,12 @@
     },
     {
       "verdict": "ok",
+      "category": "ruff N818: names and private reach",
+      "pattern": "^typings/schwab/streaming\\.pyi:\\d+: Exception name `UnparsableMessage`",
+      "reason": "schwab-py's own exception, named as the library defines it; a stub states the library's names (rule 12's stubs, checked by stubtest)"
+    },
+    {
+      "verdict": "ok",
       "category": "ruff S311 (bandit",
       "pattern": "^(feed/schwab_client|tools/census/command)\\.py:\\d+: Standard pseudo-random generators",
       "reason": "a server-error wait's jitter, each wait between half of it and all of it (AGENTS.md rule 3; Amazon's Builders' Library), not a secret"
