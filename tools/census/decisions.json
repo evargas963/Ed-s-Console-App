@@ -256,6 +256,12 @@
     {
       "verdict": "ok",
       "category": "workarounds: Python",
+      "pattern": "^tools/census/command\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(waited\\)$",
+      "reason": "the wait before a command GitHub answered with its server error runs again, longer each time with jitter (google-retry-strategy, aws-backoff-jitter); the census has no stop to end it"
+    },
+    {
+      "verdict": "ok",
+      "category": "workarounds: Python",
       "pattern": "^(feed/schwab_client\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(0\\.1\\)|launch\\.py:\\d+: timing worked around \\(`time\\.sleep`\\): time\\.sleep\\(min\\(0\\.25, max\\(deadline - time_et\\.elapsed\\(\\), 0\\)\\)\\))$",
       "reason": "waits for another process (the sign-in callback's port; the program's ports and pages): no event crosses processes, so a poll with a deadline (fowler-non-determinism)"
     },
