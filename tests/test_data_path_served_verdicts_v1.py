@@ -230,7 +230,8 @@ def test_levels_overdue_with_every_chain_since_failed_say_the_failure(published)
     )
 
 
-def test_live_levels_priced_with_no_price_say_why_the_strikes_have_no_row(published):
+@pytest.mark.usefixtures("published")  # its forgetting, before and after
+def test_live_levels_priced_with_no_price_say_why_the_strikes_have_no_row():
     """TSLA's captured chain delivered with no price held: its levels are LIVE, with no row.
 
     The strikes panel says why in a whole sentence, the levels' snapshot's own reason (no spot
