@@ -973,6 +973,24 @@ def test_nothing_is_removed_while_the_options_trade_or_the_market_is_unknown(tmp
     assert _kept_at(tmp_path / "unknown", "2027-10-12 17:00", 1.5) == untouched
 
 
+def test_nothing_is_removed_with_fewer_sessions_held_than_the_keep_keeps_and_it_says_so(
+    tmp_path, caplog
+):
+    """2026-10-02 after the last option close: Schwab's held answers begin 2026-09-30.
+
+    Three sessions are held before it, fewer than the keep keeps, so no row is removed (never on
+    a guess) and the daemon's log says why, once for that close.
+    """
+    untouched = "quotes:2 options:2 feed:2 watchlist:2 archive:0 newest-watchlist:09-30 12:00"
+    assert _kept_at(tmp_path, "2026-10-02 17:00", 1.5) == untouched
+    said = [r for r in caplog.records if "keep: fewer than" in r.getMessage()]
+    assert len(said) == 1, said
+    assert said[0].getMessage() == (
+        f"keep: fewer than {capture.SESSIONS_KEPT} sessions held from Schwab's /markets; "
+        "nothing removed"
+    )
+
+
 def test_rows_older_than_the_sessions_move_into_the_archive_exactly_books_in_their_windows(
     tmp_path,
 ):

@@ -170,6 +170,22 @@ def test_a_window_begun_before_the_record_is_not_held():
     assert _replayed().look_back(FX["symbols"], DAY, early) == {}
 
 
+def test_a_window_begun_after_the_records_last_minute_reads_the_newest_values_and_no_steps():
+    """A window from 10:11 ET, after the record's last message (10:10): no message came since.
+
+    Each contract's values at the window's start are its newest (the last Schwab sent, worked out
+    from the raw items), the same as now, and its steps over the window add nothing.
+    """
+    late = int(datetime(2026, 11, 23, 10, 11, tzinfo=ET).timestamp() // 60)
+    looks = _replayed().look_back(FX["symbols"], DAY, late)
+    newest = _worked_out(START * 60.0)
+    assert set(looks) == set(FX["symbols"])
+    for sym, look in looks.items():
+        held = newest[sym]["now"]
+        assert look.volume == (held[0], held[0]) and look.iv == (held[1], held[1])
+        assert look.totals == (0.0, 0.0, 0.0, 0.0, 0.0)
+
+
 def test_a_record_of_another_day_is_not_read():
     """The record is of 2026-11-23: asked for another day's window, it reads nothing."""
     assert _replayed().look_back(FX["symbols"], "2026-11-24", START) == {}
