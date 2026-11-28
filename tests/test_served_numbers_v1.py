@@ -1,4 +1,4 @@
-"""Numbers as the screen shows them, served (AGENTS.md rule 13, ENF-11).
+"""Numbers as the screen shows them, served, each by its one formatter (AGENTS.md rule 13).
 
 The operator's formats (2026-11-16, "approved, go with your recommendation"): a count (shares,
 contracts, open interest, volume) whole with thousands separators, so every unit it moves by
@@ -14,6 +14,7 @@ operator's formats, apart from the formatters.
 
 from __future__ import annotations
 
+import ast
 import gzip
 import json
 import re
@@ -35,6 +36,37 @@ from numeric_contract import (
 
 FX = Path(__file__).parent / "fixtures"
 E2E = Path(__file__).parent / "e2e" / "fixtures"
+REPO = Path(__file__).resolve().parent.parent
+
+
+def test_every_date_time_and_number_the_program_writes_is_written_by_its_one_formatter(
+    tracked_files,
+):
+    """A date or a time is written by time_et; a number to set digits, as a percent or with
+    thousands, by numeric_contract (rule 13), in every file of the program (all but tests/ and
+    tools/). A strftime call anywhere else, or an f-string whose format sets digits (`.0f`), a
+    percent (`.0%`) or thousands (`,`), is a second formatter of that format.
+    """
+    found = []
+    for f in tracked_files:
+        if not f.endswith(".py") or f.startswith(("tests/", "tools/")):
+            continue
+        for node in ast.walk(ast.parse((REPO / f).read_text(encoding="utf-8"))):
+            dated = (
+                f != "time_et.py"
+                and isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "strftime"
+            )
+            numbered = (
+                f != "numeric_contract.py"
+                and isinstance(node, ast.FormattedValue)
+                and node.format_spec is not None
+                and re.search(r"\.\d+[fe%]|,", ast.unparse(node.format_spec)) is not None
+            )
+            if dated or numbered:
+                found.append(f"{f}:{node.lineno}: {ast.unparse(node)}")
+    assert found == []
 
 
 def screen_text(value: float, kind: str) -> str:
