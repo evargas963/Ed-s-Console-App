@@ -1532,6 +1532,58 @@ else:
         if missed:
             add(S, PAGE_UNRUN, "14", "V8", f"{f}: {len(missed)} of {len(code)}: {spans_of(missed)}")
     add(S, PAGE_UNRUN, "14", "V8", count=missed_total)
+# mutation testing (mutmut, .github/workflows/mutation.yml, every Saturday on main): a mistake put
+# in a Calculator that no test catches shows a test too weak. Read from the newest run of main
+# that finished: each module's score, and every mutant that survived
+MUTANTS = "mutants no test kills (mutmut, the newest Mutation run of main)"
+SCORES = "mutation scores by module (mutmut, the newest Mutation run of main) (reported)"
+finished = json.loads(
+    run(
+        [
+            *("gh", "run", "list", "--workflow", "mutation.yml", "--branch", "main"),
+            *("--status", "completed", "--limit", "1", "--json", "databaseId,headSha"),
+        ],
+        stdout_only=True,
+        again=command.GITHUB_WAITS,
+    )
+)
+if not finished:
+    add(S, f"{MUTANTS}: not counted, no run of main has finished (reported)", "14", "mutmut")
+else:
+    measured = LINT / "mutation"
+    if measured.exists():
+        shutil.rmtree(measured)
+    run(
+        [
+            *("gh", "run", "download", finished[0]["databaseId"], "--pattern", "mutmut-*"),
+            *("--dir", measured),
+        ],
+        again=command.GITHUB_WAITS,
+    )
+    add(S, MUTANTS, "14", "mutmut")
+    add(S, SCORES, "14", "mutmut")
+    of_run = f"run {finished[0]['databaseId']}, {finished[0]['headSha'][:8]}"
+    for stats in sorted(measured.glob("mutmut-*/mutmut-cicd-stats.json")):
+        module = stats.parent.name.removeprefix("mutmut-")
+        s = json.loads(stats.read_text(encoding="utf-8"))
+        add(
+            S,
+            SCORES,
+            "14",
+            "mutmut",
+            f"{module}: {s['killed']} killed, {s['survived']} survived, {s['no_tests']} with no "
+            f"test, {s['timeout']} timed out ({of_run})",
+        )
+        survivors = stats.parent / "survivors.txt"
+        for line in survivors.read_text(encoding="utf-8").splitlines():
+            if line.strip().endswith(": survived"):
+                add(
+                    S,
+                    MUTANTS,
+                    "14",
+                    "mutmut",
+                    f"{module}: {line.strip().removesuffix(': survived')}",
+                )
 FIXED_WAITS = "fixed waits in tests: a sleep that is not a poll's interval (timing that can flake)"
 INDUCED_WAITS = "sleeps labeled INDUCED, their time the condition tested (reported)"
 add(S, FIXED_WAITS, "9/15", "ast")
