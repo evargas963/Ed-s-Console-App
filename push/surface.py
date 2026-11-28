@@ -24,7 +24,7 @@ from state.level_store import (
     SurfaceColumn,
     SurfaceState,
 )
-from time_et import ET
+from time_et import ET, et_date_str_from_ts_utc
 
 
 class Coverage(TypedDict):
@@ -281,7 +281,7 @@ def _stamp_columns(columns: list[SurfaceColumn], now: datetime) -> list[StampedC
     `expired` (its expiry is before now's date) and `front` (the nearest expiry that has not
     expired, by Schwab's daysToExpiration). No cell value is touched.
     """
-    today = now.strftime("%Y-%m-%d")
+    today = et_date_str_from_ts_utc(now.timestamp())
     dated = [
         (e["dte"], e["expiry"]) for e in columns if e["expiry"] >= today and e["dte"] is not None
     ]

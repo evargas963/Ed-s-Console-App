@@ -42,7 +42,7 @@ from schwab.streaming import UnparsableMessage
 import time_et
 from feed.schwab_client import Json
 from feed.stream import TimedStream, label
-from numeric_contract import schwab_number
+from numeric_contract import fixed_text, schwab_number
 from state.news_store import NewsHeadline
 from stream_spine import (
     SERVICE_TOPIC,
@@ -519,7 +519,7 @@ class Connection:
         while not await time_et.set_within(stop, READ_SEC):
             now, schwab_now = self.clock(), stream.schwab_ts
             if now - stream.last_frame_ts > DEAD_SEC:
-                raise ConnectionError(f"no frame from Schwab for {DEAD_SEC:.0f} s")
+                raise ConnectionError(f"no frame from Schwab for {fixed_text(DEAD_SEC, 0)} s")
             late = [
                 s
                 for s in self._sent.values()
@@ -530,7 +530,7 @@ class Connection:
             if late:
                 raise ConnectionError(
                     f"no answer to {late[0].service} {late[0].command} in "
-                    f"{REQUEST_TIMEOUT_SEC:.0f} s"
+                    f"{fixed_text(REQUEST_TIMEOUT_SEC, 0)} s"
                 )
 
     async def run_connection(self, client: Client, stop: asyncio.Event) -> None:

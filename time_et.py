@@ -130,6 +130,14 @@ def et_date_str_from_ts_utc(ts_utc: float) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
+def et_stamp(ts_utc: float) -> str:
+    """Return an instant to the second in Eastern time as a log line stamps it.
+
+    For example "2026-11-25 10:30:05 ET".
+    """
+    return datetime.fromtimestamp(float(ts_utc), ET).strftime("%Y-%m-%d %H:%M:%S ET")
+
+
 #: the session states (session_label): no value is held back or stopped by them; a valid one is
 #: live, and with none the last values stand
 PRE_MARKET, RTH, AFTER_HOURS, CLOSED, UNKNOWN = (

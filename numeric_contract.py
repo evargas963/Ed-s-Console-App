@@ -191,6 +191,38 @@ def change_percent_text(value: float | None) -> str | None:
     return f"{float(value):+.2f}%"
 
 
+@overload
+def signed_text(value: float, places: int) -> str: ...
+@overload
+def signed_text(value: None, places: int) -> None: ...
+@overload
+def signed_text(value: float | None, places: int) -> str | None: ...
+def signed_text(value: float | None, places: int) -> str | None:
+    """Return a change or a lean as the screen shows it: signed, `places` decimals (+0.23, -1.20).
+
+    None when there is none.
+    """
+    if value is None:
+        return None
+    return f"{float(value):+.{places}f}"
+
+
+@overload
+def share_text(fraction: float) -> str: ...
+@overload
+def share_text(fraction: None) -> None: ...
+@overload
+def share_text(fraction: float | None) -> str | None: ...
+def share_text(fraction: float | None) -> str | None:
+    """Return a share of a whole, a fraction from 0 to 1, as the screen shows it: whole ("62%").
+
+    None when there is none.
+    """
+    if fraction is None:
+        return None
+    return f"{float(fraction):.0%}"
+
+
 def percent_text(value: float | None) -> str | None:
     """Return a signed percentage as the screen shows it, whole (+22%, -21%, 0%).
 

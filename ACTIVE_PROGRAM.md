@@ -131,8 +131,8 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   each re-checked against the code before it is fixed.
 - ENF-11 (QUEUED; also P1-9): one formatter per format, on the server, and a machine check of it
   (`tests/test_served_numbers_v1.py` holds the number formatters; ruff `PLC0415` is already at 0).
-  The census counts each date, time or number formatted outside `time_et` and `numeric_contract`;
-  each is moved to its formatter, then the count becomes a failing check.
+  The census counts each date, time or number formatted outside `time_et` and `numeric_contract`,
+  each moved to its formatter; left: the count becomes a failing check.
 - SIMPLIFY (ACTIVE; also ENF-04, TEST-CLEANUP, TEST-REVIEW, P2-6, P2-7): every line earns its place,
   one pull request per slice, each run through /simplify. Left: history notes in `static/index.html`
   (a comment-only HTML change counts as a behavior change, so it needs the operator's approval of

@@ -60,6 +60,7 @@ from db import LevelCrossEvent, StoredCross, get_db, stored_rows
 from db_authority import canonical_db_path
 from instrument_identity import display_symbol, ticker_storage_key, vendor_option_root
 from numeric_contract import (
+    fixed_text,
     schwab_count,
     schwab_number,
     schwab_time_ms,
@@ -113,6 +114,7 @@ from time_et import (
     ET,
     ct_label,
     et_date_str_from_ts_utc,
+    et_stamp,
     market_session_date,
     option_close_product,
     option_market_open,
@@ -1216,7 +1218,7 @@ def _on_stream_tick(sym: str) -> None:
                 spot,
                 crosses,
                 now,
-                datetime.fromtimestamp(now, ET).strftime("%Y-%m-%d %H:%M:%S ET"),
+                et_stamp(now),
             ).add_done_callback(_pricing_job_ended)
     if tk and _gamma_surface_wanted(tk):
         _reprice_from_tick(tk)
@@ -1461,7 +1463,8 @@ def _status_line(now: float) -> str:
             f"levels: {len(as_of)} tickers, newest as of {newest}",
             _record_state(st),
             (
-                f"chains: the daemon's last round of the watchlist took {round_sec:.0f} s"
+                "chains: the daemon's last round of the watchlist took "
+                f"{fixed_text(round_sec, 0)} s"
                 if round_sec
                 else "chains: the daemon's first round is running"
             ),
