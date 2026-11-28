@@ -165,21 +165,22 @@ def stored_watchlist(db_path: str | Path) -> list[str]:
 
 
 def stored_limits(db_path: str | Path) -> list[SymbolLimit]:
-    """Return each service's symbol limit as Schwab last stated it, read once at startup.
+    """Return each service's symbol limit as Schwab last stated it, and when, read at startup.
 
     The record is stream_subscriptions, every answer of Schwab's as sent, written by the
     daemon's writer: the newest refusal that states a service's limit
-    (feed.connection.stated_limit) is that service's. A service Schwab has stated none for in
-    the rows the record keeps (stream_spine.KEPT_BY_TIME) has none here, and the connection asks
-    it for everything until Schwab states one (feed.connection.Connection.ask).
+    (feed.connection.stated_limit) is that service's, with the time it was received. A service
+    Schwab has stated none for in the rows the record keeps (stream_spine.KEPT_BY_TIME) has none
+    here, and the connection asks it for everything until Schwab states one; one stated
+    LIMIT_STANDS_SEC ago is asked past once (feed.connection.Connection.ask).
     """
     rows = db.stored_rows(
         db_path,
         "stream_subscriptions",
-        "SELECT service, code, reason FROM stream_subscriptions WHERE code = ? ORDER BY ts",
+        "SELECT ts, service, code, reason FROM stream_subscriptions WHERE code = ? ORDER BY ts",
         SYMBOL_LIMIT,
     )
-    stated = (stated_limit(service, code, reason) for service, code, reason in rows)
+    stated = (stated_limit(service, code, reason, ts) for ts, service, code, reason in rows)
     return list({limit.service: limit for limit in stated if limit is not None}.values())
 
 

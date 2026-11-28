@@ -51,6 +51,10 @@ def _record(db: Path, answers: list[dict]) -> None:
         )
 
 
+def _pairs(limits: list[SymbolLimit]) -> list[tuple[str, int]]:
+    return [(s.service, s.limit) for s in limits]
+
+
 def test_a_start_reads_each_limit_schwab_last_stated_from_its_recorded_answers(tmp_path):
     """The 26 answers as recorded: 3,000 for LEVELONE_OPTIONS and 100 for OPTIONS_BOOK.
 
@@ -60,12 +64,19 @@ def test_a_start_reads_each_limit_schwab_last_stated_from_its_recorded_answers(t
     """
     db = tmp_path / "ed.db"
     _record(db, ANSWERS)
-    assert capture.stored_limits(db) == [SymbolLimit(L1, 3000), SymbolLimit(BOOK, 100)]
-    stated = [(a["code"], stated_limit(a["service"], a["code"], a["reason"])) for a in ANSWERS]
+    read = capture.stored_limits(db)
+    assert _pairs(read) == [(L1, 3000), (BOOK, 100)]
+    assert [s.stated_at for s in read] == [
+        max(a["ts"] for a in ANSWERS if a["service"] == s.service and a["code"] == SYMBOL_LIMIT)
+        for s in read
+    ], "each stated when its newest refusal was received, as recorded"
+    stated = [
+        (a["code"], stated_limit(a["service"], a["code"], a["reason"], a["ts"])) for a in ANSWERS
+    ]
     assert [code for code, limit in stated if limit is not None] == [SYMBOL_LIMIT] * 11
-    assert {limit for _code, limit in stated if limit is not None} == {
-        SymbolLimit(L1, 3000),
-        SymbolLimit(BOOK, 100),
+    assert {(s.service, s.limit) for _code, s in stated if s is not None} == {
+        (L1, 3000),
+        (BOOK, 100),
     }
     assert sum(1 for a in ANSWERS if a["code"] == SYMBOL_LIMIT) == 11
 
@@ -75,7 +86,7 @@ def test_a_start_reads_each_limit_schwab_last_stated_from_its_recorded_answers(t
     [
         ([], []),  # the record holds no answer
         ([a for a in ANSWERS if a["code"] != SYMBOL_LIMIT], []),  # no refusal among its answers
-        ([a for a in ANSWERS if a["service"] == BOOK], [SymbolLimit(BOOK, 100)]),  # one's alone
+        ([a for a in ANSWERS if a["service"] == BOOK], [(BOOK, 100)]),  # one service's alone
     ],
 )
 def test_a_service_schwab_has_stated_no_limit_for_has_none(tmp_path, recorded, limits):
@@ -87,7 +98,7 @@ def test_a_service_schwab_has_stated_no_limit_for_has_none(tmp_path, recorded, l
     """
     db = tmp_path / "ed.db"
     _record(db, recorded)
-    assert capture.stored_limits(db) == limits
+    assert _pairs(capture.stored_limits(db)) == limits
 
 
 def test_a_database_without_the_record_states_no_limit_and_holds_no_watchlist(tmp_path):
@@ -118,8 +129,8 @@ def test_the_newest_statement_is_the_limit_and_a_refusal_that_states_none_leaves
     ]
     db = tmp_path / "ed.db"
     _record(db, [*later, *ANSWERS])
-    assert capture.stored_limits(db) == [SymbolLimit(L1, 3000), SymbolLimit(BOOK, 60)]
-    assert stated_limit(BOOK, 19, no_number) is None
+    assert _pairs(capture.stored_limits(db)) == [(L1, 3000), (BOOK, 60)]
+    assert stated_limit(BOOK, 19, no_number, last + 2) is None
 
 
 def _requests(answers: list[dict]) -> list[tuple[str, int, list[dict]]]:

@@ -300,18 +300,22 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_released_contract_v1.py`.
 - **Schwab's symbol limit on a service.** Schwab states it in the message of a refusal (code 19:
   "(LEVELONE_OPTIONS=3000, DISCARDED=1362)"; `docs/SOURCES.md`, `schwab-symbol-limit-recorded`),
-  read once by `feed.connection.stated_limit` (a `SymbolLimit`). It is the service's, not the
-  connection's, and it stands until Schwab states another, so a request past a limit Schwab has
-  stated is not sent again: the connection that hears it holds it (`Connection.limit`) and keeps it
-  when it reconnects, and a start reads each service's newest statement from the record of Schwab's
-  answers (`capture.stored_limits`, from `stream_subscriptions`, once, before the connection is
-  built). A service Schwab has stated no limit for, in the rows the record keeps (D4), is asked for
-  the whole order once and Schwab states it; a refusal that states another number replaces the one
-  held, and one that states none changes nothing. No number of ours is typed anywhere. Its lifecycle
-  owner is the connection: a read of the record that fails ends the start with its error
-  (`capture.run`). Enforced by: `tests/test_option_contract_rule_v1.py` (a new connection and a
-  restart ask within it, and hold the same contracts as a start that knew none),
-  `tests/test_stream_limit_remembered_v1.py` (Schwab's recorded answers, and the record's read).
+  read once by `feed.connection.stated_limit` (a `SymbolLimit`, with when it was received). It is
+  the service's, not the connection's, and it stands for a day (`LIMIT_STANDS_SEC`), so within the
+  day a request past it is not sent again: the connection that hears it holds it
+  (`Connection.limit`) and keeps it when it reconnects, and a start reads each service's newest
+  statement, with its time, from the record of Schwab's answers (`capture.stored_limits`, from
+  `stream_subscriptions`, once, before the connection is built). A day after it was stated, the
+  service is asked past it once, the whole order (operator 2026-11-28: once a day, so a limit Schwab
+  raises is found): Schwab's refusal states it again and the first that many are asked; taken whole,
+  the old limit no longer holds and none is held. A service Schwab has stated no limit for, in the
+  rows the record keeps (D4), is asked for the whole order once and Schwab states it; a refusal that
+  states another number replaces the one held, and one that states none changes nothing. No number
+  of ours is typed anywhere. Its lifecycle owner is the connection: a read of the record that fails
+  ends the start with its error (`capture.run`). Enforced by:
+  `tests/test_option_contract_rule_v1.py` (a new connection and a restart ask within it, and hold
+  the same contracts as a start that knew none), `tests/test_stream_limit_remembered_v1.py`
+  (Schwab's recorded answers, and the record's read).
 - **1-minute bars and price history.** CHART_EQUITY → the bus → the Recorder (`stream_bars_raw`) and
   the console's bar writer (`server._bar_writer`) → `state/bar_store.py`. The chain sweep asks
   `/pricehistory` for the 10 series of `chain_sweep.PRICE_HISTORY`, each when due
