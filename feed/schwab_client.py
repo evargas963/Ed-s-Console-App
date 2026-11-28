@@ -14,7 +14,7 @@ import socket
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from http import HTTPStatus
@@ -873,9 +873,30 @@ def get_price_history(
     )
 
 
-#: The most symbols one quotes request carries: Schwab Trader API Support (email 1, item 4: not
-#: more than 300 on the quotes endpoint; docs/schwab/schwab_support_emails_2026_10_06.txt).
-QUOTES_BATCH_MAX = 300
+#: GET /quotes as schwab-py sends it (safe_get_quotes): its URL is what Schwab's edge measures
+QUOTES_URL = "https://api.schwabapi.com/marketdata/v1/quotes"
+#: The longest /quotes URL one request carries, in characters: ours, measured, raised when a longer
+#: one is answered. Measured 2026-11-28 with SPY's contracts: 8,201 characters (339 symbols)
+#: answered 200; 9,665 (400 symbols) refused 400 by Schwab's edge (AkamaiGHost) before its API.
+#: Schwab's documentation states no limit; its support's "not more than 300 symbols" is guidance,
+#: not a limit (docs/schwab/schwab_support_emails_2026_10_06.txt).
+QUOTES_URL_MAX = 8_201
+
+
+def quotes_batch(symbols: Iterable[str]) -> int:
+    """Return how many of `symbols`, from the first, one /quotes request carries (at least one).
+
+    As many as keep its URL, as safe_get_quotes sends it, within QUOTES_URL_MAX: the URL's
+    length with no symbol, then each symbol as httpx encodes it, and between two a comma (%2C).
+    """
+    length = len(str(httpx.URL(QUOTES_URL, params={"symbols": "", "fields": "quote"})))
+    taken = 0
+    for symbol in symbols:
+        length += len(str(httpx.QueryParams({"s": symbol}))) - len("s=") + (3 if taken else 0)
+        if length > QUOTES_URL_MAX:
+            return max(taken, 1)
+        taken += 1
+    return taken
 
 
 def flatten_chain_contracts(c_json: dict[str, Any]) -> list[dict[str, Any]]:

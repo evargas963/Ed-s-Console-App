@@ -3,7 +3,8 @@
 The daemon's ChainSweep asks Schwab's host (tests/schwab_rest_standin.py, on the real schwab-py
 client as the daemon builds it) for each ticker's expiration chain, the market hours of each
 expiry date not yet answered that day, its chain one expiry at a time and its contracts' quotes,
-300 symbols to a request across tickers, one request at a time. Each chain reaches the bus with
+as many symbols to a request as its measured URL holds (quotes_batch) across tickers, one request
+at a time. Each chain reaches the bus with
 Schwab's exact Greeks: the stream's, with their times, for a contract the stream holds
 (Daemon.option_record), which is not asked for on /quotes, the quote's for every other. Each
 /quotes answer reaches the bus at once as Schwab sent it, with the time it was received.
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import itertools
 import json
 import logging
 import sqlite3
@@ -27,6 +29,7 @@ import time
 from contextlib import closing
 from dataclasses import replace
 from datetime import datetime
+from urllib.parse import urlencode
 
 import app.options.order_flow.state as ofls
 import app.options.order_flow.streaming as ofs
@@ -156,30 +159,27 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
     # the console judges a chain fetched since then live before a round is reported
     assert sweep.began == et_ts("2026-10-01 10:15"), "the first round's start, kept"
 
-    asked = [
-        (
-            path,
-            q.get("symbol") or q.get("date"),
-            len(q["symbols"].split(",")) if "symbols" in q else None,
-        )
-        for path, q, *_ in first
-    ]
+    asked = [(path, q.get("symbol") or q.get("date")) for path, q, *_ in first]
     n_quoted = len(SPY["chain"]) + len(TSLA["chain"]) - 1  # every contract but HELD
     assert asked == [
-        (EXPIRATIONS, "SPY", None),
-        (MARKETS, "2026-11-20", None),
-        (CHAIN, "SPY", None),
-        (QUOTES, None, 300),
-        (EXPIRATIONS, "TSLA", None),
-        (MARKETS, "2026-10-09", None),
-        (CHAIN, "TSLA", None),
-        (QUOTES, None, 300),
-        (QUOTES, None, n_quoted - 600),
+        (EXPIRATIONS, "SPY"),
+        (MARKETS, "2026-11-20"),
+        (CHAIN, "SPY"),
+        (QUOTES, None),
+        (EXPIRATIONS, "TSLA"),
+        (MARKETS, "2026-10-09"),
+        (CHAIN, "TSLA"),
+        (QUOTES, None),
+        (QUOTES, None),
     ], (
-        "the expiration chain, each expiry's market hours, each expiry, quotes as 300 fill "
-        "(the price "
-        "history has its own schedule, ChainSweep.candles)"
+        "the expiration chain, each expiry's market hours, each expiry, quotes as a request "
+        "fills (the price history has its own schedule, ChainSweep.candles)"
     )
+    lists = [q["symbols"].split(",") for path, q, *_ in first if path == QUOTES]
+    assert [sc.quotes_batch(a + b[:1]) for a, b in itertools.pairwise(lists)] == [
+        len(a) for a in lists[:-1]
+    ], "each request but the rotation's last as full as its measured URL holds"
+    assert sum(len(a) for a in lists) == n_quoted
     for path, q, *_ in first:
         if path == CHAIN:
             assert (q["fromDate"], q["toDate"], q["range"]) == (CHAINS[q["symbol"]][0],) * 2 + (
@@ -310,7 +310,10 @@ def test_every_quotes_answer_of_a_rotation_reaches_the_console_and_the_record(tm
         schwab.close()
     assert ofs.FEED.apply_failures == failures, "every record applied"
     answers = [msg["answer"] for topic, msg in published if topic == "optquotes"]
-    assert [len(a) for a in answers] == [300, 141, 0], "SPY's unheld contracts, in two answers"
+    full = sc.quotes_batch(sorted(ct["symbol"] for ct in SPY["chain"]))
+    assert [len(a) for a in answers] == [full, len(SPY["chain"]) - 1 - full, 0], (
+        "SPY's unheld contracts, in two answers"
+    )
     assert not set(answers[0]) & set(answers[1])
     assert held == {
         sym: (now, quote_values(quote)) for answer in answers for sym, quote in answer.items()
@@ -440,6 +443,27 @@ def test_a_429_on_one_quotes_request_does_not_cost_its_tickers_their_round(tmp_p
     assert len(asked) == len(set(asked)) + 1, "the refused request, and no other, was sent again"
 
 
+def _schwab_url(symbols: list[str]) -> int:
+    """The length of GET /quotes for `symbols` at Schwab's host, worked out here (urlencode)."""
+    query = urlencode({"symbols": ",".join(symbols), "fields": "quote"})
+    return len(f"https://api.schwabapi.com/marketdata/v1/quotes?{query}")
+
+
+def test_a_quotes_request_carries_as_many_contracts_as_its_measured_url_holds():
+    """QUOTES_URL_MAX, measured 2026-11-28: 8,201 characters answered, 9,665 refused by the edge.
+
+    SPY's contracts as Schwab listed them (2026-11-20): a request's URL at Schwab's host is
+    within the measured limit, and one contract more would pass it. One that alone passes it is
+    still asked, alone.
+    """
+    symbols = sorted(SPY_QUOTES)
+    fits = sc.quotes_batch(symbols)
+    assert _schwab_url(symbols[:fits]) <= sc.QUOTES_URL_MAX < _schwab_url(symbols[: fits + 1])
+    assert fits > 300, "more than the support's guidance, which is not a limit"
+    assert sc.quotes_batch([]) == 0
+    assert sc.quotes_batch(["X" * (sc.QUOTES_URL_MAX + 1)]) == 1
+
+
 def test_a_quotes_request_refused_each_time_fails_its_tickers_and_the_next_goes_at_once(
     tmp_path,
 ):
@@ -458,7 +482,9 @@ def test_a_quotes_request_refused_each_time_fails_its_tickers_and_the_next_goes_
     finally:
         schwab.close()
     failed = [(topic, msg["failed"]) for topic, msg in published if "failed" in msg]
-    assert failed == [("chain.SPY", "quotes for 300 contracts returned HTTP 429")]
+    first = next(q for path, q, *_ in schwab.requests if path == QUOTES)["symbols"].split(",")
+    assert len(first) == sc.quotes_batch(first)
+    assert failed == [("chain.SPY", f"quotes for {len(first)} contracts returned HTTP 429")]
     quotes = [i for i, (path, *_) in enumerate(schwab.requests) if path == QUOTES]
     assert len(quotes) == 5, "SPY's first request four times, then TSLA's: SPY's others not asked"
     refused = [schwab.requests[i] for i in quotes[:4]]
