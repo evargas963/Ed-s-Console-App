@@ -45,6 +45,7 @@ from state import level_store
 from stream_spine import CaptureWriter, HealthRegistry, MessageBus, quote_msg
 from tests.call_count import calls
 from tests.capture_store import store_capture
+from tests.feed_live_helper import daemon_status
 from tests.page_on_socket import Pages
 from tests.real_chains import CRWD, MRVL, NFLX
 from tests.shared_helpers import until
@@ -874,6 +875,34 @@ def test_a_stop_before_the_daemon_says_the_watchlist_ends_the_levels_loop_quietl
     stop.set()
     server._terrain_loop(stop)
     assert lmp.watchlist() is None
+
+
+def test_the_levels_loop_logs_its_status_each_time_one_is_due(caplog):
+    """Once the daemon has said what the watchlist is: the status line, each time one is due.
+
+    INDUCED: a status due every 0.05 s, where the program's is every STATUS_EVERY_SEC, and a
+    watchlist of one ticker the database holds nothing of, in a heartbeat at MRVL's captured
+    chain's instant, long past, so the daemon is not reporting. The loop waits for each status
+    itself, and the stop ends that wait at once.
+    """
+    lmp.record_feed_heartbeat(
+        daemon_status(MRVL.now.timestamp(), schwab_socket_open=True, watchlist=["ZZZZ"])
+    )
+    stop = threading.Event()
+    loop = threading.Thread(target=server._terrain_loop, args=(stop, 0.05), name="terrain-loop")
+
+    def statuses() -> list[str]:
+        return [r.getMessage() for r in caplog.records if r.getMessage().startswith("alive | ")]
+
+    with caplog.at_level("INFO", logger="ed_server"):
+        loop.start()
+        try:
+            asyncio.run(until(lambda: len(statuses()) >= 2, 30, state=statuses))
+        finally:
+            stop.set()
+            loop.join(10)
+    assert not loop.is_alive(), "the stop did not end the loop's wait"
+    assert all(" | last watchlist: 1 tickers (daemon not reporting) | " in s for s in statuses())
 
 
 def _levels_loops() -> set[threading.Thread]:
