@@ -45,7 +45,13 @@ from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.page_on_socket import pages
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
-from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
+from tests.schwab_stream_standin import (
+    FIELD_REPLIES,
+    HEARTBEAT_SEC,
+    HIGHEST_FIELD,
+    LocalStreamer,
+    refusal,
+)
 from tests.shared_helpers import until
 from time_et import ET
 
@@ -61,8 +67,10 @@ EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NA
 class _Schwab:
     """The local streamer and REST host, and the daemon's client of them as the daemon builds it."""
 
-    def __init__(self, tmp_path, limits: dict, data: dict, lag: float = 0.0, beat=None):
-        self.streamer = LocalStreamer(limits, data, lag, *(() if beat is None else (beat,)))
+    def __init__(
+        self, tmp_path, limits: dict, data: dict, lag: float = 0.0, beat: float = HEARTBEAT_SEC
+    ):
+        self.streamer = LocalStreamer(limits, data, lag, beat)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
 
