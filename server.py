@@ -1505,15 +1505,16 @@ def refresh_not_live_pages(now: float) -> None:
             _levels_changed(tk)
 
 
-def _terrain_loop(stop: threading.Event) -> None:
-    """Run the levels loop until `stop`: the stored levels, then the status every STATUS_EVERY_SEC.
+def _terrain_loop(stop: threading.Event, status_every: float = STATUS_EVERY_SEC) -> None:
+    """Run the levels loop until `stop`: the stored levels, then the status every `status_every`.
 
     The stored levels come once the daemon has said what the watchlist is (queued behind the
-    delivered chains: _load_stored_levels); then every STATUS_EVERY_SEC the status line is logged,
-    each open page whose price or levels are not live is told to read its levels again
+    delivered chains: _load_stored_levels); then every `status_every` seconds the status line is
+    logged, each open page whose price or levels are not live is told to read its levels again
     (refresh_not_live_pages) and the price levels of a new session or a new ticker are published.
-    The chains, and the bars each ticker's price levels are built from, arrive from the daemon
-    (_on_chain, _bar_writer).
+    The loop waits for each status itself, and the stop ends that wait at once. The chains, and the
+    bars each ticker's price levels are built from, arrive from the daemon (_on_chain,
+    _bar_writer).
     """
     _wait_for(
         "the capture daemon's heartbeat (it says what the watchlist is)",
@@ -1534,17 +1535,14 @@ def _terrain_loop(stop: threading.Event) -> None:
         len(watchlist),
         session_label(started),
     )
-    next_status = time_et.elapsed() + STATUS_EVERY_SEC
-    while not stop.wait(1.0):
+    while not stop.wait(status_every):
         try:
-            if time_et.elapsed() >= next_status:
-                next_status = time_et.elapsed() + STATUS_EVERY_SEC
-                now = time_et.now()
-                log.info(_status_line(now))
-                refresh_not_live_pages(now)
-                watchlist = lmp.watchlist()
-                if watchlist is not None:
-                    _publish_missing_price_levels(watchlist, datetime.fromtimestamp(now, ET))
+            now = time_et.now()
+            log.info(_status_line(now))
+            refresh_not_live_pages(now)
+            watchlist = lmp.watchlist()
+            if watchlist is not None:
+                _publish_missing_price_levels(watchlist, datetime.fromtimestamp(now, ET))
         except Exception as e:  # the status line says it failed, never silence
             log.warning("levels loop: %s: %s", type(e).__name__, e, exc_info=True)
     log.info("Terrain loop stopped")
