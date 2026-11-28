@@ -69,8 +69,9 @@ jobs:
         run: |
           # the census counts the statements and the page's lines no test runs from the reports
           # of the commit's pytest run: the run is found, waited for, and its two reports taken,
-          # each into a folder named for it (coverage, page-coverage); each GitHub command is run
-          # again after GitHub's server error (tools/census/command.py)
+          # each the run holds into a folder named for it (coverage, page-coverage); each GitHub
+          # command is run again after GitHub's server error (tools/census/command.py), and each
+          # report is taken on its own, so one run again never meets the files of another
           gh_() { python -m tools.census.command gh "$@"; }
           take() {
             for _ in $(seq 40); do
@@ -80,7 +81,10 @@ jobs:
               sleep 30
             done
             gh_ run watch "$id" -R "$GITHUB_REPOSITORY" -i 60 > /dev/null
-            gh_ run download "$id" -R "$GITHUB_REPOSITORY" -p coverage -p page-coverage -D "../$2"
+            for kind in $(gh_ api "repos/$GITHUB_REPOSITORY/actions/runs/$id/artifacts" \
+              --jq '.artifacts[].name | select(. == "coverage" or . == "page-coverage")'); do
+              gh_ run download "$id" -R "$GITHUB_REPOSITORY" -n "$kind" -D "../$2/$kind"
+            done
           }
           take "$HEAD_SHA" coverage-head
           if [ -n "$BASE_SHA" ]; then take "$BASE_SHA" coverage-base; fi
