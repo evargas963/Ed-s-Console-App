@@ -1071,7 +1071,7 @@
       clearDrawingObjects();
       S.undo = [];
       var raw = S.drawKey ? pref(S.drawKey, null) : null,
-        d = null;
+        d;
       try {
         d = raw ? JSON.parse(raw) : null;
       } catch {

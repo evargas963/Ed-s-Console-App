@@ -2563,8 +2563,9 @@ out = run(
     cwd=HEAD,
     ok=(0, 1),  # findings 1; a failure 2
 )
+# each finding as markdownlint-cli2 0.24 prints it: "<file>:<line>[:<col>] error MD026/<name> ..."
 for ln in out.splitlines():
-    if m := re.match(r"(.+?):(\d+)(?::\d+)? (MD\d+)/([\w/-]+) (.+)", ln):
+    if m := re.match(r"(.+?):(\d+)(?::\d+)? error (MD\d+)/([\w/-]+) (.+)", ln):
         add(
             S,
             f"Markdown: markdownlint {m.group(3)} {m.group(4).split('/')[0]}",
@@ -2574,7 +2575,7 @@ for ln in out.splitlines():
         )
 reconcile(
     "markdownlint",
-    int(re.search(r"Summary: (\d+) error", out).group(1)),
+    int(re.search(r"Summary: (\d+) issues? in", out).group(1)),
     "Markdown: markdownlint",
     "markdownlint",
 )
