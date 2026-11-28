@@ -413,7 +413,7 @@ def test_a_tick_callback_that_fails_is_counted_and_every_trade_is_still_applied(
     beat) and logged; every trade is still on SPY's tape with its own receive time.
     """
     before = ofs.FEED.tick_failures
-    at = [time_et.now() - 3.0 + i for i in range(3)]
+    at = [RTH_INSTANT + i for i in range(3)]
     calls: list[str] = []
 
     def failing(sym: str) -> None:
