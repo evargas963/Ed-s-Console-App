@@ -1045,7 +1045,7 @@ JS_KIND = {
 for cat in JS_KIND.values():
     add(S, cat, "4", "acorn")
 ROUNDING = "a value rounded to digits in product Python (rounding only on screen)"
-FORMATTED = "a date, time or number formatted outside its one formatter: Python product (ENF-11)"
+FORMATTED = "a date, time or number formatted outside its one formatter: Python product (rule 13)"
 #: State is the one in-memory store (docs/ARCHITECTURE.md): a container, or an object of the
 #: module's own class, made at a module's top level outside state/ is a table that never changes
 #: or state a call may change unseen by its caller
