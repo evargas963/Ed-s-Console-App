@@ -42,6 +42,7 @@ from stream_spine import (
     CAPTURE_HELD,
     CAPTURE_REFUSED,
     CAPTURE_STORED,
+    STREAM_SCHEMA_SQL,
     CaptureWriter,
     HealthRegistry,
     MessageBus,
@@ -318,6 +319,8 @@ def test_crosses_the_recorder_answers_after_the_wait_reach_the_screen_or_are_log
         with closing(sqlite3.connect(db)) as other:
             other.execute("BEGIN EXCLUSIVE")
             _print(SPY_PRINT_A_STRIKE_AWAY, tk)  # the pricing thread's wait ends: held
+            server.restamp_off_the_loop()  # a beat while the Recorder still holds them
+            server.chain_pricing.submit(int).result(10)
             while_held = cross_store.merged_since(tk, 0.0)
             if refused:
                 other.execute(
@@ -385,6 +388,46 @@ def test_a_price_whose_crosses_the_recorder_raises_on_is_logged_with_its_error(c
     assert [(r.getMessage(), r.exc_info[0]) for r in failed] == [
         ("a job of the pricing thread failed: database is locked", sqlite3.OperationalError)
     ]
+
+
+@pytest.mark.parametrize(
+    ("tk", "recorder_runs"),
+    [("ZZNOREC", False), ("ZZREFUSE", True)],
+    ids=["no Recorder runs", "refused in its wait"],
+)
+def test_crosses_no_recorder_stores_are_logged_and_none_held(tk, recorder_runs, caplog):
+    """A price's crosses with no Recorder to store them, or refused by it within the wait.
+
+    INDUCED CONDITIONS: the daemon not bound (the console before the daemon's start), or a
+    trigger refusing the ticker's crosses, as a full or damaged database refuses a write. Each is
+    logged with the crosses, and none is held: a cross is held only once it is stored. The
+    tickers carry SPY's chain and prints.
+    """
+    db = server.get_db().db_path
+    _forget(tk)
+    _publish_close(tk)
+    if recorder_runs:
+        with closing(sqlite3.connect(db)) as conn, conn:
+            conn.executescript(STREAM_SCHEMA_SQL)
+            conn.execute(
+                f"CREATE TRIGGER refuse_{tk} BEFORE INSERT ON level_crosses "
+                f"WHEN NEW.ticker = '{tk}' BEGIN SELECT RAISE(ABORT, 'refused'); END"
+            )
+    else:
+        ofs.bind_daemon(None)
+    try:
+        _print(SPY_PRINT_ON_A_STRIKE, tk)
+        _print(SPY_PRINT_A_STRIKE_AWAY, tk)
+        held = cross_store.merged_since(tk, 0.0)
+    finally:
+        _forget(tk)
+        with closing(sqlite3.connect(db)) as conn, conn:
+            conn.execute(f"DROP TRIGGER IF EXISTS refuse_{tk}")
+    said = f"level crosses of {tk} at {STRIKE_AWAY} not stored"
+    why = f" ({CAPTURE_REFUSED}): " if recorder_runs else ": no Recorder runs"
+    logged = [r.getMessage() for r in caplog.records if r.getMessage().startswith(said)]
+    assert [m.startswith(said + why) for m in logged] == [True]
+    assert (held, _stored(tk)) == ([], [])
 
 
 def test_a_price_that_reaches_a_level_crosses_it_and_one_that_leaves_it_does_not():

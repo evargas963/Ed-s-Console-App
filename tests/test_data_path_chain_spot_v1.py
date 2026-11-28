@@ -25,6 +25,7 @@ import server
 from app.options.order_flow import streaming as ofs
 from db import last_capture_per_day
 from feed import chain_sweep as cs
+from option_contract import read_chain
 from state import level_store
 from stream_spine import CaptureWriter
 from tests.capture_store import store_capture
@@ -96,6 +97,27 @@ def test_the_chain_carries_its_spot_from_the_daemon_to_the_levels_and_the_captur
         server.SPOT_SOURCE_PLANE,
     )
     assert held.snap.spot != CRWD.spot
+
+
+def test_a_chain_whose_pricing_fails_says_why_and_publishes_no_levels(caplog):
+    """INDUCED: CRWD's chain handed to the pricing job with a contract that is not one (None).
+
+    No levels are published from it; the ticker's reason says pricing the chain failed, with the
+    error, and the failure is logged with its traceback.
+    """
+    _forget()
+    try:
+        contracts = [*read_chain([dict(c) for c in CRWD.chain]), None]
+        server._price_chain(
+            TK, server.DELIVERED, contracts, CRWD.now.timestamp(), (LAST, TRADED), CRWD.now
+        )
+        why, held = level_store.chain_failure(TK), level_store.published_levels(TK)
+    finally:
+        _forget()
+    logged = [r for r in caplog.records if r.getMessage().startswith(f"pricing the chain of {TK}")]
+    assert held is None
+    assert why is not None and why.startswith("pricing the chain failed: ")
+    assert [r.exc_info is not None for r in logged] == [True]
 
 
 def test_a_capture_stored_without_the_chains_spot_has_no_price(tmp_path):
