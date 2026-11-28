@@ -13,6 +13,7 @@ from typing import TypedDict, overload
 
 from instrument_identity import ticker_storage_key
 from live_price_rows import price_row
+from numeric_contract import change_percent_text, share_text
 from open_gap import BAR_SECONDS, LAST_OPENS, Followed, Open, OpenGapRecord, today_open
 from state import bar_store
 from time_et import ET, Session, ct_dated, sessions
@@ -96,7 +97,7 @@ def _moved_text(fraction: float | None) -> str | None:
     """
     if fraction is None:
         return None
-    return f"{'▲' if fraction > 0 else '▼'} {fraction:+.2%}"
+    return f"{'▲' if fraction > 0 else '▼'} {change_percent_text(fraction * 100)}"
 
 
 def _followed_served(direction: str, f: Followed) -> GapFollowed:
@@ -104,12 +105,12 @@ def _followed_served(direction: str, f: Followed) -> GapFollowed:
     share = f.matched / f.opens
     return {
         "title": f"When the gap was {direction}, the first 5 minutes went {direction}",
-        "share_text": f"{share:.0%}",
+        "share_text": share_text(share),
         "count_text": f"{f.matched} of {f.opens} opens",
-        "range_text": f"95% range {f.low:.0%}-{f.high:.0%}",
+        "range_text": f"95% range {share_text(f.low)}-{share_text(f.high)}",
         "line": (
             f"{direction.capitalize()} gaps, for reference: {direction} {f.matched} of "
-            f"{f.opens} ({share:.0%}, range {f.low:.0%}-{f.high:.0%})"
+            f"{f.opens} ({share_text(share)}, range {share_text(f.low)}-{share_text(f.high)})"
         ),
         # the bar's band, its mark and the coin flip, in percent of its width
         "band_left": f.low * 100,

@@ -42,6 +42,7 @@ from app.market_data.schwab.streaming.program_lock import (
     ask_to_stop,
     program_ports,
 )
+from numeric_contract import fixed_text
 
 log = logging.getLogger("launch")
 ROOT = Path(__file__).resolve().parent
@@ -271,9 +272,9 @@ def main() -> int:
     try:
         ports = wait_for_pages(START_WAIT_SEC)
     except TimeoutError as e:
-        print(f"Ed Console: its pages did not answer in {START_WAIT_SEC:.0f} s: {e}")
+        print(f"Ed Console: its pages did not answer in {fixed_text(START_WAIT_SEC, 0)} s: {e}")
         return 1
-    print(f"Ed Console: healthy {time_et.elapsed() - started:.1f} s after the start.")
+    print(f"Ed Console: healthy {fixed_text(time_et.elapsed() - started, 1)} s after the start.")
     webbrowser.open(f"http://127.0.0.1:{ports.console}/")  # the default browser
     return 0
 
