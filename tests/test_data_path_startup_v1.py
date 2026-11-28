@@ -881,11 +881,12 @@ def test_the_levels_loop_logs_its_status_each_time_one_is_due(caplog):
     """Once the daemon has said what the watchlist is: the status line, each time one is due.
 
     INDUCED: a status due every 0.05 s, where the program's is every STATUS_EVERY_SEC, and a
-    watchlist of one ticker the database holds nothing of. The loop waits for each status itself,
-    and the stop ends that wait at once.
+    watchlist of one ticker the database holds nothing of, in a heartbeat at MRVL's captured
+    chain's instant, long past, so the daemon is not reporting. The loop waits for each status
+    itself, and the stop ends that wait at once.
     """
     lmp.record_feed_heartbeat(
-        daemon_status(time_et.now(), schwab_socket_open=True, watchlist=["ZZZZ"])
+        daemon_status(MRVL.now.timestamp(), schwab_socket_open=True, watchlist=["ZZZZ"])
     )
     stop = threading.Event()
     loop = threading.Thread(target=server._terrain_loop, args=(stop, 0.05), name="terrain-loop")
@@ -901,7 +902,7 @@ def test_the_levels_loop_logs_its_status_each_time_one_is_due(caplog):
             stop.set()
             loop.join(10)
     assert not loop.is_alive(), "the stop did not end the loop's wait"
-    assert all(" | live prices: 0 of 1 watchlist tickers | " in s for s in statuses())
+    assert all(" | last watchlist: 1 tickers (daemon not reporting) | " in s for s in statuses())
 
 
 def _levels_loops() -> set[threading.Thread]:
