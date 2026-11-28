@@ -570,6 +570,21 @@ def test_a_quotes_answer_that_is_not_json_fails_its_tickers_and_the_sweep_goes_o
     assert failed.startswith("JSONDecodeError")
 
 
+def test_a_ticker_check_answered_with_what_is_not_json_is_not_a_ticker_schwab_quotes(tmp_path):
+    """STAND-IN: the watchlist's check of an added ticker (check_ticker) answered 200, not JSON.
+
+    It is not a ticker Schwab quotes, with the answer's status and text as sent. AAPL: a ticker
+    whose check Schwab's capture does not hold, so the stand-in answers it.
+    """
+    schwab = LocalSchwab()
+    schwab.quotes_body = b"<html>not json</html>"
+    try:
+        checked = sc.check_ticker(schwab.client(tmp_path), "AAPL")
+    finally:
+        schwab.close()
+    assert checked == (False, 200, "<html>not json</html>")
+
+
 def test_contracts_schwab_names_invalid_get_no_greeks_and_every_ticker_in_the_request_is_delivered(
     tmp_path, caplog
 ):
