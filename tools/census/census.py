@@ -1448,8 +1448,8 @@ def spans_of(lines):
 
 
 UNRUN = "statements no test runs (coverage.py, pytest.yml's run of this commit)"
-#: a side of an `if`, a loop or a `match` no test takes (pyproject.toml: coverage.py's branch
-#: measurement), each `from->to` as coverage.py names it, a negative `to` leaving the function
+#: a side of an `if`, a loop or a `match` no test takes (pytest.yml's `--cov-branch`), each
+#: `from->to` as coverage.py names it, a negative `to` leaving the function
 UNTAKEN = "branches no test takes (coverage.py, pytest.yml's run of this commit)"
 if _args.coverage is None:
     add(S, f"{UNRUN}: not counted, no coverage report given (reported)", "14", "coverage.py")
