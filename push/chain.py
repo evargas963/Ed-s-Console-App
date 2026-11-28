@@ -310,8 +310,10 @@ def expiry_asked(t: str, now: float, params: dict[str, Any]) -> ExpiryAsked:
         return why(level_store.chain_failure(t) or NO_CHAIN_YET)
     if not held.priced_chain:
         return why(held.snap.error or level_store.chain_failure(t) or NO_CHAIN_YET)
-    if resolved is None:  # the levels list the expiries: none when they could not be priced
-        return why(held.snap.error or "no listed expiry for this ticker")
+    if resolved is None and held.snap.error:  # levels that could not be priced list no expiry
+        return why(held.snap.error)
+    if resolved is None:
+        return why("no listed expiry for this ticker")
     priced = [c for c in held.priced_chain if c.expiry == resolved]
     if not priced:
         return why(f"the chain lists no contracts for {resolved}")
