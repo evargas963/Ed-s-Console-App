@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from feed.schwab_client import flatten_chain_contracts
 
 _FIXTURES = Path(__file__).parent / "fixtures"
@@ -70,3 +72,32 @@ def test_flatten_preserves_real_crwd_quarter_and_half_dollar_set():
     assert {38.75, 41.25, 43.75, 46.25, 48.75}.issubset(strikes)
     assert 42.5 in strikes
     assert {c["putCall"] for c in after} == {"CALL", "PUT"}
+
+
+def test_a_side_schwab_did_not_send_holds_no_contract():
+    """CRWD's calls as Schwab sent them, its putExpDateMap left out: every call, no put."""
+    calls = [c for c in _CRWD_CONTRACTS if c["putCall"] == "CALL"]
+    c_json = _chain_json_for(calls)
+    del c_json["putExpDateMap"]
+    assert _symbols(flatten_chain_contracts(c_json)) == _symbols(calls)
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        lambda c_json: c_json.update(callExpDateMap=[]),
+        lambda c_json: next(iter(c_json["callExpDateMap"].values())).update({"21.0": None}),
+        lambda c_json: next(iter(c_json["callExpDateMap"].values())).update({"21.0": [None]}),
+    ],
+    ids=["expiries not a map", "a strike with no list", "a contract that is no object"],
+)
+def test_an_answer_not_in_schwabs_shape_raises_and_leaves_no_contract_out(broken):
+    """INDUCED: CDE's answer rebuilt as Schwab sends it, one part of it out of Schwab's shape.
+
+    It raises (the sweep fails that ticker with the error, ChainSweep.fetch_chain), never a chain
+    with that part's contracts left out.
+    """
+    c_json = _chain_json_for(_CDE_CONTRACTS)
+    broken(c_json)
+    with pytest.raises((AttributeError, TypeError)):
+        flatten_chain_contracts(c_json)

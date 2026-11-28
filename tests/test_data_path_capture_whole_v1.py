@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 import stat
@@ -200,6 +201,55 @@ def test_the_console_hears_of_a_chain_after_its_capture_is_stored(tmp_path):
     ], "every part once, as the capture"
 
 
+def test_a_chain_in_a_window_whose_capture_is_stored_goes_to_the_console_as_no_capture(tmp_path):
+    """The program restarted after the close, its window's capture stored before the restart.
+
+    MRVL's chain asked again in that window is no capture: the capture stored is the one its
+    window keeps, read from the database by the restarted program, and nothing is written again.
+    """
+    db = tmp_path / "ed_console.db"
+    writer = CaptureWriter(db)
+    _sweep(tmp_path, lambda _topic, _msg: None, writer).deliver(_chain())
+    capture_store.clear()  # the restarted program holds no capture until it reads its database
+    published: list = []
+    again = _sweep(tmp_path, lambda topic, msg: published.append((topic, msg)), writer)
+    again.deliver(_chain(_BEGUN + 60))
+    assert {m["capture"] for topic, m in published if topic == "chain.MRVL"} == {False}
+    assert {c.ts_utc for c in last_capture_per_day(db, "MRVL", 1)} == {_BEGUN}
+
+
+def test_a_chain_whose_history_cannot_be_read_goes_to_the_console_and_the_failure_is_kept(
+    tmp_path, caplog
+):
+    """INDUCED CONDITION: the day before's capture stored with its chain damaged, not JSON.
+
+    The sweep reads the ticker's captures before it stores the window's (newest_ts), and that
+    read fails: MRVL's chain still goes to the console, as no capture, and the chain the history
+    did not take is logged and kept by the Recorder with its error, as sent.
+    """
+    db = tmp_path / "ed_console.db"
+    with closing(sqlite3.connect(db)) as conn, conn:
+        conn.executescript(STREAM_SCHEMA_SQL)
+        conn.execute(
+            "INSERT INTO complete_chain_captures (ticker, expiry, ts_utc, completeness_basis, "
+            "chain_json) VALUES ('MRVL', '2026-10-02', ?, ?, 'not json')",
+            (_BEGUN - 86400, cch.CAPTURE_BASIS),
+        )
+    published: list = []
+    sweep = _sweep(tmp_path, lambda topic, msg: published.append((topic, msg)), CaptureWriter(db))
+    with caplog.at_level(logging.WARNING, logger="chain_history"):
+        sweep.deliver(_chain())
+    assert {m["capture"] for topic, m in published if topic == "chain.MRVL"} == {False}
+    with closing(sqlite3.connect(db)) as read, read:
+        (kept,) = read.execute("SELECT topic, msg_json, error FROM stream_write_failures")
+    assert (kept[0], json.loads(kept[1])["started"]) == ("chain_history.MRVL", _BEGUN)
+    assert kept[2].startswith("JSONDecodeError")
+    warned = [r.getMessage() for r in caplog.records]
+    assert [m for m in warned if m.startswith("chain history")] == [
+        "chain history for MRVL not written, kept as delivered: " + kept[2]
+    ]
+
+
 def _capture(started: float = _BEGUN) -> dict:
     """MRVL's chain as the sweep hands it to the Recorder: every expiry, at no spot."""
     return cch.capture_message(
@@ -322,6 +372,7 @@ def test_a_close_capture_held_past_its_wait_reaches_the_console_once_the_recorde
             sweep = _sweep(tmp_path, publish, writer)
             release, holder = _hold_write_lock(db)
             sweep.deliver(_chain())  # its capture held past the wait
+            _one_pass(sweep)  # still held: published no more
             release.set()
             holder.join(10)
             _until_counted(writer, "rows_written")  # the Recorder commits it

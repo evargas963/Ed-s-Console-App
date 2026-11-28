@@ -132,6 +132,7 @@ class LocalStreamer:
         self.data = dict(data)
         self.requests: list = []
         self.answers: list = []
+        self.open_sockets = 0  # the connections a client has open with it now
         self.held: dict[str, list[str]] = defaultdict(list)
         self.loop = asyncio.new_event_loop()
         ready = threading.Event()
@@ -155,6 +156,7 @@ class LocalStreamer:
         self.held.clear()
         out = _Outbox(ws, self.beat)
         tasks = [asyncio.create_task(out.deliver()), asyncio.create_task(out.beat())]
+        self.open_sockets += 1
         try:
             async for raw in ws:
                 for req in json.loads(raw)["requests"]:
@@ -165,6 +167,7 @@ class LocalStreamer:
                         await asyncio.wait([tasks[0]])
                         return
         finally:
+            self.open_sockets -= 1
             for task in tasks:
                 task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
