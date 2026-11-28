@@ -192,6 +192,9 @@ class _Handler(BaseHTTPRequestHandler):
         if outer.token == "edge":
             self._edge(TOKEN, {}, started)
             return
+        if outer.token == "drops":
+            self._drop(TOKEN, {}, started, "close")
+            return
         refused = outer.token == "refuses"
         self._send(
             TOKEN,
@@ -289,7 +292,8 @@ class LocalSchwab:
     chain answer, which the quotes answer names in Schwab's errors entry
     (`{"errors": {"invalidSymbols": [...]}}`) instead of quoting them; `stream_url`: the streamer
     the user preferences name (tests/schwab_stream_standin.LocalStreamer.url); `token`: the token
-    endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403);
+    endpoint's answer ("refreshes": REFRESHED; "refuses": REFUSED, 400; "edge": EDGE_403;
+    "drops": the connection ended with no answer, INDUCED);
     `expired`: access tokens a data request carrying one is answered 401 for, with Schwab's
     INVALID_TOKEN challenge; `edge`:
     while set, every data request is answered with EDGE_403; `drop_next`: how each of the next

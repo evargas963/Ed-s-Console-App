@@ -62,7 +62,7 @@ class TokenInspectionResult:
     has_access_token: bool = False
     has_refresh_token: bool = False
     has_expires_at: bool = False
-    scope_value: str | None = None
+    scope_value: Json = None  # the token's scope as sent; None when not sent
     message: str = ""
 
 
@@ -402,13 +402,15 @@ class OneRefreshSession(OAuth2Client):
 
         A GET asks for the same thing however often it is sent (RFC 9110 §9.2.2: an idempotent
         request may be repeated when the connection fails before its answer is read). The first
-        failure is logged; a second is raised, as is any other method's (the token request is a
-        POST). Its answer is counted for its endpoint's wait after a server error (_took).
+        failure is logged; a second is raised, as is any other method's: the token request, a
+        POST, made inside a GET when its token is due, is the request that failed then
+        (`e.request`), and is never sent again by the GET. Its answer is counted for its
+        endpoint's wait after a server error (_took).
         """
         try:
             response = super().request(method, url, withhold_token, auth, **kwargs)
         except NO_ANSWER as e:
-            if method.upper() != "GET":
+            if e.request.method != "GET":
                 raise
             log.warning(
                 "REQUEST %s %s: no answer (%s: %s); sent once more",
@@ -557,11 +559,7 @@ def inspect_token_file(token_path: str) -> TokenInspectionResult:
         rt = tok.get("refresh_token")
         out.has_refresh_token = isinstance(rt, str) and len(rt.strip()) > 0
         out.has_expires_at = "expires_at" in tok
-        sc = tok.get("scope")
-        if isinstance(sc, str) and sc.strip():
-            out.scope_value = sc.strip()
-        elif sc is not None:
-            out.scope_value = str(sc)
+        out.scope_value = tok["scope"] if "scope" in tok else None  # as Schwab sent it
 
     issues = [
         issue
@@ -706,15 +704,7 @@ def run_login_flow(
 
     if exc_holder:
         return False, f"OAuth flow failed: {exc_holder[0]}"
-
-    if not os.path.exists(token_path):
-        return False, (
-            f"OAuth flow completed but token file was not written: {token_path}. "
-            "The browser may have redirected before the callback was received, "
-            "or there was a silent write failure. Try: python reauth_schwab.py --manual"
-        )
-
-    return True, f"Token created: {token_path}"
+    return True, f"Token created: {token_path}"  # the writer wrote it whole, or raised
 
 
 def run_manual_flow(
@@ -738,9 +728,7 @@ def run_manual_flow(
     except Exception as e:
         log.warning("OAuth manual flow failed", exc_info=True)
         return False, f"OAuth flow failed: {e}"
-    if not os.path.exists(token_path):
-        return False, f"Manual flow completed but token file was not written: {token_path}"
-    return True, f"Token created: {token_path}"
+    return True, f"Token created: {token_path}"  # the writer wrote it whole, or raised
 
 
 def complete_oauth_from_redirect_url(
@@ -760,12 +748,10 @@ def complete_oauth_from_redirect_url(
     url = redirect_url.strip()
     if not url:
         return False, "Redirect URL is empty."
-    parsed = urlparse(url)
-    qs = parse_qs(parsed.query)
-    # parse_qs gives each query parameter as a list of its values
-    state = (qs.get("state") or [None])[0]
-    if not (qs.get("code") or [None])[0]:
+    qs = parse_qs(urlparse(url).query)  # each parameter's values; one left blank is not listed
+    if "code" not in qs:
         return False, "Redirect URL missing OAuth code query parameter."
+    state = qs["state"][0] if "state" in qs else None
 
     resolved = _resolve_token_path(token_path)
     auth_context = auth.get_auth_context(api_key, callback_url, state=state)
@@ -783,9 +769,7 @@ def complete_oauth_from_redirect_url(
     except Exception as e:
         log.warning("OAuth token exchange failed", exc_info=True)
         return False, f"OAuth token exchange failed: {e}"
-    if not os.path.isfile(resolved):
-        return False, f"Token exchange succeeded but file missing: {resolved}"
-    return True, f"Token created: {resolved}"
+    return True, f"Token created: {resolved}"  # the writer wrote it whole, or raised
 
 
 def safe_get_chain(

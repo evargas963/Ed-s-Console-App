@@ -14,6 +14,7 @@ stand-in's), named in that test.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sqlite3
@@ -36,6 +37,7 @@ from push import verdict as push_verdict
 from stream_spine import HealthRegistry, MessageBus
 from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.schwab_rest_standin import EXPIRATIONS, TOKEN, LocalSchwab
+from tests.shared_helpers import until
 from time_et import ET
 
 _AFTER_THE_CLOSE = datetime(2026, 10, 7, 20, 0, tzinfo=ET).timestamp()
@@ -390,6 +392,71 @@ def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
     assert client.session.refusal() is None
 
 
+def test_a_refresh_whose_connection_ends_with_no_answer_is_sent_once_and_is_not_a_refusal(
+    tmp_path, caplog
+):
+    """INDUCED: the token endpoint's connection ends before any answer.
+
+    As Schwab's end reset two connections on 2026-11-18 and 2026-11-20. The refresh is a POST,
+    which a client does not repeat on its own (RFC 9110 §9.2.2), made inside the GET whose token
+    was due: it is raised, sent once, and the GET, never sent, is not sent again or named as the
+    request with no answer. The session still holds its sign-in, and the next request refreshes
+    and is answered.
+    """
+    schwab = LocalSchwab()
+    schwab.token = "drops"
+    try:
+        client = schwab.client(tmp_path, 100)
+        with (
+            caplog.at_level(logging.WARNING, logger=sc.log.name),
+            pytest.raises(sc.NO_ANSWER) as raised,
+        ):
+            client.get_option_expiration_chain("SPY")
+        assert raised.value.request.url.path == TOKEN
+        assert (_posts(schwab), _asked(schwab), client.session.refusal()) == (1, [], None)
+        assert [r.getMessage() for r in caplog.records if "no answer" in r.getMessage()] == []
+        schwab.token = "refreshes"
+        assert client.get_option_expiration_chain("SPY").status_code == 200
+    finally:
+        schwab.close()
+    assert _posts(schwab) == 2
+
+
+def test_the_builder_builds_on_a_usable_sign_in_and_names_one_that_cannot_be_refreshed(tmp_path):
+    """The daemon's builder (build_client_from_token) on a sign-in saved as reauth saves it.
+
+    It builds a client on the daemon's one session; on a sign-in with no refresh token it builds
+    none, and says what to run.
+    """
+    token = tmp_path / "schwab_token.json"
+    _new_sign_in(token, "a")
+    built = sc.build_client_from_token(str(token), "LiveLookingKey", "LiveLookingSecret")
+    assert built.client is not None
+    built.client.session.close()
+    assert (built.ok, built.message) == (True, "Client loaded from token file.")
+    assert isinstance(built.client.session, sc.OneRefreshSession)
+    sent = {k: v for k, v in _FRESH["token"].items() if k != "refresh_token"}
+    _saved_whole(tmp_path, json.dumps({**_FRESH, "token": sent}))
+    refused = sc.build_client_from_token(str(token), "LiveLookingKey", "LiveLookingSecret")
+    assert (refused.ok, refused.client) == (False, None)
+    assert refused.message == (
+        f"Schwab token is NOT refreshable (refresh_token missing or empty) at {str(token)!r}. "
+        "Remediation: python reauth_schwab.py --manual"
+    )
+
+
+@pytest.mark.parametrize(
+    ("saved", "shown"),
+    [({"scope": "api"}, "api"), ({"scope": ["api", "read"]}, ["api", "read"]), ({}, None)],
+    ids=["text", "a list", "not sent"],
+)
+def test_the_token_files_scope_is_shown_as_sent(tmp_path, saved, shown):
+    """The scope reauth_schwab.py prints is the token's as saved; none when none was sent."""
+    sent = {**_FRESH["token"], **saved}
+    token = _saved_whole(tmp_path, json.dumps({**_FRESH, "token": sent}))
+    assert sc.inspect_token_file(str(token)).scope_value == shown
+
+
 def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(
     tmp_path, caplog
 ):
@@ -621,6 +688,48 @@ def test_the_chain_sweep_waits_for_a_client_it_cannot_build_and_goes_on_once_bui
     finally:
         schwab.close()
     assert _asked(schwab) and sweep.waiting is None
+
+
+#: another process with the token file open, as a reader without its lock has it (the console's
+#: token status): "held" once it is open, closed when the test sends a line
+_READER = """
+import sys
+with open(sys.argv[1], "rb"):
+    print("held", flush=True)
+    sys.stdin.readline()
+"""
+
+
+def test_a_sign_in_saved_while_another_process_reads_the_old_one_lands_whole(tmp_path, caplog):
+    """A new sign-in saved while another process has the token file open.
+
+    On Windows, as production runs, the file cannot be replaced while it is open (a sharing
+    violation): the same write is tried again, each time logged, and lands once the reader
+    closes it; where the system lets an open file be replaced it lands at once. The file then
+    holds the new sign-in, whole, and the reader read the old one whole.
+    """
+    token = tmp_path / "schwab_token.json"
+    _new_sign_in(token, "old")
+    saving = threading.Thread(target=_new_sign_in, args=(token, "new"))
+
+    def blocked() -> bool:
+        return any(r.getMessage().startswith("token replace blocked") for r in caplog.records)
+
+    with subprocess.Popen(
+        [sys.executable, "-c", _READER, str(token)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as reader:
+        assert reader.stdout.readline().strip() == "held"
+        with caplog.at_level(logging.WARNING, logger=sc.log.name):
+            saving.start()
+            asyncio.run(until(lambda: blocked() or not saving.is_alive(), 10))
+            reader.communicate("\n")
+            saving.join(10)
+    assert not saving.is_alive()
+    assert json.loads(token.read_text(encoding="utf-8"))["token"]["access_token"] == "new"
+    assert list(tmp_path.glob("*.tmp")) == [], "no write's temp file left"
 
 
 def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
