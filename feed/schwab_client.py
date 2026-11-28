@@ -243,7 +243,7 @@ def log_request(response: httpx.Response) -> None:
     log.warning("%s | body: %s | headers: %s", line, body, headers)
 
 
-class SignInRefused(Exception):
+class SignInRefusedError(Exception):
     """Schwab refused the sign-in (the refresh token: expired, revoked, invalid).
 
     Nothing is sent to Schwab until a new sign-in is saved to the token file (python
@@ -262,7 +262,7 @@ class OneRefreshSession(OAuth2Client):
     the sign-in, the session first takes a sign-in saved there with a new creation time (python
     reauth_schwab.py's; no restart), holding the file's lock, so none is saved during the refresh
     and none is written over. Once Schwab refuses a refresh (authlib raises on Schwab's answer; a
-    network failure or Schwab's edge page is not one), every request raises SignInRefused and
+    network failure or Schwab's edge page is not one), every request raises SignInRefusedError and
     nothing is sent, until a new sign-in is saved.
 
     An endpoint Schwab answers with a server error (5xx) waits before its next request
@@ -355,7 +355,7 @@ class OneRefreshSession(OAuth2Client):
                     except AuthlibBaseError as e:
                         self._refused = e
                         log.exception("%s", self._refusal_text())
-            raise SignInRefused(self._refusal_text()) from self._refused
+            raise SignInRefusedError(self._refusal_text()) from self._refused
 
     @override
     def request(

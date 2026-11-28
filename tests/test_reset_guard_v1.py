@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-import tools.operating_process_lock as OPL
-import tools.process_lock_guard as PLG
+import tools.operating_process_lock as opl
+import tools.process_lock_guard as plg
 
 pytestmark = pytest.mark.rail
 
@@ -30,7 +30,7 @@ def test_destructive_class_blocks():
         "git clean -fd",
         "git stash",
     ):
-        assert OPL.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
+        assert opl.reset_guard_violations(cmd), f"reset guard silent on: {cmd}"
 
 
 def test_safe_forms_allow():
@@ -42,7 +42,7 @@ def test_safe_forms_allow():
         "git checkout -b feature/next",
         "git clean -n",
     ):
-        assert not OPL.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
+        assert not opl.reset_guard_violations(cmd), f"reset guard false-fired on: {cmd}"
 
 
 # ── Judge the ACTION, not the data the command carries ──────────────────────────────────
@@ -57,12 +57,12 @@ def test_a_commit_message_quoting_destructive_git_is_not_an_action():
         "Also proved git reset --hard still blocks.\n"
         "MSG"
     )
-    assert not OPL.reset_guard_violations(heredoc), (
+    assert not opl.reset_guard_violations(heredoc), (
         "the reset guard blocked a commit whose only destructive git is prose in the message — "
         "banning the word, not the action"
     )
     inline = "git commit -m 'RC-231 was opened after a git reset --hard wiped static/chart.html'"
-    assert not OPL.reset_guard_violations(inline)
+    assert not opl.reset_guard_violations(inline)
 
 
 def test_stripping_payloads_does_not_open_a_bypass():
@@ -72,17 +72,17 @@ def test_stripping_payloads_does_not_open_a_bypass():
     real destructive command is unaffected by any of this.
     """
     piped = "bash <<'EOF'\ngit reset --hard\nEOF"
-    assert OPL.reset_guard_violations(piped), (
+    assert opl.reset_guard_violations(piped), (
         "a heredoc piped into a shell IS the instruction — stripping it would be a bypass"
     )
     for cmd in ("git restore -- server.py", "git reset --hard", "git clean -fd static/"):
-        assert OPL.reset_guard_violations(cmd), f"real command no longer blocks: {cmd}"
+        assert opl.reset_guard_violations(cmd), f"real command no longer blocks: {cmd}"
 
 
 def test_a_destructive_command_after_a_quoted_message_still_blocks():
     """Stripping the quoted payload must not swallow what follows it."""
     chained = "git commit -m 'notes' && git checkout -- server.py"
-    assert OPL.reset_guard_violations(chained), (
+    assert opl.reset_guard_violations(chained), (
         "the destructive command after the quoted message is dropped with the message payload"
     )
 
@@ -93,7 +93,7 @@ def test_live_path_wired_through_guard():
         "git restore -- static/chart.html",
         "git stash push -q -m probe -- stream_spine.py",
     ):
-        bad = PLG.pretooluse_block("Bash", {"command": cmd})
+        bad = plg.pretooluse_block("Bash", {"command": cmd})
         assert any("RESET_GUARD" in b for b in bad), (
             f"reset guard not on the live PreToolUse path: {cmd}"
         )
@@ -156,7 +156,7 @@ def test_git_is_adjudicated_by_what_it_can_destroy():
     wrong = [
         (cmd, reaches)
         for cmd, must_block, reaches in _ADJUDICATION
-        if bool(OPL.reset_guard_violations(cmd)) != must_block
+        if bool(opl.reset_guard_violations(cmd)) != must_block
     ]
     assert wrong == [], f"verdict disagrees with what the command can destroy: {wrong}"
 
@@ -174,10 +174,10 @@ def test_a_safe_form_cannot_launder_a_destructive_one():
         "git checkout -b feat/x && git checkout -- server.py",
         "git status | cat && git stash",
     ):
-        assert OPL.reset_guard_violations(chain), f"a safe form laundered the chain: {chain}"
+        assert opl.reset_guard_violations(chain), f"a safe form laundered the chain: {chain}"
     # ...and a chain that is safe end to end stays legal.
-    assert not OPL.reset_guard_violations("git status && git reset --soft HEAD~1")
-    assert not OPL.reset_guard_violations("git fetch origin && git reset --soft origin/main")
+    assert not opl.reset_guard_violations("git status && git reset --soft HEAD~1")
+    assert not opl.reset_guard_violations("git fetch origin && git reset --soft origin/main")
 
 
 def test_an_interpreter_heredoc_is_judged_per_line():
@@ -186,8 +186,8 @@ def test_an_interpreter_heredoc_is_judged_per_line():
     So a CLASS form inside it (not only a hard form) still blocks, and a quoted commit message
     stays prose.
     """
-    assert OPL.reset_guard_violations("bash <<'EOF'\ngit status\ngit restore .\nEOF")
-    assert not OPL.reset_guard_violations(
+    assert opl.reset_guard_violations("bash <<'EOF'\ngit status\ngit restore .\nEOF")
+    assert not opl.reset_guard_violations(
         "git commit -m 'RC-231: git restore . wiped the tree' && git push origin feat/x"
     )
 
@@ -200,11 +200,11 @@ def test_the_safe_reset_is_live_on_the_pretooluse_path():
     checkout, and a control whose verdict depends on which checkout it runs in is testing the
     topology, not the law.
     """
-    soft = PLG.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
+    soft = plg.pretooluse_block("Bash", {"command": "git reset --soft HEAD~1"})
     assert not any("RESET_GUARD" in b for b in soft), (
         f"the reset guard still refuses a reset that cannot touch index or worktree: {soft}"
     )
-    hard = PLG.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
+    hard = plg.pretooluse_block("Bash", {"command": "git reset --hard HEAD~1"})
     assert any("RESET_GUARD" in b for b in hard), "the destructive form stopped blocking"
 
 
@@ -220,13 +220,13 @@ def test_git_handed_to_a_program_that_runs_it_is_judged_as_git():
         ("PowerShell", "node run.js git stash"),
         ("Bash", "python run.py C:/w C:/Git/cmd/git.exe clean -fd"),
     ):
-        assert any("RESET_GUARD" in b for b in PLG.pretooluse_block(tool, {"command": cmd})), cmd
+        assert any("RESET_GUARD" in b for b in plg.pretooluse_block(tool, {"command": cmd})), cmd
     for cmd in (
         "python C:/s/run_in.py C:/w git status",
         "python C:/s/run_in.py C:/w git log --oneline -1",
         'git commit -m "the guard refuses git reset --hard"',
     ):
-        assert not OPL.reset_guard_violations(cmd), cmd
+        assert not opl.reset_guard_violations(cmd), cmd
 
 
 def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
@@ -237,10 +237,10 @@ def test_git_named_by_its_full_path_or_exe_is_judged_as_git():
         ("Bash", "C:/Git/cmd/git.exe stash"),
         ("Bash", "/usr/bin/git checkout -- server.py"),
     ):
-        assert any("RESET_GUARD" in b for b in PLG.pretooluse_block(tool, {"command": cmd})), cmd
+        assert any("RESET_GUARD" in b for b in plg.pretooluse_block(tool, {"command": cmd})), cmd
     for cmd in ("& C:\\Git\\cmd\\git.exe reset --soft HEAD~1", "C:/Git/cmd/git.exe stash list"):
-        assert not OPL.reset_guard_violations(cmd), cmd
-    assert PLG.git_subcommand(["C:\\Git\\cmd\\git.exe", "push", "origin", "main"])[0] == "push"
+        assert not opl.reset_guard_violations(cmd), cmd
+    assert plg.git_subcommand(["C:\\Git\\cmd\\git.exe", "push", "origin", "main"])[0] == "push"
 
 
 def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
@@ -251,9 +251,9 @@ def test_a_heredoc_handed_to_an_interpreter_by_its_full_path_is_judged():
         '"C:\\Program Files\\Git\\bin\\bash.exe"',
         "sudo bash",
     ):
-        assert OPL.reset_guard_violations(f"{shell} <<'EOF'\ngit status\ngit reset --hard\nEOF"), (
+        assert opl.reset_guard_violations(f"{shell} <<'EOF'\ngit status\ngit reset --hard\nEOF"), (
             shell
         )
-    assert not OPL.reset_guard_violations(
+    assert not opl.reset_guard_violations(
         "C:\\Git\\cmd\\git.exe commit -F - <<'MSG'\ngit reset --hard wiped it\nMSG"
     )

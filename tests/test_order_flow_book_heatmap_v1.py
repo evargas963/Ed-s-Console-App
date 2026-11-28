@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from app.options.order_flow import state
-from app.options.order_flow import streaming as S
+from app.options.order_flow import streaming as ofs
 from app.options.order_flow.history import (
     BOOKS_KEPT_SEC,
     LEAN,
@@ -143,7 +143,7 @@ def test_the_consoles_stop_drops_every_book_and_readout_it_kept():
     try:
         for venue in VENUES:
             ts_recv, service, content = _sent(venue)[0]
-            S._ingest_pushed(
+            ofs._ingest_pushed(
                 f"book.{SYM}",
                 book_msg(
                     symbol=SYM, service=service, content=content, src="schwab_book", ts_recv=ts_recv
@@ -154,7 +154,7 @@ def test_the_consoles_stop_drops_every_book_and_readout_it_kept():
             assert book_heatmap_for_ticker(SYM, venue)["available"] is True
         assert len(LEAN.points(SYM)) == 1
     finally:
-        S.stop_order_flow_stream()
+        ofs.stop_order_flow_stream()
     for venue in VENUES:
         assert state.newest_book(SYM, venue) is None
         assert book_heatmap_for_ticker(SYM, venue)["available"] is False
@@ -307,7 +307,7 @@ def test_an_options_book_never_leaks_into_the_underlyings_heatmap():
         if c["symbol"] == "TSLA  260831C00367500"
     )
     sent = next(e for e in contract["events"] if e["kind"] == "book")
-    S._ingest_pushed(
+    ofs._ingest_pushed(
         f"book.{contract['symbol']}",
         book_msg(
             symbol=contract["symbol"],

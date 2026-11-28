@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from tools import operator_law_guard as G
+from tools import operator_law_guard as guard
 
 pytestmark = pytest.mark.rail
 
@@ -68,7 +68,7 @@ def test_destruction_of_an_unrecoverable_tree_is_refused(cmd):
     Delete, remove, move, python file removal and redirect-overwrite of data/; Python run from a
     heredoc, a shell heredoc, and removing the OS protection.
     """
-    assert any(f"under {D}" in b for b in G.bash_violations(cmd)), f"NOT blocked: {cmd}"
+    assert any(f"under {D}" in b for b in guard.bash_violations(cmd)), f"NOT blocked: {cmd}"
 
 
 @pytest.mark.parametrize(
@@ -112,7 +112,7 @@ def test_restore_read_and_ordinary_cleanup_pass(cmd):
 
     The rule judges what runs: prose, file content and protection pass untouched.
     """
-    assert not any(f"under {D}" in b for b in G.bash_violations(cmd)), f"wrongly blocked: {cmd}"
+    assert not any(f"under {D}" in b for b in guard.bash_violations(cmd)), f"wrongly blocked: {cmd}"
 
 
 def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
@@ -128,7 +128,7 @@ def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
         f"Restored from {B}db/20260806_203509_ed_console.db.\n"
         f"MSG"
     )
-    assert not any(f"under {D}" in b for b in G.bash_violations(msg)), (
+    assert not any(f"under {D}" in b for b in guard.bash_violations(msg)), (
         "the guard blocks a commit whose message quotes a destructive command"
     )
 
@@ -136,7 +136,7 @@ def test_a_commit_message_quoting_a_destructive_command_is_not_blocked():
 def test_the_commit_exemption_is_by_verb_not_by_heredoc():
     """A heredoc that is NOT a commit is judged."""
     payload = f"cat <<'EOF' | bash\nrm -f {D}ed_console.db\nEOF"
-    assert any(f"under {D}" in b for b in G.bash_violations(payload)), (
+    assert any(f"under {D}" in b for b in guard.bash_violations(payload)), (
         "a heredoc piped to a shell is a write channel and must stay watched"
     )
 
@@ -146,10 +146,10 @@ def test_the_protected_tree_is_guarded_and_backups_is_not():
 
     No database backups are kept (operator's decision), so backups/ is no protected tree.
     """
-    assert any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {D}x"))
-    assert not any(f"under {D}" in b for b in G.bash_violations(f"rm -rf {B}x"))
+    assert any(f"under {D}" in b for b in guard.bash_violations(f"rm -rf {D}x"))
+    assert not any(f"under {D}" in b for b in guard.bash_violations(f"rm -rf {B}x"))
 
 
 def test_empty_and_none_commands_do_not_crash():
-    assert G.bash_violations("") == []
-    assert G.bash_violations(None) == []
+    assert guard.bash_violations("") == []
+    assert guard.bash_violations(None) == []

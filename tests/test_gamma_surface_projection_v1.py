@@ -104,7 +104,7 @@ def test_fixture_preconditions_are_real_two_expiry_input():
 
 
 # A. EXACT CELL EQUALITY — a surface cell equals the canonical faucet on that expiry's slice.
-def test_A_cell_equals_canonical_faucet_per_expiry_slice():
+def test_cell_equals_canonical_faucet_per_expiry_slice():
     chain = _chain()
     surface = _surface(chain, SPOT)
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
@@ -124,7 +124,7 @@ def test_A_cell_equals_canonical_faucet_per_expiry_slice():
 
 
 # B. ADDITIVITY / RECONCILIATION — per-expiry cells sum to the canonical full-book value.
-def test_B_per_expiry_sum_reconciles_to_full_book():
+def test_per_expiry_sum_reconciles_to_full_book():
     chain = _chain()
     held = sessions()
     full, _ = compute_exposures_by_strike(chain, spot=SPOT, now=NOW, sessions=held)
@@ -150,7 +150,7 @@ def test_B_per_expiry_sum_reconciles_to_full_book():
 
 # C. EXPIRY ISOLATION — changing the E2 slice must not alter any E1 cell (shared spot is the
 #    only link). The mutation is a REAL subset: every other E2 row removed.
-def test_C_expiry_isolation():
+def test_expiry_isolation():
     chain = _chain()
     base = _surface(chain, SPOT)
     kept_e2 = _slice(chain, E2)[::2]
@@ -165,7 +165,7 @@ def test_C_expiry_isolation():
 
 
 # F. INPUT-PROJECTION COVERAGE — every OI-bearing expiry/strike IN THE SUPPLIED CHAIN is projected.
-def test_F_input_projection_coverage():
+def test_input_projection_coverage():
     chain = _chain()
     surface = _surface(chain, SPOT)
     assert {e["expiry"] for e in surface["expirations"]} == {E1, E2}
@@ -192,7 +192,7 @@ def test_F_input_projection_coverage():
 
 # G. MALFORMED / MISSING EXPIRY — excluded and counted, never reassigned to a column. The malformed
 #    rows are REAL rows with their native expirationDate broken (the only field under test).
-def test_G_malformed_expiry_excluded_not_reassigned():
+def test_malformed_expiry_excluded_not_reassigned():
     clean_chain = _chain()
     probe = _heaviest(_raw_slice(E1))  # the heaviest real row
     chain = clean_chain + read_chain(
@@ -209,7 +209,7 @@ def test_G_malformed_expiry_excluded_not_reassigned():
 
 
 # H. SPX / SPXW — canonical underlying->option-chain identity is unchanged; no UI translation.
-def test_H_spx_identity_unchanged():
+def test_spx_identity_unchanged():
     assert ticker_storage_key("SPX") == "$SPX"
     assert ticker_storage_key("$SPX") == "$SPX"
     # an SPXW-rooted contract projects without any symbol rewriting: a REAL vendor row re-rooted
@@ -223,7 +223,7 @@ def test_H_spx_identity_unchanged():
 # J. LIVE-HEATMAP CONTRACT IDENTITY (state-authority review, 2026-09-12) — every cell must carry
 #    the vendor OSI symbol(s) that produced it, verbatim. Never invented: read straight off the
 #    same real contract rows compute_exposures_by_strike already aggregates for this cell.
-def test_J_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
+def test_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
     chain = _chain()
     surface = _surface(chain, SPOT)
     col1 = [i for i, e in enumerate(surface["expirations"]) if e["expiry"] == E1][0]
@@ -234,7 +234,7 @@ def test_J_cell_carries_the_real_vendor_symbols_for_its_strike_and_expiry():
     }
 
 
-def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
+def test_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     """The ABSENT-side case, from ONE real row re-struck at a strike no other row uses.
 
     No other row in the chain uses the strike, so only ITS OWN presence/absence is under test.
@@ -253,7 +253,7 @@ def test_J_a_side_with_no_real_contract_reports_null_not_a_fabricated_symbol():
     assert row["contracts"][0]["put"] is None
 
 
-def test_J_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
+def test_negative_control_a_missing_symbol_field_reports_null_not_a_stale_or_wrong_value():
     """A contract missing its own `symbol` field must report None.
 
     It must never silently borrow a strike-mate's symbol or fall back to a stale cached value
@@ -288,7 +288,7 @@ def _cells_and_buckets():
             yield row, col, bucket
 
 
-def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
+def test_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
     checked = 0
     for row, col, bucket in _cells_and_buckets():
         assert row["dex"][col] == bucket_metric(bucket, "net_dex_dollars")  # unrounded
@@ -296,7 +296,7 @@ def test_K_dex_cell_equals_the_same_canonical_faucet_net_dex_dollars():
     assert checked > 20
 
 
-def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
+def test_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_convention_as_net_gex():
     checked = nonzero = 0
     for row, col, bucket in _cells_and_buckets():
         if bucket_metric(bucket, "net_vanna") is None:  # a leg's vanna input not sent
@@ -311,7 +311,7 @@ def test_K_vanna_cell_equals_call_vanna_minus_put_vanna_the_same_dealer_conventi
     assert nonzero > 10, "vanna must be real values, not zero against zero"
 
 
-def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
+def test_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_totals():
     checked = 0
     for row, col, bucket in _cells_and_buckets():
         # the cell carries the one readers' answers: Schwab's values as sent, 0 a real zero
@@ -331,7 +331,7 @@ def test_K_oi_and_volume_cells_equal_the_same_canonical_faucets_call_and_put_tot
     assert checked > 20
 
 
-def test_K_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zero():
+def test_a_strike_absent_from_one_expirys_own_slice_reports_null_there_not_zero():
     """A strike in E2's real book with no contract in E1's slice reports None in the E1 column.
 
     None for dex/vanna/oi/volume in the E1 column -- never a silent 0.0, which would read as
