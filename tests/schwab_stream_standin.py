@@ -14,7 +14,10 @@ its answers to a request it took part of, as the daemon recorded them on 2026-11
 the limit as DISCARDED, then code 0 "<COMMAND> command succeeded"
 (tests/test_stream_limit_remembered_v1.py holds this stand-in to that record);
 Schwab's answers to SUBS asking field numbers past what each service accepts (code 22 "SUBS command
-failed", tests/fixtures/real_schwab_field_number_replies_2026_10_12.json).
+failed", tests/fixtures/real_schwab_field_number_replies_2026_10_12.json); the largest message it
+takes, measured on 2026-11-28 (MESSAGE_MAX: a message of 65,535 bytes answered, one of 65,536
+closed with 1009 "Text message too large: 65,536 > 65,535"), which websockets' own limit closes
+with the same code.
 STAND-INS: the login (Schwab's was not logged); the limit (`limits`, per service) a test sets;
 which symbols of a request past the limit Schwab keeps (its recorded refusals say how many, never
 which, and its document says neither): the first that fit, or, induced, with `keeps_what_fits`
@@ -55,6 +58,8 @@ HIGHEST_FIELD = {
 
 #: how often the streamer sends its heartbeat
 HEARTBEAT_SEC = 1.0
+#: the largest message, in bytes as received, Schwab's streamer takes; a larger one closes it, 1009
+MESSAGE_MAX = 65_535
 
 
 def refusal(service: str, limit: int, discarded: int) -> str:
@@ -98,8 +103,9 @@ class _Outbox:
 class LocalStreamer:
     """The streamer on 127.0.0.1 (`url`).
 
-    Each request it receives is kept (`requests`), with the
-    frames it answered (`answers`). SUBS/ADD hold the keys asked for up to `limits[service]`;
+    Each request it receives is kept (`requests`), with the size of the message that carried it
+    (`sizes`) and the frames it answered (`answers`); a message over MESSAGE_MAX closes the
+    socket. SUBS/ADD hold the keys asked for up to `limits[service]`;
     past it, the request is answered twice, as Schwab answers: code 19 (refusal), then code 0
     ("<COMMAND> command succeeded") when it kept part of the request, or code 24 ("<COMMAND>
     command failed") when it kept none. UNSUBS releases them, and a new connection holds
@@ -131,6 +137,7 @@ class LocalStreamer:
         #: per service, a data entry Schwab sent, streamed once a SUBS on that service is accepted
         self.data = dict(data)
         self.requests: list = []
+        self.sizes: list[int] = []  # each request's message, in bytes as received
         self.answers: list = []
         self.open_sockets = 0  # the connections a client has open with it now
         self.held: dict[str, list[str]] = defaultdict(list)
@@ -140,7 +147,7 @@ class LocalStreamer:
 
         async def main():
             self.stop = asyncio.Event()
-            async with serve(self._client, "127.0.0.1", 0) as server:
+            async with serve(self._client, "127.0.0.1", 0, max_size=MESSAGE_MAX) as server:
                 self.url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}"
                 ready.set()
                 await self.stop.wait()
@@ -159,7 +166,9 @@ class LocalStreamer:
         self.open_sockets += 1
         try:
             async for raw in ws:
+                size = len(raw.encode("utf-8") if isinstance(raw, str) else raw)
                 for req in json.loads(raw)["requests"]:
+                    self.sizes.append(size)
                     if req["command"] == "LOGOUT" and self.silent_on_logout:
                         self.requests.append(req)
                         continue
@@ -243,6 +252,12 @@ class LocalStreamer:
             (r["command"], r["parameters"]["keys"].split(","))
             for r in self.requests
             if r["service"] == service
+        ]
+
+    def sizes_asked(self, service: str) -> list[int]:
+        """Return the size, in bytes as received, of each request's message on `service`."""
+        return [
+            n for n, r in zip(self.sizes, self.requests, strict=True) if r["service"] == service
         ]
 
     def close(self) -> None:

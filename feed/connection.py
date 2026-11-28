@@ -72,8 +72,9 @@ DEAD_SEC = 30.0
 RECONNECT_BACKOFF_SEC = (1.0, 2.0, 5.0, 10.0, 30.0, 60.0)
 #: a connection that lasted this long starts the reconnect waits over
 STEADY_CONNECTION_SEC = 300.0
-#: Schwab closes the socket on a request over 65,535 bytes; stay well under it.
-MAX_REQUEST_BYTES = 48_000
+#: Schwab closes the stream on a message over 65,535 bytes, the whole message as sent: 1009 "Text
+#: message too large: 65,536 > 65,535", while one of 65,535 is answered
+MAX_REQUEST_BYTES = 65_535
 #: A request Schwab does not answer in this long, by Schwab's time on the frames read, means the
 #: connection is broken. Schwab's time, not the reader's: an answer Schwab sent waits behind the
 #: frames before it until the reader takes them, and a reader running behind is not Schwab silent.
@@ -161,21 +162,17 @@ FIELDS = {svc: ",".join(str(f) for f in range(top + 1)) for svc, top in HIGHEST_
 SCHWAB_CONNECTING = "NOT CONNECTED: the stream is logging in, or its connection has just ended"
 
 
-def split_request(symbols: list[str], max_bytes: int = MAX_REQUEST_BYTES) -> list[list[str]]:
-    """Chunks whose comma-joined key list stays under max_bytes."""
-    chunks: list[list[str]] = []
-    cur: list[str] = []
-    size = 0
-    for s in symbols:
-        n = len(s) + 1
-        if cur and size + n > max_bytes:
-            chunks.append(cur)
-            cur, size = [], 0
-        cur.append(s)
-        size += n
-    if cur:
-        chunks.append(cur)
-    return chunks
+def keys_that_fit(symbols: list[str], room: int) -> int:
+    """How many of `symbols`, from the first, fit in `room` bytes as a request's keys.
+
+    The keys are the symbols joined by commas, each as JSON writes it; at least one is taken.
+    """
+    size = -1  # n symbols take n - 1 commas
+    for n, symbol in enumerate(symbols):
+        size += len(json.dumps(symbol)) - 1  # its characters as JSON writes them, and a comma
+        if size > room:
+            return max(n, 1)
+    return len(symbols)
 
 
 def news_headline(item: dict[str, Any]) -> NewsHeadline:
@@ -372,22 +369,31 @@ class Connection:
         self.wake.set()
 
     async def send_requests(self, stream: TimedStream) -> None:
-        """Send every queued request, each split under Schwab's message limit.
+        """Send every queued request in parts, each message as sent at most MAX_REQUEST_BYTES.
 
-        Nothing waits for an answer: the reader matches each answer to its request (answered).
-        A SUBS replaces all a service holds, so only its first part is SUBS and the rest are ADD.
+        Each part carries as many symbols as its whole message holds: the request is made with
+        no keys, its message measured as schwab-py sends it (json.dumps), and the keys that fit
+        the rest put in. Nothing waits for an answer: the reader matches each answer to its
+        request (answered). A SUBS replaces all a service holds, so only its first part is SUBS
+        and the rest are ADD.
         """
         while self._requests:
             svc, first, symbols = self._requests.pop(0)
-            for i, chunk in enumerate(split_request(symbols)):
-                cmd = "ADD" if first == "SUBS" and i else first
-                params = {"keys": ",".join(chunk)}
+            part = 0
+            while symbols:
+                cmd = "ADD" if first == "SUBS" and part else first
+                params = {"keys": ""}
                 if cmd != "UNSUBS":
                     params["fields"] = FIELDS[svc]
                 req, rid = stream._make_request(service=svc, command=cmd, parameters=params)
+                room = MAX_REQUEST_BYTES - len(json.dumps({"requests": [req]}))
+                taken = keys_that_fit(symbols, room)
+                chunk, symbols = symbols[:taken], symbols[taken:]
+                params["keys"] = ",".join(chunk)
                 self._sent[rid] = _Sent(svc, cmd, chunk, self.clock())
                 await stream._send({"requests": [req]})
                 log.info("%s %s sent: %d symbols, requestid %d", svc, cmd, len(chunk), rid)
+                part += 1
 
     def answered(self, response: dict[str, Any], received: float) -> None:
         """Take one answer from Schwab (an entry of a frame's `response`).
