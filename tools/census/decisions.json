@@ -558,6 +558,48 @@
       "category": "ruff S608 (bandit",
       "pattern": "^(db\\.py:(212|279)|stream_spine\\.py:(2544|2597)|tools/schwab_field_inventory\\.py:342|tests/test_capture_writer_off_event_loop_v1\\.py:(39|186)|tests/test_data_path_stream_kept_v1\\.py:(231|385|955|963)|tests/test_data_path_tables_stand_v1\\.py:91|tests/test_data_path_writer_failures_v1\\.py:(103|171)): Possible SQL injection",
       "reason": "each line read: only a table's or a column's name is written in the text, the code's own or SQLite's catalog's (quoted where read from it), and every value is bound: SQLite's parameter is 'a placeholder in the expression for a value' (sqlite.org lang_expr, Parameters), not a name. Judged by file and line, so a new or moved one is read again"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^tests/",
+      "reason": "the value a test expects, worked apart from the code and asserted beside its own docstring: the test's data, which a name would hide"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^calc/(math_levels|order_flow)\\.py:\\d+: Magic value used in comparison, consider replacing `2` ",
+      "reason": "two, the fewest a pair is: a width needs two strikes, a change two points"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^(option_contract|time_et)\\.py:\\d+: Magic value used in comparison, consider replacing `10` ",
+      "reason": "the length of an ISO date, YYYY-MM-DD"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^push/experimental\\.py:\\d+: Magic value used in comparison, consider replacing `0\\.5` ",
+      "reason": "a half, as the key it sets says (above_half)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^server\\.py:\\d+: Magic value used in comparison, consider replacing `40` ",
+      "reason": "a git commit's hash in hex, 40 characters (SHA-1)"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^stream_spine\\.py:\\d+: Magic value used in comparison, consider replacing `(-5|256)` ",
+      "reason": "CPython's small integers, -5 to 256, one object each that every module shares, so a size count takes none of them"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^time_et\\.py:\\d+: Magic value used in comparison, consider replacing `(90|5400|172800)` ",
+      "reason": "age_text's unit boundaries, 90 s, 90 min and 48 h, written beside the unit each switches to and shown in its docstring"
     }
   ]
 }

@@ -25,6 +25,7 @@ import sqlite3
 import sys
 import time
 from collections import Counter
+from http import HTTPStatus
 from pathlib import Path
 
 import time_et
@@ -299,7 +300,7 @@ def rest_rows(
         try:
             r = call()
             status[name] = r.status_code
-            if r.status_code != 200:
+            if r.status_code != HTTPStatus.OK:
                 continue
             body = r.json()
         except Exception as e:  # an endpoint that fails is reported with its error

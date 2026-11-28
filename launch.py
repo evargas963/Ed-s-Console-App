@@ -28,6 +28,7 @@ import sys
 import time
 import urllib.request
 import webbrowser
+from http import HTTPStatus
 from pathlib import Path
 
 import psutil
@@ -243,7 +244,7 @@ def wait_for_pages(seconds: float, db_path: Path | None = None) -> Ports:
                     f"http://127.0.0.1:{ports.console}/api/health", timeout=min(left, 2.0)
                 ) as r:
                     r.read()
-                    if r.status == 200:
+                    if r.status == HTTPStatus.OK:
                         return ports
                     why = f"HTTP {r.status}"
             except OSError as e:
