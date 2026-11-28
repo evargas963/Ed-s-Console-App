@@ -600,6 +600,12 @@
       "category": "ruff PLR2004: a bare number compared",
       "pattern": "^time_et\\.py:\\d+: Magic value used in comparison, consider replacing `(90|5400|172800)` ",
       "reason": "age_text's unit boundaries, 90 s, 90 min and 48 h, written beside the unit each switches to and shown in its docstring"
+    },
+    {
+      "verdict": "ok",
+      "category": "ruff PLR2004: a bare number compared",
+      "pattern": "^(tools/check_end_to_end\\.py:\\d+: Magic value used in comparison, consider replacing `[23]` |tools/census/census\\.py:\\d+: Magic value used in comparison, consider replacing `2` |tools/operator_law_guard\\.py:\\d+: Magic value used in comparison, consider replacing `2` )",
+      "reason": "a call's arguments counted against its own signature, written beside the call it matches: `.get(key, default)` and `.setdefault(key, default)` two, `getattr(obj, name, default)` three, `os.environ.get(name, default)` two, `time(hour, minute)` and `round(x, ndigits)` two, `gh <group>` two words; a name would only say the signature again"
     }
   ]
 }

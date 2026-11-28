@@ -42,6 +42,7 @@ import subprocess
 import sys
 import tarfile
 import tokenize
+from http import HTTPStatus
 from pathlib import Path
 
 import db
@@ -332,6 +333,9 @@ for fs in by_blob.values():
         add(S, "identical files (extra copies)", "1", "git blob", " = ".join(sorted(fs)))
 
 trees = {f: ast.parse(TEXT[f]) for f in ALL_PY}
+#: the fewest syntax nodes a function body (its docstring set aside) has to count as a copy: a
+#: smaller one (a return of one name, a call passed on) reads alike in unrelated functions
+COPIED_BODY_NODES = 12
 bodies = collections.defaultdict(list)
 func_index = []  # (file, line, name, length, node)
 for f, tree in trees.items():
@@ -344,7 +348,7 @@ for f, tree in trees.items():
         if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
             body = body[1:]
         mod = ast.Module(body=body, type_ignores=[])
-        if sum(1 for _ in ast.walk(mod)) >= 12:
+        if sum(1 for _ in ast.walk(mod)) >= COPIED_BODY_NODES:
             key = hashlib.sha1(
                 ast.dump(mod, annotate_fields=False).encode(), usedforsecurity=False
             ).hexdigest()
@@ -401,12 +405,18 @@ def _own_nodes(fn):
             stack.extend(ast.iter_child_nodes(n))
 
 
+#: the fewest expressions (names, numbers, calls, operations; not the parser's load and operator
+#: markers) an arithmetic has to count as a formula: below it, a sum of two items or of two calls
+#: reads alike in unrelated code
+FORMULA_EXPRESSIONS = 9
+#: the fewest keys a dict literal has to count as an answer built by hand
+ANSWER_KEYS = 3
 FORMULA = "the same formula in more than one function: Python product (one producer, rule 3)"
 ANSWER = (
     "the same answer built by hand in more than one function: Python product "
-    "(dict literals with the same 3+ keys; one producer, rule 3)"
+    f"(dict literals with the same {ANSWER_KEYS}+ keys; one producer, rule 3)"
 )
-add(S, FORMULA, "3", "ast: arithmetic of 9+ expressions, names set aside")
+add(S, FORMULA, "3", f"ast: arithmetic of {FORMULA_EXPRESSIONS}+ expressions, names set aside")
 add(S, ANSWER, "3", "ast: dict literal key sets")
 formulas = collections.defaultdict(set)
 answers = collections.defaultdict(set)
@@ -416,17 +426,15 @@ for f in PRODUCT_PY:
             continue
         where = f"{f}:{fn.lineno} {fn.name}"
         for n in _own_nodes(fn):
-            # 9 expressions (names, numbers, calls, operations; not the parser's load and
-            # operator markers): below it, a sum of two items or of two calls reads alike in
-            # unrelated code; `|` is a type union or a set or dict merge, not a formula
+            # `|` is a type union or a set or dict merge, not a formula
             if (
                 isinstance(n, ast.BinOp)
                 and not isinstance(n.op, ast.BitOr)
-                and sum(isinstance(e, ast.expr) for e in ast.walk(n)) >= 9
+                and sum(isinstance(e, ast.expr) for e in ast.walk(n)) >= FORMULA_EXPRESSIONS
             ):
                 shape = ast.dump(_Unnamed().visit(copy.deepcopy(n)), annotate_fields=False)
                 formulas[shape].add(where)
-            elif isinstance(n, ast.Dict) and len(n.keys) >= 3:
+            elif isinstance(n, ast.Dict) and len(n.keys) >= ANSWER_KEYS:
                 keys = [k.value for k in n.keys if isinstance(k, ast.Constant)]
                 if len(keys) == len(n.keys) and all(isinstance(k, str) for k in keys):
                     answers[tuple(sorted(keys))].add(where)
@@ -778,6 +786,9 @@ overrides = {
         for d in n.decorator_list
     )
 }
+#: vulture's confidence in an unused import (vulture.core); unreachable code and an unused argument
+#: are 100%, every other kind its default 60%, a guess a library's own reads may disprove
+VULTURE_SURE = 90
 for ln in out.splitlines():
     m = re.match(r"(.+?):(\d+): unused (\w+) '(\w+)' \((\d+)% confidence", ln)
     if m is None:
@@ -795,7 +806,7 @@ for ln in out.splitlines():
         or (f, name) in overrides
     ):
         continue  # FastAPI calls a route by its decorator; ruff ARG counts unused parameters
-    if kind == "attribute" and conf < 90:
+    if kind == "attribute" and conf < VULTURE_SURE:
         add(
             S,
             f"vulture: attribute set on another object in {area(f)} (candidates, check "
@@ -804,7 +815,7 @@ for ln in out.splitlines():
             "vulture",
             item,
         )
-    elif conf >= 90 or not named_again:
+    elif conf >= VULTURE_SURE or not named_again:
         add(S, f"vulture: unused code in {area(f)}", "1", "vulture", item)
 
 imports_of = collections.defaultdict(set)
@@ -912,13 +923,17 @@ for req in [
                 "requirements + pip show",
                 f"{req}: {pkg}",
             )
-js_all = "\n".join(
-    TEXT[f] for f in FILES if f.endswith((".js", ".mjs", ".json", ".yml", ".html")) and f in TEXT
+#: what a JavaScript package is used by: every text file but the manifests and their locks, which
+#: name every package they hold (a script, a config or a workflow that runs it names it), and the
+#: manifest's own scripts
+js_used = "\n".join(
+    t for f, t in TEXT.items() if not f.endswith(("package.json", "package-lock.json"))
 )
 for pj_path in [p for p in FILES if p.endswith("package.json")]:
     manifest = json.loads(TEXT[pj_path])
+    scripts = "\n".join(manifest.get("scripts", {}).values())
     for section in [s for s in ("dependencies", "devDependencies") if s in manifest]:
-        for dep in [d for d in manifest[section] if js_all.count(d) <= 2]:
+        for dep in [d for d in manifest[section] if d not in js_used and d not in scripts]:
             add(S, "JS packages required but never used (check each)", "1", pj_path, dep)
 index = TEXT["static/index.html"]
 for f in [f for f in PAGE_ALL if f != "static/index.html"]:
@@ -1031,8 +1046,11 @@ FORMATTED = "a date, time or number formatted outside its one formatter: Python 
 HELD_OUTSIDE_STATE = "values a module holds at its top level, outside state/ (check each)"
 #: size is counted and never judged (AGENTS.md, Fix what you find): a long function or file is a
 #: prompt to ask whether it does one thing, and no code is reshaped only to meet a count
-LONG_FUNCTIONS = "product functions over 80 lines (reported)"
-LONG_FILES = "product files over 1,000 lines (reported)"
+#: the lengths past which a product function and a product file are listed, each a count for a
+#: person to read, never a gate (AGENTS.md: size is not a rule)
+LONG_FUNCTION_LINES, LONG_FILE_LINES = 80, 1000
+LONG_FUNCTIONS = f"product functions over {LONG_FUNCTION_LINES} lines (reported)"
+LONG_FILES = f"product files over {LONG_FILE_LINES:,} lines (reported)"
 CONTAINERS = {"dict", "list", "set", "defaultdict", "deque", "OrderedDict", "Counter"}
 for cat, rule, tool in (
     (FORMATTED, "13", "ast"),
@@ -1254,7 +1272,7 @@ for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT]:
                 f"{f}:{n}: {s[:140]}",
             )
 for f, n, name, length, _node in func_index:
-    if area(f) == "product" and length > 80:
+    if area(f) == "product" and length > LONG_FUNCTION_LINES:
         add(S, LONG_FUNCTIONS, "1", "ast", f"{f}:{n} {name} ({length} lines)")
 for f in [f for f in PRODUCT_PY if not f.startswith("state/")]:
     made = CONTAINERS | {n.name for n in trees[f].body if isinstance(n, ast.ClassDef)}
@@ -1333,7 +1351,7 @@ lines_matching(
     "regex",
     skip_comment=True,
 )
-for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT and TEXT[f].count("\n") > 1000]:
+for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT and TEXT[f].count("\n") > LONG_FILE_LINES]:
     add(S, LONG_FILES, "1", "wc", f"{f} ({TEXT[f].count(chr(10)):,} lines)")
 register = TEXT["docs/derived_register.md"]
 for f, n, name, _length, _node in func_index:
@@ -1532,12 +1550,14 @@ for f, t in trees.items():
         ):
             row = INDUCED_WAITS if "INDUCED" in lines[c.lineno - 1] else FIXED_WAITS
             add(S, row, "9/15", "ast", f"{f}:{c.lineno}: {ast.unparse(c)}")
+#: pytest.approx's default relative tolerance, one part in a million
+PYTEST_APPROX_REL = 1e-6
 for f in [f for f in TEST_FILES if f.endswith(".py")]:
     for n, ln in enumerate(TEXT[f].splitlines(), 1):
         if not re.search(r"pytest\.approx\(|\babs=\s*[\d.]|\brel=\s*[\d.]", ln):
             continue
         tols = [float(x) for x in re.findall(r"\b(?:abs|rel)=\s*([\d.]+(?:e-?\d+)?)", ln)]
-        if any(t > 1e-6 for t in tols):
+        if any(t > PYTEST_APPROX_REL for t in tols):
             add(
                 S,
                 "loose tolerances in tests (above one part in a million; each needs its reason)",
@@ -2212,7 +2232,7 @@ else:
     for endpoint, n in collections.Counter(a[3] for a in asked).most_common():
         add(S, RATES, "3", "the daemon's log", f"{endpoint}: {n:,}")
     for (sent, _answered, code, endpoint, ref), now_flying in zip(asked, flying, strict=True):
-        if code != 200:
+        if code != HTTPStatus.OK:
             before = bisect.bisect_left(sends, sent) - bisect.bisect_left(sends, sent - 60)
             said = (
                 f"{code} {endpoint} sent {time_et.ct_time(sent)}: {now_flying} in flight, "
@@ -2919,6 +2939,8 @@ out = run(
         "--exit-zero",
     ]
 )
+#: ruff's mccabe max-complexity when none is set (McCabe's own suggested limit)
+MCCABE_DEFAULT = 10
 scores = collections.defaultdict(list)
 for ln in out.splitlines():
     if m := re.match(r"(.+?):(\d+):\d+: C901 `(.+?)` is too complex \((\d+) > 0\)", ln):
@@ -2932,10 +2954,10 @@ for a, fs in sorted(scores.items()):
         "ruff C901",
         count=sum(s for s, _ in fs),
     )
-    over = f"complexity, McCabe, {a}: functions over 10, ruff's default (reported)"
+    over = f"complexity, McCabe, {a}: functions over {MCCABE_DEFAULT}, ruff's default (reported)"
     add(S, over, "1", "ruff C901")
     for s, it in sorted(fs, reverse=True):
-        if s > 10:
+        if s > MCCABE_DEFAULT:
             add(
                 S,
                 over,

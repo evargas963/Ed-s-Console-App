@@ -83,6 +83,8 @@ _SHELL_REMOVERS = frozenset(
 )
 #: icacls flags that remove or override a file's protection (adding a deny is protection).
 _ACL_LOOSENERS = ("/remove", "/reset", "/grant", "/setowner", "/inheritance")
+#: the longest mode open() writes a file in: its letter, `+` and `b` ("w+b")
+_WRITE_MODE_LONGEST = 3
 #: Python calls that delete, move, rename or overwrite a path.
 _PY_REMOVERS = frozenset(
     {
@@ -123,7 +125,7 @@ def _python_violation(code: str) -> bool:
             name == "open"
             and strings
             and _protected(strings[0])
-            and any(s[:1] in ("w", "a") and len(s) <= 3 for s in strings[1:])
+            and any(s[:1] in ("w", "a") and len(s) <= _WRITE_MODE_LONGEST for s in strings[1:])
         ):
             return True
     return False
