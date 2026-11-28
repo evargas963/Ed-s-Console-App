@@ -35,7 +35,6 @@ from schwab.client import Client
 import time_et
 from calibration.complete_chain_capture import capture_message
 from feed.schwab_client import (
-    QUOTES_BATCH_MAX,
     REQUESTS_AT_ONCE,
     Answer,
     OneRefreshSession,
@@ -43,6 +42,7 @@ from feed.schwab_client import (
     get_market_hours,
     get_price_history,
     option_expiries,
+    quotes_batch,
     safe_get_chain,
     safe_get_quotes,
 )
@@ -372,7 +372,8 @@ class ChainSweep:
     LEVELONE_OPTIONS record on the bus, `streamed`) with
     every Greek sent takes the stream's, each with its field's Schwab time (`greeksTime`,
     {field: ms}), and is not asked for again. Every other contract is asked for on the quotes
-    endpoint, QUOTES_BATCH_MAX symbols to a request across tickers, and takes its quote as Schwab
+    endpoint, as many symbols to a request as its measured URL holds (quotes_batch) across
+    tickers, and takes its quote as Schwab
     sent it (`quote`; its `greeksTime` is None). Each /quotes answer goes to the console at once
     with the time it was received (topic `optquotes`). A Greek Schwab does not send is absent
     (None).
@@ -815,24 +816,24 @@ class ChainSweep:
     ) -> None:
         """Ask for the queued contracts' quotes, REQUESTS_AT_ONCE requests with Schwab at a time.
 
-        Each request is for QUOTES_BATCH_MAX contracts, and the answers are taken in the order
-        asked (take_quotes). As one answer is taken the next request is sent, so
-        REQUESTS_AT_ONCE stay with Schwab while contracts wait: none of them waits for the
-        others' answers to be read. With `part_full` every queued contract is asked for, the
-        last request part-full (after a ticker a page shows, and at a rotation's end); without
-        it only full requests, the rest asked with the next chain's. A stop sends no request
-        more, and the answers already asked for are taken.
+        Each request is for as many contracts as its URL holds within the measured limit
+        (quotes_batch), and the answers are taken in the order asked (take_quotes). As one
+        answer is taken the next request is sent, so REQUESTS_AT_ONCE stay with Schwab while
+        contracts wait: none of them waits for the others' answers to be read. With `part_full`
+        every queued contract is asked for, the last request part-full (after a ticker a page
+        shows, and at a rotation's end); without it only full requests, the rest asked with the
+        next chain's. A stop sends no request more, and the answers already asked for are taken.
         """
-        fewest = 1 if part_full else QUOTES_BATCH_MAX
         asked: deque[tuple[list[_Queued], Future[Answer]]] = deque()
         while True:
             self._queue = [
                 (chain, ct) for chain, ct in self._queue if chain.ticker in self.watchlist
             ]  # removed: not asked
-            while (
-                len(asked) < REQUESTS_AT_ONCE and len(self._queue) >= fewest and not stop.is_set()
-            ):
-                batch, self._queue = self._queue[:QUOTES_BATCH_MAX], self._queue[QUOTES_BATCH_MAX:]
+            while len(asked) < REQUESTS_AT_ONCE and self._queue and not stop.is_set():
+                fits = quotes_batch(ct["symbol"] for _chain, ct in self._queue)
+                if fits == len(self._queue) and not part_full:
+                    break  # not a full request: asked with the next chain's
+                batch, self._queue = self._queue[:fits], self._queue[fits:]
                 symbols: list[str] = [ct["symbol"] for _chain, ct in batch]
                 ask = self._asking.submit(self.ask_quotes, schwab_client, symbols, stop)
                 asked.append((batch, ask))

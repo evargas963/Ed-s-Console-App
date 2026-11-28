@@ -23,7 +23,7 @@ import json
 import logging
 import sqlite3
 import sys
-import time
+import threading
 from collections import Counter
 from http import HTTPStatus
 from pathlib import Path
@@ -32,6 +32,7 @@ import time_et
 from app.market_data.schwab.streaming.capture import stored_watchlist
 from config import build_config, load_dotenv_file
 from db_authority import canonical_db_path
+from feed.chain_sweep import asked_again_if_refused
 from feed.schwab_client import build_client_from_token
 from feed.stream import streaming_fields
 from option_contract import listed_expiries
@@ -124,12 +125,6 @@ def _option_symbols(c) -> list[str]:
     return out
 
 
-def _paced(call):
-    """Schwab allows 120 requests a minute."""
-    time.sleep(0.55)
-    return call()
-
-
 def rest_rows(
     c, roster: list[str]
 ) -> tuple[dict[tuple[str, str], set[str]], dict[str, str], dict[str, object]]:
@@ -149,14 +144,12 @@ def rest_rows(
             (
                 "chains",
                 f"{s} {d}",
-                lambda s=s, d=d: _paced(
-                    lambda: c.get_option_chain(
-                        s,
-                        include_underlying_quote=True,
-                        strike_range=c.Options.StrikeRange.ALL,
-                        from_date=d,
-                        to_date=d,
-                    )
+                lambda s=s, d=d: c.get_option_chain(
+                    s,
+                    include_underlying_quote=True,
+                    strike_range=c.Options.StrikeRange.ALL,
+                    from_date=d,
+                    to_date=d,
                 ),
             )
             for s in CHAIN_SYMBOLS
@@ -166,15 +159,13 @@ def rest_rows(
             (
                 "chains",
                 f"SPY analytical {d}",
-                lambda d=d: _paced(
-                    lambda: c.get_option_chain(
-                        "SPY",
-                        strategy=c.Options.Strategy.ANALYTICAL,
-                        include_underlying_quote=True,
-                        strike_range=c.Options.StrikeRange.ALL,
-                        from_date=d,
-                        to_date=d,
-                    )
+                lambda d=d: c.get_option_chain(
+                    "SPY",
+                    strategy=c.Options.Strategy.ANALYTICAL,
+                    include_underlying_quote=True,
+                    strike_range=c.Options.StrikeRange.ALL,
+                    from_date=d,
+                    to_date=d,
                 ),
             )
             for d in listed_expiries(c.get_option_expiration_chain("SPY").json(), today)
@@ -184,16 +175,14 @@ def rest_rows(
             (
                 "chains",
                 f"SPY {st.value}",
-                lambda st=st: _paced(
-                    lambda: c.get_option_chain(
-                        "SPY",
-                        strategy=st,
-                        interval=5,
-                        strike_count=2,
-                        include_underlying_quote=True,
-                        from_date=today,
-                        to_date=today + dt.timedelta(days=45),
-                    )
+                lambda st=st: c.get_option_chain(
+                    "SPY",
+                    strategy=st,
+                    interval=5,
+                    strike_count=2,
+                    include_underlying_quote=True,
+                    from_date=today,
+                    to_date=today + dt.timedelta(days=45),
                 ),
             )
             for st in c.Options.Strategy
@@ -298,7 +287,9 @@ def rest_rows(
     for endpoint, variant, call in calls:
         name = f"{endpoint} {variant}".strip()
         try:
-            r = call()
+            # each sent as the last is answered, no pace of ours; one Schwab refuses (429) sent
+            # again as the program sends its own (chain_sweep.asked_again_if_refused)
+            r = asked_again_if_refused(call, threading.Event())
             status[name] = r.status_code
             if r.status_code != HTTPStatus.OK:
                 continue
