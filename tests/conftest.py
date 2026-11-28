@@ -129,8 +129,10 @@ def _live_feed_starts_down(_markets_answers_held):
     price mark it (tests/feed_live_helper.py). The day's first streamed trade (time_et.record_trade)
     is process-global too: every test starts with none. So is when each ticker's ticks last
     queued a reprice (server._repriced_at, once a second): every test starts with none, and
-    with no timer of an earlier test's, and with no price's level crosses kept for the Recorder's
-    answer (server._crosses_unanswered). And so are the chain captures the console holds
+    with no timer of an earlier test's, with no price's level crosses kept for the Recorder's
+    answer (server._crosses_unanswered), and with no surface stamped from a beat
+    (server._last_feed_stamp), even by a pricing an earlier test queued that ran after its end.
+    And so are the chain captures the console holds
     (state.capture_store): every test's first ask reads its own database. And so are the
     /markets answers held (time_et.record_markets): every test starts with the 2026-10-07 set,
     whatever answers an earlier test recorded. And so is every ticker's quote
@@ -163,8 +165,10 @@ def _live_feed_starts_down(_markets_answers_held):
                 timer.cancel()
             server._reprice_timers.clear()
             server._repriced_at.clear()
-        # no price's crosses an earlier test's Recorder left unanswered, on their one thread
+        # no price's crosses an earlier test's Recorder left unanswered, and no surface's feed
+        # stamp (server._last_feed_stamp), each on its one thread after every pricing queued there
         server.chain_pricing.submit(server._crosses_unanswered.clear).result(120)
+        server.chain_pricing.submit(server._last_feed_stamp.clear).result(120)
     with live_market_plane._lock:
         live_market_plane._beats.clear()
         live_market_plane._by_ticker.clear()

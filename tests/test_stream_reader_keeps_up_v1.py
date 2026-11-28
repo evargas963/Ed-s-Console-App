@@ -162,7 +162,6 @@ def test_a_delivered_chain_is_read_once_for_the_levels_and_the_option_rule():
         levels = level_store.published_levels(tk)
         with level_store._lock:
             level_store._levels.pop(tk, None)
-        server._last_feed_stamp.clear()
     assert len(reads) == len(MRVL.chain) == len(read), "each contract read once"
     assert all(a is b for a, b in zip(levels.chain, read, strict=True)), "the levels: that read"
     ranked = capture.shown_first(
@@ -373,7 +372,6 @@ def test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced(tmp_path)
             kept.pop("SPY", None)
         with level_store._lock:
             level_store._levels.pop("SPY", None)
-        server._last_feed_stamp.clear()
     # no cap of ours: every SPY contract the rule ranks is asked, Schwab's answer decides
     wanted = daemon.wanted()["LEVELONE_OPTIONS"]
     assert wanted == daemon.option_order and len(set(wanted)) > 3000, len(wanted)
