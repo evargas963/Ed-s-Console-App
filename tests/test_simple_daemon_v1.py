@@ -29,11 +29,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_requests_are_split_under_schwabs_message_limit():
-    syms = [f"SPY   2610{i:02d}C00{i:05d}000" for i in range(4000)]  # ~100 KB of keys
-    chunks = connection.split_request(syms)
+    """A part takes, from the first, every contract whose keys fit its room, and not one more.
+
+    TSLA's captured 2026-10-07 contracts against a room of 1,000 bytes: the keys are the symbols
+    joined by commas (OCC symbols, which JSON writes as they are).
+    """
+    syms = [ct["symbol"] for ct in TSLA.chain]
+    room = 1_000
+    taken = connection.keys_that_fit(syms, room)
+    chunks = [syms[:taken], syms[taken:]]
     assert sum(chunks, []) == syms
-    assert len(chunks) > 1
-    assert all(len(",".join(c)) <= connection.MAX_REQUEST_BYTES for c in chunks)
+    assert len(chunks) > 1 and chunks[1]
+    assert len(",".join(chunks[0])) <= room < len(",".join(syms[: taken + 1]))
 
 
 # ------------------------------------------------------------------ Schwab's messages

@@ -1,10 +1,10 @@
 """Every ticker's 1-minute bars and Schwab's other /pricehistory series, as the bar writer holds.
 
 The bars are Schwab's own 1-minute price history (MINUTE_SERIES: its last 10 days with extended
-hours, and 90 days of the regular session, from the capture daemon's /pricehistory requests each
-ET date) with Schwab's streamed CHART_EQUITY bars on top, a streamed minute replacing Schwab's
-history of it. The bar writer (server._bar_writer) is the one writer; every live reader reads
-them here, never a database (docs/DATA_FLOW.md §2 D6).
+hours, and the regular session's as far back as Schwab answers, about 48 days, from the capture
+daemon's /pricehistory requests each ET date) with Schwab's streamed CHART_EQUITY bars on top, a
+streamed minute replacing Schwab's history of it. The bar writer (server._bar_writer) is the one
+writer; every live reader reads them here, never a database (docs/DATA_FLOW.md §2 D6).
 """
 
 from __future__ import annotations

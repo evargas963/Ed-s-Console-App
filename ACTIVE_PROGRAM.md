@@ -69,6 +69,11 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Next
 
+- HOLD-NOTE (NEXT): the bounce note beside the hold rates (`push.liquidity.HOLD_NOTE`) says "Over
+  the last 60 completed sessions held" (`HOLD_WINDOW_SESSIONS`), while the 1-minute bars held cover
+  what Schwab answers, about 48 days (34 sessions; measured 2026-11-28), and the record keeps them
+  from 2026-11-19: a sentence that states a number it does not hold. Next: the count of sessions
+  `hold_counts` reads (`_closed_sessions`) served with the rates, the note saying it.
 - STREAM-ONE (NEXT): what Schwab streams comes only from the stream (AGENTS.md rule 3). Left: a
   streamed contract's open interest, volume and quote fields, which `/chains` still sends, read from
   the stream alone (open interest stays the chain's, rule 3's exception).
@@ -216,6 +221,19 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
 
 ## Operator decides
 
+- CEILINGS (OPERATOR): Schwab's ceilings, measured 2026-11-28 with the market closed (the program's
+  own client, production's token), each one taken or not by his decision, as each changes what is
+  asked or kept. `/chains`: Schwab's gateway answers up to Apigee's 10 MB (`apigee-502-toobigbody`):
+  SPY's first 23 of 31 expiries in one request, $SPX's 14 of 52, AAPL's 23 of 23; the sweep asks one
+  expiry a request, as Schwab support advised (`schwab-support-2026-10-06`, guidance, rule 3), so
+  packing expiries to the measured size cuts `/chains` requests about tenfold (every 429 recorded
+  was a `/chains` burst) and changes the record, one answer per span of expiries, not per expiry.
+  The hold rates' 60 sessions (`calc.liquidity_value_engine.HOLD_WINDOW_SESSIONS`): Schwab answers
+  1-minute bars back about 48 days, 34 sessions, and the record keeps them from 2026-11-19, so 60
+  are held only if the keep rule keeps 1-minute bars about three months (his: Standard of care 6).
+  HTTP/2: Schwab's host speaks h2 (TLS 1.3 ALPN); no environment here has the h2 package (httpx's
+  `http2` extra): measuring it needs h2, hpack and hyperframe downloaded from PyPI into a scratch
+  environment, and the program's use of it the pin decision for production.
 - SIGNED-ZERO (OPERATOR): two formatters write a signed number (rule 13's one formatter per format):
   `numeric_contract.signed_text` and `change_percent_text` write a zero "+0.00" and a rounded
   negative zero "-0.00" (the watchlist's flat $VIX reads "+0.00%"), while the matrix's

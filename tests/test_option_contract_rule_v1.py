@@ -466,7 +466,7 @@ def test_a_new_connection_is_asked_within_the_limit_schwab_stated(tmp_path):
     assert _keys(again[BOOK]) == [("SUBS", want[BOOK])], "the first 100, asked once"
     assert _codes(market.streamer, sent["answers"]) == {0}, "the new connection is refused nothing"
     refused = _answers(market.streamer, BOOK).count(19)
-    assert refused == 2, "the two parts of the first connection's one request past the limit"
+    assert refused == 1, "the first connection's one request past the limit, in one message"
 
 
 def test_a_start_given_schwabs_limits_asks_within_them_and_holds_the_same_contracts(tmp_path):
@@ -664,8 +664,8 @@ def test_a_restart_reads_schwabs_limit_from_the_record_and_asks_within_it(tmp_pa
     )
     again = _Market(tmp_path / "again", ["MRVL", "SPY"], lambda: CAPTURED, stated=stated, db=db)
     again.run(_both_arrive(want))
-    # the first run's one request past the limit went in two parts, each refused
-    assert _answers(first.streamer, BOOK).count(19) == 2 and _codes(again.streamer) == {0}
+    # the first run's one request past the limit went in one message, refused
+    assert _answers(first.streamer, BOOK).count(19) == 1 and _codes(again.streamer) == {0}
     first_asked = [len(keys) for _command, keys in again.streamer.asked(BOOK)[:1]]
     assert first_asked == [len(want[BOOK])] == [100], (
         "asked within the limit from its first request"

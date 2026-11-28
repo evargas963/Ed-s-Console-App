@@ -195,12 +195,13 @@ PRICE_HISTORY: dict[str, tuple[str, int | None, str, int]] = {
 #: the minute series asked again as each of their bars completes, by the bar's minutes
 BAR_MINUTES = {"5m": 5, "15m": 15, "30m": 30}
 #: the series asked from a start date instead of a period, by calendar days back, the regular
-#: session's bars only: 90 days, about 60 sessions, of 1-minute bars for the levels' hold rates
+#: session's bars only: 1-minute bars for the levels' hold rates
 #: (calc.liquidity_value_engine.hold_counts). Schwab documents startDate for every frequency but
-#: not how far back it answers minute bars
+#: not how far back it answers minute bars; it answers 1-minute bars back about 48 days and 5-minute
+#: bars about 260, whatever start is asked
 HISTORY_DAYS_BACK = {"1m60": 90, "5m365": 365, "5m365r": 365}
-#: the series asked from a start date with extended hours, the pre-market's bars among them: a
-#: year of 5-minute bars, as far back as Schwab answers, for the open-gap record (open_gap.py).
+#: the series asked from a start date with extended hours, the pre-market's bars among them: the
+#: 5-minute bars as far back as Schwab answers, for the open-gap record (open_gap.py).
 #: Its twin 5m365r, the regular session's bars alone, is Schwab's own mark of each past day's
 #: session (its first bar the open), which /markets answers only 7 days back
 EXTENDED_FROM_START = ("5m365",)

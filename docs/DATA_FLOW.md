@@ -186,7 +186,11 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 
 - **Schwab → daemon, stream:** equity quotes, option quotes, both equity books, option books,
   1-minute bars, news (`feed.connection.Connection`, one request per change, each answer matched by
-  its request id and recorded in `stream_subscriptions`).
+  its request id and recorded in `stream_subscriptions`), on Schwab's one connection a user may hold
+  (a second login closes the first, code 12: "Each user may only have one connection open at a
+  time"). A request goes in parts, each message as sent filled to Schwab's 65,535 bytes
+  (`connection.MAX_REQUEST_BYTES`, `Connection.send_requests`: one byte more and Schwab closes the
+  stream, 1009 "Text message too large"; both measured 2026-11-28).
 - **Schwab → daemon, REST:** option chains, option quotes, price history and market hours, by the
   chain sweep (`feed/chain_sweep.py`); every request logged once (`schwab_client.log_request`).
 - **Daemon part → console part:** the bus in memory, a LATEST subscription
@@ -323,8 +327,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   other one (`ChainSweep.candles`, which reads the pages' tickers before each ticker's history, so
   one selected while the round is asked has its own next) → the bus
   (`pricehistory.<ticker>.<series>`) → the Recorder (`stream_pricehistory_raw`) and the bar writer.
-  A bar is checked once (`server._schwab_bar`); no bar built from quotes enters the bar store. → the
-  `bars`, `liquidity` and `desk` panels (`server.BARS_PANELS`). Enforced by:
+  Asked from a start date, Schwab answers 1-minute bars back about 48 days and the 5-, 10-, 15- and
+  30-minute bars back about 260 days, whatever start is asked (SPY, measured 2026-11-28: from 10-12
+  and from 03-13). A bar is checked once (`server._schwab_bar`); no bar built from quotes enters the
+  bar store. → the `bars`, `liquidity` and `desk` panels (`server.BARS_PANELS`). Enforced by:
   `tests/test_data_path_pricehistory_v1.py`,
   `tests/test_data_path_rules_v1.py::test_d5_a_start_asks_every_tickers_price_history_before_any_chain`,
   `tests/test_data_path_rules_v1.py::test_d5_a_ticker_selected_while_the_price_history_is_asked_has_its_own_next`.
@@ -358,8 +364,10 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
   `tests/test_data_path_snapshot_time_v1.py`, `tests/e2e/console-gamma-levels.spec.js`,
   `tests/e2e/console-gamma-heatmap.spec.js`, `tests/e2e/console-trade-desk.spec.js`.
 - **Option chain.** The chain sweep (`chain_sweep.ChainSweep`, on its own thread) asks each
-  watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`) once
-  in an option window Schwab sends (its pre-market, then its regular session:
+  watchlist ticker's expiration chain once per ET date, then `/chains` per expiry (`range=ALL`;
+  Schwab's gateway, Apigee, refuses an answer over about 10 MB with 502 "Body buffer overflow",
+  SPY's first 23 expiries answered and 24 refused, $SPX's 14 and 15, measured 2026-11-28) once in an
+  option window Schwab sends (its pre-market, then its regular session:
   `time_et.option_window_began`) and once more after the ticker's option close, every other chain
   taking those answers again (`ChainSweep.fetch_chain`): the contract list, terms and open interest
   change once a day. `schwab_client.REQUESTS_AT_ONCE` of its `/chains` and `/quotes` requests are

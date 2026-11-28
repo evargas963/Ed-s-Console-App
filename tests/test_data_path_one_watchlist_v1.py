@@ -10,8 +10,9 @@ delete_watchlist); the list the page's socket carries on each beat, the daemon's
 Real data: Schwab's /quotes answers to SPY, TSLA, SPCX, META, QQQ, IWM and ZQZQZ asked alone, as
 the watchlist check asks (2026-10-07; ZQZQZ is named in errors.invalidSymbols); Schwab's answers to
 an ADD past LEVELONE_OPTIONS' limit as logged on 2026-10-07 04:40:39 (code 19, then code 24 "ADD
-command failed"); SPY's captured 2026-11-20 chain with its stored price and MRVL's full chain, as
-the option rule's inputs on the daemon's bus. STAND-INS (named in the stand-ins): the streamer's
+command failed"); SPY's captured 2026-11-20 chain with its stored price and SPY's full chain of
+2026-11-09, as the option rule's inputs on the daemon's bus; the largest message Schwab's streamer
+takes (the stand-in's MESSAGE_MAX). STAND-INS (named in the stand-ins): the streamer's
 login, a code-0 answer's message, the limit a test sets; the daemon's clock at each chain's capture.
 """
 
@@ -36,7 +37,7 @@ from app.market_data.schwab.streaming.live_push import MARKET_CONTEXT
 from app.options.order_flow import streaming as ofs
 from feed import connection
 from feed.chain_sweep import ChainSweep, chain_messages
-from feed.schwab_client import build_client_from_token, flatten_chain_contracts
+from feed.schwab_client import build_client_from_token
 from option_contract import read_chain
 from push import surface as push_surface
 from state import level_store
@@ -49,6 +50,7 @@ from tests.schwab_stream_standin import (
     FIELD_REPLIES,
     HEARTBEAT_SEC,
     HIGHEST_FIELD,
+    MESSAGE_MAX,
     LocalStreamer,
     refusal,
 )
@@ -226,25 +228,26 @@ def test_the_daemon_subscribes_once_and_each_of_schwabs_answers_reaches_its_own_
 
 
 def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_path):
-    """MRVL's 2,432 contracts are more than one request carries, so they are sent in parts.
+    """SPY's 12,904 contracts are more than one message carries, so they are sent in full parts.
 
-    MRVL's 2,432 contracts (its full chain as Schwab sent it, tests/fixtures/
-    real_mrvl_full_chain_vs_strike_window.json), MRVL alone on the watchlist so the rule streams
-    every one, are more than one request carries, so the subscription is sent in parts. A SUBS
-    replaces all a service holds (measured live 2026-10-07: of 3,001 contracts sent as SUBS 2,181 +
-    SUBS 819 + ADD 1, only the last 820 ever updated), so only the first part is SUBS and the rest
-    ADD: Schwab holds them all.
+    SPY's full chain as Schwab sent it (tests/fixtures/real_spy_full_chain_2026_11_09.json), SPY
+    alone on the watchlist and no limit hit, so the rule streams every contract: about 284,000
+    bytes of keys, past the 65,535 one message of Schwab's carries (the stand-in closes a larger
+    one with 1009, as Schwab does). Each part's whole message is at most 65,535 bytes as received,
+    and each but the last too full to take its next contract. A SUBS replaces all a service holds
+    (measured live 2026-10-07: of 3,001 contracts sent as SUBS 2,181 + SUBS 819 + ADD 1, only the
+    last 820 ever updated), so only the first part is SUBS and the rest ADD: Schwab holds them all.
     """
-    mrvl = json.loads(
-        (
-            Path(__file__).parent / "fixtures" / "real_mrvl_full_chain_vs_strike_window.json"
-        ).read_text(encoding="utf-8")
+    spy = json.loads(
+        (Path(__file__).parent / "fixtures" / "real_spy_full_chain_2026_11_09.json").read_text(
+            encoding="utf-8"
+        )
     )
-    contracts = flatten_chain_contracts(mrvl["full"])
+    contracts = spy["chain"]
     symbols = sorted(ct["symbol"] for ct in contracts)
     schwab = _Schwab(tmp_path, limits={}, data={})  # no limit hit, nothing streamed
     bus = MessageBus()
-    daemon = capture.Daemon(bus, HealthRegistry(), ["MRVL"], clock=lambda: mrvl["captured_utc"])
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"], clock=lambda: spy["capture_ts_utc"])
 
     async def go():
         stop = asyncio.Event()
@@ -252,7 +255,7 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
             asyncio.create_task(daemon.run(lambda: schwab.client, stop)),
             asyncio.create_task(daemon.follow_market(stop)),
         ]
-        _market(bus, "MRVL", contracts, mrvl["full"]["underlying"]["last"], mrvl["captured_utc"])
+        _market(bus, "SPY", contracts, spy["spot"], spy["capture_ts_utc"])
         await until(lambda: len(daemon.connection.held["LEVELONE_OPTIONS"]) == len(symbols))
         stop.set()
         await asyncio.wait_for(asyncio.gather(*tasks), 10)
@@ -261,10 +264,18 @@ def test_a_subscription_split_under_schwabs_message_limit_keeps_every_part(tmp_p
         asyncio.run(go())
     finally:
         schwab.close()
-        _forget_price("MRVL")
-    commands = [c for c, _k in schwab.streamer.asked("LEVELONE_OPTIONS")]
+        _forget_price("SPY")
+    asked = schwab.streamer.asked("LEVELONE_OPTIONS")
+    sizes = schwab.streamer.sizes_asked("LEVELONE_OPTIONS")
+    commands = [c for c, _k in asked]
     assert len(commands) > 1 and commands == ["SUBS"] + ["ADD"] * (len(commands) - 1)
+    assert max(sizes) <= MESSAGE_MAX, "every part's message is one Schwab takes"
+    assert all(  # its next contract, as JSON writes it, and a comma would pass the limit
+        size + len(json.dumps(nxt[0])) - 1 > MESSAGE_MAX
+        for size, (_c, nxt) in zip(sizes, asked[1:], strict=False)
+    ), "each part but the last carries all its message holds"
     assert sorted(schwab.streamer.held["LEVELONE_OPTIONS"]) == symbols, "Schwab holds every part"
+    assert schwab.streamer.open_sockets == 0 and connection.MAX_REQUEST_BYTES == MESSAGE_MAX
 
 
 @pytest.mark.parametrize(
