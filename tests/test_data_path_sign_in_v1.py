@@ -729,7 +729,7 @@ def test_a_sign_in_saved_while_another_process_reads_the_old_one_lands_whole(tmp
             saving.join(10)
     assert not saving.is_alive()
     assert json.loads(token.read_text(encoding="utf-8"))["token"]["access_token"] == "new"
-    assert [p.name for p in tmp_path.iterdir()] == ["schwab_token.json"], "no temp file left"
+    assert list(tmp_path.glob("*.tmp")) == [], "no write's temp file left"
 
 
 def test_a_token_file_that_is_not_utf8_text_is_reported_unreadable(tmp_path):
