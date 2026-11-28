@@ -576,6 +576,15 @@ or in the required `hardening` (`.github/workflows/hardening.yml`), `pytest-full
   yes at any hour. Enforced by: `tools/operator_yes_guard.py` asks Allow/Deny for machine restarts
   and refuses the kills of production, in the forms its tests cover
   (`tests/test_operator_yes_guard_v1.py`); the rest — ENF-12.
+- Nothing is deleted until it is shown that it can truly be deleted (operator 2026-11-27): nothing
+  reads it (no tracked file names it, and nothing has changed it lately); nothing is lost (its
+  content is in `main`'s history at a named commit, or in a copy outside the checkout proved whole:
+  a file by its SHA-256, the branches and stashes by a git bundle fetched into a fresh clone of
+  GitHub that gives back every ref at its commit); and it is not a record of what Schwab sent or the
+  operator's own work, which are kept until he says (Standard of care 6). What fails a test is kept.
+  Code a change deletes is shown unused by the change's checks (rules 14 and 15), and git keeps it.
+  Enforced by: the `housekeeping` skill, which shows the evidence with the commands; that it was
+  shown — the builder's audit (rule 14), no machine check, ENF-12.
 - The production checkout `EdWebConsole` stays `main == origin/main` and moves only by a
   fast-forward (`git pull --ff-only`, or `launch.bring_to_origin_main` at a start); work happens in
   a worktree. Enforced by: `tools/process_lock_guard.py` (`tests/test_operating_process_lock_v1.py`,

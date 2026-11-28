@@ -22,9 +22,7 @@ node_modules/
 *.log
 logs/
 .runtime/
-reports/
 data/*
-calibration/trading_data.db
 
 # Test artifacts
 test-results/
