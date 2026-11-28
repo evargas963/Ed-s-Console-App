@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import threading
 from collections.abc import Callable
 from datetime import datetime
@@ -90,6 +91,9 @@ def _order(ct: dict, price: float) -> tuple:
 #: stated it (2026-10-07: "(LEVELONE_OPTIONS=3000, DISCARDED=1)", "(OPTIONS_BOOK=100, ...)"):
 #: the stand-in streamer's, never the daemon's
 SCHWAB_LIMITS = {L1: 3000, BOOK: 100}
+#: INDUCED statement times: one that has not aged, whatever the wall clock reads (a limit that
+#: stands), and one from long ago (a limit a day old: asked past once, connection.LIMIT_STANDS_SEC)
+NOT_AGED, LONG_AGO = math.inf, 0.0
 
 
 def by_definition(contracts: list[dict], price: float, now: float) -> list[str]:
@@ -489,7 +493,7 @@ def test_a_start_given_schwabs_limits_asks_within_them_and_holds_the_same_contra
 
     untold = _Market(tmp_path / "untold", ["MRVL", "SPY"], lambda: now)
     untold.run(steps)
-    stated = [SymbolLimit(svc, limit) for svc, limit in SCHWAB_LIMITS.items()]
+    stated = [SymbolLimit(svc, limit, NOT_AGED) for svc, limit in SCHWAB_LIMITS.items()]
     told = _Market(tmp_path / "told", ["MRVL", "SPY"], lambda: now, stated=stated)
     told.run(steps)
     assert held[0] == held[1] == want, "the same contracts, with and without the limits"
@@ -524,12 +528,12 @@ def test_a_limit_from_an_older_statement_stands_until_schwab_states_another(
     limits = {L1: 3000, BOOK: holds}
     alone = _rule(CHAINS, PRICES, CAPTURED, ["MRVL"], limits=limits)
     want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], limits=limits)
-    stated = [SymbolLimit(BOOK, remembered)]
+    stated = [SymbolLimit(BOOK, remembered, NOT_AGED)]
     market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, stated=stated)
     market.run(lambda m: _in_turn(m, alone, want))
     subs = [len(keys) for command, keys in market.streamer.asked(BOOK) if command == "SUBS"]
     assert subs == first_request
-    assert market.daemon.connection.limit == {**dict.fromkeys(SERVICES), BOOK: holds}
+    assert _limits(market) == {**dict.fromkeys(SERVICES), BOOK: holds}
     assert _answers(market.streamer, BOOK).count(19) == len(first_request) - 1
 
 
@@ -561,7 +565,7 @@ def test_a_limit_schwab_states_anew_replaces_the_one_held_on_this_and_the_next_c
     market.run(steps)
     before = market.streamer.asked(BOOK)[: sent["asked"]]
     assert _keys(before[-1:]) == [("SUBS", want[BOOK])], "asked once more, for the first 60"
-    assert len(want[BOOK]) == 60 and market.daemon.connection.limit[BOOK] == 60
+    assert len(want[BOOK]) == 60 and _limits(market)[BOOK] == 60
     assert _keys(market.streamer.asked(BOOK)[sent["asked"] :]) == [("SUBS", want[BOOK])]
     assert _codes(market.streamer, sent["answers"]) == {0}, "the next connection is refused nothing"
 
@@ -596,7 +600,48 @@ def test_a_connection_lost_before_schwabs_refusal_arrives_learns_the_limit_on_th
         if command == "SUBS"
     ]
     assert subs[0] > 100 and subs[-1] == 100, "asked in full again, then within the limit stated"
-    assert market.daemon.connection.limit[BOOK] == 100
+    assert _limits(market)[BOOK] == 100
+
+
+def _limits(market) -> dict[str, int | None]:
+    """The connection's limit per service, the number Schwab stated (None: none held)."""
+    return {s: None if v is None else v.limit for s, v in market.daemon.connection.limit.items()}
+
+
+def test_a_limit_stated_a_day_ago_is_asked_past_once_and_stated_again(tmp_path):
+    """Operator 2026-11-28: ask past each stated limit once a day, so a raise is found.
+
+    OPTIONS_BOOK's 100, stated long ago (INDUCED: LONG_AGO). The first request asks for the
+    whole order past it; Schwab refuses, stating 100 again, and the daemon asks once more for
+    the first 100. The limit is the new statement; the contracts held are the same as a start
+    told 100 holds.
+    """
+    want = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"])
+    stated = [SymbolLimit(BOOK, 100, LONG_AGO)]
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, stated=stated)
+    market.run(_both_arrive(want))
+    subs = [len(keys) for command, keys in market.streamer.asked(BOOK) if command == "SUBS"]
+    assert subs[0] > 100 and subs[-1] == 100, "asked past it once, then within today's statement"
+    assert 19 in _answers(market.streamer, BOOK)
+    assert _limits(market)[BOOK] == 100
+    assert market.daemon.connection.limit[BOOK].stated_at > LONG_AGO, "stated again, now"
+
+
+def test_a_limit_schwab_has_raised_is_found_by_the_days_ask_and_no_longer_held(tmp_path):
+    """INDUCED: Schwab now takes every contract the rule wants on OPTIONS_BOOK.
+
+    The 100 it stated long ago is asked past once; Schwab takes the whole order and refuses
+    nothing. The old limit no longer holds: none is held, and every contract is.
+    """
+    stated = [SymbolLimit(BOOK, 100, LONG_AGO)]
+    market = _Market(tmp_path, ["MRVL", "SPY"], lambda: CAPTURED, stated=stated)
+    market.streamer.limits[BOOK] = 1_000_000
+    unlimited = _rule(CHAINS, PRICES, CAPTURED, ["MRVL", "SPY"], limits={L1: 3000, BOOK: None})
+    market.run(_both_arrive(unlimited))
+    assert len(unlimited[BOOK]) > 100
+    assert _limits(market)[BOOK] is None
+    assert 19 not in _answers(market.streamer, BOOK)
+    assert set(market.streamer.held[BOOK]) == unlimited[BOOK]
 
 
 def test_a_restart_reads_schwabs_limit_from_the_record_and_asks_within_it(tmp_path):
@@ -614,7 +659,9 @@ def test_a_restart_reads_schwabs_limit_from_the_record_and_asks_within_it(tmp_pa
     first = _Market(tmp_path / "first", ["MRVL", "SPY"], lambda: CAPTURED, db=db)
     first.run(lambda m: _in_turn(m, _rule(CHAINS, PRICES, CAPTURED, ["MRVL"]), want))
     stated = capture.stored_limits(db)
-    assert stated == [SymbolLimit(BOOK, 100)], "its stated limit, and none where it stated none"
+    assert [(s.service, s.limit) for s in stated] == [(BOOK, 100)], (
+        "its stated limit, and none where it stated none"
+    )
     again = _Market(tmp_path / "again", ["MRVL", "SPY"], lambda: CAPTURED, stated=stated, db=db)
     again.run(_both_arrive(want))
     # the first run's one request past the limit went in two parts, each refused
