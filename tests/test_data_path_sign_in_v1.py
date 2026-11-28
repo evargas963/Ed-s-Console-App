@@ -165,7 +165,7 @@ def test_a_token_schwab_calls_invalid_is_refreshed_once_whatever_its_expiry_says
 def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(tmp_path):
     """The token in its refresh window and Schwab refusing it.
 
-    The first request's refresh is refused (SignInRefused), and every kind of request the
+    The first request's refresh is refused (SignInRefusedError), and every kind of request the
     daemon sends after it, the stream's login among them, raises the same, sending nothing: one
     POST in all, no data request. Each refusal raised is its own, carrying only its own
     request's frames (one held and raised again would grow its traceback by every request's
@@ -177,7 +177,7 @@ def test_once_schwab_refuses_the_sign_in_no_request_of_any_kind_reaches_schwab(t
         client = schwab.client(tmp_path, 100)
         raised = []
         for request in _every_request(client) * 3:
-            with pytest.raises(sc.SignInRefused, match="Refresh token is invalid") as r:
+            with pytest.raises(sc.SignInRefusedError, match="Refresh token is invalid") as r:
                 request()
             raised.append(r.value)
         refusal = client.session.refusal()
@@ -199,7 +199,7 @@ def test_a_new_sign_in_saved_after_the_refusal_is_taken_without_a_restart(tmp_pa
     schwab.token = "refuses"
     try:
         client = schwab.client(tmp_path, 100)
-        with pytest.raises(sc.SignInRefused):
+        with pytest.raises(sc.SignInRefusedError):
             client.get_option_expiration_chain("SPY")
         created = _new_sign_in(tmp_path / "schwab_token.json", "fresh")
         resp = client.get_option_expiration_chain("SPY")
@@ -341,11 +341,11 @@ def test_a_sign_in_in_progress_removes_the_token_file_and_nothing_breaks(tmp_pat
     try:
         client = schwab.client(tmp_path, 100)
         token = tmp_path / "schwab_token.json"
-        with pytest.raises(sc.SignInRefused):
+        with pytest.raises(sc.SignInRefusedError):
             client.get_option_expiration_chain("SPY")
         token.unlink()
         assert client.session.refusal() is not None
-        with pytest.raises(sc.SignInRefused):
+        with pytest.raises(sc.SignInRefusedError):
             client.get_option_expiration_chain("SPY")
         _new_sign_in(token, "fresh")
         assert client.session.refusal() is None
@@ -367,7 +367,7 @@ def test_schwabs_edge_page_at_the_token_endpoint_is_not_a_refusal(tmp_path):
         for _ in range(2):
             with pytest.raises(Exception) as raised:
                 client.get_option_expiration_chain("SPY")
-            assert not isinstance(raised.value, sc.SignInRefused)
+            assert not isinstance(raised.value, sc.SignInRefusedError)
         assert client.session.refusal() is None
     finally:
         schwab.close()
@@ -386,7 +386,7 @@ def test_a_token_endpoint_that_cannot_be_reached_is_not_a_refusal(tmp_path):
     for _ in range(2):
         with pytest.raises(Exception) as raised:
             client.get_option_expiration_chain("SPY")
-        assert not isinstance(raised.value, sc.SignInRefused)
+        assert not isinstance(raised.value, sc.SignInRefusedError)
     assert client.session.refusal() is None
 
 
@@ -661,7 +661,7 @@ def test_a_token_file_that_cannot_be_read_is_logged_once_and_the_sweep_goes_on(
     schwab.token = "refuses"
     try:
         client = schwab.client(tmp_path, 100)
-        with pytest.raises(sc.SignInRefused):
+        with pytest.raises(sc.SignInRefusedError):
             client.get_option_expiration_chain("SPY")
         token = _saved_whole(tmp_path, held)
         sweep = _sweep(tmp_path)
@@ -687,7 +687,7 @@ def test_a_sign_in_a_client_cannot_use_is_not_taken(tmp_path, caplog):
     schwab.token = "refuses"
     try:
         client = schwab.client(tmp_path, 100)
-        with pytest.raises(sc.SignInRefused):
+        with pytest.raises(sc.SignInRefusedError):
             client.get_option_expiration_chain("SPY")
         token = _saved_whole(tmp_path, held)
         assert "expires_at" in sc.sign_in_problem(sc.inspect_token_file(str(token)), str(token))
@@ -696,7 +696,7 @@ def test_a_sign_in_a_client_cannot_use_is_not_taken(tmp_path, caplog):
             assert _work(sweep, lambda: client, 20), "the sweep's thread ended"
             assert _work(sweep, lambda: client, 20)
         assert len([r for r in caplog.records if "holds no sign-in" in r.getMessage()]) == 1
-        with pytest.raises(sc.SignInRefused):
+        with pytest.raises(sc.SignInRefusedError):
             client.get_option_expiration_chain("SPY")
         _new_sign_in(token, "fresh")
         client.get_option_expiration_chain("SPY")

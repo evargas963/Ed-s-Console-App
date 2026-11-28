@@ -21,8 +21,8 @@ The five parts are `AGENTS.md` "The shape". The facts that hold for every value:
 - One owner of the Schwab token: the client's session (`schwab_client.OneRefreshSession`) refreshes
   it one request at a time and writes it under the token file's lock
   (`schwab_client.token_file_lock`). Once Schwab refuses a refresh, every request raises
-  `SignInRefused` and nothing is sent; a new sign-in saved by `python reauth_schwab.py` is taken
-  with no restart. The session holds `schwab_client.REQUESTS_AT_ONCE` connections
+  `SignInRefusedError` and nothing is sent; a new sign-in saved by `python reauth_schwab.py` is
+  taken with no restart. The session holds `schwab_client.REQUESTS_AT_ONCE` connections
   (`schwab_client.CONNECTIONS`), kept open until Schwab or the network ends one. Enforced by:
   `tests/test_data_path_sign_in_v1.py`, `tests/test_data_path_rules_v1.py`
   (`test_twenty_requests_at_a_refresh_send_one_refresh_and_all_carry_the_new_token`,

@@ -46,22 +46,22 @@ CASES = [
 ]
 
 
-def _call_delta(S: float, T: float) -> float:
-    d1 = (math.log(S / K) + 0.5 * SIGMA * SIGMA * T) / (SIGMA * math.sqrt(T))
+def _call_delta(spot: float, years: float) -> float:
+    d1 = (math.log(spot / K) + 0.5 * SIGMA * SIGMA * years) / (SIGMA * math.sqrt(years))
     return norm_cdf(d1)
 
 
-def _fd_calendar_charm(S: float, dte: int) -> float:
+def _fd_calendar_charm(spot: float, dte: int) -> float:
     """Ground truth: (delta(T - 1 day) - delta(T)) / dt — the day passes, T shrinks."""
-    T = dte / 365.0
+    years = dte / 365.0
     dt = 1.0 / 365.0
-    return (_call_delta(S, T - dt) - _call_delta(S, T)) / dt
+    return (_call_delta(spot, years - dt) - _call_delta(spot, years)) / dt
 
 
-@pytest.mark.parametrize("label,S,dte", CASES)
-def test_bs_charm_sign_matches_finite_difference(label, S, dte):
-    fd = _fd_calendar_charm(S, dte)
-    bs = charm(S, K, dte / 365.0, SIGMA)
+@pytest.mark.parametrize("label,spot,dte", CASES)
+def test_bs_charm_sign_matches_finite_difference(label, spot, dte):
+    fd = _fd_calendar_charm(spot, dte)
+    bs = charm(spot, K, dte / 365.0, SIGMA)
     assert bs is not None
     assert fd * bs > 0, (
         f"{label}: bs_charm sign {bs:+.4f} disagrees with FD calendar charm {fd:+.4f}"
@@ -74,13 +74,13 @@ def test_near_expiry_minutes_to_close_matches_finite_difference():
     One hour to the bell: analytic charm must match a finite-difference of BS delta over the
     final minutes, in MAGNITUDE, not just sign. This is the test that would have caught the floor.
     """
-    T_1h = 1.0 / (24.0 * 365.0)
+    hour = 1.0 / (24.0 * 365.0)
     dt = 1.0 / (3600.0 * 24.0 * 365.0)  # one second of calendar time
-    S = 100.5  # slightly ITM — charm is finite and nonzero here
+    spot = 100.5  # slightly ITM — charm is finite and nonzero here
     # a central difference, a second each side: its own error is a few parts in a hundred million
     # an hour from the bell, where delta bends fast
-    fd = (_call_delta(S, T_1h - dt) - _call_delta(S, T_1h + dt)) / (2.0 * dt)
-    analytic = charm(S, K, T_1h, SIGMA)
+    fd = (_call_delta(spot, hour - dt) - _call_delta(spot, hour + dt)) / (2.0 * dt)
+    analytic = charm(spot, K, hour, SIGMA)
     assert analytic is not None
     assert analytic == pytest.approx(fd), (
         f"one hour from the close, analytic charm {analytic:.2f} vs FD {fd:.2f} — a T floor "

@@ -368,7 +368,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     Not BOOK_TIME alone. With the SAME ticker and the SAME BOOK_TIME but a MUTATED ladder, depth
     totals and imbalance must reflect the new book — never the prior cached state.
     """
-    BT = 424242  # identical BOOK_TIME across both snapshots
+    book_time = 424242  # identical BOOK_TIME across both snapshots
 
     def _book(bids, asks) -> dict:
         return {
@@ -376,7 +376,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
                 {
                     "BIDS": [{"BID_PRICE": p, "TOTAL_VOLUME": v} for p, v in bids],
                     "ASKS": [{"ASK_PRICE": p, "TOTAL_VOLUME": v} for p, v in asks],
-                    "BOOK_TIME": BT,
+                    "BOOK_TIME": book_time,
                 }
             ],
             "top": StreamedTop(bid=bids[0][0], ask=asks[0][0], bid_size=100, ask_size=100),
@@ -397,7 +397,7 @@ def test_changed_ladder_under_same_book_time_is_not_served_stale():
     m2 = _micro(v2, now_ts=2.0)
 
     # Both snapshots genuinely carry the identical BOOK_TIME...
-    assert m1["provenance"]["book_time_ms"] == m2["provenance"]["book_time_ms"] == float(BT)
+    assert m1["provenance"]["book_time_ms"] == m2["provenance"]["book_time_ms"] == float(book_time)
     # ...yet the second read reflects the NEW ladder, not the cached first one.
     assert m1["depth"]["5"]["bid_total"] == 1360.0
     assert m2["depth"]["5"]["bid_total"] == 220.0  # not the stale 1360
