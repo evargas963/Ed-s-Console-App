@@ -535,7 +535,6 @@ def test_a_stream_that_goes_silent_ends_the_connection(tmp_path):
     """
     schwab = _Schwab(tmp_path, limits={}, data={}, beat=connection.DEAD_SEC * 10)
     daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
-    started = time_et.elapsed()
 
     async def go():
         await daemon.connection.run_connection(schwab.client, asyncio.Event())
