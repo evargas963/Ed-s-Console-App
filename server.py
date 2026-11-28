@@ -186,13 +186,6 @@ def _write_price_history(msg: dict[str, Any]) -> str | None:
     if msg["series"] in bar_store.OPEN_GAP_SERIES:  # no bars or candles: the open-gap record's
         _take_open_gap(tk, msg["series"], sent)
         return None
-    if msg["series"] not in {
-        *bar_store.MINUTE_SERIES,
-        *push_bars.SCHWAB_SERIES.values(),
-        "1w",
-        "1mo",
-    }:
-        return None  # a series no screen reads: the daemon records it, the console holds none
     if msg["series"] not in bar_store.MINUTE_SERIES:
         candles = [
             b
@@ -436,12 +429,9 @@ def _with_page_settings(html: str) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def root() -> HTMLResponse:
-    html_path = static_dir / "index.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>static/index.html not found</h1>", status_code=404)
     # "/" is never cached: a cached page would run stale page code after an edit
     return HTMLResponse(
-        content=_with_page_settings(html_path.read_text(encoding="utf-8")),
+        content=_with_page_settings((static_dir / "index.html").read_text(encoding="utf-8")),
         headers={
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache",
@@ -518,9 +508,7 @@ def _stream_cell_title(state: str, ts_recv: float | None) -> str | None:
     """
     if state == "live":
         return None
-    word = STREAM_WORDS["cell"].get(state)
-    if word is None:
-        return None
+    word = STREAM_WORDS["cell"][state]  # every state's word is in the one list
     return word if ts_recv is None else f"{word} · {ct_label(ts_recv)}"
 
 
