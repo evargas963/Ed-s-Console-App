@@ -1280,14 +1280,84 @@ for f in [f for f in PRODUCT_PY + PAGE_JS if f in TEXT]:
 for f, n, name, length, _node in func_index:
     if area(f) == "product" and length > LONG_FUNCTION_LINES:
         add(S, LONG_FUNCTIONS, "1", "ast", f"{f}:{n} {name} ({length} lines)")
+#: the methods that change a container in place
+MUTATORS = {
+    "append",
+    "extend",
+    "insert",
+    "pop",
+    "popitem",
+    "remove",
+    "clear",
+    "update",
+    "setdefault",
+    "add",
+    "discard",
+    "sort",
+    "reverse",
+    "appendleft",
+    "popleft",
+}
+
+
+def _held_name(node: ast.expr) -> str | None:
+    """Return the name a subscript or a method is reached on: NAME, or NAME of `module.NAME`."""
+    while isinstance(node, ast.Subscript):
+        node = node.value
+    if isinstance(node, ast.Name):
+        return node.id
+    return node.attr if isinstance(node, ast.Attribute) else None
+
+
+def _frozen(c: ast.ClassDef) -> bool:
+    """Whether a class's instances cannot change: a frozen dataclass, a NamedTuple or an Enum."""
+    return any(
+        isinstance(d, ast.Call)
+        and any(
+            k.arg == "frozen" and isinstance(k.value, ast.Constant) and k.value.value is True
+            for k in d.keywords
+        )
+        for d in c.decorator_list
+    ) or any(isinstance(b, ast.Name) and b.id in ("NamedTuple", "Enum") for b in c.bases)
+
+
+#: each name the program changes in place: a subscript of it assigned or deleted, an augmented
+#: assignment to it, a mutating method called on it, or a `global` statement naming it
+changed_in_place = set()
+for node in (n for f in PRODUCT_PY for n in ast.walk(trees[f])):
+    if isinstance(node, (ast.Assign, ast.Delete)):
+        targets = [t for t in node.targets if isinstance(t, ast.Subscript)]
+    elif isinstance(node, ast.AugAssign):
+        targets = [node.target]
+    else:
+        targets = []
+    changed_in_place |= {n for t in targets if (n := _held_name(t)) is not None}
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr in MUTATORS and (n := _held_name(node.func.value)) is not None:
+            changed_in_place.add(n)
+    if isinstance(node, ast.Global):
+        changed_in_place |= set(node.names)
 for f in [f for f in PRODUCT_PY if not f.startswith("state/")]:
-    made = CONTAINERS | {n.name for n in trees[f].body if isinstance(n, ast.ClassDef)}
+    classes = [n for n in trees[f].body if isinstance(n, ast.ClassDef)]
+    changeable = {c.name for c in classes if not _frozen(c)}
     for node in trees[f].body:
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
         value = node.value
         called = isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
-        if isinstance(value, (ast.Dict, ast.List, ast.Set)) or (called and value.func.id in made):
+        container = isinstance(value, (ast.Dict, ast.List, ast.Set)) or (
+            called and value.func.id in CONTAINERS
+        )
+        names = [
+            t.id
+            for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            if isinstance(t, ast.Name)
+        ]
+        # a table the program never changes is a constant; a container it changes, or an
+        # instance of a class whose instances change, is state held outside State
+        if (container and changed_in_place & set(names)) or (
+            called and value.func.id in changeable
+        ):
             add(S, HELD_OUTSIDE_STATE, "11", "ast", f"{f}:{node.lineno} {ast.unparse(node)[:100]}")
 TICKER = re.compile(
     r"^\$?(?:SPX|SPY|QQQ|IWM|NVDA|TSLA|AMD|META|AAPL|MSFT|AMZN|GOOGL?|NDX|VIX|"
