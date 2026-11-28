@@ -17,7 +17,6 @@ Then run: python reauth_schwab.py to get a new token with account scope.
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
 
@@ -30,8 +29,6 @@ from feed.schwab_client import (
     run_manual_flow,
     token_file_lock,
 )
-
-log = logging.getLogger(__name__)
 
 
 def _redirect_url_arg() -> str | None:
@@ -69,25 +66,20 @@ def _redirect_flow(
     """Exchange a pasted callback URL for the token file; exit 1 when Schwab refuses it."""
     print("Using REDIRECT-URL flow — exchanging pasted callback for token file.")
     print()
-    try:
-        ok, msg = complete_oauth_from_redirect_url(
-            redirect_url,
-            api_key=api_key,
-            app_secret=app_secret,
-            callback_url=callback_url,
-            token_path=token_path,
-        )
-        if ok:
-            _print_post_reauth_validation(token_path)
-            return
-        print(f"\nFAILURE: {msg}")
-        print("\nIf the code was already used, run a fresh login:")
-        print("  python reauth_schwab.py --manual")
-        sys.exit(1)
-    except Exception as e:
-        print(f"\nFAILURE: {e}")
-        log.exception("reauth failed")
-        sys.exit(1)
+    ok, msg = complete_oauth_from_redirect_url(
+        redirect_url,
+        api_key=api_key,
+        app_secret=app_secret,
+        callback_url=callback_url,
+        token_path=token_path,
+    )
+    if ok:
+        _print_post_reauth_validation(token_path)
+        return
+    print(f"\nFAILURE: {msg}")
+    print("\nIf the code was already used, run a fresh login:")
+    print("  python reauth_schwab.py --manual")
+    sys.exit(1)
 
 
 def _remove_old_token(token_path: str) -> None:
