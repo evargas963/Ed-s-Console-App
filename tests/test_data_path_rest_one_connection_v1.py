@@ -161,20 +161,19 @@ def test_a_rotation_asks_schwab_as_documented_one_request_at_a_time_with_exact_g
 
     asked = [(path, q.get("symbol") or q.get("date")) for path, q, *_ in first]
     n_quoted = len(SPY["chain"]) + len(TSLA["chain"]) - 1  # every contract but HELD
-    assert asked == [
+    # SPY's quotes go as a request fills, before TSLA's chain; the rest at the rotation's end
+    assert [a for a in asked if a[0] != QUOTES] == [
         (EXPIRATIONS, "SPY"),
         (MARKETS, "2026-11-20"),
         (CHAIN, "SPY"),
-        (QUOTES, None),
         (EXPIRATIONS, "TSLA"),
         (MARKETS, "2026-10-09"),
         (CHAIN, "TSLA"),
-        (QUOTES, None),
-        (QUOTES, None),
     ], (
-        "the expiration chain, each expiry's market hours, each expiry, quotes as a request "
-        "fills (the price history has its own schedule, ChainSweep.candles)"
+        "the expiration chain, each expiry's market hours, each expiry (the price history has "
+        "its own schedule, ChainSweep.candles)"
     )
+    assert asked[3] == asked[-1] == (QUOTES, None), "quotes as a request fills, the rest last"
     lists = [q["symbols"].split(",") for path, q, *_ in first if path == QUOTES]
     assert [sc.quotes_batch(a + b[:1]) for a, b in itertools.pairwise(lists)] == [
         len(a) for a in lists[:-1]
@@ -311,8 +310,8 @@ def test_every_quotes_answer_of_a_rotation_reaches_the_console_and_the_record(tm
     assert ofs.FEED.apply_failures == failures, "every record applied"
     answers = [msg["answer"] for topic, msg in published if topic == "optquotes"]
     full = sc.quotes_batch(sorted(ct["symbol"] for ct in SPY["chain"]))
-    assert [len(a) for a in answers] == [full, len(SPY["chain"]) - 1 - full, 0], (
-        "SPY's unheld contracts, in two answers"
+    assert [len(a) for a in answers if a] == [full, len(SPY["chain"]) - 1 - full], (
+        "SPY's unheld contracts, in two answers (TSLA's contracts have no quote in the capture)"
     )
     assert not set(answers[0]) & set(answers[1])
     assert held == {
@@ -450,7 +449,7 @@ def _schwab_url(symbols: list[str]) -> int:
 
 
 def test_a_quotes_request_carries_as_many_contracts_as_its_measured_url_holds():
-    """QUOTES_URL_MAX, measured 2026-11-28: 8,201 characters answered, 9,665 refused by the edge.
+    """QUOTES_URL_MAX, measured 2026-11-28: 8,897 characters answered, 8,921 refused by the edge.
 
     SPY's contracts as Schwab listed them (2026-11-20): a request's URL at Schwab's host is
     within the measured limit, and one contract more would pass it. One that alone passes it is
