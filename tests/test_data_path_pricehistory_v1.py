@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 import subprocess
 import sys
@@ -425,6 +426,35 @@ def test_a_price_history_sent_again_with_every_minute_held_changes_nothing():
             (c["datetime"] / 1000, c["open"], c["high"], c["low"], c["close"], c["volume"])
             for c in HISTORY[(tk, "minute", "1")]["body"]["candles"]
         ], tk
+
+
+def test_a_price_history_the_console_cannot_take_is_logged_and_the_next_is_written(caplog):
+    """INDUCED: TSLA's daily answer with its candles taken out, then SPY's 1-minute answer.
+
+    Both are Schwab's captured answers, taken together as the bar writer takes what arrived
+    together. The one the console cannot take is logged with its ticker and error, and SPY's
+    bars are written.
+    """
+    daily, minute = HISTORY[("TSLA", "daily", "1")], HISTORY[("SPY", "minute", "1")]
+    sent = [
+        price_history_message(
+            "TSLA",
+            "1d",
+            {k: v for k, v in daily["body"].items() if k != "candles"},
+            daily["answered_utc"],
+        ),
+        price_history_message("SPY", "1m", minute["body"], minute["answered_utc"]),
+    ]
+    taken = []
+    for topic, msg in sent:
+        ofs._ingest_pushed(topic, msg)  # as the console's _bus_loop hands it over
+        taken.append(ofs.streamed_bars.get_nowait())
+    with caplog.at_level(logging.WARNING, logger=server.log.name):
+        server._write_streamed_bars(taken, datetime.fromtimestamp(minute["answered_utc"], ET))
+    assert [r.getMessage() for r in caplog.records if "not written" in r.getMessage()] == [
+        "streamed bar or price history for TSLA not written: 'candles'"
+    ]
+    assert len(bar_store.bars_1m("SPY", bar_store.BARS_KEPT)) == len(minute["body"]["candles"])
 
 
 def test_a_price_history_that_brings_minutes_not_held_adds_exactly_those():
