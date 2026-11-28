@@ -926,15 +926,21 @@ for req in [
 #: what a JavaScript package is used by: every text file but the manifests and their locks, which
 #: name every package they hold (a script, a config or a workflow that runs it names it), and the
 #: manifest's own scripts
+manifests = {p: json.loads(TEXT[p]) for p in FILES if p.endswith("package.json")}
 js_used = "\n".join(
-    t for f, t in TEXT.items() if not f.endswith(("package.json", "package-lock.json"))
+    [t for f, t in TEXT.items() if not f.endswith(("package.json", "package-lock.json"))]
+    + [json.dumps(m["scripts"]) for m in manifests.values() if "scripts" in m]
 )
-for pj_path in [p for p in FILES if p.endswith("package.json")]:
-    manifest = json.loads(TEXT[pj_path])
-    scripts = "\n".join(manifest.get("scripts", {}).values())
+for pj_path, manifest in manifests.items():
     for section in [s for s in ("dependencies", "devDependencies") if s in manifest]:
-        for dep in [d for d in manifest[section] if d not in js_used and d not in scripts]:
-            add(S, "JS packages required but never used (check each)", "1", pj_path, dep)
+        for dep in [d for d in manifest[section] if d not in js_used]:
+            add(
+                S,
+                "JS packages required but never used (check each)",
+                "1",
+                "package.json",
+                f"{pj_path}: {dep}",
+            )
 index = TEXT["static/index.html"]
 for f in [f for f in PAGE_ALL if f != "static/index.html"]:
     if Path(f).name not in index and Path(f).name not in page_text.replace(index, ""):
