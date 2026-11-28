@@ -43,10 +43,12 @@ from stream_spine import (
     HealthRegistry,
     MessageBus,
     book_msg,
+    current_key,
     quote_msg,
     verbatim_msg,
 )
 from tests.feed_live_helper import RTH_INSTANT, clock_from
+from tests.real_chains import MRVL
 from tests.shared_helpers import until
 
 _CONTRACT = "SPY   260918C00500000"
@@ -268,6 +270,28 @@ def test_a_live_feed_stays_live_while_the_console_works_through_a_backlog_of_cha
     assert samples and all(samples), (
         f"read down in {samples.count(False)} of {len(samples)} samples"
     )
+
+
+def test_a_chain_fetched_before_the_one_held_never_becomes_current():
+    """MRVL's captured chain (tests/real_chains.py, 2,496 contracts: five parts) fetched twice.
+
+    INDUCED: the later fetch's parts reach the bus first. The bus holds the newest fetch of a
+    ticker whole: the earlier fetch's parts, arriving after it, are never current, in part or
+    whole.
+    """
+    bus = MessageBus()
+    at = MRVL.now.timestamp()
+    newer = chain_messages("MRVL", MRVL.chain, at + 60, MRVL.spot, at + 60, False)
+    older = chain_messages("MRVL", MRVL.chain, at, MRVL.spot, at, False)
+    assert len(newer) == len(older) == 5
+    for topic, msg in newer:
+        bus.publish(topic, msg)
+    key = current_key(*newer[0])
+    held = bus.current[key]
+    for topic, msg in older:
+        bus.publish(topic, msg)
+        assert bus.current[key] is held
+    assert [part["ts_recv"] for part in held[1]] == [at + 60] * 5
 
 
 @pytest.mark.usefixtures("feed")

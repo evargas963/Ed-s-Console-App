@@ -41,6 +41,34 @@ def test_write_skips_missing_completeness_basis_fail_closed(tmp_path):
     assert result.reason == "no_completeness_basis"
 
 
+def test_write_skips_a_capture_with_no_ticker_expiry_or_contract_and_says_which(tmp_path):
+    """A capture that names no ticker, no expiry, or holds no contract writes nothing.
+
+    Each says which it lacked, and the database holds no row of it.
+    """
+    db_path = tmp_path / "cap.db"
+    whole = {
+        "ticker": "TSLA",
+        "expiry": _TSLA_EXPIRY,
+        "contracts": _TSLA_CONTRACTS,
+        "spot": 350.0,
+        "completeness_basis": "strike_range=ALL",
+        "ts_utc": 1000.0,
+    }
+    for lacked, reason in (
+        ({"ticker": " "}, "no_ticker"),
+        ({"expiry": "  "}, "no_expiry"),
+        ({"contracts": []}, "no_contracts"),
+    ):
+        result = store_capture(db_path, **{**whole, **lacked})
+        assert (result.status, result.reason) == ("skipped", reason)
+    con = sqlite3.connect(str(db_path))
+    try:
+        assert con.execute("SELECT COUNT(*) FROM complete_chain_captures").fetchone() == (0,)
+    finally:
+        con.close()
+
+
 def test_persisted_chain_json_is_actually_gzip_compressed_on_disk(tmp_path):
     """RC-REHAB-3: the stored chain's bytes on disk are smaller than raw JSON.
 

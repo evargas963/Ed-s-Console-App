@@ -115,6 +115,26 @@ def test_a_book_message_lands_as_the_one_reader_reads_it(tmp_path):
     assert [p for p, _v in held.pairs("BIDS")] == [lv["BID_PRICE"] for lv in content["BIDS"]]
 
 
+def test_a_book_in_a_shape_schwab_does_not_send_is_read_for_what_it_holds_alone():
+    """INDUCED on the real SPY NASDAQ_BOOK message: shapes Schwab's book definition excludes.
+
+    A message with neither side is no book. A level that is no object is not a level, and the
+    others are read as sent. A level whose exchange rows are not rows, or whose row lacks its
+    code, keeps its price and size with no per-exchange rows, never a part of them.
+    """
+    fx = Path(__file__).resolve().parent / "fixtures" / "real_spy_nyse_nasdaq_books.json"
+    content = json.loads(fx.read_text(encoding="utf-8"))["books"]["NASDAQ_BOOK"]["content"]
+    whole = read_book(content, "NASDAQ_BOOK")
+    first, *rest = content["BIDS"]
+    assert read_book({"key": "SPY", "BOOK_TIME": content["BOOK_TIME"]}, "NASDAQ_BOOK") is None
+    assert read_book({**content, "BIDS": ["no level", *content["BIDS"]]}, "NASDAQ_BOOK") == whole
+    nameless = [{k: v for k, v in row.items() if k != "EXCHANGE"} for row in first["BIDS"]]
+    for rows in (nameless, ["NSDQ"]):
+        held = read_book({**content, "BIDS": [{**first, "BIDS": rows}, *rest]}, "NASDAQ_BOOK")
+        assert held.bids[0] == (first["BID_PRICE"], first["TOTAL_VOLUME"], None)
+        assert held.bids[1:] == whole.bids[1:] and held.asks == whole.asks
+
+
 def test_each_venue_serves_only_its_own_book(tmp_path):
     """Real SPY NYSE_BOOK and NASDAQ_BOOK messages through the real ingest.
 
