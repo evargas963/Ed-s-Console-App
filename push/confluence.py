@@ -45,7 +45,7 @@ from calc.terrain_read import (
     REGIME_TEXT,
     REGIME_UNAVAILABLE,
 )
-from numeric_contract import iv_text, price_text
+from numeric_contract import fixed_text, iv_text, price_text
 from option_contract import OptionContract
 from push.answers import NotAvailable, not_available
 from push.levels import pin_note
@@ -56,7 +56,15 @@ from push.verdict import LevelsVerdict, terrain_staleness
 from state import bar_store
 from state.level_store import PublishedLevels, published_levels
 from state.price_level_store import canonical_price_level_snapshot, materialize_hold_counts
-from time_et import ET, age_text, ct_label, option_close_product, sessions, time_to_expiry_years
+from time_et import (
+    ET,
+    age_text,
+    ct_label,
+    et_date_str_from_ts_utc,
+    option_close_product,
+    sessions,
+    time_to_expiry_years,
+)
 
 #: the look-back windows the page offers (decision 11): minutes, or since the regular open; each
 #: column of the look-back follows the one chosen
@@ -539,7 +547,7 @@ def _cards(
                 for t in (
                     pin["distance_text"],
                     pin["sigma_text"],
-                    f"{minutes:.0f} min to the close",
+                    f"{fixed_text(minutes, 0)} min to the close",
                 )
                 if t
             ),
@@ -666,7 +674,7 @@ def confluence_payload(
     if published is None or not published.snap.books or priced_at is None or valued_at is None:
         return _unavailable(tk, "no priced chain is held for this ticker")
     live = published.snap
-    today = now.strftime("%Y-%m-%d")
+    today = et_date_str_from_ts_utc(now.timestamp())
     listed = [e for e in _confluence_expiries(live.books) if e["expiry"] >= today]
     if not listed:
         return _unavailable(tk, "no expiry on this chain is still open")

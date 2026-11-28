@@ -41,7 +41,7 @@ from calibration.complete_chain_capture import CAPTURE_BASIS, CaptureMessage
 from db_authority import resolve_stream_db_path
 from instrument_identity import ticker_storage_key
 from json_blob_codec import decode_text_blob, encode_json_blob, encode_text_blob
-from numeric_contract import schwab_count, schwab_number, schwab_time_ms
+from numeric_contract import count_text, fixed_text, schwab_count, schwab_number, schwab_time_ms
 from option_contract import (
     NO_GREEKS,
     NO_TOP,
@@ -1484,18 +1484,18 @@ def _record_line(s: Mapping[str, Any]) -> tuple[str, str, str]:
     if s["last_failure"] is not None:
         parts.append(f"last {s['last_failure_ct']}: {s['last_failure']}")
     parts.append(
-        f"held in memory: {s['held']} messages, {s['held_bytes'] / 1e6:.1f} MB "
+        f"held in memory: {s['held']} messages, {fixed_text(s['held_bytes'] / 1e6, 1)} MB "
         f"({s['waiting']} waiting for the database)"
     )
     if spill is not None:
         parts += [
-            f"spilled to disk: {f['messages']} messages, {f['bytes']:,} bytes in "
+            f"spilled to disk: {f['messages']} messages, {count_text(f['bytes'])} bytes in "
             f"{Path(f['path']).name}, {f['written_back']} written back"
             for f in [spill, *s["spills_after"]]
         ]
     parts += [
         f"left on disk: {Path(k['path']).name} ({k['messages']} messages, "
-        f"{k['bytes']:,} bytes, {k['written_back']} written back)"
+        f"{count_text(k['bytes'])} bytes, {k['written_back']} written back)"
         for k in s["left_on_disk"]
     ]
     if s["lost"]:

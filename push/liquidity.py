@@ -25,7 +25,7 @@ from calc.liquidity_value_engine import (
 from calc.terrain_engine import OPTION_LEVELS
 from calc.terrain_read import LEVEL_ABOVE, LEVEL_BELOW, level_side, within
 from instrument_identity import ticker_storage_key
-from numeric_contract import price_text
+from numeric_contract import price_text, share_text, signed_text
 from push.levels import NO_PRICE_LEVELS_REASON, SnapshotStamp, snapshot_stamp
 from push.spot import resolve_spot
 from push.verdict import LevelsVerdict, terrain_cache_get
@@ -162,8 +162,8 @@ def hold_text(c: HoldCount) -> str:
     rate, base = c.holds / c.touches, c.baseline_holds / c.baseline_touches
     lo, hi = wilson_interval(c.holds, c.touches)
     return (
-        f"bounced {rate:.0%} of {c.touches} hits; random {base:.0%}; "
-        f"{(rate - base) * 100:+.0f} points (95%: {lo:.0%} to {hi:.0%})"
+        f"bounced {share_text(rate)} of {c.touches} hits; random {share_text(base)}; "
+        f"{signed_text((rate - base) * 100, 0)} points (95%: {share_text(lo)} to {share_text(hi)})"
     )
 
 

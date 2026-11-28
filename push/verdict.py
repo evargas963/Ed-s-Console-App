@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import TypedDict
 
 import live_market_plane as lmp
+from numeric_contract import fixed_text
 from state.level_store import PublishedLevels, chain_failure, published_levels
 from time_et import (
     ET,
@@ -167,7 +168,7 @@ def _levels_state(
     if age <= stale_after and (began is None or float(computed_ts_utc) >= began):
         return lmp.LIVE, ""
     if waiting:
-        return LEVELS_STALE, f"levels are {age:.0f}s old{sep}"
+        return LEVELS_STALE, f"levels are {fixed_text(age, 0)}s old{sep}"
     return LEVELS_STALE, _overdue_why(computed_ts_utc, began, now, stale_after, failure)
 
 
@@ -185,14 +186,15 @@ def _overdue_why(
     """
     age = now - float(computed_ts_utc)
     if failure:
-        return f"levels are {age:.0f}s old and every chain since has failed — {failure}"
+        return f"levels are {fixed_text(age, 0)}s old and every chain since has failed — {failure}"
     if began is not None and float(computed_ts_utc) < began and now - began <= stale_after:
         # no chain is asked for between two of Schwab's option windows: the first since is due
         return (
-            f"levels are {age:.0f}s old: Schwab's option session reopened {ct_label(began)} and "
+            f"levels are {fixed_text(age, 0)}s old: Schwab's option session reopened "
+            f"{ct_label(began)} and "
             "its first chain since has not arrived"
         )
     return (
-        f"levels are {age:.0f}s old; the daemon's chain sweep has not delivered this "
-        f"ticker in two of its rounds ({stale_after / 2:.0f}s each)"
+        f"levels are {fixed_text(age, 0)}s old; the daemon's chain sweep has not delivered this "
+        f"ticker in two of its rounds ({fixed_text(stale_after / 2, 0)}s each)"
     )
