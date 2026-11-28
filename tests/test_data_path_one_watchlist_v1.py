@@ -41,7 +41,7 @@ from option_contract import read_chain
 from push import surface as push_surface
 from state import level_store
 from stream_spine import LOG, CaptureWriter, HealthRegistry, MessageBus, quote_msg
-from tests.feed_live_helper import daemon_status, mark_feed_down
+from tests.feed_live_helper import RTH_INSTANT, daemon_status, mark_feed_down
 from tests.page_on_socket import pages
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
@@ -401,6 +401,21 @@ def test_a_login_that_fails_leaves_no_socket_open_and_the_daemon_logs_in_again(t
     assert ended() == 2
     assert [r["command"] for r in schwab.streamer.requests][:2] == ["LOGIN", "LOGIN"]
     assert sockets == 1
+
+
+def test_the_status_line_says_how_many_watchlist_tickers_have_a_live_price():
+    """The console window's line, before the daemon's first beat and with it.
+
+    Before any beat the watchlist is unknown; with the daemon's beat carrying its watchlist, the
+    count of those tickers with a live price (none held here: no quote has arrived).
+    """
+    unknown = server._status_line(RTH_INSTANT)
+    lmp.record_feed_heartbeat(
+        daemon_status(RTH_INSTANT, schwab_socket_open=True, watchlist=["SPY", "TSLA"])
+    )
+    counted = server._status_line(RTH_INSTANT)
+    assert "live prices: WATCHLIST UNKNOWN (no current daemon heartbeat)" in unknown
+    assert "live prices: 0 of 2 watchlist tickers" in counted
 
 
 def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
