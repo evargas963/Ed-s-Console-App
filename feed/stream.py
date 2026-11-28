@@ -96,9 +96,10 @@ class TimedStream(StreamClient):
         self.schwab_ts: float | None = None
 
     async def close(self, *, logged_out: bool) -> None:
-        """Close the websocket, which schwab-py's logout leaves open.
+        """Close the websocket, which schwab-py's logout, and a login that fails, leave open.
 
-        Logged out, Schwab closes its end ("Streamer will close the connection", Streamer API
+        A login that failed before it opened one has none to close. Logged out, Schwab closes its
+        end ("Streamer will close the connection", Streamer API
         §1), so the closing handshake ends at once. Not logged out (the logout failed or timed
         out: the connection is presumed dead), the connection is dropped without the handshake,
         whose wait (websockets' close_timeout) would hold up the reconnect.

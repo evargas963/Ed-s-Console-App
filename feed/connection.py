@@ -256,10 +256,11 @@ def _dispatch(
     msg: dict[str, Any],
     received: float,
 ) -> None:
-    """Hand a frame's data, its fields named (_label), and its notifications to their services.
+    """Hand a frame's data, its fields named (label), to their services' publishers.
 
-    Each goes with the time the stream read the frame (`received`). Schwab's heartbeats carry
-    nothing to hand.
+    Each goes with the time the stream read the frame (`received`). A notice is a heartbeat
+    (Streamer API §1.3), which carries no data; one that is not is no data entry either, and is
+    logged as Schwab sent it.
     """
     data: list[dict[str, Any]] = msg["data"] if "data" in msg else []
     for d in data:
@@ -267,8 +268,8 @@ def _dispatch(
             publishers[d["service"]](label(d), received)
     notify: list[dict[str, Any]] = msg["notify"] if "notify" in msg else []
     for d in notify:
-        if "heartbeat" not in d and d["service"] in publishers:
-            publishers[d["service"]](d, received)
+        if "heartbeat" not in d:
+            log.warning("schwab: a notice that is no heartbeat: %.500r", d)
 
 
 @dataclass(eq=False)
@@ -437,7 +438,11 @@ class Connection:
         stream = TimedStream(client, self.clock)
         # every message Schwab sends, whatever its size: the websockets library caps a received
         # message at 1 MiB by default, and nothing of ours does
-        await stream.login(websocket_connect_args={"max_size": None})
+        try:
+            await stream.login(websocket_connect_args={"max_size": None})
+        except BaseException:  # a login that failed leaves no socket open, opened or not
+            await stream.close(logged_out=False)
+            raise
         self.stream = stream
         self._requests, self._sent = [], {}
         self.schwab_down, self._down_since = SCHWAB_CONNECTING, None
