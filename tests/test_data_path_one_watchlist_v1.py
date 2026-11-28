@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import threading
 from datetime import datetime
@@ -44,7 +45,13 @@ from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.page_on_socket import pages
 from tests.real_chains import CRWD
 from tests.schwab_rest_standin import CHECKS, QUOTES, LocalSchwab
-from tests.schwab_stream_standin import FIELD_REPLIES, HIGHEST_FIELD, LocalStreamer, refusal
+from tests.schwab_stream_standin import (
+    FIELD_REPLIES,
+    HEARTBEAT_SEC,
+    HIGHEST_FIELD,
+    LocalStreamer,
+    refusal,
+)
 from tests.shared_helpers import until
 from time_et import ET
 
@@ -60,8 +67,10 @@ EQUITY = ("LEVELONE_EQUITIES", "CHART_EQUITY", "NEWS_HEADLINE", "NYSE_BOOK", "NA
 class _Schwab:
     """The local streamer and REST host, and the daemon's client of them as the daemon builds it."""
 
-    def __init__(self, tmp_path, limits: dict, data: dict, lag: float = 0.0):
-        self.streamer = LocalStreamer(limits, data, lag)
+    def __init__(
+        self, tmp_path, limits: dict, data: dict, lag: float = 0.0, beat: float = HEARTBEAT_SEC
+    ):
+        self.streamer = LocalStreamer(limits, data, lag, beat)
         self.rest = LocalSchwab(self.streamer.url)
         self.client = self.rest.client(tmp_path)
 
@@ -347,6 +356,53 @@ def test_a_dropped_connection_subscribes_once_again_with_one_session_at_a_time(t
     assert len(logins) == 2 and [r["parameters"]["keys"] for r in subs()] == ["SPY", "SPY"]
 
 
+def test_a_login_that_fails_leaves_no_socket_open_and_the_daemon_logs_in_again(tmp_path, caplog):
+    """Two logins that fail, then one Schwab takes.
+
+    The first: Schwab's edge answers the user preferences request with its 403 page (captured),
+    so no socket is opened. The second, INDUCED: the streamer answers the LOGIN with a code that
+    is not 0, its socket open. Each ends its connection, logged; neither leaves a socket open, so
+    once the third logs in and asks for SPY, it is the one socket open.
+    """
+    schwab = _Schwab(tmp_path, limits={}, data={})
+    schwab.rest.edge = True
+    answer = schwab.streamer.answer
+
+    def refuse_first_login(req: dict) -> list[dict]:
+        frames = answer(req)
+        if req["command"] == "LOGIN" and [r["command"] for r in schwab.streamer.requests] == [
+            "LOGIN"
+        ]:
+            frames[-1]["response"][0]["content"] = {"code": 3, "msg": "LOGIN command failed"}
+        return frames
+
+    schwab.streamer.answer = refuse_first_login
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+
+    def ended() -> int:
+        return sum(r.getMessage().startswith("schwab: connection ended") for r in caplog.records)
+
+    async def go() -> int:
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
+        await until(lambda: ended() == 1)
+        schwab.rest.edge = False
+        await until(lambda: daemon.connection.held["LEVELONE_EQUITIES"])
+        sockets = schwab.streamer.open_sockets
+        stop.set()
+        await asyncio.wait_for(run, 10)
+        return sockets
+
+    try:
+        with caplog.at_level(logging.WARNING, logger="capture"):
+            sockets = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert ended() == 2
+    assert [r["command"] for r in schwab.streamer.requests][:2] == ["LOGIN", "LOGIN"]
+    assert sockets == 1
+
+
 def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
     """A request unanswered for REQUEST_TIMEOUT_SEC means the connection is broken.
 
@@ -374,6 +430,124 @@ def test_a_request_schwab_never_answers_ends_the_connection(tmp_path):
         schwab.close()
     assert time_et.elapsed() - started >= connection.REQUEST_TIMEOUT_SEC
     assert daemon.connection.stream is None, "the broken session is logged out and dropped"
+
+
+def test_an_answer_to_a_request_this_connection_never_sent_is_logged_and_held_nothing(
+    tmp_path, caplog
+):
+    """INDUCED: the streamer answers the NYSE_BOOK request twice, the second under a requestid
+    the connection never sent.
+
+    That answer is logged as Schwab sent it and changes nothing: the request it does not match
+    stays answered once, and NYSE_BOOK holds what its own answer kept.
+    """
+    schwab = _Schwab(tmp_path, limits={}, data={})
+    answer = schwab.streamer.answer
+
+    def stray(req: dict) -> list[dict]:
+        frames = answer(req)
+        if req["service"] != "NYSE_BOOK":
+            return frames
+        (copy,) = json.loads(json.dumps(frames[-1]))["response"]
+        return [*frames, {"response": [{**copy, "requestid": "999999"}]}]
+
+    schwab.streamer.answer = stray
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+
+    async def go():
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
+        await until(lambda: "did not send" in caplog.text and daemon.connection.held["NYSE_BOOK"])
+        held = daemon.connection.held["NYSE_BOOK"]
+        stop.set()
+        await asyncio.wait_for(run, 10)
+        return held
+
+    try:
+        with caplog.at_level(logging.WARNING, logger="capture"):
+            held = asyncio.run(go())
+    finally:
+        schwab.close()
+    assert held == frozenset({"SPY"})
+    assert "schwab answered requestid 999999, which this connection did not send" in caplog.text
+
+
+def test_a_frame_the_daemon_cannot_take_is_logged_and_the_stream_read_on(tmp_path, caplog):
+    """INDUCED: Schwab's LEVELONE_EQUITIES data entry (tests/fixtures) sent with its content not
+    a list of items, and two notices that are no heartbeat, ahead of its answer, then its real
+    entry. Schwab's Streamer API (§1.3) sends a heartbeat as its notice; the two are SPY's item as
+    sent, on LEVELONE_EQUITIES, and an answer's code and message on ADMIN.
+
+    The data frame that cannot be taken is logged with what failed, and each notice as sent; none
+    is published, so SPY's one quote is its real entry, its fields named, and the next frame is
+    read.
+    """
+    real = FIELD_REPLIES["level_one_equities_data"]
+    spy = next(i for i in real["content"] if i["key"] == "SPY")
+    notices = [
+        {"service": "LEVELONE_EQUITIES", "timestamp": real["timestamp"], "content": [spy]},
+        {"service": "ADMIN", "timestamp": real["timestamp"], "content": {"code": 30, "msg": "-"}},
+    ]
+    schwab = _Schwab(tmp_path, limits={}, data={"LEVELONE_EQUITIES": real})
+    answer = schwab.streamer.answer
+
+    def broken_first(req: dict) -> list[dict]:
+        frames = answer(req)
+        if req["service"] == "LEVELONE_EQUITIES" and req["command"] == "SUBS":
+            broken = {"data": [{**real, "content": "not a list of items"}]}
+            return [broken, {"notify": notices}, *frames]
+        return frames
+
+    schwab.streamer.answer = broken_first
+    bus = MessageBus()
+    quotes = bus.subscribe("quote.SPY", policy=LOG)
+    daemon = capture.Daemon(bus, HealthRegistry(), ["SPY"])
+
+    async def go():
+        stop = asyncio.Event()
+        run = asyncio.create_task(daemon.run(lambda: schwab.client, stop))
+        await until(lambda: not quotes.queue.empty())
+        stop.set()
+        await asyncio.wait_for(run, 10)
+
+    try:
+        with caplog.at_level(logging.WARNING, logger="capture"):
+            asyncio.run(go())
+    finally:
+        schwab.close()
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("schwab: ")]
+    assert lines[:3] == [
+        "schwab: skipped a frame (AttributeError: 'str' object has no attribute 'items')",
+        f"schwab: a notice that is no heartbeat: {notices[0]!r}",
+        f"schwab: a notice that is no heartbeat: {notices[1]!r}",
+    ]
+    (topic, msg), *after = [quotes.queue.get_nowait() for _ in range(quotes.queue.qsize())]
+    assert (topic, after) == ("quote.SPY", [])
+    assert msg["last"] == spy["3"] and msg["native"]["LAST_PRICE"] == spy["3"]
+
+
+def test_a_stream_that_goes_silent_ends_the_connection(tmp_path):
+    """Schwab's stream sends no frame, not even its heartbeat, for DEAD_SEC: the connection is dead.
+
+    It ends with that reason and the broken session is dropped, so the daemon connects again.
+    INDUCED: the stand-in's heartbeat held back past DEAD_SEC, and nothing asked that it answers
+    after the subscriptions.
+    """
+    schwab = _Schwab(tmp_path, limits={}, data={}, beat=connection.DEAD_SEC * 10)
+    daemon = capture.Daemon(MessageBus(), HealthRegistry(), ["SPY"])
+
+    async def go():
+        await daemon.connection.run_connection(schwab.client, asyncio.Event())
+
+    try:
+        try:
+            asyncio.run(asyncio.wait_for(go(), connection.DEAD_SEC + 20))
+            raise AssertionError("the connection did not end")
+        except ConnectionError as e:  # raised only once no frame came for DEAD_SEC (watch)
+            assert str(e) == f"no frame from Schwab for {connection.DEAD_SEC:.0f} s"
+    finally:
+        schwab.close()
+    assert daemon.connection.stream is None, "the dead session is logged out and dropped"
 
 
 #: How far behind Schwab's stream the daemon's reader ran, measured in production's log

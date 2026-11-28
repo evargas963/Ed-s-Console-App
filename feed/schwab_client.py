@@ -883,21 +883,20 @@ def flatten_chain_contracts(c_json: dict[str, Any]) -> list[dict[str, Any]]:
 
     The chain sweep's one reader of a chain answer (ChainSweep.fetch_chain). It reads
     callExpDateMap.* / putExpDateMap.* and the chain's interestRate and dividendYield, which
-    each contract carries as sent; no derivation.
+    each contract carries as sent; no derivation. A side Schwab did not send holds no contract;
+    an answer not in Schwab's shape (a map of expiries, each a map of strikes, each a list of
+    contracts) raises, and the sweep fails that ticker with the error, never a chain with
+    contracts left out.
     """
     out: list[dict[str, Any]] = []
     # the chain sends its interest rate and dividend yield once, at the top; each contract
     # carries them as sent, so a stored contract can be priced on its own
     chain_fields = {k: c_json[k] for k in ("interestRate", "dividendYield") if k in c_json}
     for side_key in ("callExpDateMap", "putExpDateMap"):
-        side_map: Json = c_json.get(side_key)
-        if not isinstance(side_map, dict):
-            continue
+        side_map: dict[str, dict[str, list[dict[str, Any]]]] = (
+            c_json[side_key] if side_key in c_json else {}
+        )
         for exp_map in side_map.values():
-            if not isinstance(exp_map, dict):
-                continue
             for strike_list in exp_map.values():
-                if not isinstance(strike_list, list):
-                    continue
-                out.extend({**chain_fields, **ct} for ct in strike_list if isinstance(ct, dict))
+                out.extend({**chain_fields, **ct} for ct in strike_list)
     return out
