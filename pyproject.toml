@@ -146,6 +146,7 @@ pytest_add_cli_args_test_selection = [
   "--deselect=tests/test_gamma_flip_schwab_rate_v1.py::test_no_product_file_reads_the_stock_streams_dividend_yield",
   "--deselect=tests/test_stream_reader_keeps_up_v1.py::test_the_reader_keeps_up_while_spys_whole_chain_is_read_and_priced",
   "--deselect=tests/test_terrain_one_calculation_v1.py::test_each_value_is_computed_once_and_nothing_unread_is_computed",
+  "--deselect=tests/test_data_path_same_day_levels_v1.py::test_a_same_day_expiry_reads_the_charm_map_already_priced",
   # a program started in a folder of its own reads mutmut's settings from that folder, where
   # there are none (mutmut 3.8.1, configuration._config_reader)
   "--deselect=tests/test_data_path_startup_v1.py::test_the_stop_ends_the_real_daemon_and_says_when_it_could_not_ask",
