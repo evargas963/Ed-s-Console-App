@@ -29,6 +29,17 @@ const ORDERS = ["sort", "reduce"].map((name) => ({
 export default [
   { ignores: ["**/static/vendor/**", "**/node_modules/**"] },
   js.configs.recommended,
+  // the caps the Python code is held to, the same in every language: ruff C901's complexity 10,
+  // the census's functions over 80 lines, ruff PLR0913's 5 arguments; and ESLint's names, a
+  // property exempt, as Schwab spells its fields (AGENTS.md rule 2)
+  {
+    rules: {
+      complexity: ["error", 10],
+      "max-lines-per-function": ["error", 80],
+      "max-params": ["error", 5],
+      camelcase: ["error", { properties: "never", ignoreDestructuring: true }],
+    },
+  },
   {
     files: ["**/static/**/*.js"],
     languageOptions: {

@@ -56,6 +56,9 @@ ignore = [
 quote-style = "double"
 
 [tool.coverage.run]
+# each side of an if, a loop and a match, as well as each statement: a side no test takes is
+# counted by the census (coverage.py's branch measurement)
+branch = true
 relative_files = true
 source = ["."]
 omit = ["tests/*", "*/node_modules/*", "*/pytest-of-*/*"]
