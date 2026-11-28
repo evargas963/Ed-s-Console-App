@@ -28,6 +28,7 @@ import logging
 import queue
 from collections.abc import Callable
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, TypedDict
 
 import live_market_plane as _lmp
@@ -332,7 +333,7 @@ def _ingest_pushed(topic: str, msg: dict[str, Any]) -> None:
         _apply_chain_part(msg)
         return
     if topic.startswith("markets."):
-        if msg["status"] == 200:
+        if msg["status"] == HTTPStatus.OK:
             record_markets(msg["answer"])
         return
     if topic in _APPLY_BY_TOPIC:
