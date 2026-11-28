@@ -46,7 +46,7 @@ import db
 import time_et
 from tools import check_end_to_end as e2e
 from tools import check_integrity, check_one_reader, check_tests_serve_app
-from tools.census import copied_blocks, python_literals
+from tools.census import command, copied_blocks, python_literals
 
 log = logging.getLogger("census")
 ARGS = argparse.ArgumentParser(description="The census of everything that must reach 0.")
@@ -85,31 +85,7 @@ def exe(name):
     return found
 
 
-def run(cmd, cwd=REPO, stdout_only=False, ok=(0,)):
-    """Return a command's output; an exit code outside `ok` stops the census.
-
-    `ok` holds the codes the tool gives when it ran, with findings or without (ruff: 0, 1; vulture:
-    0, 3; stylelint: 0, 2); any other code is the tool failing, and a checker that did not run
-    would read as nothing found.
-    """
-    r = subprocess.run(
-        [str(c) for c in cmd],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=3600,
-    )
-    if r.returncode not in ok:
-        log.error(
-            "census: %s exited %s:\n%s",
-            " ".join(str(c) for c in cmd)[:200],
-            r.returncode,
-            (r.stdout + r.stderr)[-3000:],
-        )
-        raise SystemExit(1)
-    return r.stdout if stdout_only else r.stdout + r.stderr
+run = functools.partial(command.run, cwd=REPO)
 
 
 def git(*a):
@@ -1926,6 +1902,7 @@ for pr in json.loads(
             "number,title,isDraft,updatedAt",
         ],
         stdout_only=True,
+        again=command.GITHUB_WAITS,
     )
 ):
     add(
@@ -2179,6 +2156,7 @@ for r_ in json.loads(
             "workflowName,conclusion,headSha,createdAt",
         ],
         stdout_only=True,
+        again=command.GITHUB_WAITS,
     )
 ):
     latest.setdefault(r_["workflowName"], r_)
@@ -2886,6 +2864,7 @@ runs = json.loads(
             "headSha,workflowName,conclusion,attempt,databaseId,event",
         ],
         stdout_only=True,
+        again=command.GITHUB_WAITS,
     )
 )
 # A push's runs judge its commit alone. A pull request's judge GitHub's test merge of it with main

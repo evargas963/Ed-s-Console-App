@@ -496,7 +496,7 @@
     {
       "verdict": "ok",
       "category": "ruff S311 (bandit",
-      "pattern": "^feed/schwab_client\\.py:\\d+: Standard pseudo-random generators",
+      "pattern": "^(feed/schwab_client|tools/census/command)\\.py:\\d+: Standard pseudo-random generators",
       "reason": "a server-error wait's jitter, each wait between half of it and all of it (AGENTS.md rule 3; Amazon's Builders' Library), not a secret"
     },
     {

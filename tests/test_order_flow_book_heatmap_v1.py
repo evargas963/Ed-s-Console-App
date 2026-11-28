@@ -23,7 +23,12 @@ import pytest
 
 from app.options.order_flow import state
 from app.options.order_flow import streaming as S
-from app.options.order_flow.history import RecentBooks, book_heatmap_for_ticker
+from app.options.order_flow.history import (
+    BOOKS_KEPT_SEC,
+    LEAN,
+    RecentBooks,
+    book_heatmap_for_ticker,
+)
 from app.options.order_flow.state import read_book
 from push import book_heatmap as push_book_heatmap
 from stream_spine import book_msg
@@ -31,12 +36,21 @@ from stream_spine import book_msg
 _FX = Path(__file__).resolve().parent / "fixtures"
 SYM = "SPY"
 NYSE = "NYSE_BOOK"
+VENUES = (NYSE, "NASDAQ_BOOK")
 
 
 def _sent(venue: str) -> list[tuple[float, str, dict]]:
     """Return Schwab's SPY book messages of `venue` as (ts_recv, venue, message), oldest first."""
     rows = json.loads((_FX / "real_spy_books_2026_11_02.json").read_text(encoding="utf-8"))["rows"]
     return [(ts_recv, service, sent) for ts_recv, service, sent in rows if service == venue]
+
+
+def _one_book_second() -> list[tuple[float, str, dict]]:
+    """Return Schwab's two SPY NYSE books of 2026-11-11 it stamped inside one second, in order."""
+    rows = json.loads(
+        (_FX / "real_spy_nyse_books_one_book_second_2026_11_11.json").read_text(encoding="utf-8")
+    )["rows"]
+    return [(ts_recv, service, sent) for ts_recv, service, sent in rows]
 
 
 def _books(rows: list[tuple[float, str, dict]]) -> RecentBooks:
@@ -93,20 +107,58 @@ def test_books_within_one_second_keep_only_the_newest():
     Two SPY NYSE books of 2026-11-11 Schwab stamped 0.729 s apart inside one second (they arrived
     in two different seconds); the later is the one kept, at its own BOOK_TIME.
     """
-    older, newer = (
-        tuple(row)
-        for row in json.loads(
-            (_FX / "real_spy_nyse_books_one_book_second_2026_11_11.json").read_text(
-                encoding="utf-8"
-            )
-        )["rows"]
-    )
+    older, newer = _one_book_second()
     assert int(_at(older)) == int(_at(newer)) and int(older[0]) != int(newer[0])
     assert older[2]["BIDS"] != newer[2]["BIDS"]
     d = book_heatmap_for_ticker(SYM, NYSE, minutes=60, books=_books([older, newer]))
     assert d["rows_scanned"] == 1 and d["until_ts"] == _at(newer) == 1794414811.984
     assert {p: v for (_, p), v in _shown(d, "bid").items()} == _sizes(newer[2], "BIDS")
     assert {p: v for (_, p), v in _shown(d, "ask").items()} == _sizes(newer[2], "ASKS")
+
+
+def test_books_more_than_the_minutes_kept_before_the_newest_are_dropped():
+    """The store keeps BOOKS_KEPT_SEC (240 minutes) before its newest book, and nothing older.
+
+    Schwab's 141 SPY NYSE books of 2026-11-02, then its two of 2026-11-11, nine days later and in
+    one BOOK_TIME second: as they arrive the 141 are dropped, and of the two the newer is kept.
+    """
+    sent, later = _sent(NYSE), _one_book_second()
+    assert _at(later[0]) - _at(sent[-1]) > BOOKS_KEPT_SEC
+    every = (_at(later[-1]) - _at(sent[0])) / 60  # minutes: all the books span, and more
+    books = _books(sent)
+    assert len(books.window(SYM, NYSE, every)) == 141
+    for _ts_recv, service, content in later:
+        books.record(SYM, service, read_book(content, service))
+    assert [b[0] for b in books.window(SYM, NYSE, every)] == [_at(later[-1])]
+
+
+def test_the_consoles_stop_drops_every_book_and_readout_it_kept():
+    """The console's stop (streaming.stop_order_flow_stream) leaves no book of a ticker behind.
+
+    Schwab's first SPY NYSE and NASDAQ books of 2026-11-02 through the console's intake: the
+    newest book of each venue, the heatmap's books and the Liquidity card's readouts are held, and
+    after the stop none is.
+    """
+    state.clear_all_live_state()
+    try:
+        for venue in VENUES:
+            ts_recv, service, content = _sent(venue)[0]
+            S._ingest_pushed(
+                f"book.{SYM}",
+                book_msg(
+                    symbol=SYM, service=service, content=content, src="schwab_book", ts_recv=ts_recv
+                ),
+            )
+        for venue in VENUES:
+            assert state.newest_book(SYM, venue) is not None
+            assert book_heatmap_for_ticker(SYM, venue)["available"] is True
+        assert len(LEAN.points(SYM)) == 1
+    finally:
+        S.stop_order_flow_stream()
+    for venue in VENUES:
+        assert state.newest_book(SYM, venue) is None
+        assert book_heatmap_for_ticker(SYM, venue)["available"] is False
+    assert LEAN.points(SYM) == []
 
 
 def test_a_changed_level_in_the_same_bucket_reads_as_its_latest_observed_size():
