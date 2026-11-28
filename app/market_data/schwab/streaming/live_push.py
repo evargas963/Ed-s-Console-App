@@ -19,7 +19,7 @@ by each message's `src` (anything else published on the same topics is refused, 
 
 from __future__ import annotations
 
-from stream_spine import Payload
+from typing import Any
 
 #: The market context: the daemon streams it whatever the watchlist holds, and every page asks
 #: for its price rows. The header shows all of it on every page, and so does the Trade Desk's
@@ -43,13 +43,10 @@ _FORWARDED = {
 }
 
 
-def is_forwarded(topic: str, msg: Payload) -> bool:
-    """Tell whether a record came from Schwab (a chain: its parts)."""
-    if isinstance(msg, list) and msg:
-        msg = msg[0]
-    if not isinstance(msg, dict):
-        return False
+def is_forwarded(topic: str, msg: dict[str, Any] | list[dict[str, Any]]) -> bool:
+    """Tell whether a record came from Schwab (a chain: its parts, never none)."""
+    first = msg[0] if isinstance(msg, list) else msg
     for prefix, src in _FORWARDED.items():
         if topic.startswith(prefix):
-            return msg.get("src") == src
+            return first.get("src") == src
     return False

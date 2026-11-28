@@ -32,6 +32,30 @@ def _forget(*tickers: str) -> None:
         lmp._fields_by_ticker.pop(tk, None)
 
 
+def test_a_message_with_no_field_read_or_no_symbol_changes_no_row():
+    """SPY's real LEVELONE_EQUITIES message of 2026-10-23, then three it is not.
+
+    INDUCED: an empty message, a message carrying only its key, and the real one under a blank
+    ticker or a "$" alone each change no row (the intake says False), and SPY's row stands as
+    the real message made it.
+    """
+    _forget("SPY")
+    try:
+        assert lmp.record_from_level_one_equity("SPY", _SPY["item"], received_ts=_SPY["ts_recv"])
+        row = live_price_rows.price_row("SPY", _SPY["ts_recv"])
+        later = _SPY["ts_recv"] + 1
+        for ticker, item in (
+            ("SPY", {}),
+            ("SPY", {"key": "SPY"}),
+            (" ", _SPY["item"]),
+            ("$", _SPY["item"]),
+        ):
+            assert lmp.record_from_level_one_equity(ticker, item, received_ts=later) is False
+        assert live_price_rows.price_row("SPY", _SPY["ts_recv"]) == row
+    finally:
+        _forget("SPY")
+
+
 def test_the_price_row_serves_schwabs_percent_change_as_sent():
     mark_feed_live("SPY", "$VIX", "ZZNEVER")
     _forget("SPY", "$VIX")
