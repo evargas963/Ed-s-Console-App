@@ -6,6 +6,8 @@ from calc.math_exposure_core import (
     exposures_have_dollar_gex,
     net_gex_dollars_at_strike,
     pick_absolute_gamma_strike,
+    pick_delta_wall_strikes,
+    pick_gamma_wall_strikes,
     pick_key_delta_strike,
     pick_volatility_point_strikes,
 )
@@ -43,6 +45,24 @@ def test_pin_fails_closed_without_dollarized_gex():
     # the refusal path needs an un-dollarized bucket on purpose.
     raw_only = {700.0: {"net_gamma": 5.0, "call_gamma": 3.0, "put_gamma": 2.0}}
     assert pick_absolute_gamma_strike(raw_only) is None
+
+
+def test_a_book_priced_with_no_price_has_no_wall_and_no_pocket():
+    """SPY's captured 0DTE chain priced with no price: a book with no dollars in it.
+
+    Each wall and pocket is ranked by dollars, so with none each is "-", never a strike ranked
+    by raw gamma or delta; a chain of no contracts is a book of no strike.
+    """
+    raw, diag = compute_exposures_by_strike(_SPY, spot=None, now=SPY_0DTE.now, sessions=sessions())
+    assert raw and not exposures_have_dollar_gex(raw)
+    assert pick_gamma_wall_strikes(raw) == ((None, None), (None, None))
+    assert pick_delta_wall_strikes(raw) == ((None, None), (None, None))
+    assert pick_volatility_point_strikes(raw) == (None, None)
+    empty, none_used = compute_exposures_by_strike(
+        [], spot=SPY_0DTE.spot, now=SPY_0DTE.now, sessions=sessions()
+    )
+    assert empty == {} and (none_used.contracts_total, none_used.contracts_used) == (0, 0)
+    assert diag.contracts_total == len(_SPY)
 
 
 def test_key_delta_strike_is_the_total_dex_argmax_on_real_chain():

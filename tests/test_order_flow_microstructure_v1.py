@@ -438,6 +438,11 @@ def test_zero_size_is_a_real_value_not_a_fallback_trigger():
     )
     assert ofe._extract_canonical_book(_read(data)).bid_size == 0
     assert _micro(data, now_ts=1787233772.0)["top_of_book"]["bid_size"] == 0
+    # INDUCED: no size on either side. Each 0 is a value, and 0 against 0 is no share of
+    # anything: the pressure is not a number, so "-"
+    both = _read({**data, "top": StreamedTop(bid=0.10, ask=0.12, bid_size=0, ask_size=0)})
+    flow = ofe.OrderFlowEngine().compute(both, now=1787233772.0)
+    assert flow["top_book_pressure"] is None
 
 
 def test_no_top_resolves_to_none():

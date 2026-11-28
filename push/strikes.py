@@ -406,14 +406,20 @@ def terrain_strikes_payload(
         # texts as the screen shows them
         "level_moves": [served_level_move(v) for v in level_moves(snap, prior_day)],
         # what the screen says with no row to show: why, as a whole sentence (AGENTS.md rule 4)
-        "none_said": None if gex[0] else _no_rows_said(verdict["levels_stale_reason"]),
+        "none_said": None
+        if gex[0]
+        else _no_rows_said(None if snap is None else snap.error, verdict["levels_stale_reason"]),
         # the levels verdict these rows carry (LIVE, CLOSE, STALE, NOT LIVE), their time and age
         **verdict,
     }
 
 
-def _no_rows_said(stale: str | None) -> str:
-    """Return what the screen says with no per-strike row: why the levels are stale, if they are."""
-    if stale is not None:
-        return f"no per-strike rows — {stale}"
-    return NO_PER_STRIKE_GAMMA
+def _no_rows_said(priced_why: str | None, stale: str | None) -> str:
+    """Return what the screen says with no per-strike row: why.
+
+    Why the levels held were priced with no rows, their snapshot's own (calc.terrain_engine: no
+    spot price, no exposures), and why they are stale, if they are; NO_PER_STRIKE_GAMMA when
+    neither says.
+    """
+    why = [r for r in (priced_why, stale) if r]
+    return " — ".join(["no per-strike rows", *why]) if why else NO_PER_STRIKE_GAMMA

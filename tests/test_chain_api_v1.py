@@ -155,6 +155,22 @@ def test_no_held_chain_is_unavailable_with_its_reason():
     assert body["none_said"] == "chain unavailable — " + body["scope"]["reason"]
 
 
+def test_a_chain_the_levels_could_not_price_says_the_levels_own_reason():
+    """TSLA's captured chain published with no price held, then a chain of no contracts.
+
+    The panel's front expiry is the levels' first listed, and levels that could not be priced
+    list none: the panel says their reason (no spot price; no option chain), never that the
+    chain lists no expiry. INDUCED: no price held, and the empty chain.
+    """
+    lmp.record_feed_heartbeat(daemon_status(_AT.timestamp(), schwab_socket_open=True))
+    srv._publish_levels(
+        "TSLA", read_chain(_TSLA_CONTRACTS), _AT.timestamp(), chain_spot=(None, None), now=_AT
+    )
+    assert _get(ticker="TSLA")["none_said"] == "chain unavailable — no spot price"
+    srv._publish_levels("TSLA", [], _AT.timestamp(), chain_spot=(None, None), now=_AT)
+    assert _get(ticker="TSLA")["none_said"] == "chain unavailable — no option chain"
+
+
 def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     body = _get(ticker="tsla")

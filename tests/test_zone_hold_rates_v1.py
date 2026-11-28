@@ -13,8 +13,10 @@ code under test.
 
 from __future__ import annotations
 
+import gzip
 import json
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -195,6 +197,9 @@ def test_a_session_closing_at_now_is_counted_and_its_bars_are_read_to_its_close(
     close = session("2026-10-06").regular[-1][1]
     assert any(b["_dt"] == close for b in bars), "no bar at the close: the check would be vacuous"
     assert hold_window(bars, close, held) == [b for b in bars if b["_dt"] < close]
+    # before the first regular close Schwab's /markets answers hold, no session is closed: no bar
+    first = min(s.regular[-1][1] for s in held.values() if s.regular)
+    assert hold_window(bars, first - timedelta(minutes=1), held) == []
     assert hold_counts(bars, daily, close, sessions=held) == hold_counts(
         bars, daily, EVENING, sessions=held
     )
@@ -278,3 +283,41 @@ def test_the_liquidity_panel_serves_each_level_types_rate_with_its_note():
         push_liquidity.hold_text(pdh[15]) + " [30 min: " + push_liquidity.hold_text(pdh[30]) + "]"
     )
     assert "Osler 2000" in push_liquidity.HOLD_NOTE and "not a forecast" in push_liquidity.HOLD_NOTE
+
+
+#: SPY's 1m, 1m60 and 1d answers as Schwab sent them, received 2026-11-28 (34 sessions of 1-minute
+#: bars from 2026-10-12, read-only from production data/ed.db; the file names its source)
+_SPY_34_FILE = "real_spy_pricehistory_34_sessions_2026_11_28.json.gz"
+_SPY_34 = json.loads(
+    gzip.decompress((Path(__file__).parent / "fixtures" / _SPY_34_FILE).read_bytes())
+)
+
+
+def test_a_level_hit_often_enough_shows_how_often_it_held_against_random_levels():
+    """SPY's 34 sessions: the opening range high was hit past HOLD_MIN_TOUCHES in 15 minutes.
+
+    Its card shows how often it held, the random levels' rate, the difference in points and the
+    95% interval (Wilson), each from its counts: worked out here from hold_counts' count, the
+    interval from the formula tested above. STAND-IN (named): ZZHOLD carries SPY's answers.
+    """
+    tk, now = "ZZHOLD", datetime(2026, 11, 28, 6, 0, tzinfo=ET)  # every session closed
+    for series, sent in _SPY_34["answers"].items():
+        server._write_price_history({"symbol": tk, "series": series, "answer": sent["answer"]})
+    orb = hold_counts(
+        bars_from_candles(bar_store.bars_1m(tk, bar_store.BARS_KEPT)),
+        bar_store.series(tk, "1d"),
+        now,
+        sessions=sessions(),
+    )["ORB_HIGH"]
+
+    def said(c: HoldCount) -> str:
+        rate, base = c.holds / c.touches, c.baseline_holds / c.baseline_touches
+        lo, hi = wilson_interval(c.holds, c.touches)
+        return (
+            f"bounced {rate:.0%} of {c.touches} hits; random {base:.0%}; "
+            f"{(rate - base) * 100:+.0f} points (95%: {lo:.0%} to {hi:.0%})"
+        )
+
+    assert orb[15].touches >= HOLD_MIN_TOUCHES and orb[30].touches >= HOLD_MIN_TOUCHES
+    (row,) = [r for r in push_liquidity.hold_rates(tk, now) if r["level"].endswith(") high")]
+    assert row["text"] == f"{said(orb[15])} [30 min: {said(orb[30])}]"
