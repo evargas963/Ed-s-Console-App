@@ -875,12 +875,12 @@ def get_price_history(
 
 #: GET /quotes as schwab-py sends it (safe_get_quotes): its URL is what Schwab's edge measures
 QUOTES_URL = "https://api.schwabapi.com/marketdata/v1/quotes"
-#: The longest /quotes URL one request carries, in characters: ours, measured, raised when a longer
-#: one is answered. Measured 2026-11-28 with SPY's contracts: 8,201 characters (339 symbols)
-#: answered 200; 9,665 (400 symbols) refused 400 by Schwab's edge (AkamaiGHost) before its API.
-#: Schwab's documentation states no limit; its support's "not more than 300 symbols" is guidance,
-#: not a limit (docs/schwab/schwab_support_emails_2026_10_06.txt).
-QUOTES_URL_MAX = 8_201
+#: The longest /quotes URL one request carries, in characters: ours, measured. Measured 2026-11-28
+#: with SPY's contracts, to the symbol: 8,897 characters (368 symbols) answered 200; 8,921 (369)
+#: refused 400 by Schwab's edge (AkamaiGHost) before its API. Schwab's documentation states no
+#: limit; its support's "not more than 300 symbols" is guidance, not a limit
+#: (docs/schwab/schwab_support_emails_2026_10_06.txt).
+QUOTES_URL_MAX = 8_897
 
 
 def quotes_batch(symbols: Iterable[str]) -> int:
