@@ -27,7 +27,7 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
-from config import schwab_credentials
+from config import load_dotenv_file, schwab_credentials
 from feed import schwab_client
 from stream_spine import HealthRegistry, MessageBus
 
@@ -66,6 +66,26 @@ def _blocked(**env: str) -> bool:
 
 
 # ==================================================== the capability gate and fail-closed
+
+
+def test_the_secrets_file_sets_what_is_not_set_and_never_what_is(tmp_path):
+    """An entry point loads the host's secrets file once (config.load_dotenv_file).
+
+    A variable the file names and the environment lacks is set from it; one already set keeps
+    its value. The values are a test's, no credential. A file that is not there loads nothing.
+    """
+    fresh, held = "ED_TEST_DOTENV_FRESH", "ED_TEST_DOTENV_HELD"
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"{fresh}=from-file\n{held}=from-file\n", encoding="utf-8")
+    os.environ[held] = "already-set"
+    try:
+        load_dotenv_file(tmp_path / "absent.env")
+        assert fresh not in os.environ
+        load_dotenv_file(env_file)
+        assert (os.environ[fresh], os.environ[held]) == ("from-file", "already-set")
+    finally:
+        os.environ.pop(fresh, None)
+        os.environ.pop(held, None)
 
 
 def test_absent_credentials_block_live_schwab():

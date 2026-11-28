@@ -539,7 +539,7 @@ def _stamp_gamma_surface_cell_stream_state(
 
     `streamed`: the streamed values of the contracts the daemon's latest beat holds of this
     ticker (order_flow.state.streamed_values); `overlay_symbols`: those the feed is delivering now
-    (live_market_plane.live_on, the one live rule); `held_symbols`: every contract on that
+    (live_market_plane.live_symbols, the one live rule); `held_symbols`: every contract on that
     beat, ticked or not (live_market_plane.held_option_symbols). A missing beat is not live: those
     cells keep the last streamed value and are not live. Each leg carries the time it was last
     received (`ts_recv`), never an age: the stamp stands until the feed next changes.

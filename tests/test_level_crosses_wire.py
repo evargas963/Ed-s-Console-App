@@ -616,6 +616,15 @@ def test_a_stored_cross_is_the_row_read_back(tmp_path: Path) -> None:
     assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == stored
 
 
+def test_before_the_recorders_first_start_no_cross_is_stored(tmp_path: Path) -> None:
+    """No database yet, then a database the Recorder has not made level_crosses in: no cross."""
+    edb = EdDB(tmp_path / "level_crosses.db")
+    assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == []
+    with closing(sqlite3.connect(tmp_path / "level_crosses.db")) as conn:
+        conn.execute("CREATE TABLE stream_write_failures (topic TEXT)")
+    assert edb.get_recent_crosses("SPY", within_sec=cross_store.CROSSES_HELD_SEC) == []
+
+
 def test_the_database_closes_every_connection_it_opens(tmp_path: Path) -> None:
     """Storing a cross through the Recorder and reading it back leave no connection open.
 

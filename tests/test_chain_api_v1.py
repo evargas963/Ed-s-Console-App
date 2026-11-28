@@ -171,6 +171,20 @@ def test_a_chain_the_levels_could_not_price_says_the_levels_own_reason():
     assert _get(ticker="TSLA")["none_said"] == "chain unavailable — no option chain"
 
 
+def test_levels_priced_from_contracts_with_no_expiration_date_list_no_expiry_and_say_so():
+    """INDUCED: TSLA's captured contracts sent without expirationDate, published at a price.
+
+    The levels are priced (no reason of their own), but list no expiry, so the panel's front
+    expiry is none and it says the chain lists none.
+    """
+    undated = [{k: v for k, v in c.items() if k != "expirationDate"} for c in _TSLA_CONTRACTS]
+    _hold("TSLA", undated, _AT.timestamp(), 330.0)
+    assert level_store.published_levels("TSLA").snap.error == ""
+    assert (
+        _get(ticker="TSLA")["none_said"] == "chain unavailable — no listed expiry for this ticker"
+    )
+
+
 def test_every_contract_of_the_expiry_is_served_exactly_as_schwab_sent_it():
     _hold("TSLA", _TSLA_CONTRACTS, _AT.timestamp(), 330.0)
     body = _get(ticker="tsla")

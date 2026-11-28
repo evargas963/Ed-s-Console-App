@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -63,6 +64,20 @@ def test_the_record_splits_the_opens_by_the_gaps_direction():
     assert wilson_interval(42, 65) == (record.down.low, record.down.high)
 
 
+def test_a_direction_with_no_open_counted_is_none_never_a_rate_of_nothing():
+    """TSLA's candles cut to 2026-11-03 to 11-05 (INDUCED: the cut), real bars inside it.
+
+    The two opens counted, Nov 4 and Nov 5, both gapped down (LAST_10): the down gaps have their
+    count and rate, and the up gaps, none counted, are None, never 0 of 0.
+    """
+    lo, hi = et_ts("2026-11-03 00:00") * 1000, et_ts("2026-11-06 00:00") * 1000
+    cut = {k: [c for c in TSLA[k] if lo <= c["datetime"] < hi] for k in ("regular", "extended")}
+    record = open_gap_record(cut["regular"], cut["extended"])
+    assert record is not None
+    assert [o.day for o in record.opens] == [date(2026, 11, 4), date(2026, 11, 5)]
+    assert record.up is None and (record.down.opens, record.down.matched) == (2, 2)
+
+
 def test_no_counted_open_is_no_record():
     """Without the extended-hours bars there is no pre-market, so no gap: absent, never 0."""
     assert open_gap_record(TSLA["regular"], []) is None
@@ -86,6 +101,12 @@ def test_today_s_open_from_schwab_s_bars_is_the_record_s_own_once_its_bar_has_cl
     ]
     assert today_open(candles, today, prior, et_ts("2026-10-07 09:40")) == recorded
     assert today_open(candles, today, prior, et_ts("2026-10-07 09:33")) is None, "bar not closed"
+    # INDUCED: the open's bar closed where it opened, so its first five minutes did not move and
+    # the open has no direction to count
+    opened = today.regular[0][0].timestamp()
+    flat = [replace(c, close=c.open) if c.ts == opened else c for c in candles]
+    assert flat != candles
+    assert today_open(flat, today, prior, et_ts("2026-10-07 09:40")) is None
 
 
 def answer(series: str, candles: list) -> dict:
