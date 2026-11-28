@@ -445,12 +445,16 @@ def test_the_builder_builds_on_a_usable_sign_in_and_names_one_that_cannot_be_ref
     )
 
 
-@pytest.mark.parametrize("scope", ["api", ["api", "read"], None])
-def test_the_token_files_scope_is_shown_as_sent(tmp_path, scope):
+@pytest.mark.parametrize(
+    ("saved", "shown"),
+    [({"scope": "api"}, "api"), ({"scope": ["api", "read"]}, ["api", "read"]), ({}, None)],
+    ids=["text", "a list", "not sent"],
+)
+def test_the_token_files_scope_is_shown_as_sent(tmp_path, saved, shown):
     """The scope reauth_schwab.py prints is the token's as saved; none when none was sent."""
-    sent = {**_FRESH["token"], **({} if scope is None else {"scope": scope})}
+    sent = {**_FRESH["token"], **saved}
     token = _saved_whole(tmp_path, json.dumps({**_FRESH, "token": sent}))
-    assert sc.inspect_token_file(str(token)).scope_value == scope
+    assert sc.inspect_token_file(str(token)).scope_value == shown
 
 
 def test_the_chain_sweep_asks_nothing_while_signed_out_and_goes_on_after_a_new_sign_in(
