@@ -259,9 +259,13 @@ Each item is one line: `- ID (STATE): what is left, and its next action.`
   310 a minute in regular hours (2026-11-18 to 11-20), the four slots full 45% of the time before
   `ChainSweep.send_quotes` kept them full; Schwab support states 120 a minute for non-order
   endpoints (`schwab-support-2026-10-06`) and answered no `/quotes` request 429 at up to 515 in a
-  minute (1,339,785 requests, 2026-10-10 to 11-22). Next: a regular session measured at the full
-  four (429s, a round's time, the stream's lag), then `schwab_client.REQUESTS_AT_ONCE` up one step
-  at a time until Schwab refuses a few.
+  minute (1,339,785 requests, 2026-10-10 to 11-22). Off hours (2026-11-28, the market closed, the
+  program asking nothing, 368 live contracts a request, answers of 322 KB): four at once ran 644 a
+  minute, every answer 200 and whole, median 0.34 s; at six at once Schwab answered 429 once 808 to
+  822 requests had gone in the 60 s before (901 to 911 in a run whose contracts had expired, its
+  answers about 100 bytes). Next: a regular session measured at the full four (429s, a round's time,
+  the stream's lag), then `schwab_client.REQUESTS_AT_ONCE` up one step at a time until Schwab
+  refuses a few.
 - AS-SENT (OPERATOR): what still stands between Schwab and the screen, each his to keep or delete:
   model gates on derived reads (GSF/GRC under `GSF_EPS_FRAC`; the 25Δ risk reversal's 0.10 delta
   tolerance; depth to 5 levels); a book side with no levels has no depth total.

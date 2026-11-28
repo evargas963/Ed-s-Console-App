@@ -6,7 +6,10 @@ parameter list copied by the operator on 2026-10-05. Companion to schwab_market_
 whose saved copy shows every operation collapsed. The portal's endpoint list has no POST /quotes
 operation. The spec's Schemas section does list a `QuoteRequest` schema, described as "Request one
 or more quote data in POST body" (cusips, fields, ssids, symbols, realtime, indicative); no
-operation that accepts it is listed, so it is not evidence of a POST quotes call.
+operation that accepts it is listed. Schwab's server takes it all the same (measured 2026-11-28):
+POST /quotes with `symbols` a JSON list and `fields` a comma-separated string answers as GET does,
+at most 100 symbols (101 refused 400 whatever their length; `fields` as a list or `symbols` as a
+string answered 500), fewer than GET's URL carries.
 
 GET /chains - Get option chain for an optionable Symbol
 
