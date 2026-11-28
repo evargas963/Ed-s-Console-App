@@ -52,7 +52,7 @@ from push.verdict import LevelsVerdict
 from state import bar_store, cross_store, level_store, price_level_store
 from stream_spine import book_msg
 from tests.capture_store import store_capture
-from tests.feed_live_helper import ROUND_SEC, daemon_status, forget_lean, mark_feed_down
+from tests.feed_live_helper import ROUND_SEC, daemon_status, mark_feed_down
 from tests.test_order_flow_book_payload_v1 import _same
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -136,7 +136,6 @@ def _clear(tk: str) -> None:
     lmp._fields_by_ticker.pop(tk, None)
     mark_feed_down()
     ofls.clear_all_live_state()
-    forget_lean()
     with cross_store._lock:
         cross_store._crosses.pop(tk, None)
 

@@ -17,7 +17,6 @@ import live_market_plane as lmp
 import server
 import time_et
 from app.market_data.schwab.streaming import capture
-from app.options.order_flow import history
 from app.options.order_flow import streaming as ofs
 from app.options.order_flow.state import OrderFlowState, bind_bus
 from calc.micro_structure import Candle
@@ -180,12 +179,6 @@ def forget_news() -> None:
     """No story and no count of the header's news line is left behind (state.news_store)."""
     news_store._stories.clear()
     news_store._left_out.update(other_languages=0, unreadable=0)
-
-
-def forget_lean() -> None:
-    """No imbalance readout of any ticker is left behind (history.LEAN)."""
-    with history.LEAN._lock:
-        history.LEAN._points.clear()
 
 
 def news_on_the_bus(bus: MessageBus, messages: list[dict]) -> None:

@@ -222,7 +222,8 @@ The program is `app/market_data/schwab/streaming/capture.py` (`capture`), with t
 - **Console memory:** each symbol's newest book per service and its newest
   `order_flow.state.MAX_TAPE_PRINTS` trade prints (`order_flow.state.OrderFlowState`); the books of
   the last 240 minutes (`order_flow.history.BOOKS`) and the order-imbalance readout, one value a
-  second for `calc.order_flow.OF_LEAN_KEPT_SEC` (`order_flow.history.LEAN`); the published levels
+  second for `calc.order_flow.OF_LEAN_KEPT_SEC` (`order_flow.history.LEAN`), the three dropped
+  together at the console's stop (`order_flow.state.clear_all_live_state`); the published levels
   (`state/level_store.py`); the price-level snapshots (`state/price_level_store.py`); the 1-minute
   bars and other price-history series (`state/bar_store.py`); the two newest days' chain captures
   (`state/capture_store.py`); the level crosses (`state/cross_store.py`).

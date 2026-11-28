@@ -302,6 +302,11 @@ class RecentBooks:
             held = list(self._books[key]) if key in self._books else []
         return [b for b in held if b[0] >= held[-1][0] - minutes * 60.0] if held else []
 
+    def clear(self) -> None:
+        """Drop every ticker's books (state.clear_all_live_state, the console's stop)."""
+        with self._lock:
+            self._books.clear()
+
 
 class RecentLean:
     """Per ticker: the imbalance readout of both books and their composite, one per second.
@@ -340,6 +345,11 @@ class RecentLean:
         """Return the ticker's kept values, oldest first."""
         with self._lock:
             return list(self._points[ticker_storage_key(ticker)])
+
+    def clear(self) -> None:
+        """Drop every ticker's values (state.clear_all_live_state, the console's stop)."""
+        with self._lock:
+            self._points.clear()
 
 
 #: the recent books and imbalance values, fed by the console's intake

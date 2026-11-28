@@ -36,7 +36,7 @@ from calc import order_flow as e
 from push import book as push_book
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import daemon_status, forget_lean, mark_feed_down
+from tests.feed_live_helper import daemon_status, mark_feed_down
 from tests.test_order_flow_book_payload_v1 import _same
 from time_et import age_text, auction, ct_label, record_markets
 
@@ -102,7 +102,6 @@ def build_readout_payload(
         "messages"
     ]
     ofls.clear_all_live_state()
-    forget_lean()
     try:
         lmp.record_feed_heartbeat(daemon_status(now, schwab_socket_open=True, held=_HELD))
         for m in sorted(quotes, key=lambda m: m["ts_recv"]):
@@ -122,7 +121,6 @@ def build_readout_payload(
             kept.pop("SPY", None)
         mark_feed_down()
         ofls.clear_all_live_state()
-        forget_lean()
 
 
 # ── one book: Top 1, Top 3 and Top 5, plain sums of Schwab's sizes ───────────────────────────
@@ -365,12 +363,12 @@ def test_on_an_equal_quote_time_nyse_books_copy_counts():
 
 def _served(readout: dict) -> dict:
     """Return the route's card for that one readout, recorded by the intake at _END - 1."""
-    forget_lean()
+    ofls.clear_all_live_state()
     try:
         history.LEAN.record("SPY", _END - 1, readout)
         return push_book.liquidity_readout("SPY", _END)["venues"]
     finally:
-        forget_lean()
+        ofls.clear_all_live_state()
 
 
 def test_each_venue_is_served_with_the_name_its_dot_shows():
@@ -767,7 +765,7 @@ def test_held_is_at_least_when_the_tilt_stood_from_the_first_value_kept():
     A quiet ticker: the first still stands at the window's start, so the tilt has held at least
     the window, and says so.
     """
-    forget_lean()
+    ofls.clear_all_live_state()
     try:
         for ts, svc, content in (_ROWS[0], [_ROWS[0][0] + 400, _ROWS[0][1], _ROWS[0][2]]):
             history.LEAN.record(
@@ -780,7 +778,7 @@ def test_held_is_at_least_when_the_tilt_stood_from_the_first_value_kept():
         assert w["held_open"] is True and w["held_sec"] == e.OF_LEAN_KEPT_SEC
         assert None not in w["lean"]["5m"]["values"]
     finally:
-        forget_lean()
+        ofls.clear_all_live_state()
 
 
 def test_held_is_at_least_when_the_values_began_inside_the_window():
@@ -1096,12 +1094,12 @@ def test_a_day_schwabs_market_hours_are_not_held_for_has_no_auction_line_and_say
 
 
 def test_a_ticker_without_readouts_has_an_empty_series():
-    forget_lean()
+    ofls.clear_all_live_state()
     assert history.LEAN.points("SPY") == []
 
 
 def test_the_intake_keeps_one_value_a_second_for_the_windows_and_no_longer():
-    forget_lean()
+    ofls.clear_all_live_state()
     try:
         _readout, points = _replay()
         for ts, readout in points:
@@ -1111,7 +1109,7 @@ def test_the_intake_keeps_one_value_a_second_for_the_windows_and_no_longer():
         # the window and the one value before it, which still stands at its start
         assert kept[-1][0] - kept[1][0] <= e.OF_LEAN_KEPT_SEC
     finally:
-        forget_lean()
+        ofls.clear_all_live_state()
 
 
 # ── the browser tests' fixtures are the route's answers ──────────────────────────────────────

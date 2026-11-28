@@ -388,14 +388,17 @@ def newest_book(symbol: str, venue: str) -> Book | None:
 
 
 def clear_all_live_state() -> None:
-    """Drop every symbol's tape, books and look-back records, when the console stops streaming.
+    """Drop everything the console's intake kept, when the console stops streaming.
 
-    Its one caller is the console's stop (streaming.stop_order_flow_stream). A reconnect of
-    Schwab's stream keeps them: Schwab's counts run on, so a look-back's volume across the gap
-    stays exact, and the gap's trades arrive as one rise of volume, read by its last trade as
-    any rise Schwab merges is.
+    Every symbol's tape, newest books and look-back records, and the books and imbalance values
+    kept for the heatmap and the Liquidity card (history.BOOKS, history.LEAN). Its one caller is
+    the console's stop (streaming.stop_order_flow_stream). A reconnect of Schwab's stream keeps
+    them: Schwab's counts run on, so a look-back's volume across the gap stays exact, and the
+    gap's trades arrive as one rise of volume, read by its last trade as any rise Schwab merges is.
     """
     _LIVE_STATE.clear_all()
+    history.BOOKS.clear()
+    history.LEAN.clear()
 
 
 def streamed_values(symbols: Iterable[str]) -> dict[str, Streamed]:

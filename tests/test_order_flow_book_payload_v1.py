@@ -34,7 +34,7 @@ from app.options.order_flow import streaming as ofs
 from push import book as push_book
 from stream_spine import book_msg
 from tests.conftest import MARKETS_ANSWERS
-from tests.feed_live_helper import daemon_status, forget_lean, mark_feed_down
+from tests.feed_live_helper import daemon_status, mark_feed_down
 from time_et import record_markets
 
 _FX = Path(__file__).resolve().parent / "fixtures"
@@ -63,9 +63,8 @@ def build_book_closed_payload(
     quotes = json.loads((_FX / "real_spy_level_one_2026_10_23.json").read_text(encoding="utf-8"))[
         "messages"
     ]
+    # the books and readouts another test's SPY books left in this process are not this book's
     ofls.clear_all_live_state()
-    # the readouts another test's SPY books left in this process are not this book's
-    forget_lean()
     try:
         lmp.record_feed_heartbeat(
             daemon_status(
@@ -97,7 +96,6 @@ def build_book_closed_payload(
             kept.pop("SPY", None)
         mark_feed_down()
         ofls.clear_all_live_state()
-        forget_lean()
 
 
 #: 2026-10-23 15:59:05 ET, regular hours, the last of the five captured SPY messages received
