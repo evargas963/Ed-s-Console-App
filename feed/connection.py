@@ -70,6 +70,8 @@ READ_SEC = 1.0
 DEAD_SEC = 30.0
 #: Reconnect waits, in order; the last repeats.
 RECONNECT_BACKOFF_SEC = (1.0, 2.0, 5.0, 10.0, 30.0, 60.0)
+#: a connection that lasted this long starts the reconnect waits over
+STEADY_CONNECTION_SEC = 300.0
 #: Schwab closes the socket on a request over 65,535 bytes; stay well under it.
 MAX_REQUEST_BYTES = 48_000
 #: A request Schwab does not answer in this long, by Schwab's time on the frames read, means the
@@ -572,8 +574,7 @@ class Connection:
                 self.schwab_down = f"NOT CONNECTED since {ct_label(self._down_since)}: {why}"
             if stop.is_set():
                 break
-            # a connection that lasted 5 minutes starts the backoff over
-            failures = 1 if self.clock() - started > 300 else failures + 1
+            failures = 1 if self.clock() - started > STEADY_CONNECTION_SEC else failures + 1
             wait = RECONNECT_BACKOFF_SEC[min(failures, len(RECONNECT_BACKOFF_SEC)) - 1]
             log.info("schwab: reconnecting in %.0f s", wait)
             await time_et.set_within(stop, wait)

@@ -26,6 +26,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -120,7 +121,7 @@ def asked_again_if_refused(ask: Callable[[], Answer], stop: threading.Event) -> 
     """
     resp = ask()
     for wait in REFUSED_WAITS_SEC:
-        if resp.status_code != 429 or stop.wait(wait):
+        if resp.status_code != HTTPStatus.TOO_MANY_REQUESTS or stop.wait(wait):
             break
         resp = ask()
     return resp
@@ -574,7 +575,7 @@ class ChainSweep:
                     "market hours for %s failed: %s: %s", day, type(e).__name__, e, exc_info=True
                 )
                 continue
-            if resp.status_code == 200:
+            if resp.status_code == HTTPStatus.OK:
                 record_markets(answer)
             if resp.status_code in MARKETS_ANSWERED:
                 self._markets_day[day] = today
@@ -679,7 +680,7 @@ class ChainSweep:
                     start,
                     extended=start is None or series in EXTENDED_FROM_START,
                 )
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     continue
                 answer = resp.json()
             except Exception as e:  # that series' answer is the failure; the next series is asked
@@ -743,7 +744,7 @@ class ChainSweep:
                 if resp is None:
                     return None
                 self.publish(*chain_answer_message(ticker, expiry, resp, self.clock()))
-                if resp.status_code != 200:
+                if resp.status_code != HTTPStatus.OK:
                     return self.fail(
                         [chain], f"chain for {expiry} returned HTTP {resp.status_code}"
                     )
@@ -853,7 +854,7 @@ class ChainSweep:
         try:
             resp = ask.result()
             self.publish(*quotes_answer_message(resp, self.clock()))
-            if resp.status_code != 200:
+            if resp.status_code != HTTPStatus.OK:
                 self.fail(
                     chains, f"quotes for {len(batch)} contracts returned HTTP {resp.status_code}"
                 )
